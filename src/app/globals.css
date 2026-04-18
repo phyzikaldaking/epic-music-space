@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #050510;
+  --color-foreground: #f0f4ff;
+  --color-space-dark: #0a0a1a;
+  --color-space-darker: #050510;
+  --color-nebula-purple: #6b21a8;
+  --color-nebula-blue: #1d4ed8;
+  --color-star-white: #f0f4ff;
+  --color-cosmic-pink: #ec4899;
+  --color-aurora-green: #10b981;
+}
+
+:root {
+  --background: #050510;
+  --foreground: #f0f4ff;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(107, 33, 168, 0.4);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 33, 168, 0.7);
+}
+
+/* Glow effect helper */
+.glow-purple {
+  box-shadow: 0 0 20px rgba(107, 33, 168, 0.4);
+}
+
+/* Range input styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+}
+
+/* Nebula gradient background */
+.nebula-bg {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(107, 33, 168, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(29, 78, 216, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 80%, rgba(236, 72, 153, 0.08) 0%, transparent 50%),
+    #050510;
+}
