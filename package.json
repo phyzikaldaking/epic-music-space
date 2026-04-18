@@ -41,10 +41,5 @@
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tailwindcss": "^4",
     "typescript": "^5"
-  },
-  "jest": {
-    "setupFilesAfterFramework": [
-      "<rootDir>/jest.setup.ts"
-    ]
   }
 }

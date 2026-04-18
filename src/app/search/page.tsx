@@ -1,54 +1,33 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Search, X, Music, User, Disc3 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { searchTracks, searchArtists, searchAlbums } from "@/lib/api";
 import { TrackRow } from "@/components/ui/TrackRow";
 
-function useDebounce<T extends (...args: Parameters<T>) => void>(fn: T, delay: number) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  return useCallback(
-    (...args: Parameters<T>) => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => fn(...args), delay);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fn]
-  );
-}
-
 export default function SearchPage() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<{
-    tracks: ReturnType<typeof searchTracks>;
-    artists: ReturnType<typeof searchArtists>;
-    albums: ReturnType<typeof searchAlbums>;
-  } | null>(null);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
-  const doSearch = useCallback((q: string) => {
-    if (!q.trim()) {
-      setResults(null);
-      return;
-    }
-    setResults({
-      tracks: searchTracks(q),
-      artists: searchArtists(q),
-      albums: searchAlbums(q),
-    });
-  }, []);
+  // Debounce the query
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
-  const debouncedSearch = useDebounce(doSearch, 300);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuery(e.target.value);
-    debouncedSearch(e.target.value);
-  };
+  const results =
+    debouncedQuery.trim()
+      ? {
+          tracks: searchTracks(debouncedQuery),
+          artists: searchArtists(debouncedQuery),
+          albums: searchAlbums(debouncedQuery),
+        }
+      : null;
 
   const clear = () => {
     setQuery("");
-    setResults(null);
   };
 
   const hasResults =
@@ -69,7 +48,7 @@ export default function SearchPage() {
           type="search"
           placeholder="Search songs, artists, albums..."
           value={query}
-          onChange={handleChange}
+          onChange={(e) => setQuery(e.target.value)}
           className="w-full pl-11 pr-10 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-gray-500 focus:outline-none focus:border-purple-500 focus:bg-white/15 transition-all"
           aria-label="Search music"
           autoFocus
