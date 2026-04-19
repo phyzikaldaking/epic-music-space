@@ -44,6 +44,23 @@ export default async function DashboardPage() {
     return { code: invite.code, usedCount };
   })();
 
+  const totalInvested = user.transactions
+    .filter((t) => t.status === "SUCCEEDED" && t.type === "LICENSE_PURCHASE")
+    .reduce((acc, t) => acc + Number(t.amount), 0);
+
+  const totalSongsSold = user.songs.reduce((acc, s) => acc + s.soldLicenses, 0);
+
+  // Artist flag — must be declared before any conditional checks below
+  const isArtist = user.role !== "LISTENER";
+
+  // Artist: total earnings = sum of all succeeded license_purchase amounts across artist's songs
+  const artistEarnings = isArtist
+    ? user.songs.reduce(
+        (sum: number, s: typeof user.songs[number]) => sum + Number(s.licensePrice) * s.soldLicenses,
+        0
+      )
+    : 0;
+
   // Stripe Connect status (artists only)
   let connectStatus: { connected: boolean; onboardingComplete: boolean } = {
     connected: false,
@@ -64,21 +81,6 @@ export default async function DashboardPage() {
       connectStatus = { connected: true, onboardingComplete: false };
     }
   }
-
-  const totalInvested = user.transactions
-    .filter((t) => t.status === "SUCCEEDED" && t.type === "LICENSE_PURCHASE")
-    .reduce((acc, t) => acc + Number(t.amount), 0);
-
-  const totalSongsSold = user.songs.reduce((acc, s) => acc + s.soldLicenses, 0);
-
-  // Artist: total earnings = sum of all succeeded license_purchase amounts across artist's songs
-  const isArtist = user.role !== "LISTENER";
-  const artistEarnings = isArtist
-    ? user.songs.reduce(
-        (sum: number, s: typeof user.songs[number]) => sum + Number(s.licensePrice) * s.soldLicenses,
-        0
-      )
-    : 0;
 
   const STAT_CARDS = [
     {
@@ -435,9 +437,7 @@ export default async function DashboardPage() {
               </p>
               <div className="flex items-center gap-3 mb-5">
                 <code className="flex-1 rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm font-mono text-brand-300">
-                  {typeof window === "undefined"
-                    ? `/auth/signup?invite=${inviteData.code}`
-                    : `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/auth/signup?invite=${inviteData.code}`}
+                  {`${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/auth/signup?invite=${inviteData.code}`}
                 </code>
                 <a
                   href="/invite"
