@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ems-black: #0A0A0F;
+  --ems-gold: #D4AF37;
+  --ems-purple: #7B3FE4;
+  --ems-text: #F0F0F0;
+  --ems-surface: #13131A;
+  --ems-border: #2A2A3A;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: var(--ems-black);
+  color: var(--ems-text);
+}
+
+@layer base {
+  body {
+    @apply bg-ems-black text-ems-text font-inter;
+  }
+}
+
+@layer components {
+  .neon-text-gold {
+    text-shadow: 0 0 10px #D4AF37, 0 0 20px #D4AF37, 0 0 40px #D4AF37;
+  }
+
+  .neon-text-purple {
+    text-shadow: 0 0 10px #7B3FE4, 0 0 20px #7B3FE4, 0 0 40px #7B3FE4;
+  }
+
+  .neon-border-gold {
+    border-color: #D4AF37;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.5), inset 0 0 10px rgba(212, 175, 55, 0.1);
+  }
+
+  .neon-border-purple {
+    border-color: #7B3FE4;
+    box-shadow: 0 0 10px rgba(123, 63, 228, 0.5), inset 0 0 10px rgba(123, 63, 228, 0.1);
+  }
+
+  .glass-card {
+    @apply bg-ems-surface border border-ems-border rounded-xl backdrop-blur-sm;
+    background: rgba(19, 19, 26, 0.8);
+  }
+
+  .city-grid-bg {
+    background-image: linear-gradient(rgba(212,175,55,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(212,175,55,0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

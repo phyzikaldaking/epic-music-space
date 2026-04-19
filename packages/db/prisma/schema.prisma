@@ -1,0 +1,204 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
+enum DistrictName {
+  DOWNTOWN_PRIME
+  PRODUCER_ALLEY
+  UNDERGROUND
+  VIP_TOWERS
+}
+
+enum SubscriptionTier {
+  STARTER
+  PRO
+  PRIME
+}
+
+enum ProductType {
+  BEAT
+  MIXING
+  MASTERING
+  SERVICE
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// ─────────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────────
+
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  username         String   @unique
+  passwordHash     String
+  stripeAccountId  String?  // Stripe Connect account
+  stripeCustomerId String?  // Stripe customer for subscriptions
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  studio            Studio?
+  products          Product[]
+  billboards        Billboard[]
+  transactions      Transaction[]
+  subscription      Subscription?
+  referralsGiven    Referral[]    @relation("referrer")
+  referralsReceived Referral[]    @relation("referred")
+  eventsHosted      Event[]
+
+  @@index([email])
+  @@index([username])
+}
+
+model Studio {
+  id        String       @id @default(cuid())
+  ownerId   String       @unique
+  owner     User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  bio       String?
+  avatarUrl String?
+  district  DistrictName @default(UNDERGROUND)
+  visits    Int          @default(0)
+  isActive  Boolean      @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([district])
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  ownerId     String
+  owner       User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  price       Decimal     @db.Decimal(10, 2)
+  fileUrl     String?
+  previewUrl  String?
+  type        ProductType @default(BEAT)
+  isActive    Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([ownerId])
+  @@index([type])
+}
+
+model Billboard {
+  id          String       @id @default(cuid())
+  ownerId     String
+  owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  imageUrl    String
+  linkUrl     String?
+  district    DistrictName @default(UNDERGROUND)
+  price       Decimal      @db.Decimal(10, 2)
+  clicks      Int          @default(0)
+  impressions Int          @default(0)
+  startsAt    DateTime
+  endsAt      DateTime
+  isActive    Boolean      @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([district])
+  @@index([ownerId])
+  @@index([startsAt, endsAt])
+}
+
+model Transaction {
+  id            String            @id @default(cuid())
+  amount        Decimal           @db.Decimal(10, 2)
+  platformFee   Decimal           @db.Decimal(10, 2)
+  artistAmount  Decimal           @db.Decimal(10, 2)
+  status        TransactionStatus @default(PENDING)
+  userId        String
+  user          User              @relation(fields: [userId], references: [id])
+  productId     String?
+  product       Product?          @relation(fields: [productId], references: [id])
+  stripePaymentIntentId String?   @unique
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([productId])
+}
+
+model Subscription {
+  id                   String           @id @default(cuid())
+  userId               String           @unique
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier                 SubscriptionTier @default(STARTER)
+  stripeSubscriptionId String?          @unique
+  currentPeriodEnd     DateTime?
+  isActive             Boolean          @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Referral {
+  id         String   @id @default(cuid())
+  referrerId String
+  referrer   User     @relation("referrer", fields: [referrerId], references: [id])
+  referredId String
+  referred   User     @relation("referred", fields: [referredId], references: [id])
+  rewardPaid Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@unique([referrerId, referredId])
+  @@index([referrerId])
+}
+
+model District {
+  id           String       @id @default(cuid())
+  name         DistrictName @unique
+  ownerId      String?
+  revenueShare Decimal      @default(0.05) @db.Decimal(4, 4)
+  isLocked     Boolean      @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Event {
+  id          String       @id @default(cuid())
+  hostId      String
+  host        User         @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  ticketPrice Decimal      @default(0) @db.Decimal(10, 2)
+  scheduledAt DateTime
+  district    DistrictName @default(UNDERGROUND)
+  isActive    Boolean      @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hostId])
+  @@index([scheduledAt])
+}
