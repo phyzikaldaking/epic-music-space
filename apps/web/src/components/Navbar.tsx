@@ -16,9 +16,24 @@ export default async function Navbar() {
         </Link>
 
         {/* Nav links */}
-        <div className="hidden items-center gap-6 text-sm font-medium md:flex">
+        <div className="hidden items-center gap-5 text-sm font-medium md:flex">
           <Link href="/marketplace" className="text-white/70 hover:text-white transition">
             Marketplace
+          </Link>
+          <Link href="/versus" className="text-white/70 hover:text-white transition">
+            Versus
+          </Link>
+          <Link href="/city" className="text-white/70 hover:text-white transition">
+            City
+          </Link>
+          <Link href="/leaderboard" className="text-white/70 hover:text-white transition">
+            Charts
+          </Link>
+          <Link href="/label" className="text-white/70 hover:text-white transition">
+            Labels
+          </Link>
+          <Link href="/ai" className="text-white/70 hover:text-white transition">
+            AI
           </Link>
           {session && (
             <Link href="/dashboard" className="text-white/70 hover:text-white transition">
@@ -64,3 +79,4 @@ export default async function Navbar() {
     </nav>
   );
 }
+

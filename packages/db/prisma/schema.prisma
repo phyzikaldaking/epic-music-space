@@ -16,30 +16,45 @@ datasource db {
 // ─────────────────────────────────────────
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  name          String?
-  image         String?
-  passwordHash  String?
-  role          Role     @default(LISTENER)
-  emailVerified DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  name                 String?
+  username             String?  @unique
+  image                String?
+  passwordHash         String?
+  role                 Role     @default(LISTENER)
+  emailVerified        DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Stripe Connect for artist payouts
+  stripeConnectId      String?  @unique
 
   // NextAuth relations
-  accounts      Account[]
-  sessions      Session[]
+  accounts             Account[]
+  sessions             Session[]
 
   // Platform relations
-  songs         Song[]
-  licenses      LicenseToken[]
-  transactions  Transaction[]
-  payouts       Payout[]
+  songs                Song[]
+  licenses             LicenseToken[]
+  transactions         Transaction[]
+  payouts              Payout[]
+
+  // Phase 2 relations
+  studio               Studio?
+  ownedLabel           Label?      @relation("LabelOwner")
+  labelMemberships     LabelArtist[] @relation("LabelArtistUser")
+  adPlacements         AdPlacement[]
+  notifications        Notification[]
+  versusVotes          VersusVote[]
+  following            UserFollow[] @relation("Follower")
+  followers            UserFollow[] @relation("Following")
 }
 
 enum Role {
   LISTENER   // can purchase licenses
   ARTIST     // can upload songs + earn royalties
+  LABEL      // can run a label and sign artists
   ADMIN      // platform admin
 }
 
@@ -96,11 +111,18 @@ model Song {
   key               String?
 
   // Licensing economics
-  licensePrice      Decimal  @db.Decimal(10, 2)   // price per license in USD
-  revenueSharePct   Decimal  @db.Decimal(5, 2)    // % of streaming revenue shared with license holders
-  totalLicenses     Int      @default(100)         // max licenses available
-  soldLicenses      Int      @default(0)           // licenses sold so far
+  licensePrice      Decimal  @db.Decimal(10, 2)
+  revenueSharePct   Decimal  @db.Decimal(5, 2)
+  totalLicenses     Int      @default(100)
+  soldLicenses      Int      @default(0)
   isActive          Boolean  @default(true)
+
+  // Phase 2: scoring & discovery
+  aiScore           Float    @default(0)   // composite popularity/quality score
+  versusWins        Int      @default(0)
+  versusLosses      Int      @default(0)
+  streamCount       Int      @default(0)
+  district          District @default(INDIE_BLOCKS)
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -111,6 +133,8 @@ model Song {
   licenses          LicenseToken[]
   transactions      Transaction[]
   payouts           Payout[]
+  versusMatchesA    VersusMatch[] @relation("VersusA")
+  versusMatchesB    VersusMatch[] @relation("VersusB")
 }
 
 // ─────────────────────────────────────────
@@ -211,3 +235,165 @@ enum PayoutStatus {
   PAID
   FAILED
 }
+
+// ─────────────────────────────────────────
+// PHASE 2: DISTRICTS
+// ─────────────────────────────────────────
+
+enum District {
+  INDIE_BLOCKS    // default — general discovery
+  DOWNTOWN_PRIME  // high-visibility placement (unlocked by performance)
+  LABEL_ROW       // elite — label-backed artists only
+}
+
+// ─────────────────────────────────────────
+// PHASE 2: ARTIST STUDIO
+// ─────────────────────────────────────────
+
+model Studio {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username    String   @unique
+  bio         String?  @db.Text
+  district    District @default(INDIE_BLOCKS)
+  bannerUrl   String?
+  socialLinks Json?    // { twitter, instagram, spotify, ... }
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────
+// PHASE 2: VERSUS (SONG BATTLE)
+// ─────────────────────────────────────────
+
+model VersusMatch {
+  id        String       @id @default(cuid())
+  songAId   String
+  songBId   String
+  songA     Song         @relation("VersusA", fields: [songAId], references: [id], onDelete: Cascade)
+  songB     Song         @relation("VersusB", fields: [songBId], references: [id], onDelete: Cascade)
+  votesA    Int          @default(0)
+  votesB    Int          @default(0)
+  status    VersusStatus @default(ACTIVE)
+  endsAt    DateTime
+  createdAt DateTime     @default(now())
+
+  votes     VersusVote[]
+}
+
+enum VersusStatus {
+  ACTIVE
+  COMPLETED
+}
+
+model VersusVote {
+  id           String      @id @default(cuid())
+  matchId      String
+  match        VersusMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  votedSongId  String      // the songId they voted for
+
+  createdAt    DateTime    @default(now())
+
+  @@unique([matchId, userId])
+}
+
+// ─────────────────────────────────────────
+// PHASE 2: LABEL SYSTEM
+// ─────────────────────────────────────────
+
+model Label {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  slug         String        @unique
+  ownerId      String        @unique
+  owner        User          @relation("LabelOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  logoUrl      String?
+  bio          String?       @db.Text
+  revSharePct  Decimal       @db.Decimal(5, 2) @default(10) // label's cut of signed artist earnings
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  artists      LabelArtist[]
+}
+
+model LabelArtist {
+  id           String            @id @default(cuid())
+  labelId      String
+  label        Label             @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  artistId     String
+  artist       User              @relation("LabelArtistUser", fields: [artistId], references: [id], onDelete: Cascade)
+  revSharePct  Decimal           @db.Decimal(5, 2)  // label's cut of THIS artist's earnings
+  status       LabelArtistStatus @default(PENDING)
+  createdAt    DateTime          @default(now())
+
+  @@unique([labelId, artistId])
+}
+
+enum LabelArtistStatus {
+  PENDING     // offer sent, not yet accepted
+  ACTIVE      // artist is signed
+  TERMINATED  // contract ended
+}
+
+// ─────────────────────────────────────────
+// PHASE 2: AD PLACEMENTS
+// ─────────────────────────────────────────
+
+model AdPlacement {
+  id          String     @id @default(cuid())
+  location    AdLocation
+  title       String
+  mediaUrl    String
+  linkUrl     String?
+  ownerId     String
+  owner       User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  price       Decimal    @db.Decimal(10, 2)
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+}
+
+enum AdLocation {
+  MARKETPLACE_BANNER
+  STUDIO_SIDEBAR
+  CITY_BILLBOARD
+  VERSUS_BANNER
+}
+
+// ─────────────────────────────────────────
+// PHASE 2: NOTIFICATIONS
+// ─────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // "LICENSE_SOLD", "VERSUS_RESULT", "LABEL_OFFER", "PAYOUT", etc.
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+// ─────────────────────────────────────────
+// PHASE 2: SOCIAL FOLLOWS
+// ─────────────────────────────────────────
+
+model UserFollow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}
+
