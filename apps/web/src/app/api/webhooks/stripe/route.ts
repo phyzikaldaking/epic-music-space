@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe, STRIPE_WEBHOOK_SECRET } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { enqueueNotification } from "@/lib/queues";
+import { awardBadge } from "@/lib/badges";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -58,6 +59,13 @@ export async function POST(req: NextRequest) {
       break;
     }
 
+    // Stripe Connect account updated — mark onboarding complete
+    case "account.updated": {
+      const account = event.data.object as Stripe.Account;
+      await handleConnectAccountUpdated(account);
+      break;
+    }
+
     default:
       break;
   }
@@ -84,13 +92,17 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
 
   // Atomic: increment soldLicenses and create license token
   await prisma.$transaction(async (tx) => {
-    const song = await tx.song.findUniqueOrThrow({ where: { id: songId } });
+    const song = await tx.song.findUniqueOrThrow({
+      where: { id: songId },
+      include: { artist_: { select: { id: true, stripeConnectId: true } } },
+    });
 
     if (song.soldLicenses >= song.totalLicenses) {
       throw new Error("Song is sold out");
     }
 
     const tokenNumber = song.soldLicenses + 1;
+    const licensePrice = Number(song.licensePrice);
 
     const [licenseToken] = await Promise.all([
       tx.licenseToken.create({
@@ -117,6 +129,48 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
       },
     });
 
+    // Revenue split: artist gets 90%, platform keeps 10%
+    const artistShare = parseFloat((licensePrice * 0.9).toFixed(2));
+    const period = new Date().toISOString().slice(0, 7); // e.g. "2026-04"
+
+    // Create pending payout record for the artist
+    await tx.payout.create({
+      data: {
+        userId: song.artistId,
+        songId,
+        licenseTokenId: licenseToken.id,
+        amount: artistShare,
+        period,
+        status: "PENDING",
+      },
+    });
+
+    // If artist has Stripe Connect, attempt automatic transfer
+    const connectId = song.artist_.stripeConnectId;
+    if (connectId) {
+      try {
+        const amountCents = Math.round(artistShare * 100);
+        if (amountCents >= 100) {
+          await stripe.transfers.create({
+            amount: amountCents,
+            currency: "usd",
+            destination: connectId,
+            metadata: {
+              emsUserId: song.artistId,
+              songId,
+              licenseTokenId: licenseToken.id,
+            },
+          });
+          await tx.payout.updateMany({
+            where: { songId, userId: song.artistId, licenseTokenId: licenseToken.id },
+            data: { status: "PAID", paidAt: new Date() },
+          });
+        }
+      } catch (err) {
+        console.error("[stripe-webhook] Transfer failed (will retry via manual payout)", err);
+      }
+    }
+
     // Notify buyer
     await enqueueNotification({
       userId,
@@ -131,10 +185,22 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
       userId: song.artistId,
       type: "LICENSE_SOLD",
       title: "License sold! 💰",
-      body: `License #${tokenNumber} of "${song.title}" was purchased.`,
+      body: `License #${tokenNumber} of "${song.title}" was purchased. $${artistShare.toFixed(2)} payout ${connectId ? "sent" : "pending Connect setup"}.`,
       metadata: { songId, tokenNumber, buyerId: userId },
     });
   });
+
+  // Award badges outside the transaction (non-critical)
+  await Promise.allSettled([
+    awardBadge(userId, "LICENSE_HOLDER"),
+    // Check if this is the artist's first sale
+    (async () => {
+      const song = await prisma.song.findUnique({ where: { id: songId }, select: { artistId: true, soldLicenses: true } });
+      if (song && song.soldLicenses === 1) {
+        await awardBadge(song.artistId, "FIRST_LICENSE_SOLD");
+      }
+    })(),
+  ]);
 
   console.log(`[stripe-webhook] License granted: song=${songId} user=${userId}`);
 }
@@ -333,4 +399,32 @@ async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
   });
 
   console.log(`[stripe-webhook] Payment failed: pi=${pi.id} tx=${tx.id}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stripe Connect account updated
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handleConnectAccountUpdated(account: Stripe.Account) {
+  const emsUserId = account.metadata?.emsUserId;
+  if (!emsUserId) {
+    console.warn("[stripe-webhook] account.updated missing emsUserId", account.id);
+    return;
+  }
+
+  // Persist the Connect account ID in case it was not stored yet
+  await prisma.user.updateMany({
+    where: { id: emsUserId },
+    data: { stripeConnectId: account.id },
+  });
+
+  if (account.charges_enabled && account.payouts_enabled && account.details_submitted) {
+    await enqueueNotification({
+      userId: emsUserId,
+      type: "CONNECT_ONBOARDING_COMPLETE",
+      title: "Payouts enabled! 💸",
+      body: "Your Stripe account is verified. You will now receive automatic payouts when licenses sell.",
+    });
+    console.log(`[stripe-webhook] Connect onboarding complete: user=${emsUserId} account=${account.id}`);
+  }
 }

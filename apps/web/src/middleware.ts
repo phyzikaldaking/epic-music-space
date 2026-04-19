@@ -5,9 +5,13 @@ import { NextResponse } from "next/server";
  * Next.js Edge Middleware — route protection for EMS.
  *
  * Protected prefixes:
- *   /dashboard   – requires any authenticated session
- *   /boost       – requires any authenticated session
- *   /studio/new  – requires ARTIST or LABEL or ADMIN role
+ *   /dashboard      – requires any authenticated session
+ *   /boost          – requires any authenticated session
+ *   /analytics      – requires any authenticated session
+ *   /profile        – requires any authenticated session
+ *   /invite         – requires any authenticated session
+ *   /api/stripe-connect – requires any authenticated session
+ *   /studio/new     – requires ARTIST or LABEL or ADMIN role
  *
  * Unauthenticated users are redirected to /auth/signin with a `callbackUrl`
  * so they land back on the page they were trying to reach after signing in.
@@ -44,6 +48,18 @@ export default auth((req) => {
     if (!isAuthed) return redirectToSignIn();
   }
 
+  // ── /invite — require authentication ───────────────────────────────────────
+  if (pathname.startsWith("/invite")) {
+    if (!isAuthed) return redirectToSignIn();
+  }
+
+  // ── /api/stripe-connect — require authentication ───────────────────────────
+  if (pathname.startsWith("/api/stripe-connect")) {
+    if (!isAuthed) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   // ── /studio/new — require artist / label / admin ───────────────────────────
   if (pathname === "/studio/new") {
     if (!isAuthed) return redirectToSignIn();
@@ -58,5 +74,13 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/boost/:path*", "/analytics/:path*", "/studio/new", "/profile/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/boost/:path*",
+    "/analytics/:path*",
+    "/studio/new",
+    "/profile/:path*",
+    "/invite/:path*",
+    "/api/stripe-connect/:path*",
+  ],
 };

@@ -5,42 +5,75 @@ import { DISTRICT_META } from "@/lib/scoring";
 export const dynamic = "force-dynamic";
 
 export default async function CityPage() {
-  const [topPrime, topLabel, topIndie] = await Promise.all([
+  const [topPrime, topLabel, topIndie, studiosByDistrict] = await Promise.all([
     prisma.song.findMany({
       where: { isActive: true, district: "DOWNTOWN_PRIME" },
       orderBy: { aiScore: "desc" },
       take: 6,
-      select: { id: true, title: true, artist: true, coverUrl: true, aiScore: true, soldLicenses: true },
+      select: {
+        id: true, title: true, artist: true, coverUrl: true, aiScore: true, soldLicenses: true,
+        artistId: true,
+        artist_: { select: { studio: { select: { username: true } } } },
+      },
     }),
     prisma.song.findMany({
       where: { isActive: true, district: "LABEL_ROW" },
       orderBy: { aiScore: "desc" },
       take: 6,
-      select: { id: true, title: true, artist: true, coverUrl: true, aiScore: true, soldLicenses: true },
+      select: {
+        id: true, title: true, artist: true, coverUrl: true, aiScore: true, soldLicenses: true,
+        artistId: true,
+        artist_: { select: { studio: { select: { username: true } } } },
+      },
     }),
     prisma.song.findMany({
       where: { isActive: true, district: "INDIE_BLOCKS" },
       orderBy: { aiScore: "desc" },
       take: 9,
-      select: { id: true, title: true, artist: true, coverUrl: true, aiScore: true, soldLicenses: true },
+      select: {
+        id: true, title: true, artist: true, coverUrl: true, aiScore: true, soldLicenses: true,
+        artistId: true,
+        artist_: { select: { studio: { select: { username: true } } } },
+      },
+    }),
+    // Studios as "buildings" — top 12 per district
+    prisma.studio.findMany({
+      orderBy: { user: { songs: { _count: "desc" } } },
+      take: 36,
+      select: {
+        username: true,
+        district: true,
+        level: true,
+        user: {
+          select: {
+            name: true,
+            image: true,
+            songs: { where: { isActive: true }, select: { aiScore: true, soldLicenses: true } },
+          },
+        },
+      },
     }),
   ]);
 
-  function MiniSongCard({
-    song,
-  }: {
-    song: {
-      id: string;
-      title: string;
-      artist: string;
-      coverUrl?: string | null;
-      aiScore: number;
-      soldLicenses: number;
-    };
-  }) {
+  type SongWithStudio = {
+    id: string;
+    title: string;
+    artist: string;
+    coverUrl?: string | null;
+    aiScore: number;
+    soldLicenses: number;
+    artistId: string;
+    artist_: { studio: { username: string } | null } | null;
+  };
+
+  function MiniSongCard({ song }: { song: SongWithStudio }) {
+    const studioHref = song.artist_?.studio?.username
+      ? `/studio/${song.artist_.studio.username}`
+      : `/marketplace?q=${encodeURIComponent(song.artist)}`;
+
     return (
       <a
-        href={`/studio/${song.id}`}
+        href={studioHref}
         className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#141414] p-3 transition card-hover-neon"
       >
         <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-brand-800/60 to-accent-700/40 flex items-center justify-center text-xl">
@@ -63,30 +96,69 @@ export default async function CityPage() {
     );
   }
 
+  type StudioBuilding = (typeof studiosByDistrict)[number];
+
+  function StudioBuilding({ studio }: { studio: StudioBuilding }) {
+    const avgScore =
+      studio.user.songs.length > 0
+        ? studio.user.songs.reduce((s, x) => s + x.aiScore, 0) / studio.user.songs.length
+        : 0;
+    const totalSold = studio.user.songs.reduce((s, x) => s + x.soldLicenses, 0);
+    const height = Math.max(48, Math.min(128, 48 + avgScore));
+
+    return (
+      <a
+        href={`/studio/${studio.username}`}
+        className="group flex flex-col items-center gap-1 transition hover:scale-105"
+        title={`${studio.user.name ?? studio.username} — Lv.${studio.level}`}
+      >
+        {/* Building tower */}
+        <div
+          className="w-10 rounded-t-sm bg-gradient-to-b from-brand-500/60 to-brand-900/80 border border-brand-500/30 flex items-end justify-center pb-1 transition group-hover:from-brand-400/80"
+          style={{ height: `${height}px` }}
+        >
+          <span className="text-[10px] font-bold text-brand-300">Lv{studio.level}</span>
+        </div>
+        {/* Base */}
+        <div className="h-2 w-12 rounded-sm bg-white/10" />
+        {/* Label */}
+        <p className="text-[9px] text-white/40 line-clamp-1 max-w-[48px] text-center">
+          {studio.user.name ?? studio.username}
+        </p>
+        {totalSold > 0 && (
+          <p className="text-[9px] text-gold-400">{totalSold}🎟</p>
+        )}
+      </a>
+    );
+  }
+
+  const studiosByDistrictMap = {
+    LABEL_ROW: studiosByDistrict.filter((s) => s.district === "LABEL_ROW").slice(0, 8),
+    DOWNTOWN_PRIME: studiosByDistrict.filter((s) => s.district === "DOWNTOWN_PRIME").slice(0, 8),
+    INDIE_BLOCKS: studiosByDistrict.filter((s) => s.district === "INDIE_BLOCKS").slice(0, 12),
+  };
+
   const DISTRICT_VISUAL = {
     LABEL_ROW: {
       glow: "glow-gold",
       border: "border-gold-500/35",
       bg: "bg-gold-500/6",
       headerBg: "bg-gold-500/10",
-      lock: false,
-      lockCta: null,
+      skyline: "from-gold-900/60 to-gold-500/10",
     },
     DOWNTOWN_PRIME: {
       glow: "glow-purple",
       border: "border-brand-500/40",
       bg: "bg-brand-500/6",
       headerBg: "bg-brand-500/10",
-      lock: false,
-      lockCta: null,
+      skyline: "from-brand-900/60 to-brand-500/10",
     },
     INDIE_BLOCKS: {
       glow: "",
       border: "border-white/10",
       bg: "bg-white/2",
       headerBg: "bg-white/5",
-      lock: false,
-      lockCta: null,
+      skyline: "from-white/5 to-transparent",
     },
   } as const;
 
@@ -95,10 +167,11 @@ export default async function CityPage() {
     songs,
   }: {
     district: "LABEL_ROW" | "DOWNTOWN_PRIME" | "INDIE_BLOCKS";
-    songs: Parameters<typeof MiniSongCard>[0]["song"][];
+    songs: SongWithStudio[];
   }) {
     const meta = DISTRICT_META[district];
     const visual = DISTRICT_VISUAL[district];
+    const buildings = studiosByDistrictMap[district];
 
     return (
       <section className={`rounded-3xl border ${visual.border} ${visual.bg} overflow-hidden`}>
@@ -112,6 +185,22 @@ export default async function CityPage() {
             </span>
           </div>
         </div>
+
+        {/* City skyline — studio buildings */}
+        {buildings.length > 0 && (
+          <div className={`border-b ${visual.border} px-6 py-4`}>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mb-3">
+              🏙️ Studios
+            </p>
+            <div
+              className={`flex items-end gap-3 rounded-2xl bg-gradient-to-t ${visual.skyline} px-4 py-3 overflow-x-auto`}
+            >
+              {buildings.map((s) => (
+                <StudioBuilding key={s.username} studio={s} />
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="p-6">
           {songs.length === 0 ? (

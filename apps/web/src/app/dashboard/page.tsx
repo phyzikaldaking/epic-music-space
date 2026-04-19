@@ -24,6 +24,7 @@ export default async function DashboardPage() {
         where: { isActive: true },
         orderBy: { createdAt: "desc" },
         take: 10,
+        include: { _count: { select: { versusMatchesA: true, versusMatchesB: true } } },
       },
       studio: { select: { username: true } },
       badges: { orderBy: { awardedAt: "desc" } },
@@ -42,6 +43,27 @@ export default async function DashboardPage() {
     });
     return { code: invite.code, usedCount };
   })();
+
+  // Stripe Connect status (artists only)
+  let connectStatus: { connected: boolean; onboardingComplete: boolean } = {
+    connected: false,
+    onboardingComplete: false,
+  };
+  if (isArtist && user.stripeConnectId) {
+    connectStatus = { connected: true, onboardingComplete: false };
+    try {
+      const { stripe } = await import("@/lib/stripe");
+      const account = await stripe.accounts.retrieve(user.stripeConnectId);
+      connectStatus = {
+        connected: true,
+        onboardingComplete:
+          account.charges_enabled && account.payouts_enabled && account.details_submitted,
+      };
+    } catch {
+      // stripe not available in this env — assume connected
+      connectStatus = { connected: true, onboardingComplete: false };
+    }
+  }
 
   const totalInvested = user.transactions
     .filter((t) => t.status === "SUCCEEDED" && t.type === "LICENSE_PURCHASE")
@@ -157,6 +179,48 @@ export default async function DashboardPage() {
           </div>
         )}
 
+        {/* ── Stripe Connect payout setup prompt ──────── */}
+        {isArtist && !connectStatus.onboardingComplete && (
+          <div className={`mb-8 flex items-center gap-4 rounded-2xl border px-6 py-5 ${
+            connectStatus.connected
+              ? "border-yellow-500/40 bg-yellow-500/6"
+              : "border-gold-500/40 bg-gold-500/6"
+          }`}>
+            <span className="text-3xl flex-shrink-0">💸</span>
+            <div className="flex-1">
+              <p className={`font-semibold ${connectStatus.connected ? "text-yellow-300" : "text-gold-300"}`}>
+                {connectStatus.connected ? "Complete payout setup" : "Set up payouts to get paid"}
+              </p>
+              <p className="text-sm text-white/45 mt-0.5">
+                {connectStatus.connected
+                  ? "Finish your Stripe verification to receive automatic payouts when licenses sell."
+                  : "Connect Stripe to receive 90% of every license sale directly to your bank account."}
+              </p>
+            </div>
+            <a
+              href="/api/stripe-connect/onboarding"
+              className={`flex-shrink-0 rounded-xl px-5 py-2 text-sm font-bold text-white transition ${
+                connectStatus.connected
+                  ? "bg-yellow-600 hover:bg-yellow-700"
+                  : "bg-gold-500 hover:bg-gold-600"
+              }`}
+            >
+              {connectStatus.connected ? "Continue setup →" : "Set up payouts →"}
+            </a>
+          </div>
+        )}
+        {isArtist && connectStatus.onboardingComplete && (
+          <div className="mb-8 flex items-center gap-4 rounded-2xl border border-green-500/30 bg-green-500/6 px-6 py-5">
+            <span className="text-3xl flex-shrink-0">✅</span>
+            <div className="flex-1">
+              <p className="font-semibold text-green-300">Payouts enabled</p>
+              <p className="text-sm text-white/45 mt-0.5">
+                You receive 90% of every license sale automatically via Stripe.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* ── Stat cards ──────────────────────────────── */}
         <div className="mb-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {STAT_CARDS.map((stat) => (
@@ -269,15 +333,17 @@ export default async function DashboardPage() {
                 <p className="font-semibold">No songs uploaded yet.</p>
               </div>
             ) : (
-              <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+              <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
                 <table className="w-full text-sm">
                   <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
                     <tr>
                       <th className="px-5 py-3.5 text-left">Title</th>
+                      <th className="px-5 py-3.5 text-left">AI Score</th>
                       <th className="px-5 py-3.5 text-left">Price</th>
                       <th className="px-5 py-3.5 text-left">Rev share</th>
                       <th className="px-5 py-3.5 text-left">Sold</th>
-                      <th className="px-5 py-3.5 text-left">Available</th>
+                      <th className="px-5 py-3.5 text-left">Streams</th>
+                      <th className="px-5 py-3.5 text-left">W/L</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -294,23 +360,26 @@ export default async function DashboardPage() {
                             {s.title}
                           </a>
                         </td>
+                        <td className="px-5 py-3.5">
+                          <span className={`font-bold ${s.aiScore >= 80 ? "text-gold-400" : s.aiScore >= 50 ? "text-brand-400" : "text-white/40"}`}>
+                            {s.aiScore.toFixed(1)}
+                          </span>
+                        </td>
                         <td className="px-5 py-3.5 text-gold-400 font-semibold">
                           {formatPrice(s.licensePrice)}
                         </td>
                         <td className="px-5 py-3.5 text-accent-400">
                           {String(s.revenueSharePct)}%
                         </td>
-                        <td className="px-5 py-3.5 text-white/60">{s.soldLicenses}</td>
+                        <td className="px-5 py-3.5 text-white/60">
+                          {s.soldLicenses}
+                          <span className="text-white/25">/{s.totalLicenses}</span>
+                        </td>
+                        <td className="px-5 py-3.5 text-white/50">{s.streamCount}</td>
                         <td className="px-5 py-3.5">
-                          <span
-                            className={`font-semibold ${
-                              s.totalLicenses - s.soldLicenses === 0
-                                ? "text-red-400"
-                                : "text-green-400"
-                            }`}
-                          >
-                            {s.totalLicenses - s.soldLicenses}
-                          </span>
+                          <span className="text-green-400">{s.versusWins}W</span>
+                          <span className="text-white/25">/</span>
+                          <span className="text-red-400">{s.versusLosses}L</span>
                         </td>
                       </tr>
                     ))}

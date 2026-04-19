@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
 
 interface VersusCardProps {
   matchId: string;
@@ -25,13 +26,36 @@ export default function VersusCard({
   const [votesB, setVotesB] = useState(initialVotesB);
   const [voted, setVoted] = useState<string | null>(userVotedSongId ?? null);
   const [loading, setLoading] = useState(false);
+  const [liveIndicator, setLiveIndicator] = useState(false);
 
   // Audio preview state — only one plays at a time
   const audioARef = useRef<HTMLAudioElement | null>(null);
   const audioBRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
 
-  // Cleanup on unmount
+  // ── Supabase realtime subscription ─────────────────────────────────────────
+  useEffect(() => {
+    const supabase = createBrowserSupabaseClient();
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel(CHANNELS.versus(matchId))
+      .on("broadcast", { event: "vote_update" }, ({ payload }) => {
+        const p = payload as { votesA: number; votesB: number };
+        setVotesA(p.votesA);
+        setVotesB(p.votesB);
+        // Flash the live indicator
+        setLiveIndicator(true);
+        setTimeout(() => setLiveIndicator(false), 1200);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [matchId]);
+
+  // Cleanup audio on unmount
   useEffect(() => {
     return () => {
       audioARef.current?.pause();
@@ -181,7 +205,17 @@ export default function VersusCard({
     <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between text-xs text-white/40">
-        <span>⚔️ VERSUS</span>
+        <span className="flex items-center gap-1.5">
+          ⚔️ VERSUS
+          {!isExpired && (
+            <span
+              className={`inline-block h-1.5 w-1.5 rounded-full transition-colors duration-300 ${
+                liveIndicator ? "bg-green-400" : "bg-green-500/50"
+              }`}
+              title="Live vote count"
+            />
+          )}
+        </span>
         <span>{isExpired ? "Ended" : `Ends ${new Date(endsAt).toLocaleString()}`}</span>
       </div>
 

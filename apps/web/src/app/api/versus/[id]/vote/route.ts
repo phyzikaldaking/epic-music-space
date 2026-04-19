@@ -5,6 +5,7 @@ import { z } from "zod";
 import { calculateAiScore, scoreToDistrict } from "@/lib/scoring";
 import { moderateLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
+import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -125,6 +126,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     metadata: { matchId },
     timestamp: new Date().toISOString(),
   });
+
+  // Broadcast real-time vote update via Supabase
+  const supabase = createServerSupabaseClient();
+  if (supabase) {
+    await supabase.channel(CHANNELS.versus(matchId)).send({
+      type: "broadcast",
+      event: "vote_update",
+      payload: { matchId, votesA: updated.votesA, votesB: updated.votesB },
+    });
+  }
 
   return NextResponse.json({ votesA: updated.votesA, votesB: updated.votesB });
 }
