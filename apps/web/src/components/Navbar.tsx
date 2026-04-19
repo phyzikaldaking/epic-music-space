@@ -55,6 +55,12 @@ export default async function Navbar() {
                 Analytics
               </Link>
               <Link
+                href="/invite"
+                className="rounded-lg px-3 py-2 text-green-400/80 transition hover:bg-green-500/10 hover:text-green-400 font-semibold"
+              >
+                🔗 Invite
+              </Link>
+              <Link
                 href="/boost"
                 className="rounded-lg px-3 py-2 text-brand-400/80 transition hover:bg-brand-500/10 hover:text-brand-400 font-semibold"
               >

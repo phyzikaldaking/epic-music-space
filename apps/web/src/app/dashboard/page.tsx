@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { formatPrice } from "@ems/utils";
+import { BADGE_META } from "@/lib/badges";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -25,8 +26,22 @@ export default async function DashboardPage() {
         take: 10,
       },
       studio: { select: { username: true } },
+      badges: { orderBy: { awardedAt: "desc" } },
     },
   });
+
+  // Invite data
+  const inviteData = await (async () => {
+    const invite = await prisma.inviteCode.findFirst({
+      where: { createdById: user.id },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!invite) return null;
+    const usedCount = await prisma.inviteCode.count({
+      where: { createdById: user.id, usedById: { not: null } },
+    });
+    return { code: invite.code, usedCount };
+  })();
 
   const totalInvested = user.transactions
     .filter((t) => t.status === "SUCCEEDED" && t.type === "LICENSE_PURCHASE")
@@ -305,6 +320,94 @@ export default async function DashboardPage() {
             )}
           </section>
         )}
+
+        {/* ── Badges showcase ─────────────────────────── */}
+        <section className="mb-12">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-xl font-bold">🏅 Badges</h2>
+            <span className="text-sm text-white/35">
+              {user.badges.length} earned
+            </span>
+          </div>
+          {user.badges.length === 0 ? (
+            <div className="rounded-2xl border border-white/8 bg-[#141414] p-6 text-center text-white/30 text-sm">
+              No badges yet — invite friends, win battles, and sell licenses to earn them!
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {user.badges.map((b) => {
+                const meta = BADGE_META[b.type as keyof typeof BADGE_META];
+                return (
+                  <div key={b.id} className={`flex items-center gap-4 rounded-2xl border p-4 ${meta.color}`}>
+                    <span className="text-2xl flex-shrink-0">{meta.icon}</span>
+                    <div>
+                      <p className="font-bold text-sm">{meta.label}</p>
+                      <p className="text-xs text-white/40 mt-0.5">{meta.description}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* ── Invite Engine widget ─────────────────────── */}
+        <section className="mb-12">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-xl font-bold">🔗 Invite Friends</h2>
+            <a href="/invite" className="text-sm text-brand-400 hover:underline">
+              View full invite page →
+            </a>
+          </div>
+          {inviteData ? (
+            <div className="rounded-2xl border border-white/8 bg-[#141414] p-6">
+              <p className="text-xs font-semibold uppercase tracking-widest text-white/35 mb-3">
+                Your invite code
+              </p>
+              <div className="flex items-center gap-3 mb-5">
+                <code className="flex-1 rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm font-mono text-brand-300">
+                  {typeof window === "undefined"
+                    ? `/auth/signup?invite=${inviteData.code}`
+                    : `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/auth/signup?invite=${inviteData.code}`}
+                </code>
+                <a
+                  href="/invite"
+                  className="flex-shrink-0 rounded-xl bg-brand-500 px-4 py-3 text-sm font-bold text-white hover:bg-brand-600 transition"
+                >
+                  Copy & Share
+                </a>
+              </div>
+              <div>
+                <div className="mb-1 flex justify-between text-xs text-white/40">
+                  <span>{inviteData.usedCount} friends joined</span>
+                  <span>
+                    {inviteData.usedCount < 5 ? `${5 - inviteData.usedCount} to go` :
+                     inviteData.usedCount < 10 ? `${10 - inviteData.usedCount} to go` :
+                     inviteData.usedCount < 50 ? `${50 - inviteData.usedCount} to go` : "All milestones done! 🎉"}
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-500"
+                    style={{
+                      width: `${inviteData.usedCount < 5
+                        ? (inviteData.usedCount / 5) * 100
+                        : inviteData.usedCount < 10
+                        ? ((inviteData.usedCount - 5) / 5) * 100
+                        : inviteData.usedCount < 50
+                        ? ((inviteData.usedCount - 10) / 40) * 100
+                        : 100}%`
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/8 bg-[#141414] p-6 text-center text-sm text-white/30">
+              Your invite link will appear here after signing in.
+            </div>
+          )}
+        </section>
 
         {/* ── Artist: Earnings breakdown ───────────────── */}
         {isArtist && user.songs.length > 0 && (

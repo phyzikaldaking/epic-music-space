@@ -49,6 +49,13 @@ model User {
   versusVotes          VersusVote[]
   following            UserFollow[] @relation("Follower")
   followers            UserFollow[] @relation("Following")
+
+  // Phase 2: invite engine
+  inviteCodesCreated   InviteCode[] @relation("InviteCreator")
+  inviteCodeUsed       InviteCode?  @relation("InviteUsed")
+
+  // Phase 2: badges
+  badges               UserBadge[]
 }
 
 enum Role {
@@ -258,6 +265,7 @@ model Studio {
   username    String   @unique
   bio         String?  @db.Text
   district    District @default(INDIE_BLOCKS)
+  level       Int      @default(1)
   bannerUrl   String?
   socialLinks Json?    // { twitter, instagram, spotify, ... }
   createdAt   DateTime @default(now())
@@ -396,5 +404,48 @@ model UserFollow {
   createdAt   DateTime @default(now())
 
   @@unique([followerId, followingId])
+}
+
+// ─────────────────────────────────────────
+// PHASE 2: INVITE ENGINE
+// ─────────────────────────────────────────
+
+model InviteCode {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  createdAt   DateTime  @default(now())
+  usedAt      DateTime?
+
+  createdById String
+  createdBy   User      @relation("InviteCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  usedById    String?   @unique
+  usedBy      User?     @relation("InviteUsed", fields: [usedById], references: [id])
+}
+
+// ─────────────────────────────────────────
+// PHASE 2: BADGES + PRESTIGE
+// ─────────────────────────────────────────
+
+model UserBadge {
+  id        String    @id @default(cuid())
+  type      BadgeType
+  awardedAt DateTime  @default(now())
+
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+}
+
+enum BadgeType {
+  EARLY_ADOPTER       // first 1 000 users to join
+  INVITE_5            // invited 5 friends
+  INVITE_10           // invited 10 friends
+  INVITE_50           // invited 50 friends
+  FIRST_BATTLE_WIN    // won a versus battle
+  FIRST_LICENSE_SOLD  // sold first license (artist)
+  LICENSE_HOLDER      // purchased first license (fan)
+  TOP_ARTIST          // reached #1 on leaderboard
 }
 

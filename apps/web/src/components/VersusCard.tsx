@@ -198,6 +198,15 @@ export default function VersusCard({
           Tap a song to vote. Votes boost the winner&apos;s discovery score.
         </p>
       )}
+      {/* Link to full result/share page */}
+      <div className="mt-4 text-center">
+        <a
+          href={`/versus/${matchId}`}
+          className="text-xs text-white/30 hover:text-brand-400 transition underline underline-offset-2"
+        >
+          {isExpired ? "🏆 View results & share" : "🔗 Share this battle"}
+        </a>
+      </div>
     </div>
   );
 }

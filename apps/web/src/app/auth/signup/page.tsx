@@ -52,6 +52,9 @@ function SignUpContent() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Read invite code from URL param
+  const inviteCode = searchParams.get("invite") ?? "";
+
   // Pre-select role from query param (e.g. ?role=ARTIST from homepage CTA)
   useEffect(() => {
     const r = searchParams.get("role") as RoleValue | null;
@@ -70,7 +73,7 @@ function SignUpContent() {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, role: selectedRole }),
+      body: JSON.stringify({ ...form, role: selectedRole, inviteCode: inviteCode || undefined }),
     });
 
     const data = await res.json();
@@ -105,6 +108,12 @@ function SignUpContent() {
             <p className="mt-2 text-sm text-white/45">
               Free to start — no credit card required
             </p>
+            {inviteCode && (
+              <div className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-green-500/30 bg-green-500/8 px-3 py-1.5">
+                <span className="text-green-400 text-sm">🤝</span>
+                <p className="text-xs text-green-300 font-semibold">Invited with code <code>{inviteCode}</code></p>
+              </div>
+            )}
           </div>
 
           {/* Role selector */}

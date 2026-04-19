@@ -5,6 +5,7 @@ import AiScoreBar from "@/components/AiScoreBar";
 import DistrictBadge from "@/components/DistrictBadge";
 import SongCard from "@/components/SongCard";
 import FollowButton from "@/components/FollowButton";
+import { BADGE_META } from "@/lib/badges";
 
 interface Props {
   params: Promise<{ username: string }>;
@@ -35,6 +36,7 @@ export default async function StudioProfilePage({ params }: Props) {
           },
           ownedLabel: { select: { id: true, name: true, slug: true } },
           _count: { select: { followers: true, following: true } },
+          badges: { orderBy: { awardedAt: "asc" } },
         },
       },
     },
@@ -89,6 +91,10 @@ export default async function StudioProfilePage({ params }: Props) {
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-extrabold">{user.name ?? username}</h1>
             <DistrictBadge district={studio.district} size="sm" />
+            {/* Studio level badge */}
+            <span className="rounded-full bg-white/8 border border-white/15 px-2.5 py-0.5 text-xs font-bold text-white/60">
+              Lv.{studio.level}
+            </span>
             {user.ownedLabel && (
               <a
                 href={`/label/${user.ownedLabel.id}`}
@@ -104,6 +110,23 @@ export default async function StudioProfilePage({ params }: Props) {
             <span>{user._count.following} following</span>
             <span>{totalLicensesSold} licenses sold</span>
           </div>
+          {/* Badges row */}
+          {user.badges.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {user.badges.map((b) => {
+                const meta = BADGE_META[b.type as keyof typeof BADGE_META];
+                return (
+                  <span
+                    key={b.id}
+                    title={meta.description}
+                    className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${meta.color}`}
+                  >
+                    {meta.icon} {meta.label}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Follow / Edit */}
