@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { stripe } from "@/lib/stripe";
+import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 
@@ -148,12 +149,10 @@ export async function GET(req: NextRequest) {
   }
 
   // Find Stripe customer ID from existing transactions
-  const tx = await import("@/lib/prisma").then(({ prisma }) =>
-    prisma.transaction.findFirst({
-      where: { userId: session.user.id, stripePaymentIntentId: { not: null } },
-      select: { metadata: true },
-    })
-  );
+  const tx = await prisma.transaction.findFirst({
+    where: { userId: session.user.id, stripePaymentIntentId: { not: null } },
+    select: { metadata: true },
+  });
 
   const customerId =
     tx?.metadata && typeof tx.metadata === "object" && "stripeCustomerId" in tx.metadata
