@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { enqueueAiScoring, enqueueAnalytics } from "@/lib/queues";
+import { cacheGet, cacheSet, cacheDel, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
+import { strictLimiter, lenientLimiter } from "@/lib/rateLimit";
 
 const createSongSchema = z.object({
   title: z.string().min(1).max(200),
@@ -17,16 +20,50 @@ const createSongSchema = z.object({
   totalLicenses: z.coerce.number().int().min(1).max(10000).default(100),
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown";
+
+  try {
+    await lenientLimiter.consume(ip);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many requests." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
+  const cacheKey = CACHE_KEYS.trendingSongs;
+  const cached = await cacheGet<unknown[]>(cacheKey);
+  if (cached) return NextResponse.json(cached);
+
   const songs = await prisma.song.findMany({
     where: { isActive: true },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ aiScore: "desc" }, { createdAt: "desc" }],
     take: 50,
   });
+
+  await cacheSet(cacheKey, songs, CACHE_TTL.trendingSongs);
   return NextResponse.json(songs);
 }
 
 export async function POST(req: NextRequest) {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown";
+
+  try {
+    await strictLimiter.consume(ip);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -57,5 +94,20 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Invalidate trending cache
+  await cacheDel(CACHE_KEYS.trendingSongs);
+
+  // Enqueue background AI scoring job
+  await enqueueAiScoring(song.id);
+
+  // Enqueue analytics
+  await enqueueAnalytics({
+    event: "song_uploaded",
+    userId: session.user.id,
+    songId: song.id,
+    timestamp: new Date().toISOString(),
+  });
+
   return NextResponse.json(song, { status: 201 });
 }
+

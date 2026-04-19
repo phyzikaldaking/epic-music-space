@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { calculateAiScore, scoreToDistrict } from "@/lib/scoring";
+import { moderateLimiter } from "@/lib/rateLimit";
+import { enqueueAnalytics } from "@/lib/queues";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -13,6 +15,20 @@ const voteSchema = z.object({
 });
 
 export async function POST(req: NextRequest, { params }: Params) {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown";
+
+  try {
+    await moderateLimiter.consume(ip);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many requests." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -100,6 +116,15 @@ export async function POST(req: NextRequest, { params }: Params) {
       data: { aiScore: score, district: scoreToDistrict(score) },
     });
   }
+
+  // Track vote event
+  await enqueueAnalytics({
+    event: "versus_vote",
+    userId: session.user.id,
+    songId: votedSongId,
+    metadata: { matchId },
+    timestamp: new Date().toISOString(),
+  });
 
   return NextResponse.json({ votesA: updated.votesA, votesB: updated.votesB });
 }

@@ -103,7 +103,8 @@ yarn dev
 
 - [x] **Phase 1** — Infrastructure: auth, database, payments, legal framework
 - [x] **Phase 2** — Economy: Versus battle system, city districts, studio profiles, label system, ad placements, leaderboards
-- [x] **Phase 3** — AI layer: song sentiment scoring, personalized license recommendations, AI chat assistant, real-time notification schema, follow/social graph
+- [x] **Phase 3** — AI layer: song sentiment scoring, personalized license recommendations, AI chat assistant, real-time notifications, follow/social graph
+- [x] **Phase 4** — Scalability: Redis caching (ioredis), BullMQ background workers (AI scoring, notifications, analytics), rate limiting (rate-limiter-flexible), Stripe subscription tiers (Starter / Pro / Prime / Label), billing portal
 
 ---
 

@@ -3,12 +3,29 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { z } from "zod";
+import { strictLimiter } from "@/lib/rateLimit";
+import { enqueueAnalytics } from "@/lib/queues";
 
 const checkoutSchema = z.object({
   songId: z.string().cuid(),
 });
 
 export async function POST(req: NextRequest) {
+  // Rate limit checkout — prevents card testing attacks
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown";
+
+  try {
+    await strictLimiter.consume(ip);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -91,5 +108,14 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Enqueue analytics
+  await enqueueAnalytics({
+    event: "checkout_initiated",
+    userId: session.user.id,
+    songId,
+    timestamp: new Date().toISOString(),
+  });
+
   return NextResponse.redirect(stripeSession.url!, { status: 303 });
 }
+

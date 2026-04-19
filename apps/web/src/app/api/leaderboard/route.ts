@@ -1,12 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
+import { lenientLimiter } from "@/lib/rateLimit";
 
 export async function GET(req: NextRequest) {
+  // Rate limit reads
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown";
+
+  try {
+    await lenientLimiter.consume(ip);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many requests." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") ?? "songs";
   const limit = Math.min(parseInt(searchParams.get("limit") ?? "20"), 50);
 
   if (type === "artists") {
+    const cacheKey = CACHE_KEYS.leaderboardArtists;
+    const cached = await cacheGet<unknown[]>(cacheKey);
+    if (cached) return NextResponse.json(cached);
+
     // Top artists by total licenses sold across all their songs
     const artists = await prisma.user.findMany({
       where: { role: { in: ["ARTIST", "LABEL"] } },
@@ -42,10 +63,15 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.totalLicensesSold - a.totalLicensesSold)
       .slice(0, limit);
 
+    await cacheSet(cacheKey, ranked, CACHE_TTL.leaderboard);
     return NextResponse.json(ranked);
   }
 
   // Default: top songs by AI score
+  const cacheKey = CACHE_KEYS.leaderboardSongs;
+  const cached = await cacheGet<unknown[]>(cacheKey);
+  if (cached) return NextResponse.json(cached);
+
   const songs = await prisma.song.findMany({
     where: { isActive: true },
     orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
@@ -66,5 +92,7 @@ export async function GET(req: NextRequest) {
     },
   });
 
+  await cacheSet(cacheKey, songs, CACHE_TTL.leaderboard);
   return NextResponse.json(songs);
 }
+

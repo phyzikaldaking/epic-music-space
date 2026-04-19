@@ -17,6 +17,9 @@ export default async function Navbar() {
 
         {/* Nav links */}
         <div className="hidden items-center gap-5 text-sm font-medium md:flex">
+          <Link href="/pricing" className="text-white/70 hover:text-white transition">
+            Pricing
+          </Link>
           <Link href="/marketplace" className="text-white/70 hover:text-white transition">
             Marketplace
           </Link>
