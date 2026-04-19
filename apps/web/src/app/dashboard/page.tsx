@@ -24,6 +24,7 @@ export default async function DashboardPage() {
         orderBy: { createdAt: "desc" },
         take: 10,
       },
+      studio: { select: { username: true } },
     },
   });
 
@@ -32,6 +33,15 @@ export default async function DashboardPage() {
     .reduce((acc, t) => acc + Number(t.amount), 0);
 
   const totalSongsSold = user.songs.reduce((acc, s) => acc + s.soldLicenses, 0);
+
+  // Artist: total earnings = sum of all succeeded license_purchase amounts across artist's songs
+  const isArtist = user.role !== "LISTENER";
+  const artistEarnings = isArtist
+    ? user.songs.reduce(
+        (sum: number, s: typeof user.songs[number]) => sum + Number(s.licensePrice) * s.soldLicenses,
+        0
+      )
+    : 0;
 
   const STAT_CARDS = [
     {
@@ -52,7 +62,7 @@ export default async function DashboardPage() {
       bg: "bg-gold-500/6",
       textColor: "text-gold-400",
     },
-    ...(user.role !== "LISTENER"
+    ...(isArtist
       ? [
           {
             label: "Songs uploaded",
@@ -112,6 +122,25 @@ export default async function DashboardPage() {
             </a>
           )}
         </div>
+
+        {/* ── Studio setup prompt (artists without a studio) ─────────────── */}
+        {isArtist && !user.studio && (
+          <div className="mb-8 flex items-center gap-4 rounded-2xl border border-brand-500/40 bg-brand-500/8 px-6 py-5">
+            <span className="text-3xl flex-shrink-0">🏠</span>
+            <div className="flex-1">
+              <p className="font-semibold text-brand-300">Set up your artist studio</p>
+              <p className="text-sm text-white/45 mt-0.5">
+                Claim your studio username so fans can find and follow you.
+              </p>
+            </div>
+            <a
+              href="/profile/edit"
+              className="flex-shrink-0 rounded-xl bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600 transition glow-purple-sm"
+            >
+              Set up studio →
+            </a>
+          </div>
+        )}
 
         {/* ── Stat cards ──────────────────────────────── */}
         <div className="mb-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -274,6 +303,63 @@ export default async function DashboardPage() {
                 </table>
               </div>
             )}
+          </section>
+        )}
+
+        {/* ── Artist: Earnings breakdown ───────────────── */}
+        {isArtist && user.songs.length > 0 && (
+          <section className="mb-12">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-xl font-bold">💰 Earnings</h2>
+              <span className="text-sm text-white/35">
+                {formatPrice(artistEarnings)} total
+              </span>
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+              <table className="w-full text-sm">
+                <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
+                  <tr>
+                    <th className="px-5 py-3.5 text-left">Song</th>
+                    <th className="px-5 py-3.5 text-left">Licenses sold</th>
+                    <th className="px-5 py-3.5 text-left">Price</th>
+                    <th className="px-5 py-3.5 text-left">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {user.songs.map((s) => {
+                    const revenue = Number(s.licensePrice) * s.soldLicenses;
+                    return (
+                      <tr key={s.id} className="border-b border-white/5 transition hover:bg-white/3">
+                        <td className="px-5 py-3.5">
+                          <a href={`/studio/${s.id}`} className="font-semibold text-brand-400 hover:underline">
+                            {s.title}
+                          </a>
+                        </td>
+                        <td className="px-5 py-3.5 text-white/60">
+                          {s.soldLicenses} / {s.totalLicenses}
+                        </td>
+                        <td className="px-5 py-3.5 text-white/60">
+                          {formatPrice(s.licensePrice)}
+                        </td>
+                        <td className="px-5 py-3.5 font-semibold text-gold-400">
+                          {formatPrice(revenue)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="border-t border-white/8 bg-white/3">
+                  <tr>
+                    <td colSpan={3} className="px-5 py-3 text-xs font-semibold uppercase tracking-widest text-white/35">
+                      Total
+                    </td>
+                    <td className="px-5 py-3 font-bold text-gold-400">
+                      {formatPrice(artistEarnings)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </section>
         )}
 

@@ -7,7 +7,7 @@ const registerSchema = z.object({
   name: z.string().min(1).max(100),
   email: z.string().email(),
   password: z.string().min(8).max(128),
-  role: z.enum(["LISTENER", "ARTIST"]).default("LISTENER"),
+  role: z.enum(["LISTENER", "ARTIST", "LABEL"]).default("LISTENER"),
 });
 
 export async function POST(req: NextRequest) {

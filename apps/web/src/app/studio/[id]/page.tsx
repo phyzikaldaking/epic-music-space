@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { formatPrice } from "@ems/utils";
 import { notFound } from "next/navigation";
+import AudioPlayer from "@/components/AudioPlayer";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -116,6 +117,11 @@ export default async function StudioPage({ params, searchParams }: Props) {
               </div>
             )}
           </div>
+
+          {/* Audio preview player */}
+          {song.audioUrl && (
+            <AudioPlayer audioUrl={song.audioUrl} title={song.title} />
+          )}
 
           {/* Licensing economics */}
           <div className="glass rounded-2xl p-5">
