@@ -1,140 +1,102 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import { Play, TrendingUp, Star, Disc3 } from "lucide-react";
-import { getFeaturedTracks, getTrendingTracks, getNewReleases, getGenres } from "@/lib/api";
-import { TrackCard } from "@/components/ui/TrackCard";
-import { TrackRow } from "@/components/ui/TrackRow";
-import { usePlayerStore } from "@/store/playerStore";
-import { tracks } from "@/data/mockData";
-
-const featured = getFeaturedTracks();
-const trending = getTrendingTracks();
-const newReleases = getNewReleases();
-const genres = getGenres();
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Music, TrendingUp, DollarSign, Rocket, Users, ShoppingBag } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function HomePage() {
-  const { playTrack } = usePlayerStore();
-  const heroTrack = featured[0];
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/feed");
+    }
+  }, [user, loading, router]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  const features = [
+    { icon: Music, title: "Upload & Stream", desc: "Share your music with the world. HD audio, instant playback." },
+    { icon: DollarSign, title: "Sell Instantly", desc: "Fixed price, pay-what-you-want, or auction your tracks." },
+    { icon: TrendingUp, title: "Fan Investment", desc: "Let fans buy ownership shares. Build your economy." },
+    { icon: ShoppingBag, title: "Marketplace", desc: "Buy, resell, and flip songs on the open marketplace." },
+    { icon: Users, title: "Social Ecosystem", desc: "Follow artists, comment, like, and build your fanbase." },
+    { icon: Rocket, title: "3D City (Coming Soon)", desc: "Walk through a virtual city with your music playing." },
+  ];
 
   return (
-    <div className="p-6 space-y-10 pb-8">
+    <div className="min-h-screen p-6 space-y-16 pb-16">
       {/* Hero */}
-      {heroTrack && (
-        <section
-          className="relative rounded-2xl overflow-hidden min-h-64 flex items-end"
-          style={{
-            background:
-              "linear-gradient(135deg, rgba(107,33,168,0.6) 0%, rgba(29,78,216,0.5) 50%, rgba(236,72,153,0.3) 100%)",
-          }}
-        >
-          <div className="absolute inset-0 opacity-20">
-            <Image
-              src={heroTrack.albumArt}
-              alt={heroTrack.album}
-              fill
-              className="object-cover blur-md scale-110"
-              unoptimized
-            />
+      <section className="relative rounded-3xl overflow-hidden min-h-[400px] flex flex-col items-center justify-center text-center p-8"
+        style={{ background: "linear-gradient(135deg, rgba(107,33,168,0.5) 0%, rgba(29,78,216,0.4) 50%, rgba(236,72,153,0.3) 100%)" }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#050510]/80" />
+        <div className="relative z-10 max-w-2xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-600/30 border border-purple-500/30 text-purple-300 text-sm font-medium mb-6">
+            <Rocket size={14} />
+            Next-gen music platform
           </div>
-          <div className="relative z-10 p-8">
-            <p className="text-sm text-purple-300 font-medium mb-1 flex items-center gap-1">
-              <Star size={14} /> Featured Track
-            </p>
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-1">
-              {heroTrack.title}
-            </h1>
-            <p className="text-gray-300 mb-4">{heroTrack.artist}</p>
-            <button
-              onClick={() => playTrack(heroTrack, featured)}
-              className="flex items-center gap-2 px-6 py-3 bg-white text-black font-semibold rounded-full hover:scale-105 transition-transform shadow-xl"
+          <h1 className="text-5xl sm:text-6xl font-black text-white leading-tight mb-4">
+            The Universe<br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400">
+              of Music
+            </span>
+          </h1>
+          <p className="text-gray-300 text-lg mb-8 max-w-xl mx-auto">
+            Upload, sell, stream, and invest in music. Where artists make money and fans own the future.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href="/register"
+              className="px-8 py-3.5 rounded-2xl bg-purple-600 text-white font-semibold text-lg hover:bg-purple-500 transition-all shadow-xl shadow-purple-500/30"
             >
-              <Play size={18} fill="black" />
-              Play Now
-            </button>
+              Start for free
+            </Link>
+            <Link
+              href="/feed"
+              className="px-8 py-3.5 rounded-2xl bg-white/10 border border-white/20 text-white font-semibold text-lg hover:bg-white/20 transition-all"
+            >
+              Explore music
+            </Link>
           </div>
-        </section>
-      )}
-
-      {/* Featured Tracks */}
-      <section>
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Star size={18} className="text-purple-400" /> Featured
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {featured.map((track) => (
-            <TrackCard key={track.id} track={track} queue={featured} />
-          ))}
         </div>
       </section>
 
-      {/* Trending */}
+      {/* Features */}
       <section>
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <TrendingUp size={18} className="text-pink-400" /> Trending Now
-        </h2>
-        <div className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
-          {trending.slice(0, 8).map((track, i) => (
-            <TrackRow key={track.id} track={track} index={i} queue={trending} />
-          ))}
-        </div>
-      </section>
-
-      {/* Browse by Genre */}
-      <section>
-        <h2 className="text-xl font-bold text-white mb-4">Browse by Genre</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {genres.map((genre) => (
-            <div
-              key={genre.id}
-              className="relative rounded-xl p-5 overflow-hidden cursor-pointer hover:scale-105 transition-transform"
-              style={{
-                background: `linear-gradient(135deg, ${genre.color}90, ${genre.color}40)`,
-                border: `1px solid ${genre.color}60`,
-              }}
-            >
-              <span className="text-3xl">{genre.icon}</span>
-              <p className="text-white font-semibold mt-2">{genre.name}</p>
+        <h2 className="text-2xl font-bold text-white text-center mb-8">Everything you need</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {features.map(({ icon: Icon, title, desc }) => (
+            <div key={title} className="rounded-2xl border border-white/10 bg-white/5 p-5 hover:bg-white/10 transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-purple-600/20 flex items-center justify-center mb-3">
+                <Icon size={20} className="text-purple-400" />
+              </div>
+              <h3 className="text-white font-semibold mb-1">{title}</h3>
+              <p className="text-gray-400 text-sm">{desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* New Releases */}
-      <section>
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Disc3 size={18} className="text-blue-400" /> New Releases
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {newReleases.map((album) => {
-            const albumTracks = tracks.filter((t) => t.albumId === album.id);
-            return (
-              <Link
-                key={album.id}
-                href={`/album/${album.id}`}
-                className="group flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all"
-              >
-                <div className="relative w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden">
-                  <Image
-                    src={album.coverArt}
-                    alt={album.title}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform"
-                    unoptimized
-                  />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-white truncate">{album.title}</p>
-                  <p className="text-xs text-gray-400 truncate">{album.artist}</p>
-                  <p className="text-xs text-gray-600 mt-0.5">
-                    {albumTracks.length} tracks · {album.releaseDate.slice(0, 4)}
-                  </p>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+      {/* CTA */}
+      <section className="text-center">
+        <h2 className="text-3xl font-bold text-white mb-3">Ready to launch?</h2>
+        <p className="text-gray-400 mb-6">Join thousands of artists already earning on EMS.</p>
+        <Link
+          href="/register"
+          className="inline-flex px-8 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold text-lg hover:opacity-90 transition-opacity shadow-2xl"
+        >
+          Create your account
+        </Link>
       </section>
     </div>
   );
