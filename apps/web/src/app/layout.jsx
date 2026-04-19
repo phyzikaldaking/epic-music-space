@@ -1,28 +1,18 @@
-import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
-
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-
-export const metadata: Metadata = {
-  title: "Epic Music Space — Digital Music Licensing Platform",
-  description:
-    "License music. Earn revenue. Participate in the future of independent music distribution.",
-  openGraph: {
-    title: "Epic Music Space",
-    description: "Digital Music Licensing + Revenue Participation Platform",
-    type: "website",
-  },
+export const metadata = {
+    title: "Epic Music Space — Digital Music Licensing Platform",
+    description: "License music. Earn revenue. Participate in the future of independent music distribution.",
+    openGraph: {
+        title: "Epic Music Space",
+        description: "Digital Music Licensing + Revenue Participation Platform",
+        type: "website",
+    },
 };
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html lang="en" className={inter.variable}>
+export default function RootLayout({ children, }) {
+    return (<html lang="en" className={inter.variable}>
       <body className="min-h-screen bg-[#0a0a0a] text-white">
         <Navbar />
         <main>{children}</main>
@@ -44,6 +34,5 @@ export default function RootLayout({
           </div>
         </footer>
       </body>
-    </html>
-  );
+    </html>);
 }

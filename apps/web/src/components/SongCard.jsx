@@ -1,66 +1,25 @@
 import { formatPrice } from "@ems/utils";
-
-interface SongCardProps {
-  id: string;
-  title: string;
-  artist: string;
-  genre?: string | null;
-  coverUrl?: string | null;
-  licensePrice: string | number;
-  revenueSharePct: string | number;
-  soldLicenses: number;
-  totalLicenses: number;
-  aiScore?: number;
-  isTrending?: boolean;
-  isBoosted?: boolean;
-}
-
-export default function SongCard({
-  id,
-  title,
-  artist,
-  genre,
-  coverUrl,
-  licensePrice,
-  revenueSharePct,
-  soldLicenses,
-  totalLicenses,
-  aiScore,
-  isTrending = false,
-  isBoosted = false,
-}: SongCardProps) {
-  const remaining = totalLicenses - soldLicenses;
-  const remainingPct = Math.round((remaining / totalLicenses) * 100);
-  const soldOutSoon = remainingPct <= 20;
-
-  return (
-    <a
-      href={`/studio/${id}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/8 bg-[#141414] card-hover-neon"
-    >
+export default function SongCard({ id, title, artist, genre, coverUrl, licensePrice, revenueSharePct, soldLicenses, totalLicenses, aiScore, isTrending = false, isBoosted = false, }) {
+    const remaining = totalLicenses - soldLicenses;
+    const remainingPct = Math.round((remaining / totalLicenses) * 100);
+    const soldOutSoon = remainingPct <= 20;
+    return (<a href={`/studio/${id}`} className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/8 bg-[#141414] card-hover-neon">
       {/* ── Cover art ─────────────────────────────────── */}
       <div className="relative h-48 w-full overflow-hidden">
         {coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={coverUrl}
-            alt={`${title} cover`}
-            className="h-full w-full object-cover opacity-80 transition duration-300 group-hover:opacity-100 group-hover:scale-105"
-          />
-        ) : (
-          <div className="h-full w-full bg-gradient-to-br from-brand-800/60 to-accent-700/40 flex items-center justify-center text-5xl">
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={coverUrl} alt={`${title} cover`} className="h-full w-full object-cover opacity-80 transition duration-300 group-hover:opacity-100 group-hover:scale-105"/>) : (<div className="h-full w-full bg-gradient-to-br from-brand-800/60 to-accent-700/40 flex items-center justify-center text-5xl">
             🎵
-          </div>
-        )}
+          </div>)}
 
         {/* Dark gradient overlay for text readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"/>
 
         {/* Play button overlay */}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 transition group-hover:opacity-100">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-500/90 backdrop-blur glow-purple shadow-2xl">
             <svg className="ml-1 h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z" />
+              <path d="M8 5v14l11-7z"/>
             </svg>
           </div>
         </div>
@@ -68,23 +27,19 @@ export default function SongCard({
         {/* Badges (top row) */}
         <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
           {isTrending && <span className="badge-trending">🔥 Trending</span>}
-          {isBoosted  && <span className="badge-boosted">⚡ Boosted</span>}
+          {isBoosted && <span className="badge-boosted">⚡ Boosted</span>}
         </div>
 
         {/* Genre badge */}
-        {genre && (
-          <span className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-0.5 text-xs font-medium text-white/80 backdrop-blur">
+        {genre && (<span className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-0.5 text-xs font-medium text-white/80 backdrop-blur">
             {genre}
-          </span>
-        )}
+          </span>)}
 
         {/* AI Score pill at bottom-left */}
-        {aiScore !== undefined && aiScore > 0 && (
-          <div className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 backdrop-blur">
+        {aiScore !== undefined && aiScore > 0 && (<div className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 backdrop-blur">
             <span className="text-[10px] text-white/50">AI</span>
             <span className="text-xs font-bold text-brand-400">{aiScore.toFixed(1)}</span>
-          </div>
-        )}
+          </div>)}
       </div>
 
       {/* ── Info ──────────────────────────────────────── */}
@@ -114,14 +69,9 @@ export default function SongCard({
             <span className="text-white/30">{remainingPct}%</span>
           </div>
           <div className="h-1.5 w-full rounded-full bg-white/8">
-            <div
-              className={`h-full rounded-full transition-all ${
-                soldOutSoon
-                  ? "bg-gradient-to-r from-red-500 to-orange-400"
-                  : "bg-gradient-to-r from-brand-500 to-accent-500"
-              }`}
-              style={{ width: `${remainingPct}%` }}
-            />
+            <div className={`h-full rounded-full transition-all ${soldOutSoon
+            ? "bg-gradient-to-r from-red-500 to-orange-400"
+            : "bg-gradient-to-r from-brand-500 to-accent-500"}`} style={{ width: `${remainingPct}%` }}/>
           </div>
         </div>
 
@@ -129,6 +79,5 @@ export default function SongCard({
           View &amp; License
         </button>
       </div>
-    </a>
-  );
+    </a>);
 }
