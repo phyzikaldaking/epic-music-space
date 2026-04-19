@@ -7,7 +7,7 @@ import { Upload, Music, ImagePlus, DollarSign, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
-type SaleType = "free" | "fixed" | "pwyw" | "auction";
+type SaleTypeOption = "free" | "fixed" | "pwyw" | "auction";
 
 export default function UploadPage() {
   const { user, profile } = useAuth();
@@ -16,7 +16,7 @@ export default function UploadPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [genre, setGenre] = useState("");
-  const [saleType, setSaleType] = useState<SaleType>("free");
+  const [saleType, setSaleType] = useState<SaleTypeOption>("free");
   const [price, setPrice] = useState("");
   const [minPrice, setMinPrice] = useState("1");
   const [auctionEnd, setAuctionEnd] = useState("");
@@ -239,7 +239,7 @@ export default function UploadPage() {
         <div>
           <label className="text-sm text-gray-300 block mb-3">Monetization</label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {(["free", "fixed", "pwyw", "auction"] as SaleType[]).map((type) => (
+            {(["free", "fixed", "pwyw", "auction"] as SaleTypeOption[]).map((type) => (
               <button
                 key={type}
                 type="button"
