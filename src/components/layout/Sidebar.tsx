@@ -17,6 +17,9 @@ import {
   LogIn,
   LogOut,
   UserCircle2,
+  Megaphone,
+  Sparkles,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -26,6 +29,8 @@ const publicNavItems = [
   { href: "/feed", icon: Home, label: "Discover" },
   { href: "/search", icon: Search, label: "Search" },
   { href: "/marketplace", icon: ShoppingBag, label: "Marketplace" },
+  { href: "/billboard", icon: Megaphone, label: "Billboards" },
+  { href: "/city", icon: Rocket, label: "3D City" },
 ];
 
 const authNavItems = [
@@ -33,6 +38,8 @@ const authNavItems = [
   { href: "/library", icon: Library, label: "Library" },
   { href: "/liked", icon: Heart, label: "Liked Songs" },
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { href: "/notifications", icon: Bell, label: "Notifications" },
+  { href: "/ai", icon: Sparkles, label: "AI Tools" },
 ];
 
 export function Sidebar() {
@@ -92,16 +99,6 @@ export function Sidebar() {
             ))}
           </>
         )}
-
-        {/* 3D World teaser */}
-        <div className="my-2 border-t border-white/10" />
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 cursor-not-allowed select-none">
-          <Rocket size={20} className="flex-shrink-0" />
-          <span className="hidden md:flex items-center gap-2">
-            3D City
-            <span className="text-xs bg-purple-600/30 text-purple-400 px-1.5 py-0.5 rounded-full">Soon</span>
-          </span>
-        </div>
       </div>
 
       {/* User section */}

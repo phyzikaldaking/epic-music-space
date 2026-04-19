@@ -31,6 +31,33 @@ export async function POST(request: NextRequest) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       const meta = session.metadata ?? {};
+
+      // Billboard purchase
+      if (meta.slot && meta.userId) {
+        const { slot, userId, title, imageUrl, clickUrl, weeks, totalUsd } = meta;
+        const weeksNum = parseInt(weeks ?? "1");
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + weeksNum * 7);
+
+        await supabase.from("billboards").insert({
+          owner_id: userId,
+          slot: parseInt(slot),
+          title,
+          image_url: imageUrl,
+          click_url: clickUrl || null,
+          price_paid: parseFloat(totalUsd ?? "0"),
+          expires_at: expiresAt.toISOString(),
+        });
+
+        await supabase.from("notifications").insert({
+          user_id: userId,
+          type: "purchase",
+          message: `Billboard slot #${slot} is now live for ${weeksNum} week${weeksNum > 1 ? "s" : ""}!`,
+        });
+        break;
+      }
+
+      // Song purchase
       const { songId, buyerId, amountUsd, platformFee, artistPayout, artistStripeAccountId } = meta;
 
       if (!songId || !buyerId) break;
