@@ -109,7 +109,7 @@ export default async function StudioProfilePage({ params }: Props) {
         {/* Follow / Edit */}
         {isOwner ? (
           <a
-            href="/dashboard"
+            href="/profile/edit"
             className="rounded-xl border border-white/20 px-4 py-2 text-sm hover:bg-white/10 transition"
           >
             Edit Profile

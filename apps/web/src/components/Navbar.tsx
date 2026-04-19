@@ -43,6 +43,12 @@ export default async function Navbar() {
                 Dashboard
               </Link>
               <Link
+                href="/profile/edit"
+                className="rounded-lg px-3 py-2 text-white/60 transition hover:bg-white/6 hover:text-white"
+              >
+                Profile
+              </Link>
+              <Link
                 href="/analytics"
                 className="rounded-lg px-3 py-2 text-white/60 transition hover:bg-white/6 hover:text-white"
               >

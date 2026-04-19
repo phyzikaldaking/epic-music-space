@@ -39,6 +39,11 @@ export default auth((req) => {
     if (!isAuthed) return redirectToSignIn();
   }
 
+  // ── /profile/edit — require authentication ─────────────────────────────────
+  if (pathname.startsWith("/profile")) {
+    if (!isAuthed) return redirectToSignIn();
+  }
+
   // ── /studio/new — require artist / label / admin ───────────────────────────
   if (pathname === "/studio/new") {
     if (!isAuthed) return redirectToSignIn();
@@ -53,5 +58,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/boost/:path*", "/analytics/:path*", "/studio/new"],
+  matcher: ["/dashboard/:path*", "/boost/:path*", "/analytics/:path*", "/studio/new", "/profile/:path*"],
 };
