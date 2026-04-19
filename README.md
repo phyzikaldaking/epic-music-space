@@ -15,7 +15,8 @@ This is a **Turborepo monorepo** with Yarn Workspaces.
 ```
 epic-music-space/
 ├── apps/
-│   └── web/                  # Next.js 15 app (App Router, TypeScript, Tailwind)
+│   ├── web/                  # Next.js 15 app (App Router, TypeScript, Tailwind)
+│   └── api/                  # Standalone Hono REST API (@ems/api)
 ├── packages/
 │   ├── db/                   # Prisma schema + generated client (@ems/db)
 │   ├── ui/                   # Shared React components (@ems/ui)
@@ -29,9 +30,14 @@ epic-music-space/
 | Layer       | Technology                                      |
 |-------------|------------------------------------------------|
 | Framework   | Next.js 15 (App Router, React Server Components) |
+| API         | Hono (standalone REST server — `apps/api`)     |
 | Auth        | NextAuth.js v5 (Credentials + Google OAuth)    |
 | Database    | PostgreSQL + Prisma ORM                        |
-| Payments    | Stripe Checkout + Webhooks                     |
+| Payments    | Stripe Checkout + Webhooks + Subscriptions     |
+| Caching     | Redis (ioredis) — graceful fallback to memory  |
+| Jobs        | BullMQ workers (AI scoring, notifications, analytics) |
+| Rate Limit  | rate-limiter-flexible (Redis or in-memory)     |
+| AI          | OpenAI GPT-4o (song analysis + scoring)        |
 | Styling     | Tailwind CSS v3                                |
 | Build       | Turborepo + Yarn Workspaces                    |
 | Language    | TypeScript (strict)                            |
