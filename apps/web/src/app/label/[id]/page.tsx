@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notFound } from "next/navigation";
+import LabelOfferActions from "@/components/LabelOfferActions";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -153,34 +154,11 @@ export default async function LabelDetailPage({ params }: Props) {
 
       {/* Artist: accept/decline offer */}
       {myMembership?.status === "PENDING" && (
-        <section className="mb-8 rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-5">
-          <h3 className="mb-2 font-semibold text-yellow-400">📩 Label Offer Pending</h3>
-          <p className="mb-4 text-sm text-white/60">
-            {label.name} has offered you a{" "}
-            <strong className="text-white">{String(myMembership.revSharePct)}%</strong> revenue-share deal.
-            They will receive that percentage of your licensing earnings going forward.
-          </p>
-          <div className="flex gap-3">
-            <form action={`/api/labels/${id}/artists`} method="PATCH">
-              <input type="hidden" name="action" value="accept" />
-              <button
-                type="submit"
-                className="rounded-xl bg-green-600 px-5 py-2 text-sm font-semibold hover:bg-green-700 transition"
-              >
-                Accept
-              </button>
-            </form>
-            <form action={`/api/labels/${id}/artists`} method="PATCH">
-              <input type="hidden" name="action" value="decline" />
-              <button
-                type="submit"
-                className="rounded-xl border border-white/20 px-5 py-2 text-sm font-semibold hover:bg-white/10 transition"
-              >
-                Decline
-              </button>
-            </form>
-          </div>
-        </section>
+        <LabelOfferActions
+          labelId={id}
+          revSharePct={String(myMembership.revSharePct)}
+          labelName={label.name}
+        />
       )}
 
       {/* Owner actions */}

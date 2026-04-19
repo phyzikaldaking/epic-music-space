@@ -102,8 +102,8 @@ yarn dev
 ## 🛣️ Roadmap
 
 - [x] **Phase 1** — Infrastructure: auth, database, payments, legal framework
-- [ ] **Phase 2** — Economy: marketplace bidding, $5K song drops, studio system
-- [ ] **Phase 3** — Token economy, real-time city view, creator analytics
+- [x] **Phase 2** — Economy: Versus battle system, city districts, studio profiles, label system, ad placements, leaderboards
+- [x] **Phase 3** — AI layer: song sentiment scoring, personalized license recommendations, AI chat assistant, real-time notification schema, follow/social graph
 
 ---
 

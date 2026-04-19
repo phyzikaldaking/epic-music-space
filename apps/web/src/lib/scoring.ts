@@ -47,7 +47,7 @@ export function calculateAiScore(inputs: ScoreInputs): number {
   // Sales component: how much of the license allocation has sold
   const salesPct = totalLicenses > 0 ? (soldLicenses / totalLicenses) * 100 : 0;
 
-  // Engagement: streams (soft cap at 10 000)
+  // Engagement: streams (soft cap at 10,000)
   const engagement = normalize(streamCount, 10_000);
 
   // Versus wins (soft cap at 50 wins)

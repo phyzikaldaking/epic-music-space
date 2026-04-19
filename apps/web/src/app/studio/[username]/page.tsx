@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import AiScoreBar from "@/components/AiScoreBar";
 import DistrictBadge from "@/components/DistrictBadge";
 import SongCard from "@/components/SongCard";
+import FollowButton from "@/components/FollowButton";
 
 interface Props {
   params: Promise<{ username: string }>;
@@ -114,26 +115,11 @@ export default async function StudioProfilePage({ params }: Props) {
             Edit Profile
           </a>
         ) : session ? (
-          <form
-            action="/api/follow"
-            method="POST"
-            onSubmit={async (e) => {
-              e.preventDefault();
-            }}
-          >
-            <input type="hidden" name="targetUserId" value={user.id} />
-            <input type="hidden" name="action" value={isFollowing ? "unfollow" : "follow"} />
-            <button
-              type="submit"
-              className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                isFollowing
-                  ? "border border-white/20 hover:bg-white/10"
-                  : "bg-brand-500 hover:bg-brand-600"
-              }`}
-            >
-              {isFollowing ? "Unfollow" : "Follow"}
-            </button>
-          </form>
+          <FollowButton
+            targetUserId={user.id}
+            initiallyFollowing={isFollowing}
+            initialFollowerCount={user._count.followers}
+          />
         ) : (
           <a
             href="/auth/signin"

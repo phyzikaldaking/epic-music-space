@@ -1,38 +1,36 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import AdPurchaseForm from "@/components/AdPurchaseForm";
 
 export const dynamic = "force-dynamic";
-
-const AD_PRICES: Record<string, number> = {
-  MARKETPLACE_BANNER: 99,
-  STUDIO_SIDEBAR: 49,
-  CITY_BILLBOARD: 199,
-  VERSUS_BANNER: 79,
-};
 
 const LOCATIONS = [
   {
     key: "MARKETPLACE_BANNER",
     label: "Marketplace Banner",
     description: "Full-width banner at the top of the Marketplace page.",
+    dailyRate: 99,
     icon: "🛒",
   },
   {
     key: "STUDIO_SIDEBAR",
     label: "Studio Sidebar",
     description: "Sidebar placement on artist Studio pages.",
+    dailyRate: 49,
     icon: "🎤",
   },
   {
     key: "CITY_BILLBOARD",
     label: "City Billboard",
     description: "Premium billboard shown on the City district page.",
+    dailyRate: 199,
     icon: "🏙️",
   },
   {
     key: "VERSUS_BANNER",
     label: "Versus Banner",
     description: "Banner shown above active Versus battle cards.",
+    dailyRate: 79,
     icon: "⚔️",
   },
 ];
@@ -83,7 +81,7 @@ export default async function AdsPage({
               </div>
               <p className="mb-3 text-sm text-white/50">{loc.description}</p>
               <p className="text-brand-400 font-bold">
-                ${AD_PRICES[loc.key]}/day
+                ${loc.dailyRate}/day
               </p>
             </div>
           ))}
@@ -94,76 +92,7 @@ export default async function AdsPage({
       {session ? (
         <section className="glass mb-10 rounded-2xl p-6">
           <h2 className="mb-4 text-xl font-semibold">Purchase an Ad Slot</h2>
-          <form
-            className="grid gap-4 sm:grid-cols-2"
-            action="/api/ads"
-            method="POST"
-          >
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-white/60">Location</label>
-              <select
-                name="location"
-                className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
-              >
-                {LOCATIONS.map((l) => (
-                  <option key={l.key} value={l.key}>
-                    {l.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-white/60">Ad Title</label>
-              <input
-                name="title"
-                type="text"
-                placeholder="e.g. New EP Out Now"
-                className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-white/60">Image URL</label>
-              <input
-                name="mediaUrl"
-                type="url"
-                placeholder="https://..."
-                className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-white/60">Link URL (optional)</label>
-              <input
-                name="linkUrl"
-                type="url"
-                placeholder="https://..."
-                className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-white/60">Start Date</label>
-              <input
-                name="startDate"
-                type="date"
-                className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-white/60">End Date</label>
-              <input
-                name="endDate"
-                type="date"
-                className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <button
-                type="submit"
-                className="w-full rounded-xl bg-brand-500 py-2.5 text-sm font-semibold hover:bg-brand-600 transition"
-              >
-                Proceed to Payment →
-              </button>
-            </div>
-          </form>
+          <AdPurchaseForm />
         </section>
       ) : (
         <section className="glass mb-10 rounded-2xl p-6 text-center text-white/50">

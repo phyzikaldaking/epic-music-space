@@ -35,7 +35,7 @@ export default async function VersusPage() {
       <div className="mb-10">
         <h1 className="text-4xl font-extrabold">⚔️ Versus</h1>
         <p className="mt-2 text-white/50">
-          Vote for your favourite tracks. Winners rise in the discovery algorithm.
+          Vote for your favorite tracks. Winners rise in the discovery algorithm.
         </p>
       </div>
 
