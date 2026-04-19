@@ -51,6 +51,7 @@ const worker = new Worker<AiScoringJobData>(
       versusWins: song.versusWins,
       versusLosses: song.versusLosses,
       aiSentiment: analysis.sentiment,
+      boostScore: song.boostScore,
       createdAt: song.createdAt,
     });
 

@@ -119,6 +119,7 @@ model Song {
 
   // Phase 2: scoring & discovery
   aiScore           Float    @default(0)   // composite popularity/quality score
+  boostScore        Float    @default(0)   // additional visibility from paid boost packages
   versusWins        Int      @default(0)
   versusLosses      Int      @default(0)
   streamCount       Int      @default(0)

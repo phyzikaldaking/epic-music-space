@@ -19,6 +19,7 @@ export interface ScoreInputs {
   versusWins: number;
   versusLosses: number;
   aiSentiment: number;   // 0–1 from OpenAI analysis
+  boostScore: number;    // 0–100 from paid boost packages
   createdAt: Date;
 }
 
@@ -41,6 +42,7 @@ export function calculateAiScore(inputs: ScoreInputs): number {
     versusWins,
     versusLosses,
     aiSentiment,
+    boostScore,
     createdAt,
   } = inputs;
 
@@ -60,12 +62,16 @@ export function calculateAiScore(inputs: ScoreInputs): number {
 
   const recency = recencyScore(createdAt);
 
+  // Boost component: paid visibility boost, capped at 100
+  const boost = Math.min(100, Math.max(0, boostScore));
+
   const score =
-    salesPct * 0.35 +
-    engagement * 0.25 +
-    versusScore * 0.20 +
+    salesPct * 0.30 +
+    engagement * 0.20 +
+    versusScore * 0.15 +
     sentiment * 0.10 +
-    recency * 0.10;
+    recency * 0.10 +
+    boost * 0.15;
 
   return Math.round(Math.min(100, Math.max(0, score)) * 10) / 10;
 }

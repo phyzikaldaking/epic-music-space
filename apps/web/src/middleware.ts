@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
  *
  * Protected prefixes:
  *   /dashboard   – requires any authenticated session
+ *   /boost       – requires any authenticated session
  *   /studio/new  – requires ARTIST or LABEL or ADMIN role
  *
  * Unauthenticated users are redirected to /auth/signin with a `callbackUrl`
@@ -17,22 +18,30 @@ export default auth((req) => {
 
   const isAuthed = !!session?.user?.id;
 
+  function redirectToSignIn() {
+    const signIn = new URL("/auth/signin", req.url);
+    signIn.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(signIn);
+  }
+
   // ── /dashboard — require authentication ────────────────────────────────────
   if (pathname.startsWith("/dashboard")) {
-    if (!isAuthed) {
-      const signIn = new URL("/auth/signin", req.url);
-      signIn.searchParams.set("callbackUrl", pathname);
-      return NextResponse.redirect(signIn);
-    }
+    if (!isAuthed) return redirectToSignIn();
+  }
+
+  // ── /boost — require authentication ────────────────────────────────────────
+  if (pathname.startsWith("/boost")) {
+    if (!isAuthed) return redirectToSignIn();
+  }
+
+  // ── /analytics — require authentication ────────────────────────────────────
+  if (pathname.startsWith("/analytics")) {
+    if (!isAuthed) return redirectToSignIn();
   }
 
   // ── /studio/new — require artist / label / admin ───────────────────────────
   if (pathname === "/studio/new") {
-    if (!isAuthed) {
-      const signIn = new URL("/auth/signin", req.url);
-      signIn.searchParams.set("callbackUrl", pathname);
-      return NextResponse.redirect(signIn);
-    }
+    if (!isAuthed) return redirectToSignIn();
     // @ts-expect-error role is a custom JWT field
     const role: string = session?.user?.role ?? "LISTENER";
     if (role === "LISTENER") {
@@ -44,5 +53,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/studio/new"],
+  matcher: ["/dashboard/:path*", "/boost/:path*", "/analytics/:path*", "/studio/new"],
 };

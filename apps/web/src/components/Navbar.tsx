@@ -35,12 +35,26 @@ export default async function Navbar() {
             </Link>
           ))}
           {session && (
-            <Link
-              href="/dashboard"
-              className="rounded-lg px-3 py-2 text-white/60 transition hover:bg-white/6 hover:text-white"
-            >
-              Dashboard
-            </Link>
+            <>
+              <Link
+                href="/dashboard"
+                className="rounded-lg px-3 py-2 text-white/60 transition hover:bg-white/6 hover:text-white"
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/analytics"
+                className="rounded-lg px-3 py-2 text-white/60 transition hover:bg-white/6 hover:text-white"
+              >
+                Analytics
+              </Link>
+              <Link
+                href="/boost"
+                className="rounded-lg px-3 py-2 text-brand-400/80 transition hover:bg-brand-500/10 hover:text-brand-400 font-semibold"
+              >
+                ⚡ Boost
+              </Link>
+            </>
           )}
         </div>
 

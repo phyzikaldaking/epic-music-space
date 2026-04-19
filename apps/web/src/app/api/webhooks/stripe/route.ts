@@ -27,7 +27,12 @@ export async function POST(req: NextRequest) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.mode === "payment") {
-        await handleLicenseCheckoutCompleted(session);
+        const sessionType = session.metadata?.type;
+        if (sessionType === "boost") {
+          await handleBoostCheckoutCompleted(session);
+        } else {
+          await handleLicenseCheckoutCompleted(session);
+        }
       } else if (session.mode === "subscription") {
         await handleSubscriptionCheckoutCompleted(session);
       }
@@ -206,3 +211,55 @@ async function handleSubscriptionChange(
   console.log(`[stripe-webhook] Subscription ${eventType}: customer=${customerId}`);
 }
 
+// ─────────────────────────────────────────────────────────
+// Boost purchase
+// ─────────────────────────────────────────────────────────
+
+async function handleBoostCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const { songId, userId, boostPoints } = session.metadata ?? {};
+  if (!songId || !userId || !boostPoints) {
+    console.error("[stripe-webhook] Missing boost metadata", session.metadata);
+    return;
+  }
+
+  // Idempotency check
+  const existing = await prisma.transaction.findUnique({
+    where: { stripeSessionId: session.id },
+  });
+  if (existing?.status === "SUCCEEDED") return;
+
+  const points = Number(boostPoints);
+  if (isNaN(points) || points <= 0) {
+    console.error("[stripe-webhook] Invalid boostPoints", boostPoints);
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Increment song's boostScore (cap at 100)
+    const song = await tx.song.findUniqueOrThrow({ where: { id: songId } });
+    const newBoostScore = Math.min(100, song.boostScore + points);
+
+    await tx.song.update({
+      where: { id: songId },
+      data: { boostScore: newBoostScore },
+    });
+
+    await tx.transaction.update({
+      where: { stripeSessionId: session.id },
+      data: {
+        status: "SUCCEEDED",
+        stripePaymentIntentId: session.payment_intent as string | undefined,
+      },
+    });
+
+    await enqueueNotification({
+      userId,
+      type: "BOOST_ACTIVATED",
+      title: "Boost activated! 🚀",
+      body: `Your track "${song.title}" has been boosted. It will receive increased visibility immediately.`,
+      metadata: { songId, boostPoints: points },
+    });
+  });
+
+  console.log(`[stripe-webhook] Boost granted: song=${songId} user=${userId} points=${boostPoints}`);
+}

@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     versusWins: song.versusWins,
     versusLosses: song.versusLosses,
     aiSentiment: analysis.sentiment,
+    boostScore: song.boostScore,
     createdAt: song.createdAt,
   });
 
