@@ -3,6 +3,7 @@ import { stripe, STRIPE_WEBHOOK_SECRET } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { enqueueNotification } from "@/lib/queues";
 import { awardBadge } from "@/lib/badges";
+import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -201,6 +202,36 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
       }
     })(),
   ]);
+
+  // Broadcast license sold event to realtime listeners
+  const supabase = createServerSupabaseClient();
+  if (supabase) {
+    const song = await prisma.song.findUnique({
+      where: { id: songId },
+      select: { title: true, artist: true, coverUrl: true, soldLicenses: true },
+    });
+    if (song) {
+      const payload = {
+        songId,
+        title: song.title,
+        artist: song.artist,
+        coverUrl: song.coverUrl ?? null,
+        soldLicenses: song.soldLicenses,
+      };
+      await Promise.allSettled([
+        supabase.channel(CHANNELS.marketplace).send({
+          type: "broadcast",
+          event: "license_sold",
+          payload,
+        }),
+        supabase.channel(CHANNELS.leaderboard).send({
+          type: "broadcast",
+          event: "scores_updated",
+          payload: { songId },
+        }),
+      ]);
+    }
+  }
 
   console.log(`[stripe-webhook] License granted: song=${songId} user=${userId}`);
 }

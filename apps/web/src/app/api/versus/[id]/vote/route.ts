@@ -130,11 +130,19 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Broadcast real-time vote update via Supabase
   const supabase = createServerSupabaseClient();
   if (supabase) {
-    await supabase.channel(CHANNELS.versus(matchId)).send({
-      type: "broadcast",
-      event: "vote_update",
-      payload: { matchId, votesA: updated.votesA, votesB: updated.votesB },
-    });
+    await Promise.allSettled([
+      supabase.channel(CHANNELS.versus(matchId)).send({
+        type: "broadcast",
+        event: "vote_update",
+        payload: { matchId, votesA: updated.votesA, votesB: updated.votesB },
+      }),
+      // Notify leaderboard listeners that scores changed
+      supabase.channel(CHANNELS.leaderboard).send({
+        type: "broadcast",
+        event: "scores_updated",
+        payload: { songAId: match.songAId, songBId: match.songBId },
+      }),
+    ]);
   }
 
   return NextResponse.json({ votesA: updated.votesA, votesB: updated.votesB });

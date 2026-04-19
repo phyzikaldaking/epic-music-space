@@ -5,6 +5,7 @@ import { z } from "zod";
 import { enqueueAiScoring, enqueueAnalytics } from "@/lib/queues";
 import { cacheGet, cacheSet, cacheDel, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 import { strictLimiter, lenientLimiter } from "@/lib/rateLimit";
+import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 
 const createSongSchema = z.object({
   title: z.string().min(1).max(200),
@@ -107,6 +108,33 @@ export async function POST(req: NextRequest) {
     songId: song.id,
     timestamp: new Date().toISOString(),
   });
+
+  // Broadcast new song to realtime listeners
+  const supabase = createServerSupabaseClient();
+  if (supabase) {
+    await supabase.channel(CHANNELS.songs).send({
+      type: "broadcast",
+      event: "new_song",
+      payload: {
+        id: song.id,
+        title: song.title,
+        artist: song.artist,
+        coverUrl: song.coverUrl ?? null,
+        licensePrice: Number(song.licensePrice),
+        genre: song.genre ?? null,
+      },
+    });
+    await supabase.channel(CHANNELS.marketplace).send({
+      type: "broadcast",
+      event: "new_song",
+      payload: {
+        id: song.id,
+        title: song.title,
+        artist: song.artist,
+        coverUrl: song.coverUrl ?? null,
+      },
+    });
+  }
 
   return NextResponse.json(song, { status: 201 });
 }

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import SongCard from "@/components/SongCard";
 import MarketplaceFilters from "@/components/MarketplaceFilters";
+import LiveMarketplaceFeed from "@/components/LiveMarketplaceFeed";
 import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,8 @@ export default async function MarketplacePage({ searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-12">
+      {/* Live purchase/new-song toast feed */}
+      <LiveMarketplaceFeed />
       {/* ── Header ──────────────────────────────────────── */}
       <div className="mb-8">
         <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/8 px-3 py-1 text-xs font-semibold text-brand-400">

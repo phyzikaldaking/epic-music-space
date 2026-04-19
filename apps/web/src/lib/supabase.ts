@@ -36,6 +36,8 @@ export type SupabaseClient = ReturnType<typeof createBrowserSupabaseClient>;
 
 export const CHANNELS = {
   marketplace: "ems:marketplace",
+  songs: "ems:songs",
+  leaderboard: "ems:leaderboard",
   versus: (matchId: string) => `ems:versus:${matchId}`,
   notifications: (userId: string) => `ems:notifications:${userId}`,
 } as const;

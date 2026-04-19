@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import LeaderboardTable from "@/components/LeaderboardTable";
+import LiveLeaderboard from "@/components/LiveLeaderboard";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,8 @@ export default async function LeaderboardPage({
     .sort((a, b) => b.totalLicensesSold - a.totalLicensesSold)
     .slice(0, 50);
 
+  const initialEntries = type === "songs" ? songs : artistRows;
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
       <div className="mb-8">
@@ -97,9 +100,10 @@ export default async function LeaderboardPage({
         </a>
       </div>
 
-      <LeaderboardTable
-        entries={type === "songs" ? songs : artistRows}
+      <LiveLeaderboard
+        initialEntries={initialEntries}
         type={type}
+        LeaderboardTableComponent={LeaderboardTable}
       />
     </div>
   );
