@@ -46,6 +46,20 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      case "checkout.session.expired": {
+        // User abandoned checkout or session timed out — mark pending tx as FAILED
+        const session = event.data.object as Stripe.Checkout.Session;
+        await handleCheckoutExpired(session);
+        break;
+      }
+
+      case "payment_intent.payment_failed": {
+        // Card declined, insufficient funds, etc.
+        const pi = event.data.object as Stripe.PaymentIntent;
+        await handlePaymentFailed(pi);
+        break;
+      }
+
       case "customer.subscription.updated":
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
@@ -232,4 +246,64 @@ async function handleSubscriptionChange(
   console.log(
     `[payments/webhook] Subscription ${eventType}: customer=${customerId}`
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Checkout expired (user abandoned) — mark PENDING → FAILED
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
+  const tx = await prisma.transaction.findUnique({
+    where: { stripeSessionId: session.id },
+    select: { id: true, status: true, userId: true },
+  });
+
+  if (!tx || tx.status !== "PENDING") return;
+
+  await prisma.transaction.update({
+    where: { id: tx.id },
+    data: { status: "FAILED" },
+  });
+
+  await enqueueNotification({
+    userId: tx.userId,
+    type: "PAYMENT_FAILED",
+    title: "Checkout expired",
+    body: "Your checkout session expired before payment was completed. Your card was not charged. Visit the Marketplace to try again.",
+    metadata: { stripeSessionId: session.id },
+  });
+
+  console.log(`[payments/webhook] Checkout expired: session=${session.id} tx=${tx.id}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Payment intent failed (card declined, insufficient funds, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handlePaymentFailed(pi: Stripe.PaymentIntent) {
+  // Find the transaction linked via the payment intent
+  const tx = await prisma.transaction.findUnique({
+    where: { stripePaymentIntentId: pi.id },
+    select: { id: true, status: true, userId: true },
+  });
+
+  if (!tx || tx.status === "SUCCEEDED") return;
+
+  await prisma.transaction.update({
+    where: { id: tx.id },
+    data: { status: "FAILED" },
+  });
+
+  const failureMsg =
+    pi.last_payment_error?.message ?? "Your payment could not be processed.";
+
+  await enqueueNotification({
+    userId: tx.userId,
+    type: "PAYMENT_FAILED",
+    title: "Payment failed",
+    body: `${failureMsg} Your card was not charged. Please try again with a different card.`,
+    metadata: { paymentIntentId: pi.id, failureCode: pi.last_payment_error?.code },
+  });
+
+  console.log(`[payments/webhook] Payment failed: pi=${pi.id} tx=${tx.id}`);
 }

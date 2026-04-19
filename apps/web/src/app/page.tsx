@@ -1,6 +1,40 @@
 import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 
-export default function HomePage() {
+export const dynamic = "force-dynamic";
+export const revalidate = 3600; // re-generate at most once per hour
+
+export default async function HomePage() {
+  // Fetch real platform stats
+  const [songCount, licenseCount, transactionSum] = await Promise.all([
+    prisma.song.count({ where: { isActive: true } }),
+    prisma.licenseToken.count({ where: { status: "ACTIVE" } }),
+    prisma.transaction.aggregate({
+      where: { status: "SUCCEEDED", type: "LICENSE_PURCHASE" },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const totalRevenue = Number(transactionSum._sum.amount ?? 0);
+
+  function fmtCount(n: number) {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M+`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K+`;
+    return String(n);
+  }
+
+  function fmtRevenue(n: number) {
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+    return `$${n.toFixed(0)}`;
+  }
+
+  const STATS = [
+    { v: fmtCount(songCount),   l: "Songs licensed" },
+    { v: fmtRevenue(totalRevenue), l: "Paid to artists" },
+    { v: fmtCount(licenseCount), l: "License holders" },
+  ];
+
   return (
     <div className="flex flex-col items-center">
 
@@ -70,13 +104,9 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Social proof numbers */}
+          {/* Social proof numbers — real DB stats */}
           <div className="mt-16 flex flex-wrap justify-center gap-8 text-sm text-white/50">
-            {[
-              { v: "12,400+", l: "Songs licensed" },
-              { v: "$840K",   l: "Paid to artists" },
-              { v: "38,000+", l: "License holders" },
-            ].map((s) => (
+            {STATS.map((s) => (
               <div key={s.l} className="text-center">
                 <p className="text-2xl font-extrabold text-gradient-ems">{s.v}</p>
                 <p className="mt-0.5">{s.l}</p>

@@ -5,10 +5,12 @@ import { notFound } from "next/navigation";
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ checkout?: string }>;
 }
 
-export default async function StudioPage({ params }: Props) {
+export default async function StudioPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const { checkout } = await searchParams;
   const session = await auth();
 
   const song = await prisma.song.findUnique({
@@ -34,6 +36,34 @@ export default async function StudioPage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
+      {/* Checkout status banners */}
+      {checkout === "success" && (
+        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/10 px-5 py-4 text-sm text-green-400">
+          <span className="text-xl">✅</span>
+          <div>
+            <p className="font-semibold">Payment successful!</p>
+            <p className="text-green-400/70">
+              Your license is confirmed. Check{" "}
+              <a href="/dashboard" className="underline hover:text-green-300">
+                your dashboard
+              </a>{" "}
+              for details.
+            </p>
+          </div>
+        </div>
+      )}
+      {checkout === "cancelled" && (
+        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-yellow-500/30 bg-yellow-500/10 px-5 py-4 text-sm text-yellow-400">
+          <span className="text-xl">↩️</span>
+          <div>
+            <p className="font-semibold">Checkout cancelled</p>
+            <p className="text-yellow-400/70">
+              Your card was not charged. You can purchase a license any time.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-10 md:grid-cols-2">
         {/* Cover */}
         <div className="relative aspect-square overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 to-accent-600">
