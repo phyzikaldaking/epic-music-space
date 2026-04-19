@@ -1,0 +1,213 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// AUTH / USERS
+// ─────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  image         String?
+  passwordHash  String?
+  role          Role     @default(LISTENER)
+  emailVerified DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // NextAuth relations
+  accounts      Account[]
+  sessions      Session[]
+
+  // Platform relations
+  songs         Song[]
+  licenses      LicenseToken[]
+  transactions  Transaction[]
+  payouts       Payout[]
+}
+
+enum Role {
+  LISTENER   // can purchase licenses
+  ARTIST     // can upload songs + earn royalties
+  ADMIN      // platform admin
+}
+
+// NextAuth required models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────
+// MUSIC CATALOG
+// ─────────────────────────────────────────
+
+model Song {
+  id                String   @id @default(cuid())
+  title             String
+  artist            String
+  genre             String?
+  description       String?  @db.Text
+  audioUrl          String
+  coverUrl          String?
+  bpm               Int?
+  key               String?
+
+  // Licensing economics
+  licensePrice      Decimal  @db.Decimal(10, 2)   // price per license in USD
+  revenueSharePct   Decimal  @db.Decimal(5, 2)    // % of streaming revenue shared with license holders
+  totalLicenses     Int      @default(100)         // max licenses available
+  soldLicenses      Int      @default(0)           // licenses sold so far
+  isActive          Boolean  @default(true)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  artistId          String
+  artist_           User     @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  licenses          LicenseToken[]
+  transactions      Transaction[]
+  payouts           Payout[]
+}
+
+// ─────────────────────────────────────────
+// LICENSING
+// ─────────────────────────────────────────
+
+model LicenseToken {
+  id              String          @id @default(cuid())
+  tokenNumber     Int                               // e.g. license #42 of 100
+  status          LicenseStatus   @default(ACTIVE)
+  purchasedAt     DateTime        @default(now())
+  price           Decimal         @db.Decimal(10, 2)
+
+  songId          String
+  song            Song            @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  holderId        String
+  holder          User            @relation(fields: [holderId], references: [id], onDelete: Cascade)
+
+  transactions    Transaction[]
+  payouts         Payout[]
+
+  @@unique([songId, tokenNumber])
+}
+
+enum LicenseStatus {
+  ACTIVE      // license is valid and earning revenue share
+  EXPIRED     // license term ended
+  REVOKED     // artist/admin revoked
+}
+
+// ─────────────────────────────────────────
+// PAYMENTS
+// ─────────────────────────────────────────
+
+model Transaction {
+  id                  String            @id @default(cuid())
+  amount              Decimal           @db.Decimal(10, 2)
+  currency            String            @default("usd")
+  type                TransactionType
+  status              PaymentStatus     @default(PENDING)
+
+  stripePaymentIntentId String?         @unique
+  stripeSessionId       String?         @unique
+  metadata              Json?
+
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  userId              String
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  songId              String?
+  song                Song?             @relation(fields: [songId], references: [id])
+
+  licenseTokenId      String?
+  licenseToken        LicenseToken?     @relation(fields: [licenseTokenId], references: [id])
+}
+
+enum TransactionType {
+  LICENSE_PURCHASE    // buyer acquires a license for a song
+  REVENUE_PAYOUT      // platform pays artist/holder their revenue share
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+// ─────────────────────────────────────────
+// REVENUE DISTRIBUTION
+// ─────────────────────────────────────────
+
+model Payout {
+  id             String       @id @default(cuid())
+  amount         Decimal      @db.Decimal(10, 2)
+  currency       String       @default("usd")
+  period         String       // e.g. "2024-Q1"
+  status         PayoutStatus @default(PENDING)
+  paidAt         DateTime?
+  createdAt      DateTime     @default(now())
+
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  songId         String
+  song           Song         @relation(fields: [songId], references: [id])
+
+  licenseTokenId String?
+  licenseToken   LicenseToken? @relation(fields: [licenseTokenId], references: [id])
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+}
