@@ -1,19 +1,58 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import nextDynamic from "next/dynamic";
+import type { CityBuilding } from "@/app/api/city/data/route";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 3600; // re-generate at most once per hour
+
+// Lazy-load BabylonJS — must stay client-only
+const CityScene3D = nextDynamic(
+  () => import("@/components/CityScene3D"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center bg-[#07070f]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
+          <p className="text-sm text-brand-400 tracking-widest uppercase animate-pulse">
+            Entering the Metaverse…
+          </p>
+        </div>
+      </div>
+    ),
+  }
+);
 
 export default async function HomePage() {
-  // Fetch real platform stats
-  const [songCount, licenseCount, transactionSum] = await Promise.all([
-    prisma.song.count({ where: { isActive: true } }),
-    prisma.licenseToken.count({ where: { status: "ACTIVE" } }),
-    prisma.transaction.aggregate({
-      where: { status: "SUCCEEDED", type: "LICENSE_PURCHASE" },
-      _sum: { amount: true },
-    }),
-  ]);
+  // ── Fetch city + stat data in parallel ──────────────────────────────────
+  const [songCount, licenseCount, transactionSum, studiosByDistrict] =
+    await Promise.all([
+      prisma.song.count({ where: { isActive: true } }),
+      prisma.licenseToken.count({ where: { status: "ACTIVE" } }),
+      prisma.transaction.aggregate({
+        where: { status: "SUCCEEDED", type: "LICENSE_PURCHASE" },
+        _sum: { amount: true },
+      }),
+      prisma.studio.findMany({
+        orderBy: { user: { songs: { _count: "desc" } } },
+        take: 48,
+        select: {
+          username: true,
+          district: true,
+          level: true,
+          user: {
+            select: {
+              name: true,
+              image: true,
+              songs: {
+                where: { isActive: true },
+                select: { aiScore: true, soldLicenses: true },
+              },
+            },
+          },
+        },
+      }),
+    ]);
 
   const totalRevenue = Number(transactionSum._sum.amount ?? 0);
 
@@ -22,7 +61,6 @@ export default async function HomePage() {
     if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K+`;
     return String(n);
   }
-
   function fmtRevenue(n: number) {
     if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
@@ -30,93 +68,141 @@ export default async function HomePage() {
   }
 
   const STATS = [
-    { v: fmtCount(songCount),   l: "Songs licensed" },
+    { v: fmtCount(songCount), l: "Songs licensed" },
     { v: fmtRevenue(totalRevenue), l: "Paid to artists" },
     { v: fmtCount(licenseCount), l: "License holders" },
   ];
 
+  type StudioForCity = {
+    username: string;
+    district: string;
+    level: number;
+    user: {
+      name: string | null;
+      image: string | null;
+      songs: { aiScore: number; soldLicenses: number }[];
+    };
+  };
+
+  const cityBuildings: CityBuilding[] = (
+    studiosByDistrict as StudioForCity[]
+  ).map((s) => {
+    const songs = s.user.songs;
+    const avgScore =
+      songs.length > 0
+        ? songs.reduce((acc, x) => acc + x.aiScore, 0) / songs.length
+        : 0;
+    const totalSold = songs.reduce((acc, x) => acc + x.soldLicenses, 0);
+    return {
+      username: s.username,
+      name: s.user.name ?? s.username,
+      image: s.user.image,
+      district: s.district as CityBuilding["district"],
+      level: s.level,
+      avgScore: Math.round(avgScore * 10) / 10,
+      songCount: songs.length,
+      totalSold,
+    };
+  });
+
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col">
 
-      {/* ── HERO / ONBOARDING ─────────────────────────────────── */}
-      <section className="relative w-full overflow-hidden bg-city scanlines">
-        {/* Ambient orbs */}
-        <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-[600px] w-[900px] rounded-full bg-brand-500/20 blur-[120px]" />
-        <div className="pointer-events-none absolute top-[40%] right-0 h-[400px] w-[400px] rounded-full bg-accent-500/10 blur-[100px]" />
+      {/* ── FULL-VIEWPORT 3-D METAVERSE CITY HERO ──────────────────────────── */}
+      <section
+        className="relative w-full scanlines"
+        style={{ height: "calc(100vh - 57px)" }}   /* full screen minus navbar */
+      >
+        {/* 3-D scene fills the entire hero */}
+        <div className="absolute inset-0">
+          <CityScene3D buildings={cityBuildings} />
+        </div>
 
-        <div className="relative mx-auto max-w-5xl px-4 pb-24 pt-28 text-center">
-          {/* Pill badge */}
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand-500/40 bg-brand-500/10 px-5 py-1.5">
+        {/* Subtle vignette so overlaid text pops */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent opacity-70" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a0a0a]/60 via-transparent to-transparent" />
+
+        {/* ── HUD overlay — top-centre headline ── */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-center pt-8 px-4 text-center">
+          {/* Live badge */}
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-500/50 bg-[#0a0a0a]/70 backdrop-blur-sm px-5 py-1.5">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-500 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-accent-500" />
             </span>
-            <span className="text-sm font-medium text-brand-400">
-              Music Metaverse · Now Live
+            <span className="text-xs font-semibold text-brand-400 tracking-widest uppercase">
+              Music Metaverse · Live
             </span>
           </div>
 
-          {/* Headline */}
-          <h1 className="mb-6 text-5xl font-extrabold leading-[1.08] tracking-tight md:text-7xl">
-            Build your studio.{" "}
-            <span className="text-gradient-ems">Run your sound.</span>
-            <br />
-            Own your city.
+          <h1 className="text-4xl font-extrabold leading-tight tracking-tight drop-shadow-lg md:text-6xl">
+            Welcome to the <span className="text-gradient-ems">City</span>
           </h1>
-
-          <p className="mx-auto mb-12 max-w-2xl text-lg text-white/55">
-            Epic Music Space is a futuristic music marketplace. Artists own virtual
-            studios, release limited licenses, fans earn revenue share, and brands
-            advertise in a living digital city.
+          <p className="mt-3 max-w-xl text-sm text-white/60 drop-shadow">
+            Explore the 3-D metaverse. Drag &amp; zoom the city. Click any
+            building to open its studio.
           </p>
+        </div>
+
+        {/* ── HUD overlay — bottom CTAs ── */}
+        <div className="pointer-events-auto absolute inset-x-0 bottom-0 flex flex-col items-center gap-4 pb-10 px-4">
+          {/* Stats bar */}
+          <div className="flex flex-wrap justify-center gap-6 text-sm text-white/60 mb-2">
+            {STATS.map((s) => (
+              <div key={s.l} className="text-center">
+                <p className="text-xl font-extrabold text-gradient-ems">{s.v}</p>
+                <p className="text-xs mt-0.5 text-white/40">{s.l}</p>
+              </div>
+            ))}
+          </div>
 
           {/* Role CTAs */}
-          <div className="flex flex-wrap justify-center gap-4">
+          <div className="flex flex-wrap justify-center gap-3">
             <Link
               href="/auth/signup?role=ARTIST"
-              className="group flex items-center gap-3 rounded-2xl border border-brand-500/50 bg-brand-500/15 px-7 py-4 text-sm font-bold tracking-wide transition hover:border-brand-400 hover:bg-brand-500/25 glow-purple-sm"
+              className="flex items-center gap-2 rounded-2xl border border-brand-500/60 bg-[#0a0a0a]/80 backdrop-blur-sm px-6 py-3 text-sm font-bold tracking-wide transition hover:border-brand-400 hover:bg-brand-500/20 glow-purple-sm"
             >
-              <span className="text-2xl">🎤</span>
+              <span className="text-xl">🎤</span>
               <span>
-                <span className="block text-brand-400 text-xs uppercase tracking-widest mb-0.5">Creator</span>
+                <span className="block text-brand-400 text-[10px] uppercase tracking-widest mb-0.5">Creator</span>
                 I&apos;m an Artist
               </span>
             </Link>
             <Link
               href="/auth/signup?role=LISTENER"
-              className="group flex items-center gap-3 rounded-2xl border border-white/15 bg-white/5 px-7 py-4 text-sm font-bold tracking-wide transition hover:border-accent-500/50 hover:bg-accent-500/10"
+              className="flex items-center gap-2 rounded-2xl border border-white/20 bg-[#0a0a0a]/80 backdrop-blur-sm px-6 py-3 text-sm font-bold tracking-wide transition hover:border-accent-500/50 hover:bg-accent-500/10"
             >
-              <span className="text-2xl">🎧</span>
+              <span className="text-xl">🎧</span>
               <span>
-                <span className="block text-accent-400 text-xs uppercase tracking-widest mb-0.5">Fan</span>
+                <span className="block text-accent-400 text-[10px] uppercase tracking-widest mb-0.5">Fan</span>
                 I&apos;m a Listener
               </span>
             </Link>
             <Link
               href="/auth/signup?role=LABEL"
-              className="group flex items-center gap-3 rounded-2xl border border-gold-500/40 bg-gold-500/8 px-7 py-4 text-sm font-bold tracking-wide transition hover:border-gold-400 hover:bg-gold-500/15"
+              className="flex items-center gap-2 rounded-2xl border border-gold-500/50 bg-[#0a0a0a]/80 backdrop-blur-sm px-6 py-3 text-sm font-bold tracking-wide transition hover:border-gold-400 hover:bg-gold-500/15"
             >
-              <span className="text-2xl">📢</span>
+              <span className="text-xl">📢</span>
               <span>
-                <span className="block text-gold-400 text-xs uppercase tracking-widest mb-0.5">Partner</span>
+                <span className="block text-gold-400 text-[10px] uppercase tracking-widest mb-0.5">Partner</span>
                 I&apos;m a Brand
               </span>
             </Link>
-          </div>
-
-          {/* Social proof numbers — real DB stats */}
-          <div className="mt-16 flex flex-wrap justify-center gap-8 text-sm text-white/50">
-            {STATS.map((s) => (
-              <div key={s.l} className="text-center">
-                <p className="text-2xl font-extrabold text-gradient-ems">{s.v}</p>
-                <p className="mt-0.5">{s.l}</p>
-              </div>
-            ))}
+            <Link
+              href="/city"
+              className="flex items-center gap-2 rounded-2xl border border-white/15 bg-[#0a0a0a]/80 backdrop-blur-sm px-6 py-3 text-sm font-bold tracking-wide transition hover:bg-white/8"
+            >
+              <span className="text-xl">🏙️</span>
+              <span>
+                <span className="block text-white/40 text-[10px] uppercase tracking-widest mb-0.5">Explore</span>
+                Full City Map
+              </span>
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* ── HOW IT WORKS ──────────────────────────────────────── */}
+      {/* ── HOW IT WORKS ───────────────────────────────────────────────────── */}
       <section className="w-full border-t border-white/8 px-4 py-24">
         <div className="mx-auto max-w-5xl">
           <h2 className="mb-3 text-center text-3xl font-extrabold">
@@ -162,14 +248,15 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── DISCOVER THE CITY ─────────────────────────────────── */}
+      {/* ── DISTRICTS ──────────────────────────────────────────────────────── */}
       <section className="w-full border-t border-white/8 bg-[#0d0d0d] px-4 py-24">
         <div className="mx-auto max-w-5xl">
           <h2 className="mb-3 text-center text-3xl font-extrabold">
             Navigate the <span className="text-gradient-ems">City</span>
           </h2>
           <p className="mb-14 text-center text-white/45">
-            Songs are ranked into districts. The higher you climb, the more exposure you get.
+            Songs are ranked into districts. The higher you climb, the more
+            exposure you get.
           </p>
           <div className="grid gap-4 md:grid-cols-3">
             {[
@@ -177,7 +264,6 @@ export default async function HomePage() {
                 icon: "👑",
                 name: "Label Row",
                 desc: "Elite label-backed artists. Highest visibility.",
-                glow: "glow-gold",
                 border: "border-gold-500/40",
                 bg: "bg-gold-500/6",
                 text: "text-gold-400",
@@ -186,7 +272,6 @@ export default async function HomePage() {
                 icon: "🏙️",
                 name: "Downtown Prime",
                 desc: "High-performers unlocked by AI score.",
-                glow: "glow-purple",
                 border: "border-brand-500/40",
                 bg: "bg-brand-500/8",
                 text: "text-brand-400",
@@ -195,7 +280,6 @@ export default async function HomePage() {
                 icon: "🔮",
                 name: "Indie Blocks",
                 desc: "The starting grid — your launchpad.",
-                glow: "",
                 border: "border-accent-500/30",
                 bg: "bg-accent-500/6",
                 text: "text-accent-400",
@@ -222,18 +306,19 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── LEGAL NOTICE ─────────────────────────────────────── */}
+      {/* ── LEGAL NOTICE ───────────────────────────────────────────────────── */}
       <section className="w-full border-t border-white/8 px-4 py-10 text-center text-xs text-white/25">
         <p className="mx-auto max-w-3xl">
           Epic Music Space licenses are{" "}
-          <strong className="text-white/40">digital content licenses</strong>, not
-          securities or financial instruments. They do not represent equity, debt, or
-          investment contracts of any kind. Revenue participation is contractual and
-          limited to streaming royalties as defined in your{" "}
+          <strong className="text-white/40">digital content licenses</strong>,
+          not securities or financial instruments. They do not represent equity,
+          debt, or investment contracts of any kind. Revenue participation is
+          contractual and limited to streaming royalties as defined in your{" "}
           <Link href="/legal/licensing" className="underline hover:text-white/50">
             Licensing Agreement
           </Link>
-          . Past performance does not guarantee future earnings. Please review our{" "}
+          . Past performance does not guarantee future earnings. Please review
+          our{" "}
           <Link href="/legal/terms" className="underline hover:text-white/50">
             Terms of Service
           </Link>{" "}
