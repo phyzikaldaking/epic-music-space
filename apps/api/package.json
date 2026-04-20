@@ -1,0 +1,27 @@
+{
+  "name": "@ems/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EMS standalone REST API server (market routes, song upload, versus vote)",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --project tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@ems/db": "*",
+    "@ems/utils": "*",
+    "@hono/node-server": "^1.19.10",
+    "hono": "^4.12.4",
+    "ioredis": "^5.3.2",
+    "rate-limiter-flexible": "^5.0.3",
+    "stripe": "^17.2.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

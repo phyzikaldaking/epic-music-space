@@ -1,0 +1,199 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #f5f5f7;
+  --card: #141414;
+  --surface: #1a1a1f;
+  --purple: #6C5CE7;
+  --cyan: #00F5FF;
+  --gold: #FFD700;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Glassmorphism ─────────────────────────────────────────── */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Base glass panel */
+  .glass {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Elevated glass for cards */
+  .glass-card {
+    background: rgba(20, 20, 20, 0.80);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Purple-tinted glass */
+  .glass-purple {
+    background: rgba(108, 92, 231, 0.08);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(108, 92, 231, 0.25);
+  }
+
+  /* Gold-tinted glass */
+  .glass-gold {
+    background: rgba(255, 215, 0, 0.06);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 215, 0, 0.25);
+  }
+
+  /* Cyan-tinted glass */
+  .glass-cyan {
+    background: rgba(0, 245, 255, 0.06);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(0, 245, 255, 0.20);
+  }
+
+  /* ─── Neon text ─────────────────────────────────────────── */
+  .neon-purple {
+    color: #6C5CE7;
+    text-shadow: 0 0 12px rgba(108, 92, 231, 0.8), 0 0 28px rgba(108, 92, 231, 0.4);
+  }
+
+  .neon-cyan {
+    color: #00F5FF;
+    text-shadow: 0 0 12px rgba(0, 245, 255, 0.8), 0 0 28px rgba(0, 245, 255, 0.4);
+  }
+
+  .neon-gold {
+    color: #FFD700;
+    text-shadow: 0 0 12px rgba(255, 215, 0, 0.8), 0 0 28px rgba(255, 215, 0, 0.4);
+  }
+
+  /* ─── Box glow ──────────────────────────────────────────── */
+  .glow-purple {
+    box-shadow: 0 0 20px rgba(108, 92, 231, 0.4), 0 0 40px rgba(108, 92, 231, 0.2);
+  }
+
+  .glow-purple-sm {
+    box-shadow: 0 0 10px rgba(108, 92, 231, 0.35), 0 4px 20px rgba(108, 92, 231, 0.2);
+  }
+
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(0, 245, 255, 0.4), 0 0 40px rgba(0, 245, 255, 0.2);
+  }
+
+  .glow-gold {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.4), 0 0 40px rgba(255, 215, 0, 0.2);
+  }
+
+  /* ─── Gradient text ─────────────────────────────────────── */
+  .text-gradient-ems {
+    background: linear-gradient(135deg, #6C5CE7 0%, #00F5FF 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .text-gradient-gold {
+    background: linear-gradient(135deg, #FFD700 0%, #ff9800 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ─── Shimmer button ────────────────────────────────────── */
+  .btn-shimmer {
+    background-size: 200% auto;
+    background-image: linear-gradient(
+      90deg,
+      #6C5CE7 0%,
+      #9B8FFF 40%,
+      #6C5CE7 80%
+    );
+    animation: shimmer 2.5s linear infinite;
+  }
+
+  /* ─── City background gradient ──────────────────────────── */
+  .bg-city {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(108, 92, 231, 0.30) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 80%, rgba(0, 245, 255, 0.12) 0%, transparent 55%),
+      radial-gradient(ellipse at 20% 70%, rgba(255, 215, 0, 0.08) 0%, transparent 55%),
+      #0a0a0a;
+  }
+
+  /* ─── Scanline overlay (subtle CRT vibe) ───────────────── */
+  .scanlines::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.015) 2px,
+      rgba(255, 255, 255, 0.015) 4px
+    );
+    pointer-events: none;
+  }
+
+  /* ─── Badge styles ──────────────────────────────────────── */
+  .badge-trending {
+    background: linear-gradient(135deg, #ff4b4b 0%, #ff9800 100%);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    text-transform: uppercase;
+  }
+
+  .badge-boosted {
+    background: linear-gradient(135deg, #FFD700 0%, #ff9800 100%);
+    color: #0a0a0a;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    text-transform: uppercase;
+  }
+
+  .badge-new {
+    background: linear-gradient(135deg, #00F5FF 0%, #6C5CE7 100%);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    text-transform: uppercase;
+  }
+
+  /* ─── Neon border on interactive cards ─────────────────── */
+  .card-hover-neon {
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  }
+
+  .card-hover-neon:hover {
+    border-color: rgba(108, 92, 231, 0.6);
+    box-shadow: 0 0 18px rgba(108, 92, 231, 0.25), 0 8px 32px rgba(0, 0, 0, 0.4);
+    transform: translateY(-2px);
+  }
+
+  /* ─── Stat number ───────────────────────────────────────── */
+  .stat-number {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+}
