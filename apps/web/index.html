@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EMS Empire Status</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <header>
+        <p class="eyebrow">Epic Music Space</p>
+        <h1>Empire Status</h1>
+      </header>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>System Intelligence</h2>
+          <button id="toggle-widget" type="button">show_widget</button>
+        </div>
+
+        <p class="status-copy" id="status-copy">
+          Full intel synced across all sessions.
+        </p>
+
+        <article class="widget" id="status-widget" hidden>
+          <h3>Visualization</h3>
+          <ul>
+            <li>Security posture: guarded</li>
+            <li>Infra health: stable</li>
+            <li>Deploy readiness: green</li>
+          </ul>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

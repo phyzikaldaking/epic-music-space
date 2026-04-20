@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure governance + web baseline artifacts exist
+        run: |
+          test -f docs/EMS_PRODUCTION_BLUEPRINT.md
+          test -f apps/web/index.html
+          test -f apps/web/styles.css
+          test -f apps/web/main.js

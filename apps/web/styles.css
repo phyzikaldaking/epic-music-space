@@ -1,0 +1,91 @@
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0f;
+  --panel: #131321;
+  --panel-border: #29294d;
+  --text: #f4f4ff;
+  --muted: #b7b8d9;
+  --accent: #7f7bff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: radial-gradient(circle at top, #1c1c31, var(--bg) 60%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.layout {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 20px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+h1 {
+  margin: 6px 0 24px;
+}
+
+.panel {
+  background: color-mix(in srgb, var(--panel), #000 6%);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(90deg, #5f5cff, var(--accent));
+  cursor: pointer;
+}
+
+.status-copy {
+  color: var(--muted);
+}
+
+.widget {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid #393974;
+  background: #16162a;
+}
+
+.widget h3 {
+  margin: 0 0 8px;
+}
+
+.widget ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 0.25s;
+  animation-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+}
