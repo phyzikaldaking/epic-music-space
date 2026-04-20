@@ -1,6 +1,21 @@
 import { prisma } from "@/lib/prisma";
 import DistrictBadge from "@/components/DistrictBadge";
 import { DISTRICT_META } from "@/lib/scoring";
+import nextDynamic from "next/dynamic";
+import type { CityBuilding } from "@/app/api/city/data/route";
+
+// Dynamic import keeps Babylon.js out of the server bundle
+const CityScene3D = nextDynamic(
+  () => import("@/components/CityScene3D"),
+  { ssr: false, loading: () => (
+    <div className="flex h-[520px] w-full items-center justify-center rounded-2xl bg-[#0d0d14] border border-white/8">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
+        <p className="text-xs text-white/30">Loading 3D city…</p>
+      </div>
+    </div>
+  ) }
+);
 
 export const dynamic = "force-dynamic";
 
@@ -227,6 +242,36 @@ export default async function CityPage() {
     );
   }
 
+  // ── Build city 3-D data ────────────────────────────────────────────────
+  type StudioForCity = {
+    username: string;
+    district: string;
+    level: number;
+    user: {
+      name: string | null;
+      image: string | null;
+      songs: { aiScore: number; soldLicenses: number }[];
+    };
+  };
+  const cityBuildings: CityBuilding[] = (studiosByDistrict as StudioForCity[]).map((s) => {
+    const songs = s.user.songs;
+    const avgScore =
+      songs.length > 0
+        ? songs.reduce((acc: number, x: { aiScore: number; soldLicenses: number }) => acc + x.aiScore, 0) / songs.length
+        : 0;
+    const totalSold = songs.reduce((acc: number, x: { aiScore: number; soldLicenses: number }) => acc + x.soldLicenses, 0);
+    return {
+      username: s.username,
+      name: s.user.name ?? s.username,
+      image: s.user.image,
+      district: s.district as CityBuilding["district"],
+      level: s.level,
+      avgScore: Math.round(avgScore * 10) / 10,
+      songCount: songs.length,
+      totalSold,
+    };
+  });
+
   return (
     <div className="relative min-h-screen">
       {/* Ambient glow */}
@@ -235,7 +280,7 @@ export default async function CityPage() {
 
       <div className="relative mx-auto max-w-5xl px-4 py-12">
         {/* Header */}
-        <div className="mb-12">
+        <div className="mb-8">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/8 px-3 py-1 text-xs font-semibold text-brand-400">
             🏙️ Live City
           </div>
@@ -246,6 +291,11 @@ export default async function CityPage() {
             Songs are ranked into districts based on their EMS Score. Higher
             districts get more discovery exposure on the platform.
           </p>
+        </div>
+
+        {/* ── 3-D City Scene ──────────────────────────────────────────────── */}
+        <div className="mb-12">
+          <CityScene3D buildings={cityBuildings} />
         </div>
 
         {/* District overview cards */}
