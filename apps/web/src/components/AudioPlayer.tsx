@@ -21,32 +21,40 @@ export default function AudioPlayer({ audioUrl, title }: AudioPlayerProps) {
     audioRef.current = audio;
     audio.preload = "metadata";
 
-    audio.addEventListener("loadedmetadata", () => {
-      setDuration(audio.duration);
-    });
-
-    audio.addEventListener("timeupdate", () => {
+    const onMetadata = () => { setDuration(audio.duration); };
+    const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
       if (audio.duration) {
         setProgress((audio.currentTime / audio.duration) * 100);
       }
-    });
-
-    audio.addEventListener("ended", () => {
+    };
+    const onEnded = () => {
       setPlaying(false);
       setProgress(0);
       setCurrentTime(0);
       audio.currentTime = 0;
-    });
-
-    audio.addEventListener("waiting", () => setLoading(true));
-    audio.addEventListener("canplay", () => setLoading(false));
-    audio.addEventListener("error", () => {
+    };
+    const onWaiting = () => setLoading(true);
+    const onCanPlay = () => setLoading(false);
+    const onError = () => {
       setError(true);
       setLoading(false);
-    });
+    };
+
+    audio.addEventListener("loadedmetadata", onMetadata);
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("waiting", onWaiting);
+    audio.addEventListener("canplay", onCanPlay);
+    audio.addEventListener("error", onError);
 
     return () => {
+      audio.removeEventListener("loadedmetadata", onMetadata);
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("waiting", onWaiting);
+      audio.removeEventListener("canplay", onCanPlay);
+      audio.removeEventListener("error", onError);
       audio.pause();
       audio.src = "";
     };

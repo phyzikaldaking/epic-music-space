@@ -58,8 +58,16 @@ export default function VersusCard({
   // Cleanup audio on unmount
   useEffect(() => {
     return () => {
-      audioARef.current?.pause();
-      audioBRef.current?.pause();
+      if (audioARef.current) {
+        audioARef.current.pause();
+        audioARef.current.src = "";
+        audioARef.current = null;
+      }
+      if (audioBRef.current) {
+        audioBRef.current.pause();
+        audioBRef.current.src = "";
+        audioBRef.current = null;
+      }
     };
   }, []);
 
