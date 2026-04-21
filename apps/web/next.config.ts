@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const nextConfig: NextConfig = {
   compress: true,
+  outputFileTracingRoot: path.resolve(process.cwd(), "../.."),
   poweredByHeader: false,
   transpilePackages: ["@ems/utils"],
   experimental: {
