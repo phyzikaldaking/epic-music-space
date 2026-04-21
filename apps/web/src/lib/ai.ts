@@ -117,10 +117,12 @@ Available catalog:
 ${catalog}
 
 Recommend up to 3 songs from the catalog that would complement the user's taste.
-Respond with valid JSON only, in this shape:
-[
-  { "songId": "<id from catalog>", "reason": "<one sentence reason>" }
-]`;
+Respond with valid JSON only, in this exact shape:
+{
+  "recommendations": [
+    { "songId": "<id from catalog>", "reason": "<one sentence reason>" }
+  ]
+}`;
 
   try {
     const completion = await openai.chat.completions.create({
@@ -134,11 +136,13 @@ Respond with valid JSON only, in this shape:
     const raw = completion.choices[0]?.message?.content;
     if (!raw) return [];
 
-    // response_format json_object wraps in an object; extract array
+    // response_format json_object always returns an object; extract recommendations array
     const parsed = JSON.parse(raw) as unknown;
-    const arr = Array.isArray(parsed)
-      ? parsed
-      : (parsed as Record<string, unknown>).recommendations ?? [];
+    const rawArr =
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>).recommendations
+        : parsed;
+    const arr = Array.isArray(rawArr) ? rawArr : [];
 
     return (arr as Array<{ songId: string; reason: string }>)
       .filter((r) => r.songId && r.reason)

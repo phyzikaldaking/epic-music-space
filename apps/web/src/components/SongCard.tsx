@@ -46,7 +46,12 @@ export default function SongCard({
   // Cleanup audio on unmount
   useEffect(() => {
     return () => {
-      audioRef.current?.pause();
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.src = "";
+        audioRef.current = null;
+      }
     };
   }, []);
 
