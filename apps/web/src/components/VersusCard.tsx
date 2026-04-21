@@ -210,7 +210,9 @@ export default function VersusCard({
   }
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+    <div className="rounded-3xl border border-white/8 bg-[#111113] p-6 relative overflow-hidden card-hover-neon">
+      {/* Ambient glow */}
+      <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-40 w-40 rounded-full bg-brand-500/10 blur-3xl" />
       {/* Header */}
       <div className="mb-4 flex items-center justify-between text-xs text-white/40">
         <span className="flex items-center gap-1.5">
@@ -230,7 +232,8 @@ export default function VersusCard({
       <div className="flex items-center gap-4">
         <SongSide song={songA} votes={votesA} pct={pctA} side="A" audioRef={audioARef} otherRef={audioBRef} />
         <div className="flex-shrink-0 text-center">
-          <p className="text-xl font-black text-white/30">VS</p>
+          <div className="font-display font-black text-3xl bg-gradient-to-b from-white/60 to-white/20 bg-clip-text text-transparent tracking-widest">VS</div>
+          <div className="mt-1 h-12 w-px mx-auto bg-gradient-to-b from-brand-500/40 to-transparent" />
         </div>
         <SongSide song={songB} votes={votesB} pct={pctB} side="B" audioRef={audioBRef} otherRef={audioARef} />
       </div>

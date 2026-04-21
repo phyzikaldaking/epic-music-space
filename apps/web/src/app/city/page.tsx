@@ -284,7 +284,7 @@ export default async function CityPage() {
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/8 px-3 py-1 text-xs font-semibold text-brand-400">
             🏙️ Live City
           </div>
-          <h1 className="text-4xl font-extrabold md:text-5xl">
+          <h1 className="font-display font-black text-[clamp(3rem,7vw,6rem)] uppercase tracking-tight leading-none">
             The <span className="text-gradient-ems">City</span>
           </h1>
           <p className="mt-3 text-white/45 max-w-xl">

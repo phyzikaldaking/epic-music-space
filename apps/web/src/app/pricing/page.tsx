@@ -128,7 +128,7 @@ function PricingContent() {
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/8 px-4 py-1.5 text-xs font-semibold text-brand-400 uppercase tracking-widest">
             🏆 Upgrade your EMS experience
           </div>
-          <h1 className="text-4xl font-extrabold md:text-6xl">
+          <h1 className="font-display font-black text-[clamp(3rem,7vw,6.5rem)] uppercase tracking-tight leading-none">
             <span className="text-gradient-ems">Choose your tier</span>
           </h1>
           <p className="mt-4 text-lg text-white/45">

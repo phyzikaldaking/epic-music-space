@@ -90,7 +90,7 @@ export default function SongCard({
   return (
     <a
       href={`/studio/${id}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/8 bg-[#141414] card-hover-neon"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/7 bg-[#111113] card-hover-neon"
     >
       {/* ── Cover art ─────────────────────────────────── */}
       <div className="relative h-48 w-full overflow-hidden">
@@ -208,7 +208,7 @@ export default function SongCard({
           </div>
         </div>
 
-        <button className="mt-auto w-full rounded-xl bg-brand-500 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 glow-purple-sm">
+        <button className="mt-auto w-full rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 py-2.5 text-sm font-bold text-white transition-all duration-300 hover:from-brand-500 hover:to-accent-600 hover:shadow-[0_0_20px_rgba(108,92,231,0.4)] active:scale-[0.98]">
           View &amp; License
         </button>
       </div>
