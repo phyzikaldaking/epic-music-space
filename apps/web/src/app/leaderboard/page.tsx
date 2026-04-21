@@ -70,8 +70,10 @@ export default async function LeaderboardPage({
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
       <div className="mb-8">
-        <h1 className="text-4xl font-extrabold">🏆 Leaderboard</h1>
-        <p className="mt-2 text-white/50">
+        <h1 className="font-display font-black text-[clamp(2.8rem,6vw,5rem)] uppercase tracking-tight leading-none">
+          🏆 <span className="text-gradient-ems">Charts</span>
+        </h1>
+        <p className="mt-3 text-white/45 text-lg">
           Top songs and artists ranked by EMS Score and licensing activity.
         </p>
       </div>

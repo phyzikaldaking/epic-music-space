@@ -46,10 +46,12 @@ export default async function VersusPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
-      <div className="mb-10 flex items-start justify-between">
+      <div className="mb-12 flex items-start justify-between">
         <div>
-          <h1 className="text-4xl font-extrabold">⚔️ Versus</h1>
-          <p className="mt-2 text-white/50">
+          <h1 className="font-display font-black text-[clamp(3rem,7vw,6rem)] uppercase tracking-tight leading-none">
+            <span className="text-gradient-fire">⚔️ Versus</span>
+          </h1>
+          <p className="mt-3 text-white/45 text-lg">
             Vote for your favorite tracks. Winners rise in the discovery algorithm.
           </p>
         </div>
