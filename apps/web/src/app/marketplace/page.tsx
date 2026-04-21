@@ -67,15 +67,15 @@ export default async function MarketplacePage({ searchParams }: Props) {
       {/* Live purchase/new-song toast feed */}
       <LiveMarketplaceFeed />
       {/* ── Header ──────────────────────────────────────── */}
-      <div className="mb-8">
-        <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/8 px-3 py-1 text-xs font-semibold text-brand-400">
+      <div className="mb-10">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/8 px-3 py-1.5 text-xs font-bold text-brand-400 tracking-widest uppercase">
           <span className="h-1.5 w-1.5 rounded-full bg-brand-400 animate-pulse" />
           Live marketplace
         </div>
-        <h1 className="text-4xl font-extrabold">
+        <h1 className="font-display font-black text-[clamp(2.8rem,6vw,5.5rem)] uppercase tracking-tight leading-none">
           <span className="text-gradient-ems">Marketplace</span>
         </h1>
-        <p className="mt-2 text-white/45">
+        <p className="mt-3 text-white/40 text-lg max-w-lg">
           Buy digital licenses. Earn a share of streaming revenue — forever.
         </p>
       </div>
