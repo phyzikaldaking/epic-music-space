@@ -17,6 +17,14 @@ export default function AudioPlayer({ audioUrl, title }: AudioPlayerProps) {
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    // Reset all player state so a new URL starts fresh
+    setPlaying(false);
+    setProgress(0);
+    setCurrentTime(0);
+    setDuration(0);
+    setLoading(false);
+    setError(false);
+
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
     audio.preload = "metadata";

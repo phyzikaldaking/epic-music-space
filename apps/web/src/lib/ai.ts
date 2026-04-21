@@ -138,9 +138,11 @@ Respond with valid JSON only, in this exact shape:
 
     // response_format json_object always returns an object; extract recommendations array
     const parsed = JSON.parse(raw) as unknown;
-    const arr = Array.isArray(parsed)
-      ? parsed
-      : ((parsed as Record<string, unknown>).recommendations ?? []);
+    const rawArr =
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>).recommendations
+        : parsed;
+    const arr = Array.isArray(rawArr) ? rawArr : [];
 
     return (arr as Array<{ songId: string; reason: string }>)
       .filter((r) => r.songId && r.reason)
