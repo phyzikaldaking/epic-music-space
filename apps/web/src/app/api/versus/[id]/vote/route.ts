@@ -6,6 +6,7 @@ import { calculateAiScore, scoreToDistrict } from "@/lib/scoring";
 import { moderateLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
+import { awardBadge } from "@/lib/badges";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -52,11 +53,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "This match has ended." }, { status: 409 });
   }
   if (match.endsAt < new Date()) {
-    // Auto-close the match
-    await prisma.versusMatch.update({
-      where: { id: matchId },
-      data: { status: "COMPLETED" },
-    });
+    // Auto-close the match and finalise stats
+    await finaliseMatch(matchId, match.songAId, match.songBId, match.votesA, match.votesB);
     return NextResponse.json({ error: "This match has ended." }, { status: 409 });
   }
   if (votedSongId !== match.songAId && votedSongId !== match.songBId) {
@@ -146,4 +144,48 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   return NextResponse.json({ votesA: updated.votesA, votesB: updated.votesB });
+}
+
+// ─────────────────────────────────────────────────────────
+// Shared finalisation — marks a match COMPLETED, updates
+// versusWins / versusLosses on both songs, and awards the
+// FIRST_BATTLE_WIN badge to the winning artist.
+// Safe to call multiple times (idempotent via status check).
+// ─────────────────────────────────────────────────────────
+export async function finaliseMatch(
+  matchId: string,
+  songAId: string,
+  songBId: string,
+  votesA: number,
+  votesB: number,
+) {
+  // Mark completed (ignore if already done)
+  await prisma.versusMatch.updateMany({
+    where: { id: matchId, status: "ACTIVE" },
+    data: { status: "COMPLETED" },
+  });
+
+  const winnerSongId = votesA >= votesB ? songAId : songBId;
+  const loserSongId  = winnerSongId === songAId ? songBId : songAId;
+
+  // Update win/loss counters on both songs
+  await Promise.all([
+    prisma.song.update({
+      where: { id: winnerSongId },
+      data: { versusWins: { increment: 1 } },
+    }),
+    prisma.song.update({
+      where: { id: loserSongId },
+      data: { versusLosses: { increment: 1 } },
+    }),
+  ]);
+
+  // Award FIRST_BATTLE_WIN badge to the winning song's artist
+  const winner = await prisma.song.findUnique({
+    where: { id: winnerSongId },
+    select: { artistId: true },
+  });
+  if (winner) {
+    await awardBadge(winner.artistId, "FIRST_BATTLE_WIN");
+  }
 }
