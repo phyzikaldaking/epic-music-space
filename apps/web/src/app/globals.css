@@ -7,9 +7,12 @@
   --foreground: #f5f5f7;
   --card: #141414;
   --surface: #1a1a1f;
-  --purple: #6C5CE7;
-  --cyan: #00F5FF;
-  --gold: #FFD700;
+  --purple: #6c5ce7;
+  --cyan: #00f5ff;
+  --gold: #ffd700;
+  --font-inter:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
 }
 
 body {
@@ -34,7 +37,7 @@ body {
 
   /* Elevated glass for cards */
   .glass-card {
-    background: rgba(20, 20, 20, 0.80);
+    background: rgba(20, 20, 20, 0.8);
     backdrop-filter: blur(20px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
@@ -57,52 +60,66 @@ body {
   .glass-cyan {
     background: rgba(0, 245, 255, 0.06);
     backdrop-filter: blur(16px);
-    border: 1px solid rgba(0, 245, 255, 0.20);
+    border: 1px solid rgba(0, 245, 255, 0.2);
   }
 
   /* ─── Neon text ─────────────────────────────────────────── */
   .neon-purple {
-    color: #6C5CE7;
-    text-shadow: 0 0 12px rgba(108, 92, 231, 0.8), 0 0 28px rgba(108, 92, 231, 0.4);
+    color: #6c5ce7;
+    text-shadow:
+      0 0 12px rgba(108, 92, 231, 0.8),
+      0 0 28px rgba(108, 92, 231, 0.4);
   }
 
   .neon-cyan {
-    color: #00F5FF;
-    text-shadow: 0 0 12px rgba(0, 245, 255, 0.8), 0 0 28px rgba(0, 245, 255, 0.4);
+    color: #00f5ff;
+    text-shadow:
+      0 0 12px rgba(0, 245, 255, 0.8),
+      0 0 28px rgba(0, 245, 255, 0.4);
   }
 
   .neon-gold {
-    color: #FFD700;
-    text-shadow: 0 0 12px rgba(255, 215, 0, 0.8), 0 0 28px rgba(255, 215, 0, 0.4);
+    color: #ffd700;
+    text-shadow:
+      0 0 12px rgba(255, 215, 0, 0.8),
+      0 0 28px rgba(255, 215, 0, 0.4);
   }
 
   /* ─── Box glow ──────────────────────────────────────────── */
   .glow-purple {
-    box-shadow: 0 0 20px rgba(108, 92, 231, 0.4), 0 0 40px rgba(108, 92, 231, 0.2);
+    box-shadow:
+      0 0 20px rgba(108, 92, 231, 0.4),
+      0 0 40px rgba(108, 92, 231, 0.2);
   }
 
   .glow-purple-sm {
-    box-shadow: 0 0 10px rgba(108, 92, 231, 0.35), 0 4px 20px rgba(108, 92, 231, 0.2);
+    box-shadow:
+      0 0 10px rgba(108, 92, 231, 0.35),
+      0 4px 20px rgba(108, 92, 231, 0.2);
   }
 
   .glow-cyan {
-    box-shadow: 0 0 20px rgba(0, 245, 255, 0.4), 0 0 40px rgba(0, 245, 255, 0.2);
+    box-shadow:
+      0 0 20px rgba(0, 245, 255, 0.4),
+      0 0 40px rgba(0, 245, 255, 0.2);
   }
 
   .glow-gold {
-    box-shadow: 0 0 20px rgba(255, 215, 0, 0.4), 0 0 40px rgba(255, 215, 0, 0.2);
+    box-shadow:
+      0 0 20px rgba(255, 215, 0, 0.4),
+      0 0 40px rgba(255, 215, 0, 0.2);
   }
 
   /* ─── Gradient text ─────────────────────────────────────── */
   .text-gradient-ems {
-    background: linear-gradient(135deg, #6C5CE7 0%, #00F5FF 100%);
+    background: linear-gradient(135deg, #6c5ce7 0%, #00f5ff 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
 
   .text-gradient-gold {
-    background: linear-gradient(135deg, #FFD700 0%, #ff9800 100%);
+    background: linear-gradient(135deg, #ffd700 0%, #ff9800 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -113,9 +130,9 @@ body {
     background-size: 200% auto;
     background-image: linear-gradient(
       90deg,
-      #6C5CE7 0%,
-      #9B8FFF 40%,
-      #6C5CE7 80%
+      #6c5ce7 0%,
+      #9b8fff 40%,
+      #6c5ce7 80%
     );
     animation: shimmer 2.5s linear infinite;
   }
@@ -123,9 +140,21 @@ body {
   /* ─── City background gradient ──────────────────────────── */
   .bg-city {
     background:
-      radial-gradient(ellipse at 50% 0%, rgba(108, 92, 231, 0.30) 0%, transparent 60%),
-      radial-gradient(ellipse at 80% 80%, rgba(0, 245, 255, 0.12) 0%, transparent 55%),
-      radial-gradient(ellipse at 20% 70%, rgba(255, 215, 0, 0.08) 0%, transparent 55%),
+      radial-gradient(
+        ellipse at 50% 0%,
+        rgba(108, 92, 231, 0.3) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 80%,
+        rgba(0, 245, 255, 0.12) 0%,
+        transparent 55%
+      ),
+      radial-gradient(
+        ellipse at 20% 70%,
+        rgba(255, 215, 0, 0.08) 0%,
+        transparent 55%
+      ),
       #0a0a0a;
   }
 
@@ -157,7 +186,7 @@ body {
   }
 
   .badge-boosted {
-    background: linear-gradient(135deg, #FFD700 0%, #ff9800 100%);
+    background: linear-gradient(135deg, #ffd700 0%, #ff9800 100%);
     color: #0a0a0a;
     font-size: 0.65rem;
     font-weight: 700;
@@ -168,7 +197,7 @@ body {
   }
 
   .badge-new {
-    background: linear-gradient(135deg, #00F5FF 0%, #6C5CE7 100%);
+    background: linear-gradient(135deg, #00f5ff 0%, #6c5ce7 100%);
     color: white;
     font-size: 0.65rem;
     font-weight: 700;
@@ -180,12 +209,17 @@ body {
 
   /* ─── Neon border on interactive cards ─────────────────── */
   .card-hover-neon {
-    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s,
+      transform 0.2s;
   }
 
   .card-hover-neon:hover {
     border-color: rgba(108, 92, 231, 0.6);
-    box-shadow: 0 0 18px rgba(108, 92, 231, 0.25), 0 8px 32px rgba(0, 0, 0, 0.4);
+    box-shadow:
+      0 0 18px rgba(108, 92, 231, 0.25),
+      0 8px 32px rgba(0, 0, 0, 0.4);
     transform: translateY(-2px);
   }
 
@@ -195,5 +229,454 @@ body {
     font-weight: 800;
     line-height: 1;
     letter-spacing: -0.03em;
+  }
+
+  /* ─── Glitch text effect ───────────────────────────────── */
+  .glitch {
+    position: relative;
+    animation: glitch-skew 1s infinite linear alternate-reverse;
+  }
+
+  .glitch::before,
+  .glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .glitch::before {
+    left: 2px;
+    text-shadow: -1px 0 #ff00c1;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim 5s infinite linear alternate-reverse;
+  }
+
+  .glitch::after {
+    left: -2px;
+    text-shadow: -1px 0 #00fff9;
+    clip: rect(44px, 450px, 56px, 0);
+    animation: glitch-anim2 5s infinite linear alternate-reverse;
+  }
+
+  @keyframes glitch-anim {
+    0% {
+      clip: rect(14px, 9999px, 127px, 0);
+    }
+    5% {
+      clip: rect(86px, 9999px, 88px, 0);
+    }
+    10% {
+      clip: rect(21px, 9999px, 6px, 0);
+    }
+    15% {
+      clip: rect(2px, 9999px, 142px, 0);
+    }
+    20% {
+      clip: rect(102px, 9999px, 75px, 0);
+    }
+    25% {
+      clip: rect(56px, 9999px, 27px, 0);
+    }
+    30% {
+      clip: rect(18px, 9999px, 98px, 0);
+    }
+    35% {
+      clip: rect(6px, 9999px, 13px, 0);
+    }
+    40% {
+      clip: rect(90px, 9999px, 43px, 0);
+    }
+    45% {
+      clip: rect(77px, 9999px, 19px, 0);
+    }
+    50% {
+      clip: rect(34px, 9999px, 81px, 0);
+    }
+    55% {
+      clip: rect(59px, 9999px, 7px, 0);
+    }
+    60% {
+      clip: rect(29px, 9999px, 99px, 0);
+    }
+    65% {
+      clip: rect(83px, 9999px, 52px, 0);
+    }
+    70% {
+      clip: rect(42px, 9999px, 138px, 0);
+    }
+    75% {
+      clip: rect(91px, 9999px, 31px, 0);
+    }
+    80% {
+      clip: rect(7px, 9999px, 64px, 0);
+    }
+    85% {
+      clip: rect(64px, 9999px, 96px, 0);
+    }
+    90% {
+      clip: rect(19px, 9999px, 48px, 0);
+    }
+    95% {
+      clip: rect(36px, 9999px, 72px, 0);
+    }
+    100% {
+      clip: rect(68px, 9999px, 24px, 0);
+    }
+  }
+
+  @keyframes glitch-anim2 {
+    0% {
+      clip: rect(65px, 9999px, 100px, 0);
+    }
+    5% {
+      clip: rect(52px, 9999px, 74px, 0);
+    }
+    10% {
+      clip: rect(79px, 9999px, 85px, 0);
+    }
+    15% {
+      clip: rect(75px, 9999px, 5px, 0);
+    }
+    20% {
+      clip: rect(67px, 9999px, 61px, 0);
+    }
+    25% {
+      clip: rect(14px, 9999px, 79px, 0);
+    }
+    30% {
+      clip: rect(1px, 9999px, 66px, 0);
+    }
+    35% {
+      clip: rect(86px, 9999px, 30px, 0);
+    }
+    40% {
+      clip: rect(23px, 9999px, 98px, 0);
+    }
+    45% {
+      clip: rect(85px, 9999px, 72px, 0);
+    }
+    50% {
+      clip: rect(71px, 9999px, 75px, 0);
+    }
+    55% {
+      clip: rect(2px, 9999px, 48px, 0);
+    }
+    60% {
+      clip: rect(30px, 9999px, 40px, 0);
+    }
+    65% {
+      clip: rect(59px, 9999px, 4px, 0);
+    }
+    70% {
+      clip: rect(41px, 9999px, 62px, 0);
+    }
+    75% {
+      clip: rect(2px, 9999px, 82px, 0);
+    }
+    80% {
+      clip: rect(47px, 9999px, 73px, 0);
+    }
+    85% {
+      clip: rect(3px, 9999px, 27px, 0);
+    }
+    90% {
+      clip: rect(26px, 9999px, 55px, 0);
+    }
+    95% {
+      clip: rect(42px, 9999px, 97px, 0);
+    }
+    100% {
+      clip: rect(38px, 9999px, 49px, 0);
+    }
+  }
+
+  @keyframes glitch-skew {
+    0% {
+      transform: skew(0deg);
+    }
+    20% {
+      transform: skew(0deg);
+    }
+    21% {
+      transform: skew(1deg);
+    }
+    22% {
+      transform: skew(-1deg);
+    }
+    23% {
+      transform: skew(0deg);
+    }
+    100% {
+      transform: skew(0deg);
+    }
+  }
+
+  /* ─── CRT flicker effect ───────────────────────────────── */
+  .crt-flicker {
+    animation: crt-flicker 0.15s infinite;
+  }
+
+  @keyframes crt-flicker {
+    0% {
+      opacity: 0.97;
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0.98;
+    }
+  }
+
+  /* ─── Neon pulse glow ──────────────────────────────────── */
+  .neon-pulse {
+    animation: neon-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes neon-pulse {
+    0%,
+    100% {
+      text-shadow:
+        0 0 12px currentColor,
+        0 0 28px currentColor;
+      opacity: 1;
+    }
+    50% {
+      text-shadow:
+        0 0 20px currentColor,
+        0 0 40px currentColor,
+        0 0 60px currentColor;
+      opacity: 0.85;
+    }
+  }
+
+  /* ─── Digital noise background ──────────────────────────── */
+  .digital-noise {
+    position: relative;
+  }
+
+  .digital-noise::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.03;
+    pointer-events: none;
+    animation: noise-shift 0.5s steps(10) infinite;
+  }
+
+  @keyframes noise-shift {
+    0% {
+      transform: translate(0, 0);
+    }
+    10% {
+      transform: translate(-5%, -5%);
+    }
+    20% {
+      transform: translate(-10%, 5%);
+    }
+    30% {
+      transform: translate(5%, -10%);
+    }
+    40% {
+      transform: translate(-5%, 15%);
+    }
+    50% {
+      transform: translate(-10%, 5%);
+    }
+    60% {
+      transform: translate(15%, 0);
+    }
+    70% {
+      transform: translate(0, 10%);
+    }
+    80% {
+      transform: translate(-15%, 0);
+    }
+    90% {
+      transform: translate(10%, 5%);
+    }
+    100% {
+      transform: translate(0, 0);
+    }
+  }
+
+  /* ─── Holographic shimmer ──────────────────────────────── */
+  .holo-shimmer {
+    background: linear-gradient(
+      110deg,
+      transparent 20%,
+      rgba(108, 92, 231, 0.15) 30%,
+      rgba(0, 245, 255, 0.15) 40%,
+      transparent 50%
+    );
+    background-size: 200% 100%;
+    animation: holo-shimmer 3s linear infinite;
+  }
+
+  @keyframes holo-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* ─── Typing cursor blink ──────────────────────────────── */
+  .typing-cursor::after {
+    content: "_";
+    animation: cursor-blink 1s step-end infinite;
+  }
+
+  @keyframes cursor-blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+
+  /* ─── Scan beam sweep ───────────────────────────────────── */
+  .scan-sweep {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .scan-sweep::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(0, 245, 255, 0.1),
+      transparent
+    );
+    animation: scan-sweep 4s ease-in-out infinite;
+  }
+
+  @keyframes scan-sweep {
+    0% {
+      left: -50%;
+    }
+    50% {
+      left: 100%;
+    }
+    100% {
+      left: 100%;
+    }
+  }
+
+  /* ─── Marquee ticker ────────────────────────────────────── */
+  @keyframes marquee {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  /* ─── Scanline vertical ─────────────────────────────────── */
+  @keyframes scanline {
+    0%   { background-position: 0 -100%; }
+    100% { background-position: 0 200%; }
+  }
+
+  /* ─── Waveform bar dance ─────────────────────────────────── */
+  .waveform-bar {
+    transform-origin: bottom;
+    animation: waveform-dance 900ms ease-in-out infinite alternate;
+  }
+
+  @keyframes waveform-dance {
+    0% {
+      transform: scaleY(0.25);
+      opacity: 0.5;
+    }
+    100% {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+  }
+
+  /* Staggered delays for each of the 12 bars */
+  .waveform-bars > :nth-child(1) {
+    animation-delay: 0ms;
+    animation-duration: 900ms;
+  }
+  .waveform-bars > :nth-child(2) {
+    animation-delay: 90ms;
+    animation-duration: 1060ms;
+  }
+  .waveform-bars > :nth-child(3) {
+    animation-delay: 180ms;
+    animation-duration: 900ms;
+  }
+  .waveform-bars > :nth-child(4) {
+    animation-delay: 270ms;
+    animation-duration: 1220ms;
+  }
+  .waveform-bars > :nth-child(5) {
+    animation-delay: 360ms;
+    animation-duration: 900ms;
+  }
+  .waveform-bars > :nth-child(6) {
+    animation-delay: 450ms;
+    animation-duration: 1060ms;
+  }
+  .waveform-bars > :nth-child(7) {
+    animation-delay: 540ms;
+    animation-duration: 1220ms;
+  }
+  .waveform-bars > :nth-child(8) {
+    animation-delay: 630ms;
+    animation-duration: 900ms;
+  }
+  .waveform-bars > :nth-child(9) {
+    animation-delay: 720ms;
+    animation-duration: 1060ms;
+  }
+  .waveform-bars > :nth-child(10) {
+    animation-delay: 810ms;
+    animation-duration: 900ms;
+  }
+  .waveform-bars > :nth-child(11) {
+    animation-delay: 900ms;
+    animation-duration: 1220ms;
+  }
+  .waveform-bars > :nth-child(12) {
+    animation-delay: 990ms;
+    animation-duration: 1060ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .glitch,
+    .glitch::before,
+    .glitch::after,
+    .crt-flicker,
+    .neon-pulse,
+    .digital-noise::before,
+    .holo-shimmer,
+    .typing-cursor::after,
+    .scan-sweep::after,
+    .waveform-bar,
+    .animate-fade-up,
+    .animate-pulse,
+    .animate-pulse-glow,
+    .animate-float,
+    .animate-shimmer {
+      animation: none !important;
+      transform: none !important;
+    }
+
+    .scan-sweep::after {
+      display: none;
+    }
   }
 }
