@@ -3,6 +3,10 @@
   "installCommand": "npm install",
   "buildCommand": "cd apps/web && npm run build",
   "outputDirectory": "apps/web/.next",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "@ems-api-url",
+    "NEXT_PUBLIC_SITE_URL": "https://epicmusicspace.com"
+  },
   "headers": [
     {
       "source": "/api/(.*)",

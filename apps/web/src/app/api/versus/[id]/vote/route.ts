@@ -44,10 +44,28 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { votedSongId } = parsed.data;
 
-  const match = await prisma.versusMatch.findUnique({ where: { id: matchId } });
+  const match = await prisma.versusMatch.findUnique({
+    where: { id: matchId },
+    include: {
+      songA: { select: { artistId: true } },
+      songB: { select: { artistId: true } },
+    },
+  });
   if (!match) {
     return NextResponse.json({ error: "Match not found" }, { status: 404 });
   }
+
+  // Prevent artists from voting on their own battles
+  if (
+    match.songA.artistId === session.user.id ||
+    match.songB.artistId === session.user.id
+  ) {
+    return NextResponse.json(
+      { error: "Artists cannot vote on battles featuring their own songs." },
+      { status: 403 }
+    );
+  }
+
   if (match.status === "COMPLETED") {
     return NextResponse.json({ error: "This match has ended." }, { status: 409 });
   }
@@ -95,6 +113,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       versusWins: songA.versusWins,
       versusLosses: songA.versusLosses,
       aiSentiment: 0.5,
+      boostScore: songA.boostScore,
       createdAt: songA.createdAt,
     });
     await prisma.song.update({
@@ -110,6 +129,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       versusWins: songB.versusWins,
       versusLosses: songB.versusLosses,
       aiSentiment: 0.5,
+      boostScore: songB.boostScore,
       createdAt: songB.createdAt,
     });
     await prisma.song.update({

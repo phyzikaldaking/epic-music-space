@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe, STRIPE_WEBHOOK_SECRET } from "@/lib/stripe";
+import { stripe, getStripeWebhookSecret } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { enqueueNotification } from "@/lib/queues";
 import { awardBadge } from "@/lib/badges";
@@ -19,7 +19,11 @@ export async function POST(req: NextRequest) {
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
+    event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      getStripeWebhookSecret(),
+    );
   } catch (err) {
     console.error("[stripe-webhook] Invalid signature", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
@@ -78,7 +82,9 @@ export async function POST(req: NextRequest) {
 // License purchase
 // ─────────────────────────────────────────────────────────
 
-async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) {
+async function handleLicenseCheckoutCompleted(
+  session: Stripe.Checkout.Session,
+) {
   const { songId, userId } = session.metadata ?? {};
   if (!songId || !userId) {
     console.error("[stripe-webhook] Missing metadata", session.metadata);
@@ -131,7 +137,7 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
     });
 
     // Revenue split: artist gets 90%, platform keeps 10%
-    const artistShare = parseFloat((licensePrice * 0.9).toFixed(2));
+    const artistShare = Math.round(licensePrice * 0.9 * 100) / 100;
     const period = new Date().toISOString().slice(0, 7); // e.g. "2026-04"
 
     // Create pending payout record for the artist
@@ -163,12 +169,19 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
             },
           });
           await tx.payout.updateMany({
-            where: { songId, userId: song.artistId, licenseTokenId: licenseToken.id },
+            where: {
+              songId,
+              userId: song.artistId,
+              licenseTokenId: licenseToken.id,
+            },
             data: { status: "PAID", paidAt: new Date() },
           });
         }
       } catch (err) {
-        console.error("[stripe-webhook] Transfer failed (will retry via manual payout)", err);
+        console.error(
+          "[stripe-webhook] Transfer failed (will retry via manual payout)",
+          err,
+        );
       }
     }
 
@@ -196,7 +209,10 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
     awardBadge(userId, "LICENSE_HOLDER"),
     // Check if this is the artist's first sale
     (async () => {
-      const song = await prisma.song.findUnique({ where: { id: songId }, select: { artistId: true, soldLicenses: true } });
+      const song = await prisma.song.findUnique({
+        where: { id: songId },
+        select: { artistId: true, soldLicenses: true },
+      });
       if (song && song.soldLicenses === 1) {
         await awardBadge(song.artistId, "FIRST_LICENSE_SOLD");
       }
@@ -218,7 +234,7 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
         coverUrl: song.coverUrl ?? null,
         soldLicenses: song.soldLicenses,
       };
-      await Promise.allSettled([
+      const results = await Promise.allSettled([
         supabase.channel(CHANNELS.marketplace).send({
           type: "broadcast",
           event: "license_sold",
@@ -230,10 +246,20 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
           payload: { songId },
         }),
       ]);
+      for (const result of results) {
+        if (result.status === "rejected") {
+          console.error(
+            "[stripe-webhook] Supabase broadcast failed",
+            result.reason,
+          );
+        }
+      }
     }
   }
 
-  console.log(`[stripe-webhook] License granted: song=${songId} user=${userId}`);
+  console.log(
+    `[stripe-webhook] License granted: song=${songId} user=${userId}`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────
@@ -241,13 +267,25 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
 // ─────────────────────────────────────────────────────────
 
 async function handleSubscriptionCheckoutCompleted(
-  session: Stripe.Checkout.Session
+  session: Stripe.Checkout.Session,
 ) {
   const { userId, tier } = session.metadata ?? {};
   if (!userId || !tier) {
-    console.error("[stripe-webhook] Missing subscription metadata", session.metadata);
+    console.error(
+      "[stripe-webhook] Missing subscription metadata",
+      session.metadata,
+    );
     return;
   }
+
+  const subscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : (session.subscription?.id ?? null);
+  const customerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : (session.customer?.id ?? null);
 
   // Persist customer ID on the transaction record for the billing portal
   await prisma.transaction.create({
@@ -257,11 +295,11 @@ async function handleSubscriptionCheckoutCompleted(
       type: "REVENUE_PAYOUT", // reuse existing enum; extend later for SUBSCRIPTION
       status: "SUCCEEDED",
       stripeSessionId: session.id,
-      stripePaymentIntentId: session.subscription as string | null ?? undefined,
+      stripePaymentIntentId: subscriptionId ?? undefined,
       metadata: {
-        stripeCustomerId: session.customer as string,
+        stripeCustomerId: customerId,
         tier,
-        subscriptionId: session.subscription,
+        subscriptionId,
       },
     },
   });
@@ -274,7 +312,9 @@ async function handleSubscriptionCheckoutCompleted(
     metadata: { tier },
   });
 
-  console.log(`[stripe-webhook] Subscription activated: user=${userId} tier=${tier}`);
+  console.log(
+    `[stripe-webhook] Subscription activated: user=${userId} tier=${tier}`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────
@@ -283,7 +323,7 @@ async function handleSubscriptionCheckoutCompleted(
 
 async function handleSubscriptionChange(
   sub: Stripe.Subscription,
-  eventType: string
+  eventType: string,
 ) {
   const customerId = sub.customer as string;
 
@@ -317,7 +357,9 @@ async function handleSubscriptionChange(
     });
   }
 
-  console.log(`[stripe-webhook] Subscription ${eventType}: customer=${customerId}`);
+  console.log(
+    `[stripe-webhook] Subscription ${eventType}: customer=${customerId}`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────
@@ -370,7 +412,9 @@ async function handleBoostCheckoutCompleted(session: Stripe.Checkout.Session) {
     });
   });
 
-  console.log(`[stripe-webhook] Boost granted: song=${songId} user=${userId} points=${boostPoints}`);
+  console.log(
+    `[stripe-webhook] Boost granted: song=${songId} user=${userId} points=${boostPoints}`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -398,7 +442,9 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
     metadata: { stripeSessionId: session.id },
   });
 
-  console.log(`[stripe-webhook] Checkout expired: session=${session.id} tx=${tx.id}`);
+  console.log(
+    `[stripe-webhook] Checkout expired: session=${session.id} tx=${tx.id}`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -426,7 +472,10 @@ async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
     type: "PAYMENT_FAILED",
     title: "Payment failed",
     body: `${failureMsg} Your card was not charged. Please try again with a different card.`,
-    metadata: { paymentIntentId: pi.id, failureCode: pi.last_payment_error?.code },
+    metadata: {
+      paymentIntentId: pi.id,
+      failureCode: pi.last_payment_error?.code,
+    },
   });
 
   console.log(`[stripe-webhook] Payment failed: pi=${pi.id} tx=${tx.id}`);
@@ -439,7 +488,10 @@ async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
 async function handleConnectAccountUpdated(account: Stripe.Account) {
   const emsUserId = account.metadata?.emsUserId;
   if (!emsUserId) {
-    console.warn("[stripe-webhook] account.updated missing emsUserId", account.id);
+    console.warn(
+      "[stripe-webhook] account.updated missing emsUserId",
+      account.id,
+    );
     return;
   }
 
@@ -449,13 +501,19 @@ async function handleConnectAccountUpdated(account: Stripe.Account) {
     data: { stripeConnectId: account.id },
   });
 
-  if (account.charges_enabled && account.payouts_enabled && account.details_submitted) {
+  if (
+    account.charges_enabled &&
+    account.payouts_enabled &&
+    account.details_submitted
+  ) {
     await enqueueNotification({
       userId: emsUserId,
       type: "CONNECT_ONBOARDING_COMPLETE",
       title: "Payouts enabled! 💸",
       body: "Your Stripe account is verified. You will now receive automatic payouts when licenses sell.",
     });
-    console.log(`[stripe-webhook] Connect onboarding complete: user=${emsUserId} account=${account.id}`);
+    console.log(
+      `[stripe-webhook] Connect onboarding complete: user=${emsUserId} account=${account.id}`,
+    );
   }
 }

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" role="img" aria-labelledby="title desc">
+  <title id="title">Orbital Chase cover art</title>
+  <desc id="desc">A fast red, gold, and blue orbital tunnel for a trailer cue.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#071014"/>
+      <stop offset=".38" stop-color="#4a3baa"/>
+      <stop offset=".72" stop-color="#ff4b4b"/>
+      <stop offset="1" stop-color="#ffd700"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="800" fill="url(#bg)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="4" opacity=".24">
+    <path d="M96 616 C252 420 410 304 704 152"/>
+    <path d="M42 466 C240 390 428 302 760 248"/>
+    <path d="M130 164 C304 278 504 390 720 632"/>
+  </g>
+  <g fill="none" stroke="#33f8ff" stroke-width="10" stroke-linecap="round">
+    <path d="M138 552 C300 390 468 294 674 204"/>
+  </g>
+  <circle cx="596" cy="246" r="48" fill="#05060a" stroke="#ffd700" stroke-width="8"/>
+  <circle cx="214" cy="510" r="28" fill="#66faff"/>
+  <text x="56" y="692" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="800">Orbital Chase</text>
+  <text x="58" y="736" fill="rgba(255,255,255,.75)" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="6">EMS DEMO CUE</text>
+</svg>

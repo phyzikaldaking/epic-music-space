@@ -68,7 +68,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? (
+    process.env.NODE_ENV === "production"
+      ? (() => { throw new Error("NEXT_PUBLIC_APP_URL must be set in production"); })()
+      : "http://localhost:3000"
+  );
 
   // Create Stripe checkout session
   const stripeSession = await stripe.checkout.sessions.create({
@@ -92,8 +96,8 @@ export async function POST(req: NextRequest) {
       songId,
       userId: session.user.id,
     },
-    success_url: `${baseUrl}/studio/${songId}?checkout=success`,
-    cancel_url: `${baseUrl}/studio/${songId}?checkout=cancelled`,
+    success_url: `${baseUrl}/track/${songId}?checkout=success`,
+    cancel_url: `${baseUrl}/track/${songId}?checkout=cancelled`,
   });
 
   // Record pending transaction
@@ -118,4 +122,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.redirect(stripeSession.url!, { status: 303 });
 }
-

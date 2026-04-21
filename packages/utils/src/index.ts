@@ -8,9 +8,10 @@ export function formatCurrency(cents: number): string {
   }).format(cents / 100);
 }
 
-/** Format a Decimal string from Prisma to a display price */
-export function formatPrice(value: string | number): string {
-  const num = typeof value === "string" ? parseFloat(value) : value;
+/** Format a Decimal/string/number value to a display price */
+export function formatPrice(value: string | number | { toString(): string }): string {
+  const num =
+    typeof value === "number" ? value : parseFloat(value.toString());
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",

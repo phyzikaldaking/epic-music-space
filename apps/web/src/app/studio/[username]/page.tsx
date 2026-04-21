@@ -6,9 +6,44 @@ import DistrictBadge from "@/components/DistrictBadge";
 import SongCard from "@/components/SongCard";
 import FollowButton from "@/components/FollowButton";
 import { BADGE_META } from "@/lib/badges";
+import type { Metadata } from "next";
 
 interface Props {
   params: Promise<{ username: string }>;
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { username } = await params;
+  const studio = await prisma.studio.findUnique({
+    where: { username },
+    select: {
+      bio: true,
+      user: { select: { name: true, image: true, _count: { select: { songs: true } } } },
+    },
+  });
+  if (!studio) return { title: "Studio Not Found" };
+
+  const artistName = studio.user.name ?? username;
+  const title = `${artistName}'s Studio — Epic Music Space`;
+  const description = studio.bio
+    ?? `Listen to and license music from ${artistName} on Epic Music Space. ${studio.user._count.songs} tracks available.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: studio.user.image ? [{ url: studio.user.image }] : [],
+      type: "profile",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: studio.user.image ? [studio.user.image] : [],
+    },
+  };
 }
 
 export default async function StudioProfilePage({ params }: Props) {
@@ -82,7 +117,15 @@ export default async function StudioProfilePage({ params }: Props) {
         <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-2xl border-4 border-[#0a0a0f] bg-gradient-to-br from-brand-500 to-accent-500 flex items-center justify-center text-3xl">
           {user.image ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={user.image} alt={user.name ?? ""} className="h-full w-full object-cover" />
+            <img
+              src={user.image}
+              alt={user.name ?? ""}
+              width={192}
+              height={192}
+              loading="eager"
+              decoding="async"
+              className="h-full w-full object-cover"
+            />
           ) : (
             "🎤"
           )}
@@ -195,10 +238,13 @@ export default async function StudioProfilePage({ params }: Props) {
                 artist={song.artist}
                 genre={song.genre}
                 coverUrl={song.coverUrl}
-                licensePrice={song.licensePrice}
-                revenueSharePct={song.revenueSharePct}
+                audioUrl={song.audioUrl}
+                licensePrice={song.licensePrice.toString()}
+                revenueSharePct={song.revenueSharePct.toString()}
                 soldLicenses={song.soldLicenses}
                 totalLicenses={song.totalLicenses}
+                bpm={song.bpm}
+                musicalKey={song.key}
               />
             ))}
           </div>

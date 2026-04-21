@@ -15,6 +15,8 @@ export default async function BoostPage() {
     });
   }
 
+  const boostedCount = await prisma.song.count({ where: { boostScore: { gt: 0 } } });
+
   const packages = [
     {
       id: "plays_1k",
@@ -68,11 +70,9 @@ export default async function BoostPage() {
           Invest in visibility. Every boost drives real plays and elevates your track on the EMS ranking algorithm.
         </p>
         <div className="mt-6 flex items-center justify-center gap-6 text-sm text-white/40">
-          <span><span className="text-brand-400 font-bold">2,847</span> tracks boosted</span>
+          <span><span className="text-brand-400 font-bold">{boostedCount.toLocaleString()}</span> tracks boosted</span>
           <span>•</span>
-          <span><span className="text-accent-400 font-bold">94%</span> see rank improvement</span>
-          <span>•</span>
-          <span><span className="text-gold font-bold">$128K</span> in boosts this month</span>
+          <span>Real plays. Real ranking impact.</span>
         </div>
       </div>
 

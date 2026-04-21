@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { formatPrice } from "@ems/utils";
+
+type PriceLike = string | number | { toString(): string };
 
 interface SongCardProps {
   id: string;
@@ -10,13 +13,19 @@ interface SongCardProps {
   genre?: string | null;
   coverUrl?: string | null;
   audioUrl?: string | null;
-  licensePrice: string | number;
-  revenueSharePct: string | number;
+  licensePrice: PriceLike;
+  revenueSharePct: PriceLike;
   soldLicenses: number;
   totalLicenses: number;
+  bpm?: number | null;
+  musicalKey?: string | null;
   aiScore?: number;
   isTrending?: boolean;
   isBoosted?: boolean;
+}
+
+function displayPrice(value: PriceLike) {
+  return formatPrice(typeof value === "number" || typeof value === "string" ? value : value.toString());
 }
 
 export default function SongCard({
@@ -30,133 +39,154 @@ export default function SongCard({
   revenueSharePct,
   soldLicenses,
   totalLicenses,
+  bpm,
+  musicalKey,
   aiScore,
   isTrending = false,
   isBoosted = false,
 }: SongCardProps) {
-  const remaining = totalLicenses - soldLicenses;
-  const remainingPct = Math.round((remaining / totalLicenses) * 100);
-  const soldOutSoon = remainingPct <= 20;
+  const remaining = Math.max(0, totalLicenses - soldLicenses);
+  const remainingPct =
+    totalLicenses > 0 ? Math.round((remaining / totalLicenses) * 100) : 0;
+  const soldOutSoon = totalLicenses > 0 && remainingPct <= 20;
+  const revenueShare = revenueSharePct.toString();
 
-  // ── Audio preview state ────────────────────────────────────────────────────
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0); // 0–100
+  const [progress, setProgress] = useState(0);
+  const [audioError, setAudioError] = useState(false);
 
-  // Cleanup audio on unmount
   useEffect(() => {
     return () => {
-      audioRef.current?.pause();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+        audioRef.current = null;
+      }
     };
   }, []);
 
-  function handlePlayClick(e: React.MouseEvent) {
-    e.preventDefault(); // don't navigate to song page
-    e.stopPropagation();
-
-    if (!audioUrl) return;
+  function handlePlayClick() {
+    if (!audioUrl || audioError) return;
 
     if (!audioRef.current) {
-      audioRef.current = new Audio(audioUrl);
-      audioRef.current.volume = 0.8;
+      const audio = new Audio(audioUrl);
+      audio.preload = "metadata";
+      audio.volume = 0.8;
 
-      audioRef.current.addEventListener("timeupdate", () => {
-        const a = audioRef.current;
-        if (a && a.duration) {
-          setProgress((a.currentTime / a.duration) * 100);
+      audio.addEventListener("timeupdate", () => {
+        if (audio.duration) {
+          setProgress((audio.currentTime / audio.duration) * 100);
         }
       });
 
-      audioRef.current.addEventListener("ended", () => {
+      audio.addEventListener("ended", () => {
         setPlaying(false);
         setProgress(0);
+        audio.currentTime = 0;
       });
+
+      audio.addEventListener("pause", () => setPlaying(false));
+      audio.addEventListener("error", () => {
+        setAudioError(true);
+        setPlaying(false);
+      });
+
+      audioRef.current = audio;
     }
 
     if (playing) {
       audioRef.current.pause();
       setPlaying(false);
-    } else {
-      void audioRef.current.play();
-      setPlaying(true);
+      return;
     }
+
+    void audioRef.current
+      .play()
+      .then(() => setPlaying(true))
+      .catch(() => {
+        setAudioError(true);
+        setPlaying(false);
+      });
   }
 
   return (
-    <a
-      href={`/studio/${id}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/8 bg-[#141414] card-hover-neon"
-    >
-      {/* ── Cover art ─────────────────────────────────── */}
-      <div className="relative h-48 w-full overflow-hidden">
+    <article className="group relative flex flex-col overflow-hidden rounded-lg border border-white/8 bg-[#141414] transition hover:border-brand-500/50 hover:shadow-[0_12px_40px_rgba(0,0,0,0.36)]">
+      <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-br from-brand-900/70 to-accent-700/40">
         {coverUrl ? (
+          // User-provided cover URLs can come from multiple storage providers.
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={coverUrl}
-            alt={`${title} cover`}
-            className="h-full w-full object-cover opacity-80 transition duration-300 group-hover:opacity-100 group-hover:scale-105"
+            alt={`${title} cover art`}
+            width={640}
+            height={640}
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover opacity-[0.86] transition duration-300 group-hover:scale-105 group-hover:opacity-100"
           />
         ) : (
-          <div className="h-full w-full bg-gradient-to-br from-brand-800/60 to-accent-700/40 flex items-center justify-center text-5xl">
-            🎵
+          <div className="flex h-full w-full items-center justify-center">
+            <svg
+              aria-hidden="true"
+              className="h-16 w-16 text-white/42"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path d="M12 3v10.55A4 4 0 1 0 14 17V7h6V3h-8Z" />
+            </svg>
           </div>
         )}
 
-        {/* Dark gradient overlay for text readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/76 via-black/8 to-transparent" />
 
-        {/* Play / Pause button overlay */}
         {audioUrl && (
           <button
             type="button"
             onClick={handlePlayClick}
-            aria-label={playing ? "Pause preview" : "Play preview"}
-            className="absolute inset-0 flex items-center justify-center opacity-0 transition group-hover:opacity-100 focus:opacity-100"
+            disabled={audioError}
+            aria-label={
+              audioError
+                ? "Preview unavailable"
+                : playing
+                  ? `Pause ${title} preview`
+                  : `Play ${title} preview`
+            }
+            title={audioError ? "Preview unavailable" : undefined}
+            className={`absolute bottom-3 right-3 flex h-12 w-12 items-center justify-center rounded-full shadow-2xl backdrop-blur transition hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${
+              audioError ? "bg-white/20" : playing ? "bg-accent-500/95" : "bg-brand-500/95"
+            }`}
           >
-            <div
-              className={`flex h-14 w-14 items-center justify-center rounded-full backdrop-blur glow-purple shadow-2xl transition ${
-                playing ? "bg-accent-500/90" : "bg-brand-500/90"
-              }`}
-            >
-              {playing ? (
-                /* Pause icon */
-                <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                </svg>
-              ) : (
-                /* Play icon */
-                <svg className="ml-1 h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              )}
-            </div>
+            {audioError ? (
+              <svg className="h-5 w-5 text-white/60" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+              </svg>
+            ) : playing ? (
+              <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+              </svg>
+            ) : (
+              <svg className="ml-0.5 h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
           </button>
         )}
 
-        {/* Badges (top row) */}
         <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
-          {isTrending && <span className="badge-trending">🔥 Trending</span>}
-          {isBoosted  && <span className="badge-boosted">⚡ Boosted</span>}
+          {isTrending && <span className="badge-trending">Trending</span>}
+          {isBoosted && <span className="badge-boosted">Boosted</span>}
         </div>
 
-        {/* Genre badge */}
-        {genre && (
-          <span className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-0.5 text-xs font-medium text-white/80 backdrop-blur">
-            {genre}
-          </span>
-        )}
-
-        {/* AI Score pill at bottom-left */}
         {aiScore !== undefined && aiScore > 0 && (
           <div className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 backdrop-blur">
-            <span className="text-[10px] text-white/50">AI</span>
-            <span className="text-xs font-bold text-brand-400">{aiScore.toFixed(1)}</span>
+            <span className="text-[10px] text-white/50">EMS</span>
+            <span className="text-xs font-bold text-brand-300">{aiScore.toFixed(1)}</span>
           </div>
         )}
 
-        {/* Audio progress bar (visible while playing) */}
         {playing && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10" aria-hidden="true">
             <div
               className="h-full bg-gradient-to-r from-brand-500 to-accent-500 transition-all"
               style={{ width: `${progress}%` }}
@@ -165,29 +195,49 @@ export default function SongCard({
         )}
       </div>
 
-      {/* ── Info ──────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col gap-3 p-4">
+      <div className="flex flex-1 flex-col gap-4 p-4">
         <div>
-          <h3 className="font-bold text-white line-clamp-1">{title}</h3>
-          <p className="text-sm text-white/50">{artist}</p>
+          <Link
+            href={`/track/${id}`}
+            className="line-clamp-1 font-bold text-white transition hover:text-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+          >
+            {title}
+          </Link>
+          <p className="mt-1 line-clamp-1 text-sm text-white/50">{artist}</p>
         </div>
 
-        {/* Economics row */}
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-bold text-brand-400">
-            {formatPrice(licensePrice)} / license
+        <div className="flex min-h-7 flex-wrap gap-1.5">
+          {genre && (
+            <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">
+              {genre}
+            </span>
+          )}
+          {bpm && (
+            <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">
+              {bpm} BPM
+            </span>
+          )}
+          {musicalKey && (
+            <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">
+              Key {musicalKey}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-start justify-between gap-3 text-sm">
+          <span className="font-bold text-brand-300">
+            {displayPrice(licensePrice)} / license
           </span>
-          <span className="rounded-full bg-gold-500/10 px-2 py-0.5 text-xs font-semibold text-gold-400 border border-gold-500/20">
-            {revenueSharePct}% rev share
+          <span className="rounded-full border border-gold-500/20 bg-gold-500/10 px-2 py-0.5 text-xs font-semibold text-gold-300">
+            {revenueShare}% rev share
           </span>
         </div>
 
-        {/* Availability bar */}
         <div>
-          <div className="mb-1 flex justify-between text-xs">
-            <span className={soldOutSoon ? "text-red-400 font-semibold" : "text-white/45"}>
+          <div className="mb-1 flex justify-between gap-3 text-xs">
+            <span className={soldOutSoon ? "font-semibold text-red-300" : "text-white/45"}>
               {remaining} of {totalLicenses} left
-              {soldOutSoon && " · Almost gone!"}
+              {soldOutSoon && " · Almost gone"}
             </span>
             <span className="text-white/30">{remainingPct}%</span>
           </div>
@@ -203,10 +253,13 @@ export default function SongCard({
           </div>
         </div>
 
-        <button className="mt-auto w-full rounded-xl bg-brand-500 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 glow-purple-sm">
+        <Link
+          href={`/track/${id}`}
+          className="mt-auto inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-brand-500 px-4 text-sm font-bold text-white transition hover:bg-brand-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 glow-purple-sm"
+        >
           View &amp; License
-        </button>
+        </Link>
       </div>
-    </a>
+    </article>
   );
 }

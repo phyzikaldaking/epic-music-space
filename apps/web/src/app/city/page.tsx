@@ -1,21 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import DistrictBadge from "@/components/DistrictBadge";
 import { DISTRICT_META } from "@/lib/scoring";
-import nextDynamic from "next/dynamic";
+import CityScene3DClient from "@/components/CityScene3DClient";
 import type { CityBuilding } from "@/app/api/city/data/route";
-
-// Dynamic import keeps Babylon.js out of the server bundle
-const CityScene3D = nextDynamic(
-  () => import("@/components/CityScene3D"),
-  { ssr: false, loading: () => (
-    <div className="flex h-[520px] w-full items-center justify-center rounded-2xl bg-[#0d0d14] border border-white/8">
-      <div className="flex flex-col items-center gap-3">
-        <div className="h-8 w-8 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
-        <p className="text-xs text-white/30">Loading 3D city…</p>
-      </div>
-    </div>
-  ) }
-);
 
 export const dynamic = "force-dynamic";
 
@@ -295,7 +282,7 @@ export default async function CityPage() {
 
         {/* ── 3-D City Scene ──────────────────────────────────────────────── */}
         <div className="mb-12">
-          <CityScene3D buildings={cityBuildings} />
+          <CityScene3DClient buildings={cityBuildings} />
         </div>
 
         {/* District overview cards */}

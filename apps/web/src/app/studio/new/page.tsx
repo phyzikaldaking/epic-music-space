@@ -129,7 +129,7 @@ export default function StudioNewPage() {
     }
 
     setSubmitState("done");
-    router.push(`/studio/${data.id}`);
+    router.push(`/track/${data.id}`);
   }
 
   const uploading = audioUploadState === "uploading" || coverUploadState === "uploading";

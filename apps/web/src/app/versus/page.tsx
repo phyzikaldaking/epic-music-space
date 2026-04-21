@@ -48,7 +48,19 @@ export default async function VersusPage() {
     <div className="mx-auto max-w-4xl px-4 py-12">
       <div className="mb-10 flex items-start justify-between">
         <div>
-          <h1 className="text-4xl font-extrabold">⚔️ Versus</h1>
+          <h1 className="flex items-center gap-3 text-4xl font-extrabold">
+            <svg
+              aria-hidden="true"
+              className="h-9 w-9 text-accent-400"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="m14.121 14.121 5.657-5.657M14.121 14.121 9.879 9.879M14.121 14.121l2.122 2.121M9.879 9.879 4.222 4.222M9.879 9.879l-2.121 2.121M6.343 17.657l1.415-1.415M17.657 6.343l-1.415 1.415" />
+            </svg>
+            Versus
+          </h1>
           <p className="mt-2 text-white/50">
             Vote for your favorite tracks. Winners rise in the discovery algorithm.
           </p>

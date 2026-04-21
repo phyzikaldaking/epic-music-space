@@ -6,7 +6,7 @@ import { BADGE_META } from "@/lib/badges";
 
 export default async function DashboardPage() {
   const session = await auth();
-  if (!session) redirect("/auth/signin");
+  if (!session?.user?.id) redirect("/auth/signin");
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: session.user.id },
@@ -200,7 +200,7 @@ export default async function DashboardPage() {
               </p>
             </div>
             <a
-              href="/api/stripe-connect/onboarding"
+              href="/dashboard/payouts"
               className={`flex-shrink-0 rounded-xl px-5 py-2 text-sm font-bold text-white transition ${
                 connectStatus.connected
                   ? "bg-yellow-600 hover:bg-yellow-700"
@@ -220,6 +220,12 @@ export default async function DashboardPage() {
                 You receive 90% of every license sale automatically via Stripe.
               </p>
             </div>
+            <a
+              href="/dashboard/payouts"
+              className="flex-shrink-0 rounded-xl bg-green-700/50 border border-green-500/30 px-5 py-2 text-sm font-bold text-green-300 hover:bg-green-700/70 transition"
+            >
+              Manage Payouts →
+            </a>
           </div>
         )}
 
@@ -282,7 +288,7 @@ export default async function DashboardPage() {
                     >
                       <td className="px-5 py-3.5">
                         <a
-                          href={`/studio/${l.song.id}`}
+                          href={`/track/${l.song.id}`}
                           className="font-semibold text-brand-400 hover:underline"
                         >
                           {l.song.title}
@@ -356,7 +362,7 @@ export default async function DashboardPage() {
                       >
                         <td className="px-5 py-3.5">
                           <a
-                            href={`/studio/${s.id}`}
+                            href={`/track/${s.id}`}
                             className="font-semibold text-brand-400 hover:underline"
                           >
                             {s.title}
@@ -503,7 +509,7 @@ export default async function DashboardPage() {
                     return (
                       <tr key={s.id} className="border-b border-white/5 transition hover:bg-white/3">
                         <td className="px-5 py-3.5">
-                          <a href={`/studio/${s.id}`} className="font-semibold text-brand-400 hover:underline">
+                          <a href={`/track/${s.id}`} className="font-semibold text-brand-400 hover:underline">
                             {s.title}
                           </a>
                         </td>

@@ -143,6 +143,11 @@ model Song {
   payouts           Payout[]
   versusMatchesA    VersusMatch[] @relation("VersusA")
   versusMatchesB    VersusMatch[] @relation("VersusB")
+
+  @@index([artistId])
+  @@index([district])
+  @@index([isActive])
+  @@index([aiScore])
 }
 
 // ─────────────────────────────────────────
@@ -200,6 +205,9 @@ model Transaction {
 
   licenseTokenId      String?
   licenseToken        LicenseToken?     @relation(fields: [licenseTokenId], references: [id])
+
+  @@index([userId])
+  @@index([status])
 }
 
 enum TransactionType {
@@ -235,6 +243,10 @@ model Payout {
 
   licenseTokenId String?
   licenseToken   LicenseToken? @relation(fields: [licenseTokenId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([period])
 }
 
 enum PayoutStatus {
@@ -289,6 +301,9 @@ model VersusMatch {
   createdAt DateTime     @default(now())
 
   votes     VersusVote[]
+
+  @@index([status])
+  @@index([endsAt])
 }
 
 enum VersusStatus {

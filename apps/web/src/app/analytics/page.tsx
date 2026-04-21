@@ -229,7 +229,7 @@ export default async function AnalyticsPage() {
                       >
                         <td className="py-3">
                           <a
-                            href={`/studio/${song.id}`}
+                            href={`/track/${song.id}`}
                             className="font-medium hover:text-brand-400 transition truncate max-w-[200px] block"
                           >
                             {song.title}

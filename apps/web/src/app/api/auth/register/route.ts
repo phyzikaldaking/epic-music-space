@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { maybeAwardEarlyAdopter } from "@/lib/badges";
 import { randomBytes } from "crypto";
+import { strictLimiter } from "@/lib/rateLimit";
 
 function generateCode(): string {
   return randomBytes(5).toString("hex").toUpperCase(); // 10-char hex code
@@ -18,6 +19,20 @@ const registerSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown";
+
+  try {
+    await strictLimiter.consume(`register:${ip}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many registration attempts. Please try again later." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
   try {
     const body = await req.json();
     const parsed = registerSchema.safeParse(body);

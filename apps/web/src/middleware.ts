@@ -1,26 +1,20 @@
-import { auth } from "@/lib/auth";
-import { NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Next.js Edge Middleware — route protection for EMS.
+ * Next.js Edge Middleware - route protection for EMS.
  *
- * Protected prefixes:
- *   /dashboard      – requires any authenticated session
- *   /boost          – requires any authenticated session
- *   /analytics      – requires any authenticated session
- *   /profile        – requires any authenticated session
- *   /invite         – requires any authenticated session
- *   /api/stripe-connect – requires any authenticated session
- *   /studio/new     – requires ARTIST or LABEL or ADMIN role
- *
- * Unauthenticated users are redirected to /auth/signin with a `callbackUrl`
- * so they land back on the page they were trying to reach after signing in.
+ * Middleware must stay Edge-safe, so it reads the JWT directly instead of
+ * importing the Prisma-backed NextAuth adapter.
  */
-export default auth((req) => {
+export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const session = req.auth;
+  const token = await getToken({
+    req,
+    secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+  });
 
-  const isAuthed = !!session?.user?.id;
+  const isAuthed = !!(token?.sub ?? token?.id);
 
   function redirectToSignIn() {
     const signIn = new URL("/auth/signin", req.url);
@@ -28,50 +22,35 @@ export default auth((req) => {
     return NextResponse.redirect(signIn);
   }
 
-  // ── /dashboard — require authentication ────────────────────────────────────
-  if (pathname.startsWith("/dashboard")) {
-    if (!isAuthed) return redirectToSignIn();
-  }
-
-  // ── /boost — require authentication ────────────────────────────────────────
-  if (pathname.startsWith("/boost")) {
-    if (!isAuthed) return redirectToSignIn();
-  }
-
-  // ── /analytics — require authentication ────────────────────────────────────
-  if (pathname.startsWith("/analytics")) {
-    if (!isAuthed) return redirectToSignIn();
-  }
-
-  // ── /profile/edit — require authentication ─────────────────────────────────
-  if (pathname.startsWith("/profile")) {
-    if (!isAuthed) return redirectToSignIn();
-  }
-
-  // ── /invite — require authentication ───────────────────────────────────────
-  if (pathname.startsWith("/invite")) {
-    if (!isAuthed) return redirectToSignIn();
-  }
-
-  // ── /api/stripe-connect — require authentication ───────────────────────────
   if (pathname.startsWith("/api/stripe-connect")) {
     if (!isAuthed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    return NextResponse.next();
   }
 
-  // ── /studio/new — require artist / label / admin ───────────────────────────
+  const protectedPrefixes = [
+    "/dashboard",
+    "/boost",
+    "/analytics",
+    "/profile",
+    "/invite",
+  ];
+
+  if (protectedPrefixes.some((prefix) => pathname.startsWith(prefix))) {
+    if (!isAuthed) return redirectToSignIn();
+  }
+
   if (pathname === "/studio/new") {
     if (!isAuthed) return redirectToSignIn();
-    // @ts-expect-error role is a custom JWT field
-    const role: string = session?.user?.role ?? "LISTENER";
+    const role = String(token?.role ?? "LISTENER");
     if (role === "LISTENER") {
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
   }
 
   return NextResponse.next();
-});
+}
 
 export const config = {
   matcher: [

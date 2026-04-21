@@ -55,11 +55,16 @@ export default function VersusCard({
     };
   }, [matchId]);
 
-  // Cleanup audio on unmount
+  // Cleanup audio on unmount — release src to free network/memory resources
   useEffect(() => {
     return () => {
-      audioARef.current?.pause();
-      audioBRef.current?.pause();
+      for (const ref of [audioARef, audioBRef]) {
+        if (ref.current) {
+          ref.current.pause();
+          ref.current.src = "";
+          ref.current = null;
+        }
+      }
     };
   }, []);
 

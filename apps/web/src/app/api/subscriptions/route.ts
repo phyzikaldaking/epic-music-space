@@ -11,7 +11,7 @@ import { strictLimiter } from "@/lib/rateLimit";
 // price in your Stripe dashboard.
 // ─────────────────────────────────────────────────────────
 
-export const SUBSCRIPTION_TIERS = [
+const SUBSCRIPTION_TIERS = [
   {
     key: "starter",
     name: "Starter",

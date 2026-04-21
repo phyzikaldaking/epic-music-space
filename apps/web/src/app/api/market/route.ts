@@ -164,8 +164,8 @@ export async function POST(req: NextRequest) {
       },
     ],
     metadata: { songId, userId: session.user.id, quantity: String(quantity) },
-    success_url: `${baseUrl}/studio/${songId}?checkout=success`,
-    cancel_url: `${baseUrl}/studio/${songId}?checkout=cancelled`,
+    success_url: `${baseUrl}/track/${songId}?checkout=success`,
+    cancel_url: `${baseUrl}/track/${songId}?checkout=cancelled`,
   });
 
   // Record pending transaction

@@ -8,7 +8,7 @@ const connection = getRedis();
 // ─────────────────────────────────────────────────────────
 
 /** Only instantiate queues when Redis is available */
-function makeQueue<T extends Record<string, unknown>>(name: string) {
+function makeQueue<T>(name: string) {
   if (!connection) return null;
   return new Queue<T>(name, {
     connection,

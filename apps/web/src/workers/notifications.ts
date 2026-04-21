@@ -13,6 +13,7 @@ import { Worker } from "bullmq";
 import { getRedis } from "../lib/redis";
 import { prisma } from "../lib/prisma";
 import type { NotificationJobData } from "../lib/queues";
+import type { Prisma } from "@ems/db";
 
 const connection = getRedis();
 
@@ -36,7 +37,13 @@ const worker = new Worker<NotificationJobData>(
     }
 
     await prisma.notification.create({
-      data: { userId, type, title, body, metadata: metadata ?? {} },
+      data: {
+        userId,
+        type,
+        title,
+        body,
+        metadata: (metadata ?? {}) as Prisma.InputJsonValue,
+      },
     });
 
     console.info(

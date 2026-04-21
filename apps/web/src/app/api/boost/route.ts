@@ -10,7 +10,7 @@ import { enqueueAnalytics } from "@/lib/queues";
 // Boost package definitions
 // ─────────────────────────────────────────────────────────
 
-export const BOOST_PACKAGES = {
+const BOOST_PACKAGES = {
   plays_1k: {
     id: "plays_1k",
     label: "1,000 Plays",
@@ -36,8 +36,6 @@ export const BOOST_PACKAGES = {
     durationDays: 7,
   },
 } as const;
-
-export type BoostPackageId = keyof typeof BOOST_PACKAGES;
 
 const boostSchema = z.object({
   songId: z.string().min(1, "songId is required"),

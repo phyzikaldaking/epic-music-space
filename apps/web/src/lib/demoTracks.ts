@@ -1,0 +1,55 @@
+export const demoTracks = [
+  {
+    id: "demo-stellar-drift",
+    title: "Stellar Drift",
+    artist: "EMS Demo Orchestra",
+    genre: "Cinematic",
+    audioUrl: "/demo/audio/stellar-drift.wav",
+    coverUrl: "/demo/covers/stellar-drift.svg",
+    bpm: 86,
+    key: "A minor",
+    licensePrice: "49.00",
+    revenueSharePct: "7.50",
+    totalLicenses: 100,
+    soldLicenses: 12,
+    aiScore: 92.4,
+    description:
+      "Slow-burn cosmic tension for documentaries, title sequences, and atmospheric game menus.",
+  },
+  {
+    id: "demo-orbital-chase",
+    title: "Orbital Chase",
+    artist: "EMS Demo Orchestra",
+    genre: "Trailer",
+    audioUrl: "/demo/audio/orbital-chase.wav",
+    coverUrl: "/demo/covers/orbital-chase.svg",
+    bpm: 128,
+    key: "C minor",
+    licensePrice: "79.00",
+    revenueSharePct: "8.00",
+    totalLicenses: 75,
+    soldLicenses: 21,
+    aiScore: 95.1,
+    description:
+      "Percussive sci-fi momentum for launch trailers, highlight reels, and mission reveals.",
+  },
+  {
+    id: "demo-nebula-rise",
+    title: "Nebula Rise",
+    artist: "EMS Demo Orchestra",
+    genre: "Ambient",
+    audioUrl: "/demo/audio/nebula-rise.wav",
+    coverUrl: "/demo/covers/nebula-rise.svg",
+    bpm: 102,
+    key: "G minor",
+    licensePrice: "59.00",
+    revenueSharePct: "6.50",
+    totalLicenses: 120,
+    soldLicenses: 18,
+    aiScore: 89.8,
+    description:
+      "Hopeful orbital ambience for creator intros, science explainers, and cinematic transitions.",
+  },
+] as const;
+
+export type DemoTrack = (typeof demoTracks)[number];

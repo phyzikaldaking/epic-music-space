@@ -60,8 +60,18 @@ export default function AudioPlayer({ audioUrl, title }: AudioPlayerProps) {
       audio.pause();
       setPlaying(false);
     } else {
-      void audio.play();
-      setPlaying(true);
+      setLoading(true);
+      void audio
+        .play()
+        .then(() => {
+          setPlaying(true);
+          setLoading(false);
+        })
+        .catch(() => {
+          setPlaying(false);
+          setLoading(false);
+          setError(true);
+        });
     }
   }
 
@@ -71,7 +81,23 @@ export default function AudioPlayer({ audioUrl, title }: AudioPlayerProps) {
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     audio.currentTime = ratio * audio.duration;
+    setCurrentTime(audio.currentTime);
     setProgress(ratio * 100);
+  }
+
+  function seekBy(seconds: number) {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const durationLimit = Number.isFinite(audio.duration)
+      ? audio.duration
+      : audio.currentTime + seconds;
+    const nextTime = Math.max(0, Math.min(durationLimit, audio.currentTime + seconds));
+    audio.currentTime = nextTime;
+    setCurrentTime(nextTime);
+    if (audio.duration) {
+      setProgress((nextTime / audio.duration) * 100);
+    }
   }
 
   function fmt(s: number) {
@@ -83,17 +109,27 @@ export default function AudioPlayer({ audioUrl, title }: AudioPlayerProps) {
 
   if (error) {
     return (
-      <div className="glass rounded-2xl p-4 text-center text-sm text-red-400/70">
-        ⚠ Preview unavailable
+      <div className="glass rounded-lg p-4 text-center text-sm text-red-400/70">
+        Preview unavailable
       </div>
     );
   }
 
   return (
-    <div className="glass rounded-2xl p-5">
-      <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-white/35">
-        Preview
-      </p>
+    <div className="glass rounded-lg p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-widest text-white/35">
+            Preview
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-white/76">
+            {title}
+          </p>
+        </div>
+        <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs text-white/45">
+          {fmt(duration)}
+        </span>
+      </div>
 
       {/* Controls row */}
       <div className="flex items-center gap-4">
@@ -129,16 +165,17 @@ export default function AudioPlayer({ audioUrl, title }: AudioPlayerProps) {
             className="relative h-2 w-full cursor-pointer overflow-hidden rounded-full bg-white/10"
             onClick={handleSeek}
             role="slider"
-            aria-label="Seek"
+            aria-label={`Seek position in ${title}`}
             aria-valuenow={Math.round(progress)}
             aria-valuemin={0}
             aria-valuemax={100}
+            aria-valuetext={`${fmt(currentTime)} of ${fmt(duration)}`}
             tabIndex={0}
             onKeyDown={(e) => {
               const audio = audioRef.current;
               if (!audio) return;
-              if (e.key === "ArrowRight") audio.currentTime = Math.min(audio.duration, audio.currentTime + 5);
-              if (e.key === "ArrowLeft") audio.currentTime = Math.max(0, audio.currentTime - 5);
+              if (e.key === "ArrowRight") seekBy(5);
+              if (e.key === "ArrowLeft") seekBy(-5);
             }}
           >
             {/* Buffered / background */}
@@ -156,9 +193,24 @@ export default function AudioPlayer({ audioUrl, title }: AudioPlayerProps) {
         </div>
       </div>
 
-      <p className="mt-3 text-xs text-white/25 text-center">
-        Preview · {title}
-      </p>
+      <div className="mt-4 flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => seekBy(-10)}
+          aria-label={`Skip back 10 seconds in ${title}`}
+          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-white/55 transition hover:border-white/25 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+        >
+          -10s
+        </button>
+        <button
+          type="button"
+          onClick={() => seekBy(10)}
+          aria-label={`Skip forward 10 seconds in ${title}`}
+          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-white/55 transition hover:border-white/25 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+        >
+          +10s
+        </button>
+      </div>
     </div>
   );
 }

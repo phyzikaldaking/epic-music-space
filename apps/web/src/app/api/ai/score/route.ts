@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { analyseSong } from "@/lib/ai";
 import { calculateAiScore, scoreToDistrict } from "@/lib/scoring";
 import { z } from "zod";
+import { strictLimiter } from "@/lib/rateLimit";
 
 const schema = z.object({ songId: z.string().cuid() });
 
@@ -11,6 +12,15 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    await strictLimiter.consume(`ai:score:${session.user.id}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
   }
 
   const body = await req.json();

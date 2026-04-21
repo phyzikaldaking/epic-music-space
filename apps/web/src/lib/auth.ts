@@ -4,7 +4,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { prisma } from "@ems/db";
+import { prisma } from "@/lib/prisma";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -53,15 +53,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        // @ts-expect-error role is a custom field
         token.role = user.role;
       }
       return token;
     },
     async session({ session, token }) {
       if (token) {
-        session.user.id = token.id as string;
-        // @ts-expect-error role is a custom field
+        session.user.id = token.id;
         session.user.role = token.role;
       }
       return session;

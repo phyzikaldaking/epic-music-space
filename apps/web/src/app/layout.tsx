@@ -1,18 +1,59 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { getSiteUrl } from "@/lib/site";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const siteUrl = getSiteUrl();
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0a0a0a",
+};
 
 export const metadata: Metadata = {
-  title: "Epic Music Space — Digital Music Licensing Platform",
+  metadataBase: new URL(siteUrl),
+  applicationName: "Epic Music Space",
+  title: {
+    default: "Epic Music Space | Cinematic Music Licensing",
+    template: "%s | Epic Music Space",
+  },
   description:
-    "License music. Earn revenue. Participate in the future of independent music distribution.",
+    "License cinematic space music, preview independent tracks, and review clear digital music licensing terms before checkout.",
+  keywords: [
+    "epic space music",
+    "cinematic music licensing",
+    "sci-fi trailer music",
+    "independent music marketplace",
+    "game music licensing",
+  ],
   openGraph: {
-    title: "Epic Music Space",
-    description: "Digital Music Licensing + Revenue Participation Platform",
+    title: "Epic Music Space | Cinematic Music Licensing",
+    description:
+      "Preview and license cinematic independent music with clear digital rights terms.",
+    url: siteUrl,
+    siteName: "Epic Music Space",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Epic Music Space cinematic music licensing",
+      },
+    ],
     type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Epic Music Space | Cinematic Music Licensing",
+    description:
+      "Preview and license cinematic independent music with clear digital rights terms.",
+    images: ["/opengraph-image"],
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
@@ -21,28 +62,43 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const structuredData = [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "Epic Music Space",
+      url: siteUrl,
+      email: "legal@epicmusicspace.com",
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "Epic Music Space",
+      url: siteUrl,
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${siteUrl}/marketplace?search={search_term_string}`,
+        "query-input": "required name=search_term_string",
+      },
+    },
+  ];
+
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
       <body className="min-h-screen bg-[#0a0a0a] text-white">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[200] focus:rounded-md focus:bg-brand-500 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:outline-none focus:ring-2 focus:ring-accent-400"
+        >
+          Skip to main content
+        </a>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
         <Navbar />
-        <main>{children}</main>
-        <footer className="border-t border-white/10 py-8 text-center text-sm text-white/40">
-          <p>
-            © {new Date().getFullYear()} Epic Music Space, LLC. All rights
-            reserved.
-          </p>
-          <div className="mt-2 flex justify-center gap-6">
-            <a href="/legal/terms" className="hover:text-white/80">
-              Terms of Service
-            </a>
-            <a href="/legal/privacy" className="hover:text-white/80">
-              Privacy Policy
-            </a>
-            <a href="/legal/licensing" className="hover:text-white/80">
-              Licensing Agreement
-            </a>
-          </div>
-        </footer>
+        <main id="main-content">{children}</main>
+        <Footer />
       </body>
     </html>
   );

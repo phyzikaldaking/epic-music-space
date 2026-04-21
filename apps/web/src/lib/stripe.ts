@@ -1,12 +1,34 @@
 import Stripe from "stripe";
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is not defined");
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+let stripeClient: Stripe | null = null;
+
+export function getStripe() {
+  if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY environment variable is not set");
+  }
+
+  stripeClient ??= new Stripe(stripeSecretKey, {
+    apiVersion: "2025-02-24.acacia",
+    typescript: true,
+  });
+
+  return stripeClient;
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2024-11-20.acacia",
-  typescript: true,
-});
+export function getStripeWebhookSecret() {
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET!;
+  if (!webhookSecret) {
+    throw new Error("STRIPE_WEBHOOK_SECRET environment variable is not set");
+  }
+
+  return webhookSecret;
+}
+
+export const stripe = new Proxy({} as Stripe, {
+  get(_target, prop: keyof Stripe) {
+    const value = getStripe()[prop];
+    return typeof value === "function" ? value.bind(getStripe()) : value;
+  },
+});

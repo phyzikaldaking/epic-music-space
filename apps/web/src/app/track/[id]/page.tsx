@@ -3,10 +3,42 @@ import { auth } from "@/lib/auth";
 import { formatPrice } from "@ems/utils";
 import { notFound } from "next/navigation";
 import AudioPlayer from "@/components/AudioPlayer";
+import SongCard from "@/components/SongCard";
+import type { Metadata } from "next";
 
 interface Props {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ checkout?: string }>;
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  const song = await prisma.song.findUnique({
+    where: { id },
+    select: { title: true, artist: true, description: true, coverUrl: true, licensePrice: true, revenueSharePct: true },
+  });
+  if (!song) return { title: "Track Not Found" };
+
+  const title = `${song.title} by ${song.artist} — EMS`;
+  const description = song.description
+    ?? `License "${song.title}" by ${song.artist} and earn ${String(song.revenueSharePct)}% streaming revenue forever. ${formatPrice(song.licensePrice)} per license on Epic Music Space.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: song.coverUrl ? [{ url: song.coverUrl }] : [],
+      type: "music.song",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: song.coverUrl ? [song.coverUrl] : [],
+    },
+  };
 }
 
 export default async function StudioPage({ params, searchParams }: Props) {
@@ -23,6 +55,17 @@ export default async function StudioPage({ params, searchParams }: Props) {
   });
 
   if (!song) notFound();
+
+  // Related: same genre, exclude current, ordered by aiScore
+  const related = await prisma.song.findMany({
+    where: {
+      isActive: true,
+      id: { not: id },
+      ...(song.genre ? { genre: { equals: song.genre, mode: "insensitive" as const } } : {}),
+    },
+    orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
+    take: 4,
+  });
 
   const remaining = song.totalLicenses - song.soldLicenses;
   const soldOutPct = Math.round((song.soldLicenses / song.totalLicenses) * 100);
@@ -73,6 +116,10 @@ export default async function StudioPage({ params, searchParams }: Props) {
             <img
               src={song.coverUrl}
               alt={`${song.title} cover`}
+              width={900}
+              height={900}
+              loading="eager"
+              decoding="async"
               className="h-full w-full object-cover"
             />
           ) : (
@@ -191,6 +238,43 @@ export default async function StudioPage({ params, searchParams }: Props) {
           </p>
         </div>
       </div>
+
+      {/* Related tracks */}
+      {related.length > 0 && (
+        <section className="mt-16">
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-xl font-bold">
+              More{song.genre ? ` ${song.genre}` : ""} tracks
+            </h2>
+            <a
+              href={`/marketplace${song.genre ? `?genre=${encodeURIComponent(song.genre)}` : ""}`}
+              className="text-sm text-brand-400 transition hover:text-brand-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+            >
+              Browse all →
+            </a>
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {related.map((r) => (
+              <SongCard
+                key={r.id}
+                id={r.id}
+                title={r.title}
+                artist={r.artist}
+                genre={r.genre}
+                coverUrl={r.coverUrl}
+                audioUrl={r.audioUrl}
+                licensePrice={r.licensePrice.toString()}
+                revenueSharePct={r.revenueSharePct.toString()}
+                soldLicenses={r.soldLicenses}
+                totalLicenses={r.totalLicenses}
+                bpm={r.bpm}
+                musicalKey={r.key}
+                aiScore={r.aiScore}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

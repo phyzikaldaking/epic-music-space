@@ -4,16 +4,23 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useCallback } from "react";
 
 const SORT_OPTIONS = [
-  { value: "trending",   label: "🔥 Trending" },
-  { value: "newest",     label: "🆕 Newest" },
-  { value: "price_asc",  label: "💰 Price: Low → High" },
-  { value: "price_desc", label: "💰 Price: High → Low" },
-  { value: "rev_desc",   label: "📈 Revenue Share" },
+  { value: "trending", label: "Trending" },
+  { value: "newest", label: "Newest" },
+  { value: "price_asc", label: "Price: Low to High" },
+  { value: "price_desc", label: "Price: High to Low" },
+  { value: "rev_desc", label: "Revenue Share" },
 ];
 
 const GENRE_OPTIONS = [
   "Hip-Hop", "Trap", "R&B", "Pop", "Electronic", "House", "Drill",
   "Afrobeats", "Jazz", "Lo-Fi", "Rock", "Classical", "Reggaeton",
+];
+
+const TEMPO_OPTIONS = [
+  { value: "", label: "Any tempo" },
+  { value: "slow", label: "Under 90 BPM" },
+  { value: "mid", label: "90-130 BPM" },
+  { value: "fast", label: "130+ BPM" },
 ];
 
 interface Props {
@@ -28,6 +35,7 @@ export default function MarketplaceFilters({ totalCount }: Props) {
   const search = searchParams.get("search") ?? "";
   const genre  = searchParams.get("genre")  ?? "";
   const sort   = searchParams.get("sort")   ?? "trending";
+  const tempo  = searchParams.get("tempo")  ?? "";
 
   const update = useCallback(
     (key: string, value: string) => {
@@ -42,7 +50,7 @@ export default function MarketplaceFilters({ totalCount }: Props) {
     [router, pathname, searchParams]
   );
 
-  const hasFilters = search || genre || sort !== "trending";
+  const hasFilters = search || genre || tempo || sort !== "trending";
 
   return (
     <div className="mb-8 space-y-4">
@@ -111,6 +119,27 @@ export default function MarketplaceFilters({ totalCount }: Props) {
             }`}
           >
             {g}
+          </button>
+        ))}
+      </div>
+
+      {/* Tempo segmented filter */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-widest text-white/35">
+          Tempo
+        </span>
+        {TEMPO_OPTIONS.map((option) => (
+          <button
+            key={option.value || "any-tempo"}
+            type="button"
+            onClick={() => update("tempo", option.value)}
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+              tempo === option.value
+                ? "bg-accent-500 text-[#081013]"
+                : "border border-white/15 text-white/50 hover:border-white/30 hover:text-white/80"
+            }`}
+          >
+            {option.label}
           </button>
         ))}
       </div>
