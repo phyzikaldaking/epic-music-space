@@ -91,6 +91,7 @@ export default async function LeaderboardPage({
         <a
           href="/leaderboard?type=songs"
           className={`inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold transition ${
+            type === "songs"
               ? "bg-brand-500 text-white"
               : "border border-white/20 text-white/60 hover:bg-white/10"
           }`}
@@ -103,6 +104,7 @@ export default async function LeaderboardPage({
         <a
           href="/leaderboard?type=artists"
           className={`inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold transition ${
+            type === "artists"
               ? "bg-brand-500 text-white"
               : "border border-white/20 text-white/60 hover:bg-white/10"
           }`}

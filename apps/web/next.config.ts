@@ -1,14 +1,39 @@
 import type { NextConfig } from "next";
 import path from "node:path";
 
+const securityHeaders = [
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "X-XSS-Protection", value: "1; mode=block" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), payment=(self)",
+  },
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains; preload",
+  },
+  {
+    key: "Content-Security-Policy",
+    value: [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https://*.amazonaws.com https://*.supabase.co https://lh3.googleusercontent.com",
+      "media-src 'self' blob: https://*.amazonaws.com https://*.supabase.co",
+      "connect-src 'self' https://*.supabase.co https://api.openai.com https://api.stripe.com",
+      "frame-src https://js.stripe.com https://hooks.stripe.com",
+      "font-src 'self'",
+    ].join("; "),
+  },
+];
+
 const nextConfig: NextConfig = {
   compress: true,
   outputFileTracingRoot: path.resolve(process.cwd(), "../.."),
   poweredByHeader: false,
   transpilePackages: ["@ems/utils"],
-  experimental: {
-    // required for next-auth v5 server actions
-  },
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 60 * 60 * 24 * 30,
@@ -22,7 +47,6 @@ const nextConfig: NextConfig = {
         hostname: "lh3.googleusercontent.com",
       },
       {
-        // Supabase Storage
         protocol: "https",
         hostname: "**.supabase.co",
       },
@@ -30,6 +54,10 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      {
+        source: "/(.*)",
+        headers: securityHeaders,
+      },
       {
         source: "/_next/static/:path*",
         headers: [

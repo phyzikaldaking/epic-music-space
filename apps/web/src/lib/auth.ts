@@ -11,6 +11,10 @@ const credentialsSchema = z.object({
   password: z.string().min(8),
 });
 
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const googleEnabled = Boolean(googleClientId && googleClientSecret);
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
@@ -19,10 +23,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     error: "/auth/signin",
   },
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
+    ...(googleEnabled
+      ? [GoogleProvider({ clientId: googleClientId!, clientSecret: googleClientSecret! })]
+      : []),
     CredentialsProvider({
       name: "Credentials",
       credentials: {
