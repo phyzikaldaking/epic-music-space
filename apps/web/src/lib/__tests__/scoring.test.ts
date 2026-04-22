@@ -205,7 +205,7 @@ describe("DISTRICT_META", () => {
   it("each district has required metadata fields", () => {
     for (const meta of Object.values(DISTRICT_META)) {
       expect(meta).toHaveProperty("label");
-      expect(meta).toHaveProperty("icon" in meta ? "icon" : "color");
+      expect(meta).toHaveProperty("color");
       expect(meta).toHaveProperty("description");
       expect(meta).toHaveProperty("visibilityMultiplier");
     }
