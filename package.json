@@ -20,7 +20,7 @@
     "db:deploy": "npm --workspace packages/db run db:deploy",
     "db:seed": "npm --workspace packages/db run db:seed",
     "db:studio": "cd packages/db && npx prisma studio",
-    "vercel:build": "npm run clean:web && npx prisma generate --schema packages/db/prisma/schema.prisma && cd apps/web && npm run build"
+    "vercel:build": "npm run clean:web && npx prisma generate --schema packages/db/prisma/schema.prisma && npm --workspace apps/web run build"
   },
   "devDependencies": {
     "prettier": "^3.3.3",
