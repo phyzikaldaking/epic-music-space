@@ -5,6 +5,7 @@ import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import type { Role } from "@ems/db";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -24,7 +25,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   providers: [
     ...(googleEnabled
-      ? [GoogleProvider({ clientId: googleClientId!, clientSecret: googleClientSecret! })]
+      ? [
+          GoogleProvider({
+            clientId: googleClientId!,
+            clientSecret: googleClientSecret!,
+          }),
+        ]
       : []),
     CredentialsProvider({
       name: "Credentials",
@@ -44,11 +50,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const valid = await bcrypt.compare(
           parsed.data.password,
-          user.passwordHash
+          user.passwordHash,
         );
         if (!valid) return null;
 
-        return { id: user.id, email: user.email, name: user.name, role: user.role };
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        };
       },
     }),
   ],
@@ -63,7 +74,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string;
-        session.user.role = token.role as string;
+        session.user.role = token.role as Role;
       }
       return session;
     },
