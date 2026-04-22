@@ -143,6 +143,10 @@ model Song {
   payouts           Payout[]
   versusMatchesA    VersusMatch[] @relation("VersusA")
   versusMatchesB    VersusMatch[] @relation("VersusB")
+
+  @@index([artistId])
+  @@index([district])
+  @@index([isActive])
 }
 
 // ─────────────────────────────────────────
@@ -166,6 +170,7 @@ model LicenseToken {
   payouts         Payout[]
 
   @@unique([songId, tokenNumber])
+  @@index([holderId])
 }
 
 enum LicenseStatus {
@@ -200,11 +205,15 @@ model Transaction {
 
   licenseTokenId      String?
   licenseToken        LicenseToken?     @relation(fields: [licenseTokenId], references: [id])
+
+  @@index([userId])
+  @@index([songId])
 }
 
 enum TransactionType {
   LICENSE_PURCHASE    // buyer acquires a license for a song
   REVENUE_PAYOUT      // platform pays artist/holder their revenue share
+  BOOST_PURCHASE      // artist pays to boost a song's visibility score
 }
 
 enum PaymentStatus {
@@ -235,6 +244,9 @@ model Payout {
 
   licenseTokenId String?
   licenseToken   LicenseToken? @relation(fields: [licenseTokenId], references: [id])
+
+  @@index([userId])
+  @@index([songId])
 }
 
 enum PayoutStatus {
@@ -364,6 +376,8 @@ model AdPlacement {
   endDate     DateTime
   isActive    Boolean    @default(true)
   createdAt   DateTime   @default(now())
+
+  @@index([ownerId])
 }
 
 enum AdLocation {
