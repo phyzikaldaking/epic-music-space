@@ -45,7 +45,7 @@ const SUBSCRIPTION_TIERS = [
     name: "Prime",
     description: "For professional artists building their brand.",
     priceId: process.env.STRIPE_PRICE_ID_PRIME ?? "",
-    monthlyUsd: 79,
+    monthlyUsd: 49,
     features: [
       "Everything in Pro",
       "Unlimited licenses",
