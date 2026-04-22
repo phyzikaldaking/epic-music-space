@@ -6,6 +6,7 @@ import { z } from "zod";
 import { strictLimiter, lenientLimiter } from "@/lib/rateLimit";
 import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 import { enqueueAnalytics } from "@/lib/queues";
+import { getSiteUrl } from "@/lib/site";
 
 // ─────────────────────────────────────────────────────────
 // Zod schemas
@@ -143,7 +144,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = getSiteUrl();
 
   // Create Stripe checkout session
   const stripeSession = await stripe.checkout.sessions.create({

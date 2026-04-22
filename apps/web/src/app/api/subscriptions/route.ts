@@ -4,6 +4,7 @@ import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
+import { getSiteUrl } from "@/lib/site";
 
 // ─────────────────────────────────────────────────────────
 // Subscription tier config
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = getSiteUrl();
 
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: "subscription",
@@ -166,7 +167,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = getSiteUrl();
 
   const portal = await stripe.billingPortal.sessions.create({
     customer: customerId,

@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe";
 import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
+import { getSiteUrl } from "@/lib/site";
 
 const checkoutSchema = z.object({
   songId: z.string().min(1, "songId is required"),
@@ -92,11 +93,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? (
-    process.env.NODE_ENV === "production"
-      ? (() => { throw new Error("NEXT_PUBLIC_APP_URL must be set in production"); })()
-      : "http://localhost:3000"
-  );
+  const baseUrl = getSiteUrl();
 
   // ── Create Stripe checkout session ─────────────────────────────────────────
   const stripeSession = await stripe.checkout.sessions.create({

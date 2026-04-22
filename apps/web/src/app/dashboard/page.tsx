@@ -4,10 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { formatPrice } from "@ems/utils";
 import { BADGE_META } from "@/lib/badges";
+import { getSiteUrl } from "@/lib/site";
 
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
+  const siteUrl = getSiteUrl();
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: session.user.id },
@@ -569,7 +571,7 @@ export default async function DashboardPage() {
               </p>
               <div className="flex items-center gap-3 mb-5">
                 <code className="flex-1 rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm font-mono text-brand-300">
-                  {`${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/auth/signup?invite=${inviteData.code}`}
+                  {`${siteUrl}/auth/signup?invite=${inviteData.code}`}
                 </code>
                 <Link
                   href="/invite"

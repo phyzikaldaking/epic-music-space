@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { getSiteUrl } from "@/lib/site";
 
 function toSlug(value: string) {
   return value
@@ -15,6 +16,7 @@ function toSlug(value: string) {
 
 export default function NewLabelPage() {
   const router = useRouter();
+  const siteUrl = getSiteUrl();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugManual, setSlugManual] = useState(false);
@@ -110,7 +112,7 @@ export default function NewLabelPage() {
           </label>
           <div className="flex items-center rounded-xl bg-white/5 border border-white/10 overflow-hidden focus-within:border-brand-500 transition">
             <span className="px-3 text-white/30 text-sm select-none">
-              {(process.env.NEXT_PUBLIC_APP_URL ?? "ems.io").replace(/^https?:\/\//, "")}/label/
+              {siteUrl.replace(/^https?:\/\//, "")}/label/
             </span>
             <input
               type="text"
