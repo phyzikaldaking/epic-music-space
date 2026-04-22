@@ -1,8 +1,8 @@
 /**
  * Analytics Worker
  *
- * Consumes jobs from the `ems:analytics` BullMQ queue.
- * Currently logs events to stdout — replace with your analytics sink
+ * Consumes jobs from the analytics BullMQ queue.
+ * Currently logs events to stdout; replace with your analytics sink
  * (Mixpanel, PostHog, BigQuery, etc.) without touching queue producers.
  *
  * Run as a standalone Node.js process:
@@ -11,25 +11,26 @@
 
 import { Worker } from "bullmq";
 import { getRedis } from "../lib/redis";
+import { QUEUE_NAMES } from "../lib/queueNames";
 import type { AnalyticsJobData } from "../lib/queues";
 
 const connection = getRedis();
 
 if (!connection) {
   console.error(
-    "[analytics-worker] REDIS_URL is not set — worker cannot start"
+    "[analytics-worker] REDIS_URL is not set — worker cannot start",
   );
   process.exit(1);
 }
 
 const worker = new Worker<AnalyticsJobData>(
-  "ems:analytics",
+  QUEUE_NAMES.analytics,
   async (job) => {
     const { event, userId, songId, metadata, timestamp } = job.data;
 
-    // Structured log — pipe to your observability platform
+    // Structured log for observability pipelines.
     console.info(
-      JSON.stringify({ event, userId, songId, metadata, timestamp })
+      JSON.stringify({ event, userId, songId, metadata, timestamp }),
     );
 
     // TODO: forward to PostHog / Mixpanel / BigQuery here
@@ -37,7 +38,7 @@ const worker = new Worker<AnalyticsJobData>(
   {
     connection,
     concurrency: 50,
-  }
+  },
 );
 
 worker.on("failed", (job, err) => {
@@ -45,5 +46,5 @@ worker.on("failed", (job, err) => {
 });
 
 console.info(
-  "[analytics-worker] Started — listening for jobs on ems:analytics"
+  `[analytics-worker] Started listening for jobs on ${QUEUE_NAMES.analytics}`,
 );

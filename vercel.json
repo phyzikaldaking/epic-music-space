@@ -1,8 +1,12 @@
 {
   "framework": "nextjs",
   "installCommand": "npm install",
-  "buildCommand": "cd packages/db && npx prisma migrate deploy; cd ../../apps/web && npm run build",
+  "buildCommand": "cd packages/db && npx prisma generate && npx prisma migrate deploy && cd ../../apps/web && npm run build",
   "outputDirectory": "apps/web/.next",
+  "crons": [
+    { "path": "/api/cron/expire-battles", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/settle-auctions", "schedule": "*/5 * * * *" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

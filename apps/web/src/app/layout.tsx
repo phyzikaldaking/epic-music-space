@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import Providers from "@/components/Providers";
 import { getSiteUrl } from "@/lib/site";
 
 const siteUrl = getSiteUrl();
@@ -96,9 +97,11 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
-        <Navbar />
-        <main id="main-content">{children}</main>
-        <Footer />
+        <Providers>
+          <Navbar />
+          <main id="main-content">{children}</main>
+          <Footer />
+        </Providers>
       </body>
     </html>
   );

@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -31,7 +34,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   compress: true,
-  outputFileTracingRoot: path.resolve(process.cwd(), "../.."),
+  outputFileTracingRoot: path.resolve(configDir, "../.."),
   poweredByHeader: false,
   transpilePackages: ["@ems/utils"],
   images: {

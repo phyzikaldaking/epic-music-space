@@ -1,11 +1,12 @@
 import { Queue } from "bullmq";
 import { getRedis } from "./redis";
+import { QUEUE_NAMES } from "./queueNames";
 
 const connection = getRedis();
 
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 // Queue definitions
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 
 /** Only instantiate queues when Redis is available */
 function makeQueue<T>(name: string) {
@@ -44,13 +45,19 @@ export interface AnalyticsJobData {
   timestamp: string;
 }
 
-export const aiScoringQueue = makeQueue<AiScoringJobData>("ems:ai-scoring");
-export const notificationQueue = makeQueue<NotificationJobData>("ems:notifications");
-export const analyticsQueue = makeQueue<AnalyticsJobData>("ems:analytics");
+export const aiScoringQueue = makeQueue<AiScoringJobData>(
+  QUEUE_NAMES.aiScoring,
+);
+export const notificationQueue = makeQueue<NotificationJobData>(
+  QUEUE_NAMES.notifications,
+);
+export const analyticsQueue = makeQueue<AnalyticsJobData>(
+  QUEUE_NAMES.analytics,
+);
 
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 // Typed job enqueue helpers
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 
 export async function enqueueAiScoring(songId: string) {
   if (!aiScoringQueue) return;

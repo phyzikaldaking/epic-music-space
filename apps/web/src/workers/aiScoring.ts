@@ -1,10 +1,10 @@
 /**
  * AI Scoring Worker
  *
- * Consumes jobs from the `ems:ai-scoring` BullMQ queue and updates a song's
+ * Consumes jobs from the AI scoring BullMQ queue and updates a song's
  * composite EMS score using the OpenAI sentiment analysis + scoring formula.
  *
- * Run as a standalone Node.js process — NOT inside the Next.js app server.
+ * Run as a standalone Node.js process, not inside the Next.js app server.
  * Start with: `npx tsx src/workers/aiScoring.ts`
  *
  * NOTE: This file uses server-only packages (bullmq, prisma) and must never
@@ -16,17 +16,20 @@ import { getRedis } from "../lib/redis";
 import { prisma } from "../lib/prisma";
 import { analyseSong } from "../lib/ai";
 import { calculateAiScore, scoreToDistrict } from "../lib/scoring";
+import { QUEUE_NAMES } from "../lib/queueNames";
 import type { AiScoringJobData } from "../lib/queues";
 
 const connection = getRedis();
 
 if (!connection) {
-  console.error("[aiScoring-worker] REDIS_URL is not set — worker cannot start");
+  console.error(
+    "[aiScoring-worker] REDIS_URL is not set — worker cannot start",
+  );
   process.exit(1);
 }
 
 const worker = new Worker<AiScoringJobData>(
-  "ems:ai-scoring",
+  QUEUE_NAMES.aiScoring,
   async (job) => {
     const { songId } = job.data;
 
@@ -40,7 +43,7 @@ const worker = new Worker<AiScoringJobData>(
       song.title,
       song.artist,
       song.genre,
-      song.description
+      song.description,
     );
 
     // Compute composite EMS score
@@ -63,13 +66,13 @@ const worker = new Worker<AiScoringJobData>(
     });
 
     console.info(
-      `[aiScoring-worker] Song scored: id=${songId} score=${score} district=${district}`
+      `[aiScoring-worker] Song scored: id=${songId} score=${score} district=${district}`,
     );
   },
   {
     connection,
     concurrency: 5,
-  }
+  },
 );
 
 worker.on("completed", (job) => {
@@ -80,4 +83,6 @@ worker.on("failed", (job, err) => {
   console.error(`[aiScoring-worker] Job failed: ${job?.id}`, err.message);
 });
 
-console.info("[aiScoring-worker] Started — listening for jobs on ems:ai-scoring");
+console.info(
+  `[aiScoring-worker] Started listening for jobs on ${QUEUE_NAMES.aiScoring}`,
+);
