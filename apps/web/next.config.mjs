@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const srcDir = path.resolve(__dirname, "src");
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -56,6 +57,10 @@ const nextConfig = {
         hostname: "**.supabase.co",
       },
     ],
+  },
+  webpack(config) {
+    config.resolve.alias["@"] = srcDir;
+    return config;
   },
   async headers() {
     return [
