@@ -12,8 +12,22 @@ const SORT_OPTIONS = [
 ];
 
 const GENRE_OPTIONS = [
-  "Hip-Hop", "Trap", "R&B", "Pop", "Electronic", "House", "Drill",
-  "Afrobeats", "Jazz", "Lo-Fi", "Rock", "Classical", "Reggaeton",
+  "Cinematic",
+  "Trailer",
+  "Ambient",
+  "Hip-Hop",
+  "Trap",
+  "R&B",
+  "Pop",
+  "Electronic",
+  "House",
+  "Drill",
+  "Afrobeats",
+  "Jazz",
+  "Lo-Fi",
+  "Rock",
+  "Classical",
+  "Reggaeton",
 ];
 
 const TEMPO_OPTIONS = [
@@ -53,7 +67,7 @@ export default function MarketplaceFilters({ totalCount }: Props) {
   const hasFilters = search || genre || tempo || sort !== "trending";
 
   return (
-    <div className="mb-8 space-y-4">
+    <div className="mb-10 border-y border-white/10 py-5">
       {/* Search + sort row */}
       <div className="flex flex-col gap-3 sm:flex-row">
         {/* Search input */}
@@ -76,7 +90,7 @@ export default function MarketplaceFilters({ totalCount }: Props) {
             placeholder="Search songs or artists…"
             value={search}
             onChange={(e) => update("search", e.target.value)}
-            className="w-full rounded-xl border border-white/10 bg-white/4 py-2.5 pl-9 pr-4 text-sm text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
+            className="h-11 w-full rounded-md border border-white/10 bg-white/[0.035] py-2.5 pl-9 pr-4 text-sm text-white placeholder-white/25 transition focus:border-accent-400/60 focus:outline-none focus:ring-1 focus:ring-accent-400/40"
           />
         </div>
 
@@ -84,7 +98,7 @@ export default function MarketplaceFilters({ totalCount }: Props) {
         <select
           value={sort}
           onChange={(e) => update("sort", e.target.value)}
-          className="rounded-xl border border-white/10 bg-[#141414] px-4 py-2.5 text-sm text-white/70 transition focus:border-brand-500/60 focus:outline-none sm:w-52"
+          className="h-11 rounded-md border border-white/10 bg-[#0a0b10] px-4 py-2.5 text-sm text-white/70 transition focus:border-accent-400/60 focus:outline-none sm:w-56"
         >
           {SORT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -95,13 +109,13 @@ export default function MarketplaceFilters({ totalCount }: Props) {
       </div>
 
       {/* Genre pills */}
-      <div className="flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => update("genre", "")}
-          className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+          className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
             !genre
-              ? "bg-brand-500 text-white"
+              ? "bg-white text-[#050509]"
               : "border border-white/15 text-white/50 hover:border-white/30 hover:text-white/80"
           }`}
         >
@@ -112,9 +126,9 @@ export default function MarketplaceFilters({ totalCount }: Props) {
             key={g}
             type="button"
             onClick={() => update("genre", genre === g ? "" : g)}
-            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
               genre === g
-                ? "bg-brand-500 text-white"
+                ? "bg-white text-[#050509]"
                 : "border border-white/15 text-white/50 hover:border-white/30 hover:text-white/80"
             }`}
           >
@@ -124,7 +138,7 @@ export default function MarketplaceFilters({ totalCount }: Props) {
       </div>
 
       {/* Tempo segmented filter */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <span className="mr-1 text-xs font-semibold uppercase tracking-widest text-white/35">
           Tempo
         </span>
@@ -133,7 +147,7 @@ export default function MarketplaceFilters({ totalCount }: Props) {
             key={option.value || "any-tempo"}
             type="button"
             onClick={() => update("tempo", option.value)}
-            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
               tempo === option.value
                 ? "bg-accent-500 text-[#081013]"
                 : "border border-white/15 text-white/50 hover:border-white/30 hover:text-white/80"
@@ -145,7 +159,7 @@ export default function MarketplaceFilters({ totalCount }: Props) {
       </div>
 
       {/* Results count + clear */}
-      <div className="flex items-center justify-between text-xs text-white/35">
+      <div className="mt-4 flex items-center justify-between text-xs text-white/35">
         <span>
           {totalCount} {totalCount === 1 ? "song" : "songs"} found
         </span>

@@ -1,8 +1,12 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { prisma } from "@ems/db";
 import Stripe from "stripe";
-import { rateLimit, strictLimiter, lenientLimiter } from "../middleware/rateLimit";
+import { prisma } from "../lib/prisma";
+import {
+  rateLimit,
+  strictLimiter,
+  lenientLimiter,
+} from "../middleware/rateLimit";
 import { authMiddleware } from "../middleware/auth";
 
 // ─────────────────────────────────────────────────────────
@@ -12,7 +16,7 @@ import { authMiddleware } from "../middleware/auth";
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
-  return new Stripe(key, { apiVersion: "2024-11-20.acacia", typescript: true });
+  return new Stripe(key, { apiVersion: "2025-02-24.acacia", typescript: true });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -28,7 +32,13 @@ const buySchema = z.object({
 // Router
 // ─────────────────────────────────────────────────────────
 
-export const marketRouter = new Hono();
+type ApiVariables = {
+  Variables: {
+    userId: string;
+  };
+};
+
+export const marketRouter = new Hono<ApiVariables>();
 
 /**
  * GET /api/market/listings
@@ -36,47 +46,43 @@ export const marketRouter = new Hono();
  * Results are sorted by AI score (descending) and cached via Redis TTL on the
  * web layer — this endpoint returns fresh data from the database.
  */
-marketRouter.get(
-  "/listings",
-  rateLimit(lenientLimiter),
-  async (c) => {
-    // Fetch all active songs then filter in-memory for cross-column comparison
-    // (soldLicenses < totalLicenses). For large datasets, use a raw query.
-    const allActive = await prisma.song.findMany({
-      where: { isActive: true },
-      orderBy: [{ aiScore: "desc" }, { createdAt: "desc" }],
-      select: {
-        id: true,
-        title: true,
-        artist: true,
-        genre: true,
-        coverUrl: true,
-        licensePrice: true,
-        revenueSharePct: true,
-        totalLicenses: true,
-        soldLicenses: true,
-        aiScore: true,
-        district: true,
-        versusWins: true,
-        createdAt: true,
-      },
-      take: 200,
-    });
+marketRouter.get("/listings", rateLimit(lenientLimiter), async (c) => {
+  // Fetch all active songs then filter in-memory for cross-column comparison
+  // (soldLicenses < totalLicenses). For large datasets, use a raw query.
+  const allActive = await prisma.song.findMany({
+    where: { isActive: true },
+    orderBy: [{ aiScore: "desc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      title: true,
+      artist: true,
+      genre: true,
+      coverUrl: true,
+      licensePrice: true,
+      revenueSharePct: true,
+      totalLicenses: true,
+      soldLicenses: true,
+      aiScore: true,
+      district: true,
+      versusWins: true,
+      createdAt: true,
+    },
+    take: 200,
+  });
 
-    // Keep only listings that still have licenses available
-    const result = allActive
-      .filter((s) => s.soldLicenses < s.totalLicenses)
-      .slice(0, 100)
-      .map((s) => ({
-        ...s,
-        availableLicenses: s.totalLicenses - s.soldLicenses,
-        licensePrice: Number(s.licensePrice),
-        revenueSharePct: Number(s.revenueSharePct),
-      }));
+  // Keep only listings that still have licenses available
+  const result = allActive
+    .filter((s) => s.soldLicenses < s.totalLicenses)
+    .slice(0, 100)
+    .map((s) => ({
+      ...s,
+      availableLicenses: s.totalLicenses - s.soldLicenses,
+      licensePrice: Number(s.licensePrice),
+      revenueSharePct: Number(s.revenueSharePct),
+    }));
 
-    return c.json(result);
-  }
-);
+  return c.json(result);
+});
 
 /**
  * POST /api/market/buy
@@ -92,7 +98,7 @@ marketRouter.post(
   rateLimit(strictLimiter),
   authMiddleware,
   async (c) => {
-    const userId: string = c.get("userId");
+    const userId = c.get("userId");
 
     // ── Parse + validate body ──────────────────────────────────────────────
     let rawBody: unknown;
@@ -106,7 +112,7 @@ marketRouter.post(
     if (!parsed.success) {
       return c.json(
         { error: parsed.error.issues[0]?.message ?? "Invalid input" },
-        400
+        400,
       );
     }
 
@@ -124,10 +130,7 @@ marketRouter.post(
       return c.json({ error: "This song is sold out" }, 409);
     }
     if (quantity > available) {
-      return c.json(
-        { error: `Only ${available} license(s) available` },
-        409
-      );
+      return c.json({ error: `Only ${available} license(s) available` }, 409);
     }
 
     // ── Duplicate ownership check (one per user per song) ──────────────────
@@ -138,7 +141,7 @@ marketRouter.post(
       if (existing) {
         return c.json(
           { error: "You already hold a license for this song" },
-          409
+          409,
         );
       }
     }
@@ -184,5 +187,5 @@ marketRouter.post(
     });
 
     return c.json({ checkoutUrl: session.url }, 201);
-  }
+  },
 );

@@ -104,8 +104,7 @@ export default async function DashboardPage() {
     {
       label: "Licenses held",
       value: user.licenses.length.toString(),
-      icon: "🎟️",
-      accent: "brand",
+      icon: "01",
       border: "border-brand-500/30",
       bg: "bg-brand-500/8",
       textColor: "text-brand-400",
@@ -113,8 +112,7 @@ export default async function DashboardPage() {
     {
       label: "Total invested",
       value: formatPrice(totalInvested),
-      icon: "💸",
-      accent: "gold",
+      icon: "02",
       border: "border-gold-500/30",
       bg: "bg-gold-500/6",
       textColor: "text-gold-400",
@@ -124,8 +122,7 @@ export default async function DashboardPage() {
           {
             label: "Songs uploaded",
             value: user.songs.length.toString(),
-            icon: "🎵",
-            accent: "cyan",
+            icon: "03",
             border: "border-accent-500/30",
             bg: "bg-accent-500/6",
             textColor: "text-accent-400",
@@ -133,8 +130,7 @@ export default async function DashboardPage() {
           {
             label: "Licenses sold",
             value: totalSongsSold.toString(),
-            icon: "📈",
-            accent: "gold",
+            icon: "04",
             border: "border-gold-500/30",
             bg: "bg-gold-500/6",
             textColor: "text-gold-400",
@@ -144,8 +140,7 @@ export default async function DashboardPage() {
           {
             label: "Account type",
             value: user.role,
-            icon: "👤",
-            accent: "brand",
+            icon: "03",
             border: "border-white/15",
             bg: "bg-white/4",
             textColor: "text-white/70",
@@ -154,36 +149,41 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a]">
-      {/* Ambient glow top */}
-      <div className="pointer-events-none fixed top-0 left-1/2 -translate-x-1/2 h-[400px] w-[800px] rounded-full bg-brand-500/10 blur-[120px]" />
-
-      <div className="relative mx-auto max-w-7xl px-4 py-12">
+    <div className="min-h-screen bg-[#050509]">
+      <div className="mx-auto max-w-7xl px-4 py-10">
         {/* ── Header ──────────────────────────────────── */}
-        <div className="mb-10 flex items-start justify-between">
+        <div className="mb-10 flex flex-col gap-6 border-b border-white/10 pb-8 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-sm text-white/40 mb-1">Welcome back</p>
-            <h1 className="text-3xl font-extrabold">
+            <p className="mb-3 border-l-2 border-accent-400 pl-3 text-xs font-black uppercase tracking-[0.24em] text-accent-300">
+              Workspace
+            </p>
+            <h1 className="text-4xl font-black tracking-tight md:text-5xl">
               {user.name ?? user.email}
-              <span className="ml-3 rounded-full bg-brand-500/15 border border-brand-500/30 px-3 py-0.5 text-sm font-semibold text-brand-400">
+            </h1>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/42">
+              <span className="rounded-md border border-white/12 px-2.5 py-1">
                 {user.role}
               </span>
-            </h1>
+              {user.studio && (
+                <span className="rounded-md border border-white/12 px-2.5 py-1">
+                  @{user.studio.username}
+                </span>
+              )}
+            </div>
           </div>
           {user.role !== "LISTENER" && (
             <Link
               href="/studio/new"
-              className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 glow-purple-sm"
+              className="inline-flex h-11 items-center justify-center rounded-md bg-white px-5 text-sm font-black text-[#050509] transition hover:bg-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
             >
-              + Upload Song
+              Upload song
             </Link>
           )}
         </div>
 
         {/* ── Studio setup prompt (artists without a studio) ─────────────── */}
         {isArtist && !user.studio && (
-          <div className="mb-8 flex items-center gap-4 rounded-2xl border border-brand-500/40 bg-brand-500/8 px-6 py-5">
-            <span className="text-3xl flex-shrink-0">🏠</span>
+          <div className="mb-8 flex flex-col gap-4 rounded-lg border border-brand-500/30 bg-brand-500/8 px-5 py-5 sm:flex-row sm:items-center">
             <div className="flex-1">
               <p className="font-semibold text-brand-300">Set up your artist studio</p>
               <p className="text-sm text-white/45 mt-0.5">
@@ -192,21 +192,20 @@ export default async function DashboardPage() {
             </div>
             <Link
               href="/profile/edit"
-              className="flex-shrink-0 rounded-xl bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600 transition glow-purple-sm"
+              className="flex-shrink-0 rounded-md bg-white px-5 py-2 text-sm font-black text-[#050509] transition hover:bg-accent-300"
             >
-              Set up studio →
+              Set up studio
             </Link>
           </div>
         )}
 
         {/* ── Stripe Connect payout setup prompt ──────── */}
         {isArtist && !connectStatus.onboardingComplete && (
-          <div className={`mb-8 flex items-center gap-4 rounded-2xl border px-6 py-5 ${
+          <div className={`mb-8 flex flex-col gap-4 rounded-lg border px-5 py-5 sm:flex-row sm:items-center ${
             connectStatus.connected
               ? "border-yellow-500/40 bg-yellow-500/6"
               : "border-gold-500/40 bg-gold-500/6"
           }`}>
-            <span className="text-3xl flex-shrink-0">💸</span>
             <div className="flex-1">
               <p className={`font-semibold ${connectStatus.connected ? "text-yellow-300" : "text-gold-300"}`}>
                 {connectStatus.connected ? "Complete payout setup" : "Set up payouts to get paid"}
@@ -219,19 +218,18 @@ export default async function DashboardPage() {
             </div>
             <Link
               href="/dashboard/payouts"
-              className={`flex-shrink-0 rounded-xl px-5 py-2 text-sm font-bold text-white transition ${
+              className={`flex-shrink-0 rounded-md px-5 py-2 text-sm font-black transition ${
                 connectStatus.connected
-                  ? "bg-yellow-600 hover:bg-yellow-700"
-                  : "bg-gold-500 hover:bg-gold-600"
+                  ? "bg-yellow-400 text-[#090a0f] hover:bg-yellow-300"
+                  : "bg-gold-400 text-[#090a0f] hover:bg-gold-300"
               }`}
             >
-              {connectStatus.connected ? "Continue setup →" : "Set up payouts →"}
+              {connectStatus.connected ? "Continue setup" : "Set up payouts"}
             </Link>
           </div>
         )}
         {isArtist && connectStatus.onboardingComplete && (
-          <div className="mb-8 flex items-center gap-4 rounded-2xl border border-green-500/30 bg-green-500/6 px-6 py-5">
-            <span className="text-3xl flex-shrink-0">✅</span>
+          <div className="mb-8 flex flex-col gap-4 rounded-lg border border-green-500/30 bg-green-500/6 px-5 py-5 sm:flex-row sm:items-center">
             <div className="flex-1">
               <p className="font-semibold text-green-300">Payouts enabled</p>
               <p className="text-sm text-white/45 mt-0.5">
@@ -240,27 +238,29 @@ export default async function DashboardPage() {
             </div>
             <Link
               href="/dashboard/payouts"
-              className="flex-shrink-0 rounded-xl bg-green-700/50 border border-green-500/30 px-5 py-2 text-sm font-bold text-green-300 hover:bg-green-700/70 transition"
+              className="flex-shrink-0 rounded-md border border-green-500/30 bg-green-700/50 px-5 py-2 text-sm font-bold text-green-300 transition hover:bg-green-700/70"
             >
-              Manage Payouts →
+              Manage payouts
             </Link>
           </div>
         )}
 
         {/* ── Stat cards ──────────────────────────────── */}
-        <div className="mb-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-12 grid gap-px overflow-hidden rounded-lg border border-white/10 bg-white/10 sm:grid-cols-2 lg:grid-cols-4">
           {STAT_CARDS.map((stat) => (
             <div
               key={stat.label}
-              className={`rounded-2xl border ${stat.border} ${stat.bg} p-5 transition card-hover-neon`}
+              className="bg-[#0a0b10] p-5"
             >
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/35">
                   {stat.label}
                 </p>
-                <span className="text-xl">{stat.icon}</span>
+                <span className="text-xs font-black text-white/24">{stat.icon}</span>
               </div>
-              <p className={`stat-number ${stat.textColor}`}>{stat.value}</p>
+              <p className={`text-3xl font-black leading-none ${stat.textColor}`}>
+                {stat.value}
+              </p>
             </div>
           ))}
         </div>

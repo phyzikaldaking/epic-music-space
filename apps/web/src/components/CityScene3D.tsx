@@ -108,6 +108,9 @@ export default function CityScene3D({ buildings }: Props) {
         Texture,
         DefaultRenderingPipeline,
         GlowLayer,
+        Animation,
+        QuadraticEase,
+        EasingFunction,
       } = await import("@babylonjs/core");
 
       const engineInstance = new Engine(canvas, true, {
@@ -427,7 +430,50 @@ export default function CityScene3D({ buildings }: Props) {
 
           box.actionManager.registerAction(
             new ExecuteCodeAction(ActionManager.OnPickTrigger, () => {
-              router.push(`/studio/${b.username}`);
+              // Fly camera toward building
+              const flyTarget = box.position.clone();
+              flyTarget.y = Math.max(2, box.position.y * 0.6);
+
+              const ease = new QuadraticEase();
+              ease.setEasingMode(EasingFunction.EASINGMODE_EASEOUT);
+
+              const flyCam = new Animation(
+                "flyCam",
+                "target",
+                60,
+                Animation.ANIMATIONTYPE_VECTOR3,
+                Animation.ANIMATIONLOOPMODE_CONSTANT,
+              );
+              flyCam.setKeys([
+                { frame: 0, value: camera.target.clone() },
+                { frame: 60, value: flyTarget },
+              ]);
+              flyCam.setEasingFunction(ease);
+
+              const flyRadius = new Animation(
+                "flyRadius",
+                "radius",
+                60,
+                Animation.ANIMATIONTYPE_FLOAT,
+                Animation.ANIMATIONLOOPMODE_CONSTANT,
+              );
+              flyRadius.setKeys([
+                { frame: 0, value: camera.radius },
+                { frame: 60, value: Math.max(12, box.position.y * 2.5) },
+              ]);
+              flyRadius.setEasingFunction(ease);
+
+              scene.beginDirectAnimation(
+                camera,
+                [flyCam, flyRadius],
+                0,
+                60,
+                false,
+                1,
+                () => {
+                  router.push(`/studio/${b.username}`);
+                },
+              );
             }),
           );
         });
@@ -598,7 +644,9 @@ export default function CityScene3D({ buildings }: Props) {
 
     let cleanup: (() => void) | undefined;
     initScene()
-      .then((fn) => { cleanup = fn; })
+      .then((fn) => {
+        cleanup = fn;
+      })
       .catch((err) => {
         // Surface WebGL/Babylon init failures to the ErrorBoundary above
         throw err;

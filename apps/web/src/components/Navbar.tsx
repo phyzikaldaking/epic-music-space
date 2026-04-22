@@ -14,7 +14,9 @@ export default async function Navbar() {
     try {
       session = await auth();
     } catch (error) {
-      console.error("[navbar] Auth unavailable", error);
+      if (!isDynamicServerBailout(error)) {
+        console.error("[navbar] Auth unavailable", error);
+      }
     }
   }
 
@@ -122,5 +124,14 @@ export default async function Navbar() {
         </div>
       </div>
     </nav>
+  );
+}
+
+function isDynamicServerBailout(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    (error as { digest?: unknown }).digest === "DYNAMIC_SERVER_USAGE"
   );
 }

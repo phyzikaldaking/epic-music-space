@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { prisma } from "@ems/db";
+import { prisma } from "../lib/prisma";
 import { rateLimit, strictLimiter } from "../middleware/rateLimit";
 import { authMiddleware } from "../middleware/auth";
 
@@ -33,7 +33,13 @@ const uploadSchema = z.object({
   audioMimeType: z.string().optional(),
 });
 
-export const songsRouter = new Hono();
+type ApiVariables = {
+  Variables: {
+    userId: string;
+  };
+};
+
+export const songsRouter = new Hono<ApiVariables>();
 
 /**
  * POST /api/song/upload
@@ -47,7 +53,7 @@ songsRouter.post(
   rateLimit(strictLimiter),
   authMiddleware,
   async (c) => {
-    const userId: string = c.get("userId");
+    const userId = c.get("userId");
 
     // ── Role check ─────────────────────────────────────────────────────────
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -70,7 +76,7 @@ songsRouter.post(
     if (!parsed.success) {
       return c.json(
         { error: parsed.error.issues[0]?.message ?? "Invalid input" },
-        400
+        400,
       );
     }
 
@@ -79,8 +85,10 @@ songsRouter.post(
     // ── Audio-only MIME restriction ────────────────────────────────────────
     if (audioMimeType && !AUDIO_MIME_TYPES.has(audioMimeType.toLowerCase())) {
       return c.json(
-        { error: "Only audio files are allowed (mp3, wav, ogg, flac, aac, m4a)" },
-        415
+        {
+          error: "Only audio files are allowed (mp3, wav, ogg, flac, aac, m4a)",
+        },
+        415,
       );
     }
 
@@ -93,5 +101,5 @@ songsRouter.post(
     });
 
     return c.json(song, 201);
-  }
+  },
 );

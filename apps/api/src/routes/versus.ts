@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { prisma } from "@ems/db";
+import { prisma } from "../lib/prisma";
 import { rateLimit, strictLimiter } from "../middleware/rateLimit";
 import { authMiddleware } from "../middleware/auth";
 
@@ -9,7 +9,13 @@ const voteSchema = z.object({
   votedSongId: z.string().min(1, "votedSongId is required"),
 });
 
-export const versusRouter = new Hono();
+type ApiVariables = {
+  Variables: {
+    userId: string;
+  };
+};
+
+export const versusRouter = new Hono<ApiVariables>();
 
 /**
  * POST /api/versus/vote
@@ -25,7 +31,7 @@ versusRouter.post(
   rateLimit(strictLimiter),
   authMiddleware,
   async (c) => {
-    const userId: string = c.get("userId");
+    const userId = c.get("userId");
 
     // ── Parse body ─────────────────────────────────────────────────────────
     let rawBody: unknown;
@@ -39,14 +45,16 @@ versusRouter.post(
     if (!parsed.success) {
       return c.json(
         { error: parsed.error.issues[0]?.message ?? "Invalid input" },
-        400
+        400,
       );
     }
 
     const { matchId, votedSongId } = parsed.data;
 
     // ── Fetch match ────────────────────────────────────────────────────────
-    const match = await prisma.versusMatch.findUnique({ where: { id: matchId } });
+    const match = await prisma.versusMatch.findUnique({
+      where: { id: matchId },
+    });
     if (!match) {
       return c.json({ error: "Match not found" }, 404);
     }
@@ -64,7 +72,7 @@ versusRouter.post(
     if (votedSongId !== match.songAId && votedSongId !== match.songBId) {
       return c.json(
         { error: "votedSongId must be one of the two songs in this match" },
-        400
+        400,
       );
     }
 
@@ -77,8 +85,12 @@ versusRouter.post(
 
     // ── Recount ────────────────────────────────────────────────────────────
     const [votesA, votesB] = await Promise.all([
-      prisma.versusVote.count({ where: { matchId, votedSongId: match.songAId } }),
-      prisma.versusVote.count({ where: { matchId, votedSongId: match.songBId } }),
+      prisma.versusVote.count({
+        where: { matchId, votedSongId: match.songAId },
+      }),
+      prisma.versusVote.count({
+        where: { matchId, votedSongId: match.songBId },
+      }),
     ]);
 
     const updated = await prisma.versusMatch.update({
@@ -87,5 +99,5 @@ versusRouter.post(
     });
 
     return c.json({ matchId, votesA: updated.votesA, votesB: updated.votesB });
-  }
+  },
 );
