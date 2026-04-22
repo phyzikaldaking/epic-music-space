@@ -1,6 +1,8 @@
 import { Queue } from "bullmq";
 import { getRedis } from "./redis";
 import { QUEUE_NAMES } from "./queueNames";
+import { prisma } from "./prisma";
+import type { Prisma } from "@ems/db";
 
 const connection = getRedis();
 
@@ -65,8 +67,24 @@ export async function enqueueAiScoring(songId: string) {
 }
 
 export async function enqueueNotification(data: NotificationJobData) {
-  if (!notificationQueue) return;
-  await notificationQueue.add("send-notification", data);
+  if (notificationQueue) {
+    await notificationQueue.add("send-notification", data);
+    return;
+  }
+  // No Redis — write directly to DB so notifications are never silently dropped
+  try {
+    await prisma.notification.create({
+      data: {
+        userId: data.userId,
+        type: data.type,
+        title: data.title,
+        body: data.body,
+        metadata: (data.metadata ?? {}) as Prisma.InputJsonValue,
+      },
+    });
+  } catch (err) {
+    console.error("[enqueueNotification] Direct DB write failed", err);
+  }
 }
 
 export async function enqueueAnalytics(data: AnalyticsJobData) {
