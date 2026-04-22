@@ -9,7 +9,7 @@
   "scripts": {
     "build": "npm run build:web && npm --workspace apps/api run build",
     "build:turbo": "turbo run build",
-    "build:web": "npm run clean:web && npm --workspace packages/db run db:generate && npm --workspace apps/web run build",
+    "build:web": "npm run clean:web && npx prisma generate --schema packages/db/prisma/schema.prisma && npm --workspace apps/web run build",
     "clean:web": "rm -rf apps/web/.next",
     "dev": "turbo run dev",
     "typecheck": "turbo run typecheck",
