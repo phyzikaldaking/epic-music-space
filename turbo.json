@@ -18,6 +18,14 @@
       "dependsOn": ["build"],
       "cache": false
     },
+    "test": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**/*.ts", "src/**/*.tsx", "vitest.config.*"]
+    },
+    "test:watch": {
+      "cache": false,
+      "persistent": true
+    },
     "db:generate": {
       "cache": false
     },
