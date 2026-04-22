@@ -376,7 +376,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
           </div>
 
           <Link
-            href={`/songs/${auction.song.id}`}
+            href={`/track/${auction.song.id}`}
             className="block rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-4 text-sm text-white/60 hover:bg-white/5 hover:text-white transition text-center"
           >
             View song page →

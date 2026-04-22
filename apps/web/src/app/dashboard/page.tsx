@@ -29,6 +29,23 @@ export default async function DashboardPage() {
       },
       studio: { select: { username: true } },
       badges: { orderBy: { awardedAt: "desc" } },
+      auctionsCreated: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: {
+          song: { select: { id: true, title: true } },
+          _count: { select: { bids: true } },
+        },
+      },
+      auctionBids: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: {
+          auction: {
+            include: { song: { select: { id: true, title: true } } },
+          },
+        },
+      },
     },
   });
 
@@ -396,6 +413,114 @@ export default async function DashboardPage() {
                 </table>
               </div>
             )}
+          </section>
+        )}
+
+        {/* ── Artist: My Auctions ─────────────────────── */}
+        {user.role !== "LISTENER" && user.auctionsCreated.length > 0 && (
+          <section className="mb-12">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-xl font-bold">🔨 My Auctions</h2>
+              <Link
+                href="/auctions"
+                className="text-sm text-brand-400 hover:underline"
+              >
+                Browse all →
+              </Link>
+            </div>
+            <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+              <table className="w-full text-sm">
+                <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
+                  <tr>
+                    <th className="px-5 py-3.5 text-left">Song</th>
+                    <th className="px-5 py-3.5 text-left">Status</th>
+                    <th className="px-5 py-3.5 text-left">Current Bid</th>
+                    <th className="px-5 py-3.5 text-left">Bids</th>
+                    <th className="px-5 py-3.5 text-left">Ends</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {user.auctionsCreated.map((a) => (
+                    <tr key={a.id} className="border-b border-white/5 hover:bg-white/3 transition">
+                      <td className="px-5 py-3.5">
+                        <Link href={`/auctions/${a.id}`} className="font-semibold text-brand-400 hover:underline">
+                          {a.song.title}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold border ${a.status === "ACTIVE" ? "bg-green-500/15 text-green-400 border-green-500/25" : a.status === "SETTLED" ? "bg-brand-500/15 text-brand-400 border-brand-500/25" : "bg-white/8 text-white/40 border-white/10"}`}>
+                          {a.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-gold-400 font-semibold">
+                        {a.currentBid != null ? formatPrice(a.currentBid) : formatPrice(a.startingBid)}
+                      </td>
+                      <td className="px-5 py-3.5 text-white/60">{a._count.bids}</td>
+                      <td className="px-5 py-3.5 text-white/40 text-xs">
+                        {new Date(a.endsAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* ── My Bids ──────────────────────────────────── */}
+        {user.auctionBids.length > 0 && (
+          <section className="mb-12">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-xl font-bold">🎯 My Bids</h2>
+              <Link href="/auctions" className="text-sm text-brand-400 hover:underline">
+                Browse all →
+              </Link>
+            </div>
+            <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+              <table className="w-full text-sm">
+                <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
+                  <tr>
+                    <th className="px-5 py-3.5 text-left">Auction</th>
+                    <th className="px-5 py-3.5 text-left">Your Bid</th>
+                    <th className="px-5 py-3.5 text-left">Current</th>
+                    <th className="px-5 py-3.5 text-left">Status</th>
+                    <th className="px-5 py-3.5 text-left">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {user.auctionBids.map((b) => {
+                    const isLeading = b.auction.currentBid != null && Number(b.amount) >= Number(b.auction.currentBid);
+                    return (
+                      <tr key={b.id} className="border-b border-white/5 hover:bg-white/3 transition">
+                        <td className="px-5 py-3.5">
+                          <Link href={`/auctions/${b.auction.id}`} className="font-semibold text-brand-400 hover:underline">
+                            {b.auction.song.title}
+                          </Link>
+                        </td>
+                        <td className="px-5 py-3.5 text-gold-400 font-semibold">{formatPrice(b.amount)}</td>
+                        <td className="px-5 py-3.5 text-white/60">
+                          {b.auction.currentBid != null ? formatPrice(b.auction.currentBid) : "—"}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {b.auction.status === "ACTIVE" ? (
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold border ${isLeading ? "bg-green-500/15 text-green-400 border-green-500/25" : "bg-red-500/15 text-red-400 border-red-500/25"}`}>
+                              {isLeading ? "Leading" : "Outbid"}
+                            </span>
+                          ) : (
+                            <span className="rounded-full px-2.5 py-0.5 text-xs font-bold bg-white/8 text-white/40 border border-white/10">
+                              {b.auction.status}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-white/40 text-xs">
+                          {new Date(b.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
 

@@ -5,6 +5,7 @@ import AiScoreBar from "@/components/AiScoreBar";
 import DistrictBadge from "@/components/DistrictBadge";
 import SongCard from "@/components/SongCard";
 import FollowButton from "@/components/FollowButton";
+import TipArtistButton from "@/components/TipArtistButton";
 import { BADGE_META } from "@/lib/badges";
 import type { Metadata } from "next";
 
@@ -172,28 +173,33 @@ export default async function StudioProfilePage({ params }: Props) {
           )}
         </div>
 
-        {/* Follow / Edit */}
-        {isOwner ? (
-          <a
-            href="/profile/edit"
-            className="rounded-xl border border-white/20 px-4 py-2 text-sm hover:bg-white/10 transition"
-          >
-            Edit Profile
-          </a>
-        ) : session ? (
-          <FollowButton
-            targetUserId={user.id}
-            initiallyFollowing={isFollowing}
-            initialFollowerCount={user._count.followers}
-          />
-        ) : (
-          <a
-            href="/auth/signin"
-            className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold hover:bg-brand-600 transition"
-          >
-            Follow
-          </a>
-        )}
+        {/* Follow / Edit / Tip */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {isOwner ? (
+            <a
+              href="/profile/edit"
+              className="rounded-xl border border-white/20 px-4 py-2 text-sm hover:bg-white/10 transition"
+            >
+              Edit Profile
+            </a>
+          ) : session ? (
+            <>
+              <FollowButton
+                targetUserId={user.id}
+                initiallyFollowing={isFollowing}
+                initialFollowerCount={user._count.followers}
+              />
+              <TipArtistButton artistId={user.id} artistName={user.name ?? username} />
+            </>
+          ) : (
+            <a
+              href="/auth/signin"
+              className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold hover:bg-brand-600 transition"
+            >
+              Follow
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Bio */}

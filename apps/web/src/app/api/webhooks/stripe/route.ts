@@ -36,6 +36,10 @@ export async function POST(req: NextRequest) {
         const sessionType = session.metadata?.type;
         if (sessionType === "boost") {
           await handleBoostCheckoutCompleted(session);
+        } else if (sessionType === "tip") {
+          await handleTipCheckoutCompleted(session);
+        } else if (sessionType === "auction_win") {
+          await handleAuctionWinCheckoutCompleted(session);
         } else {
           await handleLicenseCheckoutCompleted(session);
         }
@@ -97,35 +101,38 @@ async function handleLicenseCheckoutCompleted(
   });
   if (existing?.status === "SUCCEEDED") return;
 
-  // Atomic: increment soldLicenses and create license token
   await prisma.$transaction(async (tx) => {
     const song = await tx.song.findUniqueOrThrow({
       where: { id: songId },
       include: { artist_: { select: { id: true, stripeConnectId: true } } },
     });
+    const licensePrice = Number(song.licensePrice);
 
-    if (song.soldLicenses >= song.totalLicenses) {
+    // Atomically claim the next license slot. PostgreSQL's row-level UPDATE lock
+    // serializes concurrent webhook calls — each gets a unique post-increment
+    // soldLicenses value, eliminating the duplicate-tokenNumber race condition.
+    const claimed = await tx.song.update({
+      where: { id: songId },
+      data: { soldLicenses: { increment: 1 } },
+      select: { soldLicenses: true, totalLicenses: true },
+    });
+    const tokenNumber = claimed.soldLicenses;
+
+    // If we went over capacity the entire transaction (including the increment)
+    // will roll back, leaving soldLicenses unchanged.
+    if (tokenNumber > claimed.totalLicenses) {
       throw new Error("Song is sold out");
     }
 
-    const tokenNumber = song.soldLicenses + 1;
-    const licensePrice = Number(song.licensePrice);
-
-    const [licenseToken] = await Promise.all([
-      tx.licenseToken.create({
-        data: {
-          songId,
-          holderId: userId,
-          tokenNumber,
-          price: song.licensePrice,
-          status: "ACTIVE",
-        },
-      }),
-      tx.song.update({
-        where: { id: songId },
-        data: { soldLicenses: { increment: 1 } },
-      }),
-    ]);
+    const licenseToken = await tx.licenseToken.create({
+      data: {
+        songId,
+        holderId: userId,
+        tokenNumber,
+        price: song.licensePrice,
+        status: "ACTIVE",
+      },
+    });
 
     await tx.transaction.update({
       where: { stripeSessionId: session.id },
@@ -386,14 +393,19 @@ async function handleBoostCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 
   await prisma.$transaction(async (tx) => {
-    // Increment song's boostScore (cap at 100)
-    const song = await tx.song.findUniqueOrThrow({ where: { id: songId } });
-    const newBoostScore = Math.min(100, song.boostScore + points);
+    // Use a single atomic UPDATE with LEAST() so concurrent boost purchases
+    // always accumulate correctly. A read-then-write pattern here would let
+    // two simultaneous webhooks clobber each other's increments.
+    const [song] = await tx.$queryRaw<Array<{ title: string; boostScore: number }>>`
+      UPDATE "Song"
+      SET "boostScore" = LEAST(100.0, "boostScore" + ${points}::float8)
+      WHERE id = ${songId}
+      RETURNING title, "boostScore"
+    `;
 
-    await tx.song.update({
-      where: { id: songId },
-      data: { boostScore: newBoostScore },
-    });
+    if (!song) {
+      throw new Error(`Song not found: ${songId}`);
+    }
 
     await tx.transaction.update({
       where: { stripeSessionId: session.id },
@@ -408,7 +420,7 @@ async function handleBoostCheckoutCompleted(session: Stripe.Checkout.Session) {
       type: "BOOST_ACTIVATED",
       title: "Boost activated! 🚀",
       body: `Your track "${song.title}" has been boosted. It will receive increased visibility immediately.`,
-      metadata: { songId, boostPoints: points },
+      metadata: { songId, boostPoints: points, newBoostScore: song.boostScore },
     });
   });
 
@@ -479,6 +491,207 @@ async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
   });
 
   console.log(`[stripe-webhook] Payment failed: pi=${pi.id} tx=${tx.id}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fan tip checkout completed
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const { fromUserId, artistId, songId, message, amount } = session.metadata ?? {};
+  if (!fromUserId || !artistId) {
+    console.error("[stripe-webhook] Tip missing metadata", session.metadata);
+    return;
+  }
+
+  const existing = await prisma.transaction.findUnique({
+    where: { stripeSessionId: session.id },
+  });
+  if (existing?.status === "SUCCEEDED") return;
+
+  const tipAmount = parseFloat(amount ?? "0");
+  const artistShare = Math.round(tipAmount * 0.9 * 100) / 100;
+  const period = new Date().toISOString().slice(0, 7);
+
+  // Resolve a songId for the payout record (Payout.songId is non-nullable)
+  const targetSongId =
+    songId ||
+    (
+      await prisma.song.findFirst({
+        where: { artistId },
+        select: { id: true },
+        orderBy: { createdAt: "desc" },
+      })
+    )?.id;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.update({
+      where: { stripeSessionId: session.id },
+      data: {
+        status: "SUCCEEDED",
+        stripePaymentIntentId: session.payment_intent as string | undefined,
+      },
+    });
+
+    if (targetSongId) {
+      await tx.payout.create({
+        data: {
+          userId: artistId,
+          songId: targetSongId,
+          amount: artistShare,
+          period,
+          status: "PENDING",
+        },
+      });
+    }
+  });
+
+  const artist = await prisma.user.findUnique({
+    where: { id: artistId },
+    select: { stripeConnectId: true, name: true },
+  });
+  if (artist?.stripeConnectId && Math.round(artistShare * 100) >= 100) {
+    try {
+      await stripe.transfers.create({
+        amount: Math.round(artistShare * 100),
+        currency: "usd",
+        destination: artist.stripeConnectId,
+        metadata: { emsUserId: artistId, type: "tip", fromUserId },
+      });
+    } catch (err) {
+      console.error("[stripe-webhook] Tip transfer failed", err);
+    }
+  }
+
+  const tipper = await prisma.user.findUnique({
+    where: { id: fromUserId },
+    select: { name: true, username: true },
+  });
+  const tipperName = tipper?.name ?? tipper?.username ?? "A fan";
+
+  await Promise.all([
+    enqueueNotification({
+      userId: artistId,
+      type: "TIP_RECEIVED",
+      title: `${tipperName} tipped you $${tipAmount.toFixed(2)}! 💸`,
+      body: message ? `"${message}"` : `${tipperName} supports your music. Keep creating!`,
+      metadata: { fromUserId, amount: tipAmount, message: message ?? null },
+    }),
+    enqueueNotification({
+      userId: fromUserId,
+      type: "TIP_SENT",
+      title: "Tip sent!",
+      body: `Your $${tipAmount.toFixed(2)} tip was delivered to ${artist?.name ?? "the artist"}.`,
+      metadata: { artistId, amount: tipAmount },
+    }),
+  ]);
+
+  console.log(`[stripe-webhook] Tip: from=${fromUserId} to=${artistId} amount=${tipAmount}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auction win checkout completed — grant license, settle auction
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const { auctionId, songId, userId, sellerId } = session.metadata ?? {};
+  if (!auctionId || !songId || !userId || !sellerId) {
+    console.error("[stripe-webhook] Auction win missing metadata", session.metadata);
+    return;
+  }
+
+  const existing = await prisma.transaction.findUnique({
+    where: { stripeSessionId: session.id },
+  });
+  if (existing?.status === "SUCCEEDED") return;
+
+  const winAmount = Number(session.amount_total ?? 0) / 100;
+  const artistShare = Math.round(winAmount * 0.9 * 100) / 100;
+  const period = new Date().toISOString().slice(0, 7);
+
+  await prisma.$transaction(async (tx) => {
+    const song = await tx.song.findUniqueOrThrow({
+      where: { id: songId },
+      include: { artist_: { select: { id: true, stripeConnectId: true } } },
+    });
+
+    // Same atomic increment pattern: PostgreSQL row lock guarantees a unique tokenNumber.
+    const claimed = await tx.song.update({
+      where: { id: songId },
+      data: { soldLicenses: { increment: 1 } },
+      select: { soldLicenses: true, totalLicenses: true },
+    });
+    const tokenNumber = claimed.soldLicenses;
+
+    if (tokenNumber > claimed.totalLicenses) {
+      throw new Error("Song is sold out");
+    }
+
+    const licenseToken = await tx.licenseToken.create({
+      data: { songId, holderId: userId, tokenNumber, price: winAmount, status: "ACTIVE" },
+    });
+
+    await Promise.all([
+      tx.auction.update({ where: { id: auctionId }, data: { status: "SETTLED" } }),
+      tx.transaction.update({
+        where: { stripeSessionId: session.id },
+        data: {
+          status: "SUCCEEDED",
+          stripePaymentIntentId: session.payment_intent as string | undefined,
+          licenseTokenId: licenseToken.id,
+        },
+      }),
+      tx.payout.create({
+        data: {
+          userId: sellerId,
+          songId,
+          licenseTokenId: licenseToken.id,
+          amount: artistShare,
+          period,
+          status: "PENDING",
+        },
+      }),
+    ]);
+
+    const connectId = song.artist_.stripeConnectId;
+    if (connectId && Math.round(artistShare * 100) >= 100) {
+      try {
+        await stripe.transfers.create({
+          amount: Math.round(artistShare * 100),
+          currency: "usd",
+          destination: connectId,
+          metadata: { emsUserId: sellerId, songId, auctionId, licenseTokenId: licenseToken.id },
+        });
+        await tx.payout.updateMany({
+          where: { userId: sellerId, songId, licenseTokenId: licenseToken.id },
+          data: { status: "PAID", paidAt: new Date() },
+        });
+      } catch (err) {
+        console.error("[stripe-webhook] Auction transfer failed", err);
+      }
+    }
+
+    await Promise.all([
+      enqueueNotification({
+        userId,
+        type: "AUCTION_SETTLED",
+        title: "License received! 🎵",
+        body: `Congratulations! You now hold license #${tokenNumber} for "${song.title}". You'll earn ${String(song.revenueSharePct)}% of every future sale.`,
+        metadata: { songId, auctionId, tokenNumber },
+      }),
+      enqueueNotification({
+        userId: sellerId,
+        type: "AUCTION_PAID",
+        title: "Auction payment received! 💰",
+        body: `Your auction for "${song.title}" has been settled. $${artistShare.toFixed(2)} payout is on the way.`,
+        metadata: { auctionId, amount: winAmount },
+      }),
+    ]);
+  });
+
+  await awardBadge(userId, "LICENSE_HOLDER");
+
+  console.log(`[stripe-webhook] Auction settled: auction=${auctionId} winner=${userId} song=${songId}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

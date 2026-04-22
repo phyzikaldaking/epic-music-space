@@ -57,6 +57,11 @@ model User {
 
   // Phase 2: badges
   badges               UserBadge[]
+
+  // Auctions & tips
+  auctionsCreated      Auction[]    @relation("AuctionSeller")
+  auctionsWon          Auction[]    @relation("AuctionWinner")
+  auctionBids          AuctionBid[] @relation("AuctionBidder")
 }
 
 enum Role {
@@ -144,6 +149,7 @@ model Song {
   payouts           Payout[]
   versusMatchesA    VersusMatch[] @relation("VersusA")
   versusMatchesB    VersusMatch[] @relation("VersusB")
+  auctions          Auction[]
 
   @@index([artistId])
   @@index([district])
@@ -214,6 +220,10 @@ model Transaction {
 enum TransactionType {
   LICENSE_PURCHASE    // buyer acquires a license for a song
   REVENUE_PAYOUT      // platform pays artist/holder their revenue share
+  SUBSCRIPTION        // platform subscription tier
+  BOOST               // paid visibility boost
+  TIP                 // fan tips an artist directly
+  AUCTION_WIN         // buyer wins a license auction
 }
 
 enum PaymentStatus {
@@ -463,5 +473,56 @@ enum BadgeType {
   FIRST_LICENSE_SOLD  // sold first license (artist)
   LICENSE_HOLDER      // purchased first license (fan)
   TOP_ARTIST          // reached #1 on leaderboard
+}
+
+// ─────────────────────────────────────────
+// AUCTIONS
+// ─────────────────────────────────────────
+
+model Auction {
+  id            String        @id @default(cuid())
+  songId        String
+  song          Song          @relation(fields: [songId], references: [id], onDelete: Cascade)
+  sellerId      String
+  seller        User          @relation("AuctionSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  startingBid   Decimal       @db.Decimal(10, 2)
+  reservePrice  Decimal?      @db.Decimal(10, 2)
+  currentBid    Decimal?      @db.Decimal(10, 2)
+
+  winnerId      String?
+  winner        User?         @relation("AuctionWinner", fields: [winnerId], references: [id])
+
+  status        AuctionStatus @default(ACTIVE)
+  endsAt        DateTime
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  bids          AuctionBid[]
+
+  @@index([status, endsAt])
+  @@index([songId])
+  @@index([sellerId])
+}
+
+enum AuctionStatus {
+  ACTIVE
+  ENDED
+  SETTLED
+  EXPIRED
+  CANCELLED
+}
+
+model AuctionBid {
+  id        String   @id @default(cuid())
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidderId  String
+  bidder    User     @relation("AuctionBidder", fields: [bidderId], references: [id], onDelete: Cascade)
+  amount    Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  @@index([auctionId, amount(sort: Desc)])
+  @@index([bidderId])
 }
 

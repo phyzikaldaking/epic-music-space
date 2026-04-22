@@ -8,7 +8,7 @@ const staticRoutes = [
   { path: "/pricing", priority: 0.8, changeFrequency: "weekly" as const },
   { path: "/leaderboard", priority: 0.75, changeFrequency: "daily" as const },
   { path: "/versus", priority: 0.75, changeFrequency: "hourly" as const },
-  { path: "/studio/new", priority: 0.72, changeFrequency: "monthly" as const },
+  { path: "/auctions", priority: 0.72, changeFrequency: "hourly" as const },
   { path: "/label", priority: 0.65, changeFrequency: "weekly" as const },
   { path: "/legal/licensing", priority: 0.6, changeFrequency: "monthly" as const },
   { path: "/legal/terms", priority: 0.45, changeFrequency: "monthly" as const },

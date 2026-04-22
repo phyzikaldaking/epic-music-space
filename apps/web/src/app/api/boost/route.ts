@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
       userId: session.user.id,
       songId,
       amount: pkg.priceUsd,
-      type: "REVENUE_PAYOUT", // reusing enum; semantically a "platform spend"
+      type: "BOOST",
       status: "PENDING",
       stripeSessionId: stripeSession.id,
       metadata: { type: "boost", packageId, boostPoints: pkg.boostPoints },

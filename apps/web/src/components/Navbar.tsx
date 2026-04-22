@@ -21,6 +21,7 @@ export default async function Navbar() {
   const navLinks = session
     ? [
         { href: "/marketplace", label: "Browse" },
+        { href: "/auctions", label: "Auctions" },
         { href: "/versus", label: "Battles" },
         { href: "/leaderboard", label: "Charts" },
         { href: "/city", label: "City" },
