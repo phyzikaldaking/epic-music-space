@@ -2,6 +2,16 @@
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
   "tasks": {
+    "test": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "**/*.test.ts", "**/*.test.tsx", "vitest.config.*"],
+      "outputs": ["coverage/**"]
+    },
+    "test:coverage": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "**/*.test.ts", "**/*.test.tsx", "vitest.config.*"],
+      "outputs": ["coverage/**"]
+    },
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
