@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import AudioPlayer from "@/components/AudioPlayer";
 
 interface Song {
@@ -126,18 +127,18 @@ export default function VersusResultCard({ match }: { match: Match }) {
           >
             𝕏 Share on X
           </a>
-          <a
+          <Link
             href="/versus"
             className="rounded-xl border border-white/15 px-5 py-2.5 text-sm text-white/50 hover:bg-white/6 hover:text-white transition"
           >
             ← More Battles
-          </a>
-          <a
+          </Link>
+          <Link
             href="/auth/signup"
             className="rounded-xl bg-accent-500/20 border border-accent-500/40 px-5 py-2.5 text-sm font-semibold text-accent-400 hover:bg-accent-500/30 transition"
           >
             Join EMS Free →
-          </a>
+          </Link>
         </div>
       </div>
     </div>

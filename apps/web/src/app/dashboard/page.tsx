@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
@@ -153,12 +154,12 @@ export default async function DashboardPage() {
             </h1>
           </div>
           {user.role !== "LISTENER" && (
-            <a
+            <Link
               href="/studio/new"
               className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 glow-purple-sm"
             >
               + Upload Song
-            </a>
+            </Link>
           )}
         </div>
 
@@ -172,12 +173,12 @@ export default async function DashboardPage() {
                 Claim your studio username so fans can find and follow you.
               </p>
             </div>
-            <a
+            <Link
               href="/profile/edit"
               className="flex-shrink-0 rounded-xl bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600 transition glow-purple-sm"
             >
               Set up studio →
-            </a>
+            </Link>
           </div>
         )}
 
@@ -199,7 +200,7 @@ export default async function DashboardPage() {
                   : "Connect Stripe to receive 90% of every license sale directly to your bank account."}
               </p>
             </div>
-            <a
+            <Link
               href="/dashboard/payouts"
               className={`flex-shrink-0 rounded-xl px-5 py-2 text-sm font-bold text-white transition ${
                 connectStatus.connected
@@ -208,7 +209,7 @@ export default async function DashboardPage() {
               }`}
             >
               {connectStatus.connected ? "Continue setup →" : "Set up payouts →"}
-            </a>
+            </Link>
           </div>
         )}
         {isArtist && connectStatus.onboardingComplete && (
@@ -220,12 +221,12 @@ export default async function DashboardPage() {
                 You receive 90% of every license sale automatically via Stripe.
               </p>
             </div>
-            <a
+            <Link
               href="/dashboard/payouts"
               className="flex-shrink-0 rounded-xl bg-green-700/50 border border-green-500/30 px-5 py-2 text-sm font-bold text-green-300 hover:bg-green-700/70 transition"
             >
               Manage Payouts →
-            </a>
+            </Link>
           </div>
         )}
 
@@ -261,12 +262,12 @@ export default async function DashboardPage() {
             <div className="rounded-2xl border border-white/8 bg-[#141414] p-10 text-center">
               <p className="mb-2 text-4xl">🎟️</p>
               <p className="font-semibold text-white/50">No licenses yet.</p>
-              <a
+              <Link
                 href="/marketplace"
                 className="mt-3 inline-block rounded-xl bg-brand-500/15 border border-brand-500/30 px-5 py-2 text-sm font-semibold text-brand-400 hover:bg-brand-500/25 transition"
               >
                 Browse the marketplace →
-              </a>
+              </Link>
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
@@ -287,12 +288,12 @@ export default async function DashboardPage() {
                       className="border-b border-white/5 transition hover:bg-white/3"
                     >
                       <td className="px-5 py-3.5">
-                        <a
+                        <Link
                           href={`/track/${l.song.id}`}
                           className="font-semibold text-brand-400 hover:underline"
                         >
                           {l.song.title}
-                        </a>
+                        </Link>
                         <div className="text-xs text-white/35">{l.song.artist}</div>
                       </td>
                       <td className="px-5 py-3.5 font-mono text-white/60">
@@ -328,12 +329,12 @@ export default async function DashboardPage() {
           <section className="mb-12">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-xl font-bold">My Songs</h2>
-              <a
+              <Link
                 href="/studio/new"
                 className="rounded-lg bg-brand-500/15 border border-brand-500/30 px-4 py-1.5 text-sm font-semibold text-brand-400 hover:bg-brand-500/25 transition"
               >
                 + Upload song
-              </a>
+              </Link>
             </div>
             {user.songs.length === 0 ? (
               <div className="rounded-2xl border border-white/8 bg-[#141414] p-10 text-center text-white/40">
@@ -361,12 +362,12 @@ export default async function DashboardPage() {
                         className="border-b border-white/5 transition hover:bg-white/3"
                       >
                         <td className="px-5 py-3.5">
-                          <a
+                          <Link
                             href={`/track/${s.id}`}
                             className="font-semibold text-brand-400 hover:underline"
                           >
                             {s.title}
-                          </a>
+                          </Link>
                         </td>
                         <td className="px-5 py-3.5">
                           <span className={`font-bold ${s.aiScore >= 80 ? "text-gold-400" : s.aiScore >= 50 ? "text-brand-400" : "text-white/40"}`}>
@@ -432,9 +433,9 @@ export default async function DashboardPage() {
         <section className="mb-12">
           <div className="mb-5 flex items-center justify-between">
             <h2 className="text-xl font-bold">🔗 Invite Friends</h2>
-            <a href="/invite" className="text-sm text-brand-400 hover:underline">
+            <Link href="/invite" className="text-sm text-brand-400 hover:underline">
               View full invite page →
-            </a>
+            </Link>
           </div>
           {inviteData ? (
             <div className="rounded-2xl border border-white/8 bg-[#141414] p-6">
@@ -445,12 +446,12 @@ export default async function DashboardPage() {
                 <code className="flex-1 rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm font-mono text-brand-300">
                   {`${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/auth/signup?invite=${inviteData.code}`}
                 </code>
-                <a
+                <Link
                   href="/invite"
                   className="flex-shrink-0 rounded-xl bg-brand-500 px-4 py-3 text-sm font-bold text-white hover:bg-brand-600 transition"
                 >
                   Copy & Share
-                </a>
+                </Link>
               </div>
               <div>
                 <div className="mb-1 flex justify-between text-xs text-white/40">
@@ -509,9 +510,9 @@ export default async function DashboardPage() {
                     return (
                       <tr key={s.id} className="border-b border-white/5 transition hover:bg-white/3">
                         <td className="px-5 py-3.5">
-                          <a href={`/track/${s.id}`} className="font-semibold text-brand-400 hover:underline">
+                          <Link href={`/track/${s.id}`} className="font-semibold text-brand-400 hover:underline">
                             {s.title}
-                          </a>
+                          </Link>
                         </td>
                         <td className="px-5 py-3.5 text-white/60">
                           {s.soldLicenses} / {s.totalLicenses}

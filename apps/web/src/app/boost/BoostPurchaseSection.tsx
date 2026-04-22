@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 interface Props {
@@ -17,21 +18,21 @@ export default function BoostPurchaseSection({ packageId, isLoggedIn, songs }: P
 
   if (!isLoggedIn) {
     return (
-      <a
+      <Link
         href="/auth/signin?callbackUrl=/boost"
         className="mt-4 block w-full rounded-xl bg-brand-500/20 border border-brand-500/40 py-3 text-center text-sm font-semibold text-brand-400 hover:bg-brand-500/30 transition"
       >
         Sign in to Boost
-      </a>
+      </Link>
     );
   }
 
   if (songs.length === 0) {
     return (
       <div className="mt-4 rounded-lg bg-white/5 p-3 text-center text-xs text-white/30">
-        <a href="/studio/new" className="text-brand-400 hover:underline">
+        <Link href="/studio/new" className="text-brand-400 hover:underline">
           Upload a track first
-        </a>{" "}
+        </Link>{" "}
         to use boosts.
       </div>
     );

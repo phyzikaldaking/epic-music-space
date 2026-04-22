@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +21,12 @@ export default async function LabelListPage() {
             Labels sign artists and earn a revenue share from their licensing activity.
           </p>
         </div>
-        <a
+        <Link
           href="/label/new"
           className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold hover:bg-brand-600 transition"
         >
           + Create Label
-        </a>
+        </Link>
       </div>
 
       {labels.length === 0 ? (
@@ -36,7 +37,7 @@ export default async function LabelListPage() {
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {labels.map((label) => (
-            <a
+            <Link
               key={label.id}
               href={`/label/${label.id}`}
               className="glass rounded-2xl p-5 transition hover:border-brand-500/50"
@@ -64,7 +65,7 @@ export default async function LabelListPage() {
                 <span>{label._count.artists} artists</span>
                 <span>{String(label.revSharePct)}% rev share</span>
               </div>
-            </a>
+            </Link>
           ))}
         </div>
       )}
