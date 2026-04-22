@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "NODE_PATH=$INIT_CWD/node_modules next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "next lint"
