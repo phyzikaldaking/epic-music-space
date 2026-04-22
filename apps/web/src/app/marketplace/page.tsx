@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import type { Song } from "@ems/db";
 import Link from "next/link";
+import { demoTracks } from "@/lib/demoTracks";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,27 @@ export const metadata: Metadata = {
 
 type SortKey = "trending" | "newest" | "price_asc" | "price_desc" | "rev_desc";
 type TempoKey = "slow" | "mid" | "fast";
+type PriceLike = string | number | { toString(): string };
+type MarketplaceSong = Omit<
+  Pick<
+    Song,
+    | "id"
+    | "title"
+    | "artist"
+    | "genre"
+    | "coverUrl"
+    | "audioUrl"
+    | "soldLicenses"
+    | "totalLicenses"
+    | "bpm"
+    | "key"
+    | "aiScore"
+  >,
+  never
+> & {
+  licensePrice: PriceLike;
+  revenueSharePct: PriceLike;
+};
 
 interface Props {
   searchParams: Promise<{
@@ -85,10 +107,10 @@ export default async function MarketplacePage({ searchParams }: Props) {
 
   const PAGE_SIZE = 24;
 
-  let trendingSongs: Song[] = [];
-  let allSongs: Song[] = [];
+  let trendingSongs: MarketplaceSong[] = [];
+  let allSongs: MarketplaceSong[] = [];
   let totalCount = 0;
-  let catalogUnavailable = !process.env.DATABASE_URL;
+  let catalogUnavailable = !hasUsableDatabaseUrl();
 
   if (!catalogUnavailable) {
     try {
@@ -114,6 +136,16 @@ export default async function MarketplacePage({ searchParams }: Props) {
     }
   }
 
+  if (catalogUnavailable) {
+    const demoSongs = getDemoMarketplaceSongs({ search, genre, tempo, sort });
+    trendingSongs =
+      !search && !genre && !tempo && sort === "trending" && page === 1
+        ? demoSongs.slice(0, 3)
+        : [];
+    allSongs = demoSongs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    totalCount = demoSongs.length;
+  }
+
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   function buildPageUrl(p: number) {
@@ -131,59 +163,56 @@ export default async function MarketplacePage({ searchParams }: Props) {
   const isFiltered = !!(search || genre || tempo || sort !== "trending");
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-12">
+    <div className="bg-[#050509]">
       {!catalogUnavailable && <LiveMarketplaceFeed />}
-      <div className="mb-8">
-        <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/8 px-3 py-1 text-xs font-semibold text-brand-400">
-          <span className="h-1.5 w-1.5 rounded-full bg-brand-400 motion-safe:animate-pulse" />
-          {catalogUnavailable ? "Catalog syncing" : "Live marketplace"}
-        </div>
-        <h1 className="text-4xl font-extrabold">
-          <span className="text-gradient-ems">Marketplace</span>
-        </h1>
-        <p className="mt-2 text-white/45">
-          Buy digital licenses and review participation terms before checkout.
-        </p>
-      </div>
-
-      <Suspense>
-        <MarketplaceFilters totalCount={allSongs.length} />
-      </Suspense>
-
-      {catalogUnavailable ? (
-        <div className="rounded-lg border border-white/10 bg-white/[0.03] px-6 py-16 text-center">
-          <div
-            aria-hidden="true"
-            className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-lg border border-brand-500/30 bg-brand-500/10 text-brand-300"
-          >
-            <svg className="h-7 w-7" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 3v10.55A4 4 0 1 0 14 17V7h6V3h-8Z" />
-            </svg>
-          </div>
-          <p className="text-xl font-semibold text-white">
-            The catalog is temporarily unavailable.
-          </p>
-          <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-white/45">
-            The marketplace page is still online, but the track database could
-            not be reached. Try again shortly, or start an artist upload while
-            the catalog reconnects.
-          </p>
-          <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link
-              href="/studio/new"
-              className="inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-500 px-5 text-sm font-bold text-white transition hover:bg-brand-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
-            >
-              Upload a track
-            </Link>
-            <Link
-              href="/legal/licensing"
-              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/16 px-5 text-sm font-bold text-white/70 transition hover:border-white/32 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
-            >
-              Review licensing
-            </Link>
+      <section className="border-b border-white/8 px-4 py-14 md:py-20">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-10 lg:grid-cols-[1fr_0.7fr] lg:items-end">
+            <div>
+              <p className="mb-4 border-l-2 border-accent-400 pl-3 text-xs font-black uppercase tracking-[0.24em] text-accent-300">
+                {catalogUnavailable ? "Demo catalog" : "Live marketplace"}
+              </p>
+              <h1 className="max-w-4xl text-5xl font-black tracking-tight md:text-7xl">
+                Browse music that already has terms attached.
+              </h1>
+              <p className="mt-5 max-w-2xl text-lg leading-8 text-white/58">
+                Search cues by price, score, tempo, and remaining license
+                supply. Preview the track first, then inspect the rights before
+                checkout.
+              </p>
+            </div>
+            <dl className="grid grid-cols-3 gap-4 border-y border-white/10 py-6 lg:border-y-0 lg:border-l lg:py-0 lg:pl-8">
+              <div>
+                <dd className="text-3xl font-black text-white">
+                  {totalCount || allSongs.length}
+                </dd>
+                <dt className="mt-1 text-xs uppercase tracking-[0.18em] text-white/36">
+                  Listings
+                </dt>
+              </div>
+              <div>
+                <dd className="text-3xl font-black text-accent-300">1-click</dd>
+                <dt className="mt-1 text-xs uppercase tracking-[0.18em] text-white/36">
+                  Preview
+                </dt>
+              </div>
+              <div>
+                <dd className="text-3xl font-black text-gold-300">Capped</dd>
+                <dt className="mt-1 text-xs uppercase tracking-[0.18em] text-white/36">
+                  Supply
+                </dt>
+              </div>
+            </dl>
           </div>
         </div>
-      ) : allSongs.length === 0 ? (
+      </section>
+
+      <div className="mx-auto max-w-7xl px-4 py-10">
+        <Suspense>
+          <MarketplaceFilters totalCount={totalCount} />
+        </Suspense>
+
+        {allSongs.length === 0 ? (
         <div className="py-24 text-center">
           <div
             aria-hidden="true"
@@ -204,7 +233,7 @@ export default async function MarketplacePage({ searchParams }: Props) {
               : "Artists can publish the first licensable tracks now."}
           </p>
         </div>
-      ) : (
+        ) : (
         <>
           {trendingSongs.length > 0 && !isFiltered && (
             <section className="mb-12">
@@ -319,7 +348,77 @@ export default async function MarketplacePage({ searchParams }: Props) {
             </nav>
           )}
         </>
-      )}
+        )}
+      </div>
     </div>
   );
+}
+
+function hasUsableDatabaseUrl() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) return false;
+
+  return ![
+    "USER:PASSWORD@HOST",
+    "PROJECT_REF:PASSWORD",
+    "your-database",
+    "your_db",
+  ].some((placeholder) => databaseUrl.includes(placeholder));
+}
+
+function getDemoMarketplaceSongs({
+  search,
+  genre,
+  tempo,
+  sort,
+}: {
+  search: string;
+  genre: string;
+  tempo: string;
+  sort: SortKey;
+}): MarketplaceSong[] {
+  const query = search.toLowerCase().trim();
+  const songs = demoTracks
+    .map((track) => ({
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      genre: track.genre,
+      coverUrl: track.coverUrl,
+      audioUrl: track.audioUrl,
+      licensePrice: track.licensePrice,
+      revenueSharePct: track.revenueSharePct,
+      soldLicenses: track.soldLicenses,
+      totalLicenses: track.totalLicenses,
+      bpm: track.bpm,
+      key: track.key,
+      aiScore: track.aiScore,
+    }))
+    .filter((song) => {
+      const matchesSearch =
+        !query ||
+        song.title.toLowerCase().includes(query) ||
+        song.artist.toLowerCase().includes(query);
+      const matchesGenre =
+        !genre || song.genre?.toLowerCase() === genre.toLowerCase();
+      const matchesTempo =
+        !tempo ||
+        (tempo === "slow" && song.bpm < 90) ||
+        (tempo === "mid" && song.bpm >= 90 && song.bpm <= 130) ||
+        (tempo === "fast" && song.bpm > 130);
+      return matchesSearch && matchesGenre && matchesTempo;
+    });
+
+  return songs.sort((a, b) => {
+    if (sort === "price_asc") {
+      return Number(a.licensePrice) - Number(b.licensePrice);
+    }
+    if (sort === "price_desc") {
+      return Number(b.licensePrice) - Number(a.licensePrice);
+    }
+    if (sort === "rev_desc") {
+      return Number(b.revenueSharePct) - Number(a.revenueSharePct);
+    }
+    return b.aiScore - a.aiScore || b.soldLicenses - a.soldLicenses;
+  });
 }

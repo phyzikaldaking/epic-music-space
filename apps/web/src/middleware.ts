@@ -1,20 +1,15 @@
-import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Next.js Edge Middleware - route protection for EMS.
  *
- * Middleware must stay Edge-safe, so it reads the JWT directly instead of
- * importing the Prisma-backed NextAuth adapter.
+ * Keep this file Edge-safe. Server pages and API routes perform the
+ * authoritative auth/role checks; middleware only handles fast redirects for
+ * obviously signed-out requests.
  */
 export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const token = await getToken({
-    req,
-    secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
-  });
-
-  const isAuthed = !!(token?.sub ?? token?.id);
+  const isAuthed = hasSessionCookie(req);
 
   function redirectToSignIn() {
     const signIn = new URL("/auth/signin", req.url);
@@ -45,13 +40,18 @@ export default async function middleware(req: NextRequest) {
 
   if (pathname === "/studio/new") {
     if (!isAuthed) return redirectToSignIn();
-    const role = String(token?.role ?? "LISTENER");
-    if (role === "LISTENER") {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
   }
 
   return NextResponse.next();
+}
+
+function hasSessionCookie(req: NextRequest) {
+  return [
+    "authjs.session-token",
+    "__Secure-authjs.session-token",
+    "next-auth.session-token",
+    "__Secure-next-auth.session-token",
+  ].some((name) => Boolean(req.cookies.get(name)?.value));
 }
 
 export const config = {

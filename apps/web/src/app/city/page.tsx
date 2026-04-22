@@ -6,8 +6,24 @@ import type { CityBuilding } from "@/app/api/city/data/route";
 
 export const dynamic = "force-dynamic";
 
+type SongRow = {
+  id: string; title: string; artist: string; coverUrl: string | null;
+  aiScore: number; soldLicenses: number; artistId: string;
+  artist_: { studio: { username: string } | null } | null;
+};
+type StudioRow = {
+  username: string; district: string; level: number;
+  user: { name: string | null; image: string | null; songs: { aiScore: number; soldLicenses: number }[] };
+};
+
 export default async function CityPage() {
-  const [topPrime, topLabel, topIndie, studiosByDistrict] = await Promise.all([
+  let topPrime: SongRow[] = [];
+  let topLabel: SongRow[] = [];
+  let topIndie: SongRow[] = [];
+  let studiosByDistrict: StudioRow[] = [];
+
+  try {
+    [topPrime, topLabel, topIndie, studiosByDistrict] = await Promise.all([
     prisma.song.findMany({
       where: { isActive: true, district: "DOWNTOWN_PRIME" },
       orderBy: { aiScore: "desc" },
@@ -55,20 +71,12 @@ export default async function CityPage() {
         },
       },
     }),
-  ]);
+    ]);
+  } catch (err) {
+    console.error("[city] DB unavailable, rendering empty city", err);
+  }
 
-  type SongWithStudio = {
-    id: string;
-    title: string;
-    artist: string;
-    coverUrl?: string | null;
-    aiScore: number;
-    soldLicenses: number;
-    artistId: string;
-    artist_: { studio: { username: string } | null } | null;
-  };
-
-  function MiniSongCard({ song }: { song: SongWithStudio }) {
+  function MiniSongCard({ song }: { song: SongRow }) {
     const studioHref = song.artist_?.studio?.username
       ? `/studio/${song.artist_.studio.username}`
       : `/marketplace?q=${encodeURIComponent(song.artist)}`;
@@ -98,9 +106,7 @@ export default async function CityPage() {
     );
   }
 
-  type StudioBuilding = (typeof studiosByDistrict)[number];
-
-  function StudioBuilding({ studio }: { studio: StudioBuilding }) {
+  function StudioBuilding({ studio }: { studio: StudioRow }) {
     const avgScore =
       studio.user.songs.length > 0
         ? studio.user.songs.reduce((s, x) => s + x.aiScore, 0) / studio.user.songs.length
@@ -169,7 +175,7 @@ export default async function CityPage() {
     songs,
   }: {
     district: "LABEL_ROW" | "DOWNTOWN_PRIME" | "INDIE_BLOCKS";
-    songs: SongWithStudio[];
+    songs: SongRow[];
   }) {
     const meta = DISTRICT_META[district];
     const visual = DISTRICT_VISUAL[district];
@@ -230,23 +236,13 @@ export default async function CityPage() {
   }
 
   // ── Build city 3-D data ────────────────────────────────────────────────
-  type StudioForCity = {
-    username: string;
-    district: string;
-    level: number;
-    user: {
-      name: string | null;
-      image: string | null;
-      songs: { aiScore: number; soldLicenses: number }[];
-    };
-  };
-  const cityBuildings: CityBuilding[] = (studiosByDistrict as StudioForCity[]).map((s) => {
+  const cityBuildings: CityBuilding[] = studiosByDistrict.map((s) => {
     const songs = s.user.songs;
     const avgScore =
       songs.length > 0
-        ? songs.reduce((acc: number, x: { aiScore: number; soldLicenses: number }) => acc + x.aiScore, 0) / songs.length
+        ? songs.reduce((acc, x) => acc + x.aiScore, 0) / songs.length
         : 0;
-    const totalSold = songs.reduce((acc: number, x: { aiScore: number; soldLicenses: number }) => acc + x.soldLicenses, 0);
+    const totalSold = songs.reduce((acc, x) => acc + x.soldLicenses, 0);
     return {
       username: s.username,
       name: s.user.name ?? s.username,

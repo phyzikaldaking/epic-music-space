@@ -10,7 +10,7 @@ Independent artists release limited digital licenses for their music. Fans and s
 
 ## 🏗️ Architecture
 
-This is a **Turborepo monorepo** with Yarn Workspaces.
+This is a **Turborepo monorepo** with npm workspaces.
 
 ```
 epic-music-space/
@@ -27,20 +27,20 @@ epic-music-space/
 
 ## 📦 Tech Stack
 
-| Layer       | Technology                                      |
-|-------------|------------------------------------------------|
-| Framework   | Next.js 15 (App Router, React Server Components) |
-| API         | Hono (standalone REST server — `apps/api`)     |
-| Auth        | NextAuth.js v5 (Credentials + Google OAuth)    |
-| Database    | PostgreSQL + Prisma ORM                        |
-| Payments    | Stripe Checkout + Webhooks + Subscriptions     |
-| Caching     | Redis (ioredis) — graceful fallback to memory  |
-| Jobs        | BullMQ workers (AI scoring, notifications, analytics) |
-| Rate Limit  | rate-limiter-flexible (Redis or in-memory)     |
-| AI          | OpenAI GPT-4o (song analysis + scoring)        |
-| Styling     | Tailwind CSS v3                                |
-| Build       | Turborepo + Yarn Workspaces                    |
-| Language    | TypeScript (strict)                            |
+| Layer      | Technology                                            |
+| ---------- | ----------------------------------------------------- |
+| Framework  | Next.js 15 (App Router, React Server Components)      |
+| API        | Hono (standalone REST server — `apps/api`)            |
+| Auth       | NextAuth.js v5 (Credentials + Google OAuth)           |
+| Database   | PostgreSQL + Prisma ORM                               |
+| Payments   | Stripe Checkout + Webhooks + Subscriptions            |
+| Caching    | Redis (ioredis) — graceful fallback to memory         |
+| Jobs       | BullMQ workers (AI scoring, notifications, analytics) |
+| Rate Limit | rate-limiter-flexible (Redis or in-memory)            |
+| AI         | OpenAI GPT-4o (song analysis + scoring)               |
+| Styling    | Tailwind CSS v3                                       |
+| Build      | Turborepo + npm workspaces                            |
+| Language   | TypeScript (strict)                                   |
 
 ## 🗄️ Database Schema
 
@@ -55,7 +55,7 @@ epic-music-space/
 ### Prerequisites
 
 - Node.js 20+
-- Yarn 1.22+
+- npm 11+
 - PostgreSQL database (Supabase / Neon / Railway / local Docker)
 - Stripe account
 - Google OAuth app (optional)
@@ -63,7 +63,7 @@ epic-music-space/
 ### 1. Install dependencies
 
 ```bash
-yarn install
+npm install
 ```
 
 ### 2. Configure environment
@@ -84,20 +84,39 @@ npx prisma generate
 ### 4. Start development
 
 ```bash
-yarn dev
+npm run dev
 # → http://localhost:3000
 ```
 
+## 🚢 Deployment
+
+The web app is configured for Vercel through `vercel.json`.
+
+```bash
+# Build the deployable app and standalone API
+npm run build
+
+# Build only the deployable Next.js app
+npm run build:web
+
+# Apply production Prisma migrations when you are ready to change the DB
+npm run db:deploy
+```
+
+Vercel runs `npm run vercel:build`, which generates the Prisma client and
+builds `apps/web`. Database migrations are explicit so preview deployments do
+not fail or mutate production data during the build step.
+
 ## 🔌 API Routes
 
-| Method | Path                            | Description                          |
-|--------|---------------------------------|--------------------------------------|
-| GET    | `/api/songs`                    | List all active songs                |
-| POST   | `/api/songs`                    | Create a song (artists only)         |
-| POST   | `/api/checkout`                 | Create Stripe checkout session       |
-| POST   | `/api/webhooks/stripe`          | Stripe webhook (license fulfillment) |
-| POST   | `/api/auth/register`            | Register new user                    |
-| *      | `/api/auth/[...nextauth]`       | NextAuth.js handlers                 |
+| Method | Path                      | Description                          |
+| ------ | ------------------------- | ------------------------------------ |
+| GET    | `/api/songs`              | List all active songs                |
+| POST   | `/api/songs`              | Create a song (artists only)         |
+| POST   | `/api/checkout`           | Create Stripe checkout session       |
+| POST   | `/api/webhooks/stripe`    | Stripe webhook (license fulfillment) |
+| POST   | `/api/auth/register`      | Register new user                    |
+| \*     | `/api/auth/[...nextauth]` | NextAuth.js handlers                 |
 
 ## 📄 Legal Pages
 
@@ -114,4 +133,4 @@ yarn dev
 
 ---
 
-*Epic Music Space, LLC — All rights reserved.*
+_Epic Music Space, LLC — All rights reserved._
