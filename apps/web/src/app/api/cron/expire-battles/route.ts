@@ -5,9 +5,10 @@ import { enqueueNotification } from "@/lib/queues";
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  // Fail-closed: reject all requests if CRON_SECRET is not set or doesn't match
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  const isVercelCron = req.headers.get("x-vercel-cron") === "1";
+  const isAuthorized = secret && req.headers.get("authorization") === `Bearer ${secret}`;
+  if (!isVercelCron && !isAuthorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

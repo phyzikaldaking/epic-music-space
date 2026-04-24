@@ -23,11 +23,12 @@
     "vercel:build": "npm run clean:web && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma generate --schema packages/db/prisma/schema.prisma && npm --workspace apps/web run build"
   },
   "dependencies": {
-    "typescript": "^5.6.3",
+    "@prisma/client": "^5.22.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.9.1",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
-    "@types/node": "^22.9.1"
+    "typescript": "^5.6.3"
   },
   "devDependencies": {
     "prettier": "^3.3.3",

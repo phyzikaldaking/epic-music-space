@@ -21,6 +21,7 @@ const TYPE_ICON: Record<string, string> = {
   PAYOUT: "💸",
   TIP: "💛",
   AUCTION_BID: "🔨",
+  AUCTION_BID_RECEIVED: "🔨",
   AUCTION_WIN: "🏆",
   AUCTION_OUTBID: "📣",
   FOLLOW: "👤",

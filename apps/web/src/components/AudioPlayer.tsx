@@ -5,10 +5,12 @@ import { useState, useRef, useEffect } from "react";
 interface AudioPlayerProps {
   audioUrl: string;
   title: string;
+  songId?: string;
 }
 
-export default function AudioPlayer({ audioUrl, title }: AudioPlayerProps) {
+export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const streamedRef = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0); // 0–100
   const [duration, setDuration] = useState(0);
@@ -66,6 +68,10 @@ export default function AudioPlayer({ audioUrl, title }: AudioPlayerProps) {
         .then(() => {
           setPlaying(true);
           setLoading(false);
+          if (songId && !streamedRef.current) {
+            streamedRef.current = true;
+            void fetch(`/api/songs/${songId}/stream`, { method: "POST" });
+          }
         })
         .catch(() => {
           setPlaying(false);

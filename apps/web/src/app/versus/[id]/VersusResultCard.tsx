@@ -99,10 +99,10 @@ export default function VersusResultCard({ match }: { match: Match }) {
       {(match.songA.audioUrl || match.songB.audioUrl) && (
         <div className="mb-8 grid gap-4 sm:grid-cols-2">
           {match.songA.audioUrl && (
-            <AudioPlayer audioUrl={match.songA.audioUrl} title={match.songA.title} />
+            <AudioPlayer audioUrl={match.songA.audioUrl} title={match.songA.title} songId={match.songA.id} />
           )}
           {match.songB.audioUrl && (
-            <AudioPlayer audioUrl={match.songB.audioUrl} title={match.songB.title} />
+            <AudioPlayer audioUrl={match.songB.audioUrl} title={match.songB.title} songId={match.songB.id} />
           )}
         </div>
       )}

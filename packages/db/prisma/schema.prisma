@@ -17,19 +17,21 @@ datasource db {
 // ─────────────────────────────────────────
 
 model User {
-  id                   String   @id @default(cuid())
-  email                String   @unique
+  id                   String           @id @default(cuid())
+  email                String           @unique
   name                 String?
-  username             String?  @unique
+  username             String?          @unique
   image                String?
   passwordHash         String?
-  role                 Role     @default(LISTENER)
+  role                 Role             @default(LISTENER)
+  subscriptionTier     SubscriptionTier @default(FREE)
+  stripeCustomerId     String?          @unique
   emailVerified        DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
   // Stripe Connect for artist payouts
-  stripeConnectId      String?  @unique
+  stripeConnectId      String?          @unique
 
   // NextAuth relations
   accounts             Account[]
@@ -69,6 +71,14 @@ enum Role {
   ARTIST     // can upload songs + earn royalties
   LABEL      // can run a label and sign artists
   ADMIN      // platform admin
+}
+
+enum SubscriptionTier {
+  FREE       // no paid subscription
+  STARTER    // $9/mo — 5 licenses
+  PRO        // $29/mo — 25 licenses, 10 songs
+  PRIME      // $49/mo — unlimited
+  LABEL_TIER // $199/mo — unlimited + label management
 }
 
 // NextAuth required models

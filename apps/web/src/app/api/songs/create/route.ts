@@ -5,6 +5,7 @@ import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 import { cacheDel, CACHE_KEYS } from "@/lib/redis";
 import { enqueueAiScoring, enqueueAnalytics } from "@/lib/queues";
+import { getTierLimits } from "@/lib/tierLimits";
 
 const createSongSchema = z.object({
   title: z.string().min(1).max(200),
@@ -64,6 +65,24 @@ export async function POST(req: NextRequest) {
       { error: "Only artists can upload songs." },
       { status: 403 }
     );
+  }
+
+  const limits = getTierLimits(user.subscriptionTier);
+  if (limits.maxSongs === 0) {
+    return NextResponse.json(
+      { error: "Song uploads require a Pro plan or higher. Upgrade at /pricing." },
+      { status: 403 }
+    );
+  }
+
+  if (limits.maxSongs < 999_999) {
+    const songCount = await prisma.song.count({ where: { artistId: user.id } });
+    if (songCount >= limits.maxSongs) {
+      return NextResponse.json(
+        { error: `You've reached your ${limits.maxSongs}-song limit. Upgrade your plan at /pricing.` },
+        { status: 403 }
+      );
+    }
   }
 
   let rawBody: unknown;

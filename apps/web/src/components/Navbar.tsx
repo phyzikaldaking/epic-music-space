@@ -3,6 +3,7 @@ import type { Session } from "next-auth";
 import { auth } from "@/lib/auth";
 import NavbarMobileMenu from "@/components/NavbarMobileMenu";
 import NotificationBell from "@/components/NotificationBell";
+import SignOutButton from "@/components/SignOutButton";
 
 export default async function Navbar() {
   const authConfigured = Boolean(
@@ -28,6 +29,7 @@ export default async function Navbar() {
         { href: "/leaderboard", label: "Charts" },
         { href: "/city", label: "City" },
         { href: "/dashboard", label: "Dashboard" },
+        { href: "/invite", label: "Invite" },
         { href: "/boost", label: "Boost" },
       ]
     : [
@@ -95,14 +97,7 @@ export default async function Navbar() {
               >
                 Profile
               </Link>
-              <form action="/api/auth/signout" method="POST">
-                <button
-                  type="submit"
-                  className="rounded-lg border border-white/15 px-4 py-1.5 text-sm text-white/70 transition hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
-                >
-                  Sign out
-                </button>
-              </form>
+              <SignOutButton />
             </div>
           ) : (
             <>

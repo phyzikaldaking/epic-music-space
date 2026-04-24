@@ -574,7 +574,7 @@ export default async function HomePage() {
                 </div>
 
                 <div className="min-w-0">
-                  <AudioPlayer audioUrl={song.audioUrl} title={song.title} />
+                  <AudioPlayer audioUrl={song.audioUrl} title={song.title} songId={song.id} />
                   <Link
                     href={`/track/${song.id}`}
                     className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-accent-400/34 bg-accent-500/8 text-sm font-bold text-accent-200 transition hover:bg-accent-500/14 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"

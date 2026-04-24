@@ -158,8 +158,20 @@ export default function LicensingPage() {
           </p>
         </section>
 
+        <section id="ai-score">
+          <h2 className="mb-3 text-xl font-bold text-white">11. AI Scoring</h2>
+          <p className="text-sm">
+            EMS uses an AI-powered scoring system (&quot;EMS Score&quot;) to rank songs
+            based on audio characteristics, engagement signals, and market demand.
+            The EMS Score is informational only — it does not constitute an
+            endorsement, a guarantee of revenue, or investment advice.
+            Scores may change over time as the model and inputs evolve.
+            License pricing is set by the Artist and is not determined by the EMS Score.
+          </p>
+        </section>
+
         <section>
-          <h2 className="mb-3 text-xl font-bold text-white">11. Contact</h2>
+          <h2 className="mb-3 text-xl font-bold text-white">12. Contact</h2>
           <p className="text-sm">
             Legal questions:{" "}
             <a

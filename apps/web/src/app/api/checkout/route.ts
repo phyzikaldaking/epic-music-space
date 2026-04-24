@@ -6,6 +6,7 @@ import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
 import { getSiteUrl } from "@/lib/site";
+import { getTierLimits } from "@/lib/tierLimits";
 
 const checkoutSchema = z.object({
   songId: z.string().cuid(),
@@ -67,6 +68,28 @@ export async function POST(req: NextRequest) {
       { error: "You already hold a license for this song." },
       { status: 409 }
     );
+  }
+
+  // Enforce subscription tier license cap
+  const buyer = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { subscriptionTier: true },
+  });
+  if (buyer) {
+    const limits = getTierLimits(buyer.subscriptionTier);
+    if (limits.maxLicenses < 999_999) {
+      const held = await prisma.licenseToken.count({
+        where: { holderId: session.user.id, status: "ACTIVE" },
+      });
+      if (held >= limits.maxLicenses) {
+        return NextResponse.json(
+          {
+            error: `You've reached your ${limits.maxLicenses}-license limit on the ${buyer.subscriptionTier.replace("_TIER", "")} plan. Upgrade at /pricing.`,
+          },
+          { status: 403 }
+        );
+      }
+    }
   }
 
   const baseUrl = getSiteUrl();
