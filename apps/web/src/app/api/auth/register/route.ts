@@ -3,6 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { maybeAwardEarlyAdopter } from "@/lib/badges";
+import { sendVerificationEmail } from "@/lib/email";
 import { randomBytes } from "crypto";
 import { strictLimiter } from "@/lib/rateLimit";
 
@@ -87,7 +88,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ user }, { status: 201 });
+    // Create email verification token and send welcome email
+    const verifyToken = randomBytes(32).toString("hex");
+    await prisma.verificationToken.create({
+      data: {
+        identifier: email,
+        token: verifyToken,
+        expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      },
+    });
+    await sendVerificationEmail(email, verifyToken);
+
+    return NextResponse.json({ user, requiresVerification: true }, { status: 201 });
   } catch (err) {
     console.error("[register]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
