@@ -31,6 +31,7 @@ export default async function Navbar() {
         { href: "/dashboard", label: "Dashboard" },
         { href: "/invite", label: "Invite" },
         { href: "/boost", label: "Boost" },
+        ...(session.user?.role === "ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
       ]
     : [
         { href: "/marketplace", label: "Browse" },

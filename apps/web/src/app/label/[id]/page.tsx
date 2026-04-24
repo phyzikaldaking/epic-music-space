@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notFound } from "next/navigation";
@@ -47,8 +48,7 @@ export default async function LabelDetailPage({ params }: Props) {
       <div className="mb-8 flex items-center gap-5">
         <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-brand-900 to-accent-600 flex items-center justify-center text-3xl">
           {label.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={label.logoUrl} alt={label.name} className="h-full w-full object-cover" />
+            <Image src={label.logoUrl} alt={label.name} fill className="object-cover" unoptimized />
           ) : (
             "🏷️"
           )}

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
 
@@ -165,8 +166,7 @@ export default function VersusCard({
           {/* Cover */}
           <div className="relative h-32 w-32 overflow-hidden rounded-xl bg-gradient-to-br from-brand-900 to-accent-600 flex-shrink-0">
             {song.coverUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={song.coverUrl} alt={song.title} className="h-full w-full object-cover" />
+              <Image src={song.coverUrl} alt={song.title} fill className="object-cover" unoptimized />
             ) : (
               <span className="flex h-full w-full items-center justify-center text-4xl">🎵</span>
             )}

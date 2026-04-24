@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import AudioPlayer from "@/components/AudioPlayer";
-import HeroCityCanvas from "@/components/HeroCityCanvas";
 import { demoTracks } from "@/lib/demoTracks";
 import { prisma } from "@/lib/prisma";
 import type { CityBuilding } from "@/app/api/city/data/route";
@@ -390,7 +389,7 @@ export default async function HomePage() {
   return (
     <div className="flex flex-col bg-[#050509] text-white">
       <section className="relative isolate min-h-[calc(100svh-65px)] w-full overflow-hidden border-b border-white/8">
-        <HeroCityCanvas buildings={heroBuildings} />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-br from-brand-950 via-[#050509] to-accent-950/30" />
         <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,#050509_0%,rgba(5,5,9,.94)_34%,rgba(5,5,9,.58)_67%,rgba(5,5,9,.86)_100%)]" />
         <div className="absolute inset-x-0 bottom-0 -z-10 h-48 bg-[linear-gradient(0deg,#050509_0%,rgba(5,5,9,0)_100%)]" />
 

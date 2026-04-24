@@ -31,6 +31,7 @@ export default async function middleware(req: NextRequest) {
     "/profile",
     "/invite",
     "/notifications",
+    "/admin",
   ];
 
   if (protectedPrefixes.some((prefix) => pathname.startsWith(prefix))) {
@@ -62,6 +63,7 @@ export const config = {
     "/profile/:path*",
     "/invite/:path*",
     "/notifications/:path*",
+    "/admin/:path*",
     "/api/stripe-connect/:path*",
   ],
 };

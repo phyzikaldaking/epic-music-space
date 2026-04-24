@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+
 export default async function AnalyticsPage() {
   const session = await auth();
   if (!session?.user?.id) {
@@ -9,6 +11,15 @@ export default async function AnalyticsPage() {
   }
 
   const userId = session.user.id;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { subscriptionTier: true },
+  });
+  const allowedTiers = ["PRO", "PRIME", "LABEL_TIER"];
+  if (!user || !allowedTiers.includes(user.subscriptionTier)) {
+    redirect("/pricing?reason=analytics");
+  }
 
   // Fetch artist songs with key metrics
   const songs = await prisma.song.findMany({

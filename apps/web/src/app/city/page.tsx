@@ -1,6 +1,8 @@
+import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import DistrictBadge from "@/components/DistrictBadge";
 import { DISTRICT_META } from "@/lib/scoring";
+import { Suspense } from "react";
 import CityScene3DClient from "@/components/CityScene3DClient";
 import type { CityBuilding } from "@/app/api/city/data/route";
 
@@ -86,10 +88,9 @@ export default async function CityPage() {
         href={studioHref}
         className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#141414] p-3 transition card-hover-neon"
       >
-        <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-brand-800/60 to-accent-700/40 flex items-center justify-center text-xl">
+        <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-brand-800/60 to-accent-700/40 flex items-center justify-center text-xl">
           {song.coverUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={song.coverUrl} alt={song.title} className="h-full w-full object-cover" />
+            <Image src={song.coverUrl} alt={song.title} fill className="object-cover" unoptimized />
           ) : (
             "🎵"
           )}
@@ -278,7 +279,13 @@ export default async function CityPage() {
 
         {/* ── 3-D City Scene ──────────────────────────────────────────────── */}
         <div className="mb-12">
-          <CityScene3DClient buildings={cityBuildings} />
+          <Suspense fallback={
+            <div className="flex h-64 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.02]">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+            </div>
+          }>
+            <CityScene3DClient buildings={cityBuildings} />
+          </Suspense>
         </div>
 
         {/* District overview cards */}
