@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { enqueueNotification } from "@/lib/queues";
 import { awardBadge } from "@/lib/badges";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
+import { track } from "@/lib/analytics";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -40,6 +41,8 @@ export async function POST(req: NextRequest) {
           await handleTipCheckoutCompleted(session);
         } else if (sessionType === "auction_win") {
           await handleAuctionWinCheckoutCompleted(session);
+        } else if (sessionType === "AD_PURCHASE") {
+          await handleAdPurchaseCompleted(session);
         } else {
           await handleLicenseCheckoutCompleted(session);
         }
@@ -231,7 +234,7 @@ async function handleLicenseCheckoutCompleted(
   if (supabase) {
     const song = await prisma.song.findUnique({
       where: { id: songId },
-      select: { title: true, artist: true, coverUrl: true, soldLicenses: true },
+      select: { title: true, artist: true, coverUrl: true, soldLicenses: true, licensePrice: true },
     });
     if (song) {
       const payload = {
@@ -241,6 +244,12 @@ async function handleLicenseCheckoutCompleted(
         coverUrl: song.coverUrl ?? null,
         soldLicenses: song.soldLicenses,
       };
+      track({
+        event: "license_purchased",
+        userId,
+        properties: { songId, amount: Number(song.licensePrice) },
+      });
+
       const results = await Promise.allSettled([
         supabase.channel(CHANNELS.marketplace).send({
           type: "broadcast",
@@ -273,6 +282,13 @@ async function handleLicenseCheckoutCompleted(
 // Subscription purchase
 // ─────────────────────────────────────────────────────────
 
+const TIER_MAP: Record<string, string> = {
+  starter: "STARTER",
+  pro: "PRO",
+  prime: "PRIME",
+  label: "LABEL_TIER",
+};
+
 async function handleSubscriptionCheckoutCompleted(
   session: Stripe.Checkout.Session,
 ) {
@@ -294,22 +310,36 @@ async function handleSubscriptionCheckoutCompleted(
       ? session.customer
       : (session.customer?.id ?? null);
 
-  // Persist customer ID on the transaction record for the billing portal
-  await prisma.transaction.create({
-    data: {
-      userId,
-      amount: 0,
-      type: "REVENUE_PAYOUT", // reuse existing enum; extend later for SUBSCRIPTION
-      status: "SUCCEEDED",
-      stripeSessionId: session.id,
-      stripePaymentIntentId: subscriptionId ?? undefined,
-      metadata: {
-        stripeCustomerId: customerId,
-        tier,
-        subscriptionId,
+  const dbTier = TIER_MAP[tier] ?? "STARTER";
+
+  await Promise.all([
+    // Update user's subscription tier and store Stripe customer ID
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        subscriptionTier: dbTier as never,
+        ...(customerId ? { stripeCustomerId: customerId } : {}),
       },
-    },
-  });
+    }),
+    // Persist transaction record for the billing portal lookup
+    prisma.transaction.create({
+      data: {
+        userId,
+        amount: 0,
+        type: "SUBSCRIPTION",
+        status: "SUCCEEDED",
+        stripeSessionId: session.id,
+        stripePaymentIntentId: subscriptionId ?? undefined,
+        metadata: {
+          stripeCustomerId: customerId,
+          tier,
+          subscriptionId,
+        },
+      },
+    }),
+  ]);
+
+  track({ event: "subscription_activated", userId, properties: { tier } });
 
   await enqueueNotification({
     userId,
@@ -356,6 +386,10 @@ async function handleSubscriptionChange(
     sub.status === "unpaid";
 
   if (isCancelled) {
+    await prisma.user.update({
+      where: { id: tx.userId },
+      data: { subscriptionTier: "FREE" as never },
+    });
     await enqueueNotification({
       userId: tx.userId,
       type: "SUBSCRIPTION_CANCELLED",
@@ -692,6 +726,37 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
   await awardBadge(userId, "LICENSE_HOLDER");
 
   console.log(`[stripe-webhook] Auction settled: auction=${auctionId} winner=${userId} song=${songId}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stripe Connect account updated
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ad purchase
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handleAdPurchaseCompleted(session: Stripe.Checkout.Session) {
+  const { adId, userId } = session.metadata ?? {};
+  if (!adId || !userId) {
+    console.error("[stripe-webhook] AD_PURCHASE missing metadata", session.metadata);
+    return;
+  }
+
+  await prisma.adPlacement.updateMany({
+    where: { id: adId, ownerId: userId },
+    data: { isActive: true },
+  });
+
+  await enqueueNotification({
+    userId,
+    type: "AD_ACTIVATED",
+    title: "Your ad is live!",
+    body: "Your ad placement has been activated and is now visible to users.",
+    metadata: { adId },
+  });
+
+  console.log(`[stripe-webhook] Ad activated: adId=${adId} userId=${userId}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -178,6 +178,7 @@ model LicenseToken {
   payouts         Payout[]
 
   @@unique([songId, tokenNumber])
+  @@index([holderId])
 }
 
 enum LicenseStatus {
@@ -315,6 +316,8 @@ model VersusMatch {
 
   @@index([status])
   @@index([endsAt])
+  @@index([songAId])
+  @@index([songBId])
 }
 
 enum VersusStatus {

@@ -3,8 +3,10 @@ import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import AudioPlayer from "@/components/AudioPlayer";
+import HeroCityCanvas from "@/components/HeroCityCanvas";
 import { demoTracks } from "@/lib/demoTracks";
 import { prisma } from "@/lib/prisma";
+import type { CityBuilding } from "@/app/api/city/data/route";
 
 export const revalidate = 60;
 
@@ -315,6 +317,45 @@ export default async function HomePage() {
   const { songCount, licenseCount, totalRevenue, sampleSongs } =
     await getHomeData();
 
+  // Fetch trimmed building set for hero 3D canvas (top 9 studios)
+  let heroBuildings: CityBuilding[] = [];
+  try {
+    const studios = await prisma.studio.findMany({
+      orderBy: { level: "desc" },
+      take: 9,
+      select: {
+        username: true,
+        district: true,
+        level: true,
+        user: {
+          select: {
+            name: true,
+            songs: { where: { isActive: true }, select: { aiScore: true } },
+          },
+        },
+      },
+    });
+    heroBuildings = studios.map((s) => {
+      const avgScore =
+        s.user.songs.length > 0
+          ? s.user.songs.reduce((acc, x) => acc + x.aiScore, 0) /
+            s.user.songs.length
+          : 0;
+      return {
+        username: s.username,
+        name: s.user.name ?? s.username,
+        image: null,
+        district: s.district as CityBuilding["district"],
+        level: s.level,
+        avgScore: Math.round(avgScore * 10) / 10,
+        songCount: s.user.songs.length,
+        totalSold: 0,
+      };
+    });
+  } catch {
+    // Database may be unavailable; hero canvas will show empty gracefully
+  }
+
   const featured = sampleSongs[0];
   const displayStats = [
     {
@@ -349,14 +390,7 @@ export default async function HomePage() {
   return (
     <div className="flex flex-col bg-[#050509] text-white">
       <section className="relative isolate min-h-[calc(100svh-65px)] w-full overflow-hidden border-b border-white/8">
-        <div className="absolute inset-0 -z-20 bg-[#050509]" />
-        {featured && (
-          <div
-            aria-hidden="true"
-            className="absolute inset-y-0 right-0 -z-10 hidden w-[62%] opacity-70 md:block"
-            style={coverStyle(featured.coverUrl)}
-          />
-        )}
+        <HeroCityCanvas buildings={heroBuildings} />
         <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,#050509_0%,rgba(5,5,9,.94)_34%,rgba(5,5,9,.58)_67%,rgba(5,5,9,.86)_100%)]" />
         <div className="absolute inset-x-0 bottom-0 -z-10 h-48 bg-[linear-gradient(0deg,#050509_0%,rgba(5,5,9,0)_100%)]" />
 
