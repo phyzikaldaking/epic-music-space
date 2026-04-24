@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import LabelOfferActions from "@/components/LabelOfferActions";
+import LabelInviteForm from "@/components/LabelInviteForm";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -162,15 +163,7 @@ export default async function LabelDetailPage({ params }: Props) {
       )}
 
       {/* Owner actions */}
-      {isOwner && (
-        <section className="glass rounded-2xl p-5">
-          <h3 className="mb-3 font-semibold">Label Owner Actions</h3>
-          <p className="text-sm text-white/50">
-            Use the API (<code className="text-brand-400">POST /api/labels/{id}/artists</code>) to
-            send signing offers to artists by their user ID.
-          </p>
-        </section>
-      )}
+      {isOwner && <LabelInviteForm labelId={id} />}
     </div>
   );
 }
