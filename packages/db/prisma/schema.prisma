@@ -17,67 +17,68 @@ datasource db {
 // ─────────────────────────────────────────
 
 model User {
-  id                   String           @id @default(cuid())
-  email                String           @unique
-  name                 String?
-  username             String?          @unique
-  image                String?
-  passwordHash         String?
-  role                 Role             @default(LISTENER)
-  subscriptionTier     SubscriptionTier @default(FREE)
-  stripeCustomerId     String?          @unique
-  emailVerified        DateTime?
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
+  id               String           @id @default(cuid())
+  email            String           @unique
+  name             String?
+  username         String?          @unique
+  image            String?
+  passwordHash     String?
+  role             Role             @default(LISTENER)
+  subscriptionTier SubscriptionTier @default(FREE)
+  stripeCustomerId String?          @unique
+  emailVerified    DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   // Stripe Connect for artist payouts
-  stripeConnectId      String?          @unique
+  stripeConnectId String? @unique
 
   // NextAuth relations
-  accounts             Account[]
-  sessions             Session[]
+  accounts Account[]
+  sessions Session[]
 
   // Platform relations
-  songs                Song[]
-  licenses             LicenseToken[]
-  transactions         Transaction[]
-  payouts              Payout[]
+  songs        Song[]
+  licenses     LicenseToken[]
+  transactions Transaction[]
+  payouts      Payout[]
 
   // Phase 2 relations
-  studio               Studio?
-  ownedLabel           Label?      @relation("LabelOwner")
-  labelMemberships     LabelArtist[] @relation("LabelArtistUser")
-  adPlacements         AdPlacement[]
-  notifications        Notification[]
-  versusVotes          VersusVote[]
-  following            UserFollow[] @relation("Follower")
-  followers            UserFollow[] @relation("Following")
+  studio           Studio?
+  ownedLabel       Label?         @relation("LabelOwner")
+  labelMemberships LabelArtist[]  @relation("LabelArtistUser")
+  adPlacements     AdPlacement[]
+  notifications    Notification[]
+  versusVotes      VersusVote[]
+  following        UserFollow[]   @relation("Follower")
+  followers        UserFollow[]   @relation("Following")
 
   // Phase 2: invite engine
-  inviteCodesCreated   InviteCode[] @relation("InviteCreator")
-  inviteCodeUsed       InviteCode?  @relation("InviteUsed")
+  inviteCodesCreated InviteCode[] @relation("InviteCreator")
+  inviteCodeUsed     InviteCode?  @relation("InviteUsed")
 
   // Phase 2: badges
-  badges               UserBadge[]
+  badges UserBadge[]
 
   // Auctions & tips
-  auctionsCreated      Auction[]    @relation("AuctionSeller")
-  auctionsWon          Auction[]    @relation("AuctionWinner")
-  auctionBids          AuctionBid[] @relation("AuctionBidder")
+  auctionsCreated Auction[]    @relation("AuctionSeller")
+  auctionsWon     Auction[]    @relation("AuctionWinner")
+  auctionBids     AuctionBid[] @relation("AuctionBidder")
 }
 
 enum Role {
-  LISTENER   // can purchase licenses
-  ARTIST     // can upload songs + earn royalties
-  LABEL      // can run a label and sign artists
-  ADMIN      // platform admin
+  LISTENER // can purchase licenses
+  ARTIST // can upload songs + earn royalties
+  LABEL // can run a label and sign artists
+  ADMIN // platform admin
 }
 
 enum SubscriptionTier {
-  FREE       // no paid subscription
-  STARTER    // $9/mo — 5 licenses
-  PRO        // $29/mo — 25 licenses, 10 songs
-  PRIME      // $49/mo — unlimited
+  FREE // no paid subscription
+  STARTER // $9/mo — 5 licenses
+  PRO // $29/mo — 25 licenses, 10 songs
+  PRIME // $49/mo — unlimited
+  TEAM // $99/mo — collaborative team tier
   LABEL_TIER // $199/mo — unlimited + label management
 }
 
@@ -123,43 +124,43 @@ model VerificationToken {
 // ─────────────────────────────────────────
 
 model Song {
-  id                String   @id @default(cuid())
-  title             String
-  artist            String
-  genre             String?
-  description       String?  @db.Text
-  audioUrl          String
-  coverUrl          String?
-  bpm               Int?
-  key               String?
+  id          String  @id @default(cuid())
+  title       String
+  artist      String
+  genre       String?
+  description String? @db.Text
+  audioUrl    String
+  coverUrl    String?
+  bpm         Int?
+  key         String?
 
   // Licensing economics
-  licensePrice      Decimal  @db.Decimal(10, 2)
-  revenueSharePct   Decimal  @db.Decimal(5, 2)
-  totalLicenses     Int      @default(100)
-  soldLicenses      Int      @default(0)
-  isActive          Boolean  @default(true)
+  licensePrice    Decimal @db.Decimal(10, 2)
+  revenueSharePct Decimal @db.Decimal(5, 2)
+  totalLicenses   Int     @default(100)
+  soldLicenses    Int     @default(0)
+  isActive        Boolean @default(true)
 
   // Phase 2: scoring & discovery
-  aiScore           Float    @default(0)   // composite popularity/quality score
-  boostScore        Float    @default(0)   // additional visibility from paid boost packages
-  versusWins        Int      @default(0)
-  versusLosses      Int      @default(0)
-  streamCount       Int      @default(0)
-  district          District @default(INDIE_BLOCKS)
+  aiScore      Float    @default(0) // composite popularity/quality score
+  boostScore   Float    @default(0) // additional visibility from paid boost packages
+  versusWins   Int      @default(0)
+  versusLosses Int      @default(0)
+  streamCount  Int      @default(0)
+  district     District @default(INDIE_BLOCKS)
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  artistId          String
-  artist_           User     @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  artistId String
+  artist_  User   @relation(fields: [artistId], references: [id], onDelete: Cascade)
 
-  licenses          LicenseToken[]
-  transactions      Transaction[]
-  payouts           Payout[]
-  versusMatchesA    VersusMatch[] @relation("VersusA")
-  versusMatchesB    VersusMatch[] @relation("VersusB")
-  auctions          Auction[]
+  licenses       LicenseToken[]
+  transactions   Transaction[]
+  payouts        Payout[]
+  versusMatchesA VersusMatch[]  @relation("VersusA")
+  versusMatchesB VersusMatch[]  @relation("VersusB")
+  auctions       Auction[]
 
   @@index([artistId])
   @@index([district])
@@ -172,29 +173,29 @@ model Song {
 // ─────────────────────────────────────────
 
 model LicenseToken {
-  id              String          @id @default(cuid())
-  tokenNumber     Int                               // e.g. license #42 of 100
-  status          LicenseStatus   @default(ACTIVE)
-  purchasedAt     DateTime        @default(now())
-  price           Decimal         @db.Decimal(10, 2)
+  id          String        @id @default(cuid())
+  tokenNumber Int // e.g. license #42 of 100
+  status      LicenseStatus @default(ACTIVE)
+  purchasedAt DateTime      @default(now())
+  price       Decimal       @db.Decimal(10, 2)
 
-  songId          String
-  song            Song            @relation(fields: [songId], references: [id], onDelete: Cascade)
+  songId String
+  song   Song   @relation(fields: [songId], references: [id], onDelete: Cascade)
 
-  holderId        String
-  holder          User            @relation(fields: [holderId], references: [id], onDelete: Cascade)
+  holderId String
+  holder   User   @relation(fields: [holderId], references: [id], onDelete: Cascade)
 
-  transactions    Transaction[]
-  payouts         Payout[]
+  transactions Transaction[]
+  payouts      Payout[]
 
   @@unique([songId, tokenNumber])
   @@index([holderId])
 }
 
 enum LicenseStatus {
-  ACTIVE      // license is valid and earning revenue share
-  EXPIRED     // license term ended
-  REVOKED     // artist/admin revoked
+  ACTIVE // license is valid and earning revenue share
+  EXPIRED // license term ended
+  REVOKED // artist/admin revoked
 }
 
 // ─────────────────────────────────────────
@@ -202,39 +203,39 @@ enum LicenseStatus {
 // ─────────────────────────────────────────
 
 model Transaction {
-  id                  String            @id @default(cuid())
-  amount              Decimal           @db.Decimal(10, 2)
-  currency            String            @default("usd")
-  type                TransactionType
-  status              PaymentStatus     @default(PENDING)
+  id       String          @id @default(cuid())
+  amount   Decimal         @db.Decimal(10, 2)
+  currency String          @default("usd")
+  type     TransactionType
+  status   PaymentStatus   @default(PENDING)
 
-  stripePaymentIntentId String?         @unique
-  stripeSessionId       String?         @unique
+  stripePaymentIntentId String? @unique
+  stripeSessionId       String? @unique
   metadata              Json?
 
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  userId              String
-  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  songId              String?
-  song                Song?             @relation(fields: [songId], references: [id])
+  songId String?
+  song   Song?   @relation(fields: [songId], references: [id])
 
-  licenseTokenId      String?
-  licenseToken        LicenseToken?     @relation(fields: [licenseTokenId], references: [id])
+  licenseTokenId String?
+  licenseToken   LicenseToken? @relation(fields: [licenseTokenId], references: [id])
 
   @@index([userId])
   @@index([status])
 }
 
 enum TransactionType {
-  LICENSE_PURCHASE    // buyer acquires a license for a song
-  REVENUE_PAYOUT      // platform pays artist/holder their revenue share
-  SUBSCRIPTION        // platform subscription tier
-  BOOST               // paid visibility boost
-  TIP                 // fan tips an artist directly
-  AUCTION_WIN         // buyer wins a license auction
+  LICENSE_PURCHASE // buyer acquires a license for a song
+  REVENUE_PAYOUT // platform pays artist/holder their revenue share
+  SUBSCRIPTION // platform subscription tier
+  BOOST // paid visibility boost
+  TIP // fan tips an artist directly
+  AUCTION_WIN // buyer wins a license auction
 }
 
 enum PaymentStatus {
@@ -249,19 +250,19 @@ enum PaymentStatus {
 // ─────────────────────────────────────────
 
 model Payout {
-  id             String       @id @default(cuid())
-  amount         Decimal      @db.Decimal(10, 2)
-  currency       String       @default("usd")
-  period         String       // e.g. "2024-Q1"
-  status         PayoutStatus @default(PENDING)
-  paidAt         DateTime?
-  createdAt      DateTime     @default(now())
+  id        String       @id @default(cuid())
+  amount    Decimal      @db.Decimal(10, 2)
+  currency  String       @default("usd")
+  period    String // e.g. "2024-Q1"
+  status    PayoutStatus @default(PENDING)
+  paidAt    DateTime?
+  createdAt DateTime     @default(now())
 
-  userId         String
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  songId         String
-  song           Song         @relation(fields: [songId], references: [id])
+  songId String
+  song   Song   @relation(fields: [songId], references: [id])
 
   licenseTokenId String?
   licenseToken   LicenseToken? @relation(fields: [licenseTokenId], references: [id])
@@ -283,9 +284,9 @@ enum PayoutStatus {
 // ─────────────────────────────────────────
 
 enum District {
-  INDIE_BLOCKS    // default — general discovery
-  DOWNTOWN_PRIME  // high-visibility placement (unlocked by performance)
-  LABEL_ROW       // elite — label-backed artists only
+  INDIE_BLOCKS // default — general discovery
+  DOWNTOWN_PRIME // high-visibility placement (unlocked by performance)
+  LABEL_ROW // elite — label-backed artists only
 }
 
 // ─────────────────────────────────────────
@@ -301,7 +302,7 @@ model Studio {
   district    District @default(INDIE_BLOCKS)
   level       Int      @default(1)
   bannerUrl   String?
-  socialLinks Json?    // { twitter, instagram, spotify, ... }
+  socialLinks Json? // { twitter, instagram, spotify, ... }
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -322,7 +323,7 @@ model VersusMatch {
   endsAt    DateTime
   createdAt DateTime     @default(now())
 
-  votes     VersusVote[]
+  votes VersusVote[]
 
   @@index([status])
   @@index([endsAt])
@@ -336,14 +337,14 @@ enum VersusStatus {
 }
 
 model VersusVote {
-  id           String      @id @default(cuid())
-  matchId      String
-  match        VersusMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  userId       String
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  votedSongId  String      // the songId they voted for
+  id          String      @id @default(cuid())
+  matchId     String
+  match       VersusMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  votedSongId String // the songId they voted for
 
-  createdAt    DateTime    @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([matchId, userId])
 }
@@ -353,37 +354,37 @@ model VersusVote {
 // ─────────────────────────────────────────
 
 model Label {
-  id           String        @id @default(cuid())
-  name         String        @unique
-  slug         String        @unique
-  ownerId      String        @unique
-  owner        User          @relation("LabelOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  logoUrl      String?
-  bio          String?       @db.Text
-  revSharePct  Decimal       @db.Decimal(5, 2) @default(10) // label's cut of signed artist earnings
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  ownerId     String   @unique
+  owner       User     @relation("LabelOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  logoUrl     String?
+  bio         String?  @db.Text
+  revSharePct Decimal  @default(10) @db.Decimal(5, 2) // label's cut of signed artist earnings
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  artists      LabelArtist[]
+  artists LabelArtist[]
 }
 
 model LabelArtist {
-  id           String            @id @default(cuid())
-  labelId      String
-  label        Label             @relation(fields: [labelId], references: [id], onDelete: Cascade)
-  artistId     String
-  artist       User              @relation("LabelArtistUser", fields: [artistId], references: [id], onDelete: Cascade)
-  revSharePct  Decimal           @db.Decimal(5, 2)  // label's cut of THIS artist's earnings
-  status       LabelArtistStatus @default(PENDING)
-  createdAt    DateTime          @default(now())
+  id          String            @id @default(cuid())
+  labelId     String
+  label       Label             @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  artistId    String
+  artist      User              @relation("LabelArtistUser", fields: [artistId], references: [id], onDelete: Cascade)
+  revSharePct Decimal           @db.Decimal(5, 2) // label's cut of THIS artist's earnings
+  status      LabelArtistStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
 
   @@unique([labelId, artistId])
 }
 
 enum LabelArtistStatus {
-  PENDING     // offer sent, not yet accepted
-  ACTIVE      // artist is signed
-  TERMINATED  // contract ended
+  PENDING // offer sent, not yet accepted
+  ACTIVE // artist is signed
+  TERMINATED // contract ended
 }
 
 // ─────────────────────────────────────────
@@ -391,18 +392,18 @@ enum LabelArtistStatus {
 // ─────────────────────────────────────────
 
 model AdPlacement {
-  id          String     @id @default(cuid())
-  location    AdLocation
-  title       String
-  mediaUrl    String
-  linkUrl     String?
-  ownerId     String
-  owner       User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  price       Decimal    @db.Decimal(10, 2)
-  startDate   DateTime
-  endDate     DateTime
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
+  id        String     @id @default(cuid())
+  location  AdLocation
+  title     String
+  mediaUrl  String
+  linkUrl   String?
+  ownerId   String
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  price     Decimal    @db.Decimal(10, 2)
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
 }
 
 enum AdLocation {
@@ -420,7 +421,7 @@ model Notification {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String   // "LICENSE_SOLD", "VERSUS_RESULT", "LABEL_OFFER", "PAYOUT", etc.
+  type      String // "LICENSE_SOLD", "VERSUS_RESULT", "LABEL_OFFER", "PAYOUT", etc.
   title     String
   body      String
   read      Boolean  @default(false)
@@ -450,16 +451,16 @@ model UserFollow {
 // ─────────────────────────────────────────
 
 model InviteCode {
-  id          String    @id @default(cuid())
-  code        String    @unique
-  createdAt   DateTime  @default(now())
-  usedAt      DateTime?
+  id        String    @id @default(cuid())
+  code      String    @unique
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
 
   createdById String
-  createdBy   User      @relation("InviteCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy   User   @relation("InviteCreator", fields: [createdById], references: [id], onDelete: Cascade)
 
-  usedById    String?   @unique
-  usedBy      User?     @relation("InviteUsed", fields: [usedById], references: [id])
+  usedById String? @unique
+  usedBy   User?   @relation("InviteUsed", fields: [usedById], references: [id])
 }
 
 // ─────────────────────────────────────────
@@ -471,21 +472,21 @@ model UserBadge {
   type      BadgeType
   awardedAt DateTime  @default(now())
 
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, type])
 }
 
 enum BadgeType {
-  EARLY_ADOPTER       // first 1 000 users to join
-  INVITE_5            // invited 5 friends
-  INVITE_10           // invited 10 friends
-  INVITE_50           // invited 50 friends
-  FIRST_BATTLE_WIN    // won a versus battle
-  FIRST_LICENSE_SOLD  // sold first license (artist)
-  LICENSE_HOLDER      // purchased first license (fan)
-  TOP_ARTIST          // reached #1 on leaderboard
+  EARLY_ADOPTER // first 1 000 users to join
+  INVITE_5 // invited 5 friends
+  INVITE_10 // invited 10 friends
+  INVITE_50 // invited 50 friends
+  FIRST_BATTLE_WIN // won a versus battle
+  FIRST_LICENSE_SOLD // sold first license (artist)
+  LICENSE_HOLDER // purchased first license (fan)
+  TOP_ARTIST // reached #1 on leaderboard
 }
 
 // ─────────────────────────────────────────
@@ -493,25 +494,25 @@ enum BadgeType {
 // ─────────────────────────────────────────
 
 model Auction {
-  id            String        @id @default(cuid())
-  songId        String
-  song          Song          @relation(fields: [songId], references: [id], onDelete: Cascade)
-  sellerId      String
-  seller        User          @relation("AuctionSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  songId   String
+  song     Song   @relation(fields: [songId], references: [id], onDelete: Cascade)
+  sellerId String
+  seller   User   @relation("AuctionSeller", fields: [sellerId], references: [id], onDelete: Cascade)
 
-  startingBid   Decimal       @db.Decimal(10, 2)
-  reservePrice  Decimal?      @db.Decimal(10, 2)
-  currentBid    Decimal?      @db.Decimal(10, 2)
+  startingBid  Decimal  @db.Decimal(10, 2)
+  reservePrice Decimal? @db.Decimal(10, 2)
+  currentBid   Decimal? @db.Decimal(10, 2)
 
-  winnerId      String?
-  winner        User?         @relation("AuctionWinner", fields: [winnerId], references: [id])
+  winnerId String?
+  winner   User?   @relation("AuctionWinner", fields: [winnerId], references: [id])
 
-  status        AuctionStatus @default(ACTIVE)
-  endsAt        DateTime
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  status    AuctionStatus @default(ACTIVE)
+  endsAt    DateTime
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
-  bids          AuctionBid[]
+  bids AuctionBid[]
 
   @@index([status, endsAt])
   @@index([songId])
@@ -538,4 +539,3 @@ model AuctionBid {
   @@index([auctionId, amount(sort: Desc)])
   @@index([bidderId])
 }
-

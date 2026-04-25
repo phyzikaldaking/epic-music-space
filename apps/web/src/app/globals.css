@@ -173,6 +173,62 @@ body {
     pointer-events: none;
   }
 
+  .city-grid {
+    transform: perspective(520px) rotateX(64deg);
+    background-image:
+      linear-gradient(rgba(102, 250, 255, 0.34) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(102, 250, 255, 0.24) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: linear-gradient(to top, black 10%, transparent 96%);
+    animation: city-grid-drive 4.8s linear infinite;
+  }
+
+  .city-tower {
+    box-shadow:
+      0 0 28px rgba(102, 250, 255, 0.14),
+      inset 0 0 18px rgba(255, 255, 255, 0.08);
+    animation: tower-rise 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .city-tower::before {
+    content: "";
+    position: absolute;
+    inset: 8px 18%;
+    background-image: repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.28) 0 2px,
+      transparent 2px 12px
+    );
+    opacity: 0.55;
+  }
+
+  .city-tower::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    width: 2px;
+    height: 36px;
+    background: linear-gradient(to top, rgba(102, 250, 255, 0.8), transparent);
+    transform: translateX(-50%);
+  }
+
+  .city-sun {
+    box-shadow:
+      0 0 80px rgba(102, 250, 255, 0.2),
+      inset 0 0 32px rgba(102, 250, 255, 0.16);
+    animation: city-pulse 4s ease-in-out infinite;
+  }
+
+  .city-district {
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.34);
+    animation: district-float 4.5s ease-in-out infinite;
+  }
+
+  .city-district:nth-of-type(2n) {
+    animation-delay: 900ms;
+  }
+
   /* ─── Badge styles ──────────────────────────────────────── */
   .badge-trending {
     background: linear-gradient(135deg, #ff4b4b 0%, #ff9800 100%);
@@ -578,14 +634,68 @@ body {
 
   /* ─── Marquee ticker ────────────────────────────────────── */
   @keyframes marquee {
-    0%   { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
   }
 
   /* ─── Scanline vertical ─────────────────────────────────── */
   @keyframes scanline {
-    0%   { background-position: 0 -100%; }
-    100% { background-position: 0 200%; }
+    0% {
+      background-position: 0 -100%;
+    }
+    100% {
+      background-position: 0 200%;
+    }
+  }
+
+  @keyframes city-grid-drive {
+    0% {
+      background-position:
+        0 0,
+        0 0;
+    }
+    100% {
+      background-position:
+        0 42px,
+        42px 0;
+    }
+  }
+
+  @keyframes tower-rise {
+    0% {
+      opacity: 0;
+      transform: translateY(38px) scaleY(0.82);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scaleY(1);
+    }
+  }
+
+  @keyframes city-pulse {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: translateX(-50%) scale(1);
+    }
+    50% {
+      opacity: 0.85;
+      transform: translateX(-50%) scale(1.08);
+    }
+  }
+
+  @keyframes district-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
   }
 
   /* ─── Waveform bar dance ─────────────────────────────────── */
@@ -665,6 +775,10 @@ body {
     .holo-shimmer,
     .typing-cursor::after,
     .scan-sweep::after,
+    .city-grid,
+    .city-tower,
+    .city-sun,
+    .city-district,
     .waveform-bar,
     .animate-fade-up,
     .animate-pulse,

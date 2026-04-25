@@ -37,7 +37,8 @@ const TIERS = [
       "Studio profile + district badge",
     ],
     highlight: false,
-    ctaClass: "border border-brand-500/50 bg-brand-500/15 text-brand-400 hover:bg-brand-500/25",
+    ctaClass:
+      "border border-brand-500/50 bg-brand-500/15 text-brand-400 hover:bg-brand-500/25",
     cardClass: "border-brand-500/25 bg-[#141414]",
   },
   {
@@ -53,12 +54,32 @@ const TIERS = [
       "Unlimited song uploads",
       "Priority AI scoring",
       "Versus match creation",
-      "Downtown Prime district access",
+      "Mainstage Circuit access",
       "Full analytics dashboard",
     ],
     highlight: true,
     ctaClass: "bg-brand-500 hover:bg-brand-600 text-white glow-purple-sm",
     cardClass: "border-brand-500/60 bg-brand-500/10 glow-purple",
+  },
+  {
+    key: "team",
+    name: "Team",
+    monthlyUsd: 99,
+    badge: "Teams",
+    icon: "🤝",
+    description: "For creative teams managing releases together.",
+    features: [
+      "Everything in Prime",
+      "Team-ready release operations",
+      "Shared artist workflow support",
+      "Priority AI scoring queue",
+      "Full analytics dashboard",
+      "Priority support",
+    ],
+    highlight: false,
+    ctaClass:
+      "border border-accent-400/50 bg-accent-400/10 text-accent-300 hover:bg-accent-400/20",
+    cardClass: "border-accent-400/25 bg-[#141414]",
   },
   {
     key: "label",
@@ -71,13 +92,14 @@ const TIERS = [
       "Everything in Prime",
       "Create & manage a label",
       "Sign up to 20 artists",
-      "Label Row district access",
+      "Platinum Heights access",
       "City billboard ad slots",
       "Stripe Connect payout dashboard",
       "Priority support",
     ],
     highlight: false,
-    ctaClass: "border border-gold-500/50 bg-gold-500/10 text-gold-400 hover:bg-gold-500/20",
+    ctaClass:
+      "border border-gold-500/50 bg-gold-500/10 text-gold-400 hover:bg-gold-500/20",
     cardClass: "border-gold-500/25 bg-[#141414]",
   },
 ] as const;
@@ -152,7 +174,7 @@ function PricingContent() {
         )}
 
         {/* ── Tiers grid ────────────────────────────────── */}
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
           {TIERS.map((tier) => (
             <div
               key={tier.key}
@@ -169,9 +191,11 @@ function PricingContent() {
                   className={`absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3.5 py-0.5 text-xs font-bold tracking-wide ${
                     tier.highlight
                       ? "bg-brand-500 text-white"
-                      : tier.key === "label"
-                      ? "bg-gold-500 text-[#0a0a0a]"
-                      : "bg-white/15 text-white"
+                      : tier.key === "team"
+                        ? "bg-accent-400 text-[#0a0a0a]"
+                        : tier.key === "label"
+                          ? "bg-gold-500 text-[#0a0a0a]"
+                          : "bg-white/15 text-white"
                   }`}
                 >
                   {tier.badge}
@@ -193,9 +217,11 @@ function PricingContent() {
                   className={`text-5xl font-black ${
                     tier.highlight
                       ? "text-gradient-ems"
-                      : tier.key === "label"
-                      ? "text-gradient-gold"
-                      : ""
+                      : tier.key === "team"
+                        ? "text-accent-300"
+                        : tier.key === "label"
+                          ? "text-gradient-gold"
+                          : ""
                   }`}
                 >
                   ${tier.monthlyUsd}
@@ -206,14 +232,19 @@ function PricingContent() {
               {/* Features */}
               <ul className="mb-8 flex-1 space-y-2.5">
                 {tier.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-white/65">
+                  <li
+                    key={f}
+                    className="flex items-start gap-2 text-sm text-white/65"
+                  >
                     <span
                       className={`mt-0.5 text-xs font-bold ${
                         tier.highlight
                           ? "text-brand-400"
-                          : tier.key === "label"
-                          ? "text-gold-400"
-                          : "text-white/40"
+                          : tier.key === "team"
+                            ? "text-accent-300"
+                            : tier.key === "label"
+                              ? "text-gold-400"
+                              : "text-white/40"
                       }`}
                     >
                       ✓
@@ -236,8 +267,9 @@ function PricingContent() {
 
         {/* Footer */}
         <p className="mt-14 text-center text-xs text-white/25">
-          Payments are processed securely by Stripe. EMS subscription fees do not
-          constitute investment products. Revenue participation is governed by the{" "}
+          Payments are processed securely by Stripe. EMS subscription fees do
+          not constitute investment products. Revenue participation is governed
+          by the{" "}
           <a href="/legal/licensing" className="underline hover:text-white/50">
             Digital Music Licensing Agreement
           </a>

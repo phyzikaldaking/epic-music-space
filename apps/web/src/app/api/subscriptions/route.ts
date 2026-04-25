@@ -52,8 +52,23 @@ const SUBSCRIPTION_TIERS = [
       "Unlimited song uploads",
       "Priority AI scoring",
       "Versus match creation",
-      "Downtown Prime district access",
+      "Mainstage Circuit access",
       "Analytics dashboard",
+    ],
+  },
+  {
+    key: "team",
+    name: "Team",
+    description: "For creative teams managing releases together.",
+    priceId: process.env.STRIPE_PRICE_ID_TEAM ?? "",
+    monthlyUsd: 99,
+    features: [
+      "Everything in Prime",
+      "Team-ready release operations",
+      "Shared artist workflow support",
+      "Priority AI scoring queue",
+      "Analytics dashboard",
+      "Priority support",
     ],
   },
   {
@@ -66,7 +81,7 @@ const SUBSCRIPTION_TIERS = [
       "Everything in Prime",
       "Create & manage a label",
       "Sign up to 20 artists",
-      "Label Row district access",
+      "Platinum Heights access",
       "City billboard ad slots",
       "Stripe Connect payout dashboard",
       "Priority support",
@@ -75,7 +90,7 @@ const SUBSCRIPTION_TIERS = [
 ] as const;
 
 const subscribeSchema = z.object({
-  tier: z.enum(["starter", "pro", "prime", "label"]),
+  tier: z.enum(["starter", "pro", "prime", "team", "label"]),
 });
 
 // POST /api/subscriptions — create Stripe Checkout session for a subscription
@@ -90,7 +105,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json(
       { error: "Too many requests." },
-      { status: 429, headers: { "Retry-After": "60" } }
+      { status: 429, headers: { "Retry-After": "60" } },
     );
   }
 
@@ -108,8 +123,11 @@ export async function POST(req: NextRequest) {
   const tier = SUBSCRIPTION_TIERS.find((t) => t.key === parsed.data.tier);
   if (!tier?.priceId) {
     return NextResponse.json(
-      { error: "Subscription tier not configured. Set STRIPE_PRICE_ID_* env vars." },
-      { status: 503 }
+      {
+        error:
+          "Subscription tier not configured. Set STRIPE_PRICE_ID_* env vars.",
+      },
+      { status: 503 },
     );
   }
 
@@ -140,7 +158,7 @@ export async function GET(req: NextRequest) {
   } catch {
     return NextResponse.json(
       { error: "Too many requests." },
-      { status: 429, headers: { "Retry-After": "60" } }
+      { status: 429, headers: { "Retry-After": "60" } },
     );
   }
 
@@ -149,21 +167,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Find Stripe customer ID from existing transactions
-  const tx = await prisma.transaction.findFirst({
-    where: { userId: session.user.id, stripePaymentIntentId: { not: null } },
-    select: { metadata: true },
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { stripeCustomerId: true },
   });
 
   const customerId =
-    tx?.metadata && typeof tx.metadata === "object" && "stripeCustomerId" in tx.metadata
-      ? (tx.metadata as { stripeCustomerId?: string }).stripeCustomerId
-      : undefined;
+    user?.stripeCustomerId ??
+    (await prisma.transaction
+      .findFirst({
+        where: {
+          userId: session.user.id,
+          stripePaymentIntentId: { not: null },
+        },
+        select: { metadata: true },
+      })
+      .then((tx) =>
+        tx?.metadata &&
+        typeof tx.metadata === "object" &&
+        "stripeCustomerId" in tx.metadata
+          ? (tx.metadata as { stripeCustomerId?: string }).stripeCustomerId
+          : undefined,
+      ));
 
   if (!customerId) {
     return NextResponse.json(
       { error: "No billing account found. Subscribe to a plan first." },
-      { status: 404 }
+      { status: 404 },
     );
   }
 

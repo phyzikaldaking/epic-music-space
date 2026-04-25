@@ -16,7 +16,7 @@ export default async function AnalyticsPage() {
     where: { id: userId },
     select: { subscriptionTier: true },
   });
-  const allowedTiers = ["PRO", "PRIME", "LABEL_TIER"];
+  const allowedTiers = ["PRO", "PRIME", "TEAM", "LABEL_TIER"];
   if (!user || !allowedTiers.includes(user.subscriptionTier)) {
     redirect("/pricing?reason=analytics");
   }
@@ -68,7 +68,9 @@ export default async function AnalyticsPage() {
   const totalLicensesSold = songs.reduce((s, x) => s + x.soldLicenses, 0);
   const totalRevenue = transactions.reduce((s, t) => s + Number(t.amount), 0);
   const avgAiScore =
-    songs.length > 0 ? songs.reduce((s, x) => s + x.aiScore, 0) / songs.length : 0;
+    songs.length > 0
+      ? songs.reduce((s, x) => s + x.aiScore, 0) / songs.length
+      : 0;
 
   // Group transactions by day (last 14 days)
   const now = new Date();
@@ -79,7 +81,10 @@ export default async function AnalyticsPage() {
   for (let i = 13; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
-    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const label = d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
     dayLabels.push(label);
 
     const dayTxs = transactions.filter((t) => {
@@ -101,16 +106,16 @@ export default async function AnalyticsPage() {
   const songRevMap = new Map<string, number>();
   for (const t of transactions) {
     if (t.song) {
-      songRevMap.set(t.song.id, (songRevMap.get(t.song.id) ?? 0) + Number(t.amount));
+      songRevMap.set(
+        t.song.id,
+        (songRevMap.get(t.song.id) ?? 0) + Number(t.amount),
+      );
     }
   }
-  const topSong = songs.reduce(
-    (best, s) => {
-      const rev = songRevMap.get(s.id) ?? 0;
-      return rev > (songRevMap.get(best?.id ?? "") ?? 0) ? s : best;
-    },
-    songs[0] ?? null
-  );
+  const topSong = songs.reduce((best, s) => {
+    const rev = songRevMap.get(s.id) ?? 0;
+    return rev > (songRevMap.get(best?.id ?? "") ?? 0) ? s : best;
+  }, songs[0] ?? null);
 
   const isArtist = songs.length > 0;
 
@@ -119,7 +124,9 @@ export default async function AnalyticsPage() {
       {/* Header */}
       <div className="mb-8 flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-gradient-ems">Analytics</h1>
+          <h1 className="text-3xl font-extrabold text-gradient-ems">
+            Analytics
+          </h1>
           <p className="mt-1 text-sm text-white/40">
             Track your music performance and revenue in real time.
           </p>
@@ -153,16 +160,46 @@ export default async function AnalyticsPage() {
           {/* Summary cards */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-10">
             {[
-              { label: "Songs", value: totalSongs, icon: "🎵", color: "text-white" },
-              { label: "Total Streams", value: totalStreams.toLocaleString(), icon: "▶️", color: "text-accent-400" },
-              { label: "Licenses Sold", value: totalLicensesSold, icon: "🪙", color: "text-brand-400" },
-              { label: "Revenue", value: `$${totalRevenue.toLocaleString("en-US", { maximumFractionDigits: 2 })}`, icon: "💰", color: "text-gold" },
-              { label: "Avg EMS Score", value: avgAiScore.toFixed(1), icon: "📊", color: "text-brand-400" },
+              {
+                label: "Songs",
+                value: totalSongs,
+                icon: "🎵",
+                color: "text-white",
+              },
+              {
+                label: "Total Streams",
+                value: totalStreams.toLocaleString(),
+                icon: "▶️",
+                color: "text-accent-400",
+              },
+              {
+                label: "Licenses Sold",
+                value: totalLicensesSold,
+                icon: "🪙",
+                color: "text-brand-400",
+              },
+              {
+                label: "Revenue",
+                value: `$${totalRevenue.toLocaleString("en-US", { maximumFractionDigits: 2 })}`,
+                icon: "💰",
+                color: "text-gold",
+              },
+              {
+                label: "Avg EMS Score",
+                value: avgAiScore.toFixed(1),
+                icon: "📊",
+                color: "text-brand-400",
+              },
             ].map((stat) => (
-              <div key={stat.label} className="glass-card rounded-2xl p-5 text-center">
+              <div
+                key={stat.label}
+                className="glass-card rounded-2xl p-5 text-center"
+              >
                 <div className="text-2xl mb-2">{stat.icon}</div>
                 <p className="text-xs text-white/40">{stat.label}</p>
-                <p className={`text-xl font-extrabold mt-1 ${stat.color}`}>{stat.value}</p>
+                <p className={`text-xl font-extrabold mt-1 ${stat.color}`}>
+                  {stat.value}
+                </p>
               </div>
             ))}
           </div>
@@ -176,10 +213,15 @@ export default async function AnalyticsPage() {
               </h2>
               <div className="flex items-end gap-1 h-28">
                 {dayCounts.map((count, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    key={i}
+                    className="flex-1 flex flex-col items-center gap-1"
+                  >
                     <div
                       className="w-full rounded-sm bg-brand-500/70 transition-all"
-                      style={{ height: `${Math.max(4, (count / maxCount) * 100)}%` }}
+                      style={{
+                        height: `${Math.max(4, (count / maxCount) * 100)}%`,
+                      }}
                       title={`${count} sales`}
                     />
                   </div>
@@ -198,10 +240,15 @@ export default async function AnalyticsPage() {
               </h2>
               <div className="flex items-end gap-1 h-28">
                 {dayRevenue.map((rev, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    key={i}
+                    className="flex-1 flex flex-col items-center gap-1"
+                  >
                     <div
                       className="w-full rounded-sm bg-gold/70 transition-all"
-                      style={{ height: `${Math.max(4, (rev / maxRevenue) * 100)}%` }}
+                      style={{
+                        height: `${Math.max(4, (rev / maxRevenue) * 100)}%`,
+                      }}
                       title={`$${rev.toFixed(2)}`}
                     />
                   </div>
@@ -216,7 +263,9 @@ export default async function AnalyticsPage() {
 
           {/* Song performance table */}
           <div className="glass-card rounded-2xl p-6 mb-10">
-            <h2 className="text-sm font-semibold text-white/60 mb-5">Song Performance</h2>
+            <h2 className="text-sm font-semibold text-white/60 mb-5">
+              Song Performance
+            </h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -232,7 +281,7 @@ export default async function AnalyticsPage() {
                 </thead>
                 <tbody>
                   {songs.map((song) => {
-                    const rev = (songRevMap.get(song.id) ?? 0);
+                    const rev = songRevMap.get(song.id) ?? 0;
                     return (
                       <tr
                         key={song.id}
@@ -246,15 +295,21 @@ export default async function AnalyticsPage() {
                             {song.title}
                           </a>
                           {song.genre && (
-                            <span className="text-xs text-white/30">{song.genre}</span>
+                            <span className="text-xs text-white/30">
+                              {song.genre}
+                            </span>
                           )}
                         </td>
                         <td className="py-3 text-right text-white/60">
                           {song.streamCount.toLocaleString()}
                         </td>
                         <td className="py-3 text-right">
-                          <span className="text-brand-400 font-semibold">{song.soldLicenses}</span>
-                          <span className="text-white/30">/{song.totalLicenses}</span>
+                          <span className="text-brand-400 font-semibold">
+                            {song.soldLicenses}
+                          </span>
+                          <span className="text-white/30">
+                            /{song.totalLicenses}
+                          </span>
                         </td>
                         <td className="py-3 text-right text-gold font-semibold">
                           ${rev.toFixed(2)}
@@ -266,15 +321,20 @@ export default async function AnalyticsPage() {
                           {song.boostScore.toFixed(0)}
                         </td>
                         <td className="py-3 text-right">
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                            song.district === "LABEL_ROW"
-                              ? "bg-accent-500/20 text-accent-400"
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                              song.district === "LABEL_ROW"
+                                ? "bg-accent-500/20 text-accent-400"
+                                : song.district === "DOWNTOWN_PRIME"
+                                  ? "bg-brand-500/20 text-brand-400"
+                                  : "bg-white/10 text-white/40"
+                            }`}
+                          >
+                            {song.district === "LABEL_ROW"
+                              ? "Platinum"
                               : song.district === "DOWNTOWN_PRIME"
-                              ? "bg-brand-500/20 text-brand-400"
-                              : "bg-white/10 text-white/40"
-                          }`}>
-                            {song.district === "LABEL_ROW" ? "Label Row" :
-                             song.district === "DOWNTOWN_PRIME" ? "Downtown" : "Indie"}
+                                ? "Mainstage"
+                                : "Underground"}
                           </span>
                         </td>
                       </tr>
@@ -291,15 +351,22 @@ export default async function AnalyticsPage() {
             <div className="relative">
               <div className="flex items-start justify-between flex-wrap gap-4">
                 <div>
-                  <h2 className="text-xl font-extrabold">Unlock Growth Tools</h2>
+                  <h2 className="text-xl font-extrabold">
+                    Unlock Growth Tools
+                  </h2>
                   <p className="mt-2 text-white/50 max-w-md text-sm">
-                    Upgrade to Pro or Prime to access advanced analytics, audience demographics,
-                    predicted revenue modeling, and AI-powered track optimization.
+                    Upgrade to Pro or Prime to access advanced analytics,
+                    audience demographics, predicted revenue modeling, and
+                    AI-powered track optimization.
                   </p>
                   {topSong && (
                     <p className="mt-3 text-xs text-white/30">
-                      🔒 Potential reach for <span className="text-brand-400">{topSong.title}</span>:{" "}
-                      <span className="text-white/50">estimated {(topSong.aiScore * 500).toLocaleString()} monthly listeners</span>
+                      🔒 Potential reach for{" "}
+                      <span className="text-brand-400">{topSong.title}</span>:{" "}
+                      <span className="text-white/50">
+                        estimated {(topSong.aiScore * 500).toLocaleString()}{" "}
+                        monthly listeners
+                      </span>
                     </p>
                   )}
                 </div>

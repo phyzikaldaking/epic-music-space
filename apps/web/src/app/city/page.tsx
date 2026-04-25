@@ -9,13 +9,24 @@ import type { CityBuilding } from "@/app/api/city/data/route";
 export const dynamic = "force-dynamic";
 
 type SongRow = {
-  id: string; title: string; artist: string; coverUrl: string | null;
-  aiScore: number; soldLicenses: number; artistId: string;
+  id: string;
+  title: string;
+  artist: string;
+  coverUrl: string | null;
+  aiScore: number;
+  soldLicenses: number;
+  artistId: string;
   artist_: { studio: { username: string } | null } | null;
 };
 type StudioRow = {
-  username: string; district: string; level: number;
-  user: { name: string | null; image: string | null; songs: { aiScore: number; soldLicenses: number }[] };
+  username: string;
+  district: string;
+  level: number;
+  user: {
+    name: string | null;
+    image: string | null;
+    songs: { aiScore: number; soldLicenses: number }[];
+  };
 };
 
 export default async function CityPage() {
@@ -26,53 +37,71 @@ export default async function CityPage() {
 
   try {
     [topPrime, topLabel, topIndie, studiosByDistrict] = await Promise.all([
-    prisma.song.findMany({
-      where: { isActive: true, district: "DOWNTOWN_PRIME" },
-      orderBy: { aiScore: "desc" },
-      take: 6,
-      select: {
-        id: true, title: true, artist: true, coverUrl: true, aiScore: true, soldLicenses: true,
-        artistId: true,
-        artist_: { select: { studio: { select: { username: true } } } },
-      },
-    }),
-    prisma.song.findMany({
-      where: { isActive: true, district: "LABEL_ROW" },
-      orderBy: { aiScore: "desc" },
-      take: 6,
-      select: {
-        id: true, title: true, artist: true, coverUrl: true, aiScore: true, soldLicenses: true,
-        artistId: true,
-        artist_: { select: { studio: { select: { username: true } } } },
-      },
-    }),
-    prisma.song.findMany({
-      where: { isActive: true, district: "INDIE_BLOCKS" },
-      orderBy: { aiScore: "desc" },
-      take: 9,
-      select: {
-        id: true, title: true, artist: true, coverUrl: true, aiScore: true, soldLicenses: true,
-        artistId: true,
-        artist_: { select: { studio: { select: { username: true } } } },
-      },
-    }),
-    // Studios as "buildings" — top 12 per district
-    prisma.studio.findMany({
-      orderBy: { user: { songs: { _count: "desc" } } },
-      take: 36,
-      select: {
-        username: true,
-        district: true,
-        level: true,
-        user: {
-          select: {
-            name: true,
-            image: true,
-            songs: { where: { isActive: true }, select: { aiScore: true, soldLicenses: true } },
+      prisma.song.findMany({
+        where: { isActive: true, district: "DOWNTOWN_PRIME" },
+        orderBy: { aiScore: "desc" },
+        take: 6,
+        select: {
+          id: true,
+          title: true,
+          artist: true,
+          coverUrl: true,
+          aiScore: true,
+          soldLicenses: true,
+          artistId: true,
+          artist_: { select: { studio: { select: { username: true } } } },
+        },
+      }),
+      prisma.song.findMany({
+        where: { isActive: true, district: "LABEL_ROW" },
+        orderBy: { aiScore: "desc" },
+        take: 6,
+        select: {
+          id: true,
+          title: true,
+          artist: true,
+          coverUrl: true,
+          aiScore: true,
+          soldLicenses: true,
+          artistId: true,
+          artist_: { select: { studio: { select: { username: true } } } },
+        },
+      }),
+      prisma.song.findMany({
+        where: { isActive: true, district: "INDIE_BLOCKS" },
+        orderBy: { aiScore: "desc" },
+        take: 9,
+        select: {
+          id: true,
+          title: true,
+          artist: true,
+          coverUrl: true,
+          aiScore: true,
+          soldLicenses: true,
+          artistId: true,
+          artist_: { select: { studio: { select: { username: true } } } },
+        },
+      }),
+      // Studios as "buildings" — top 12 per district
+      prisma.studio.findMany({
+        orderBy: { user: { songs: { _count: "desc" } } },
+        take: 36,
+        select: {
+          username: true,
+          district: true,
+          level: true,
+          user: {
+            select: {
+              name: true,
+              image: true,
+              songs: {
+                where: { isActive: true },
+                select: { aiScore: true, soldLicenses: true },
+              },
+            },
           },
         },
-      },
-    }),
+      }),
     ]);
   } catch (err) {
     console.error("[city] DB unavailable, rendering empty city", err);
@@ -90,7 +119,13 @@ export default async function CityPage() {
       >
         <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-brand-800/60 to-accent-700/40 flex items-center justify-center text-xl">
           {song.coverUrl ? (
-            <Image src={song.coverUrl} alt={song.title} fill className="object-cover" unoptimized />
+            <Image
+              src={song.coverUrl}
+              alt={song.title}
+              fill
+              className="object-cover"
+              unoptimized
+            />
           ) : (
             "🎵"
           )}
@@ -100,7 +135,9 @@ export default async function CityPage() {
           <p className="text-xs text-white/40 line-clamp-1">{song.artist}</p>
         </div>
         <div className="flex-shrink-0 text-right">
-          <p className="text-xs font-bold text-brand-400">{song.aiScore.toFixed(1)}</p>
+          <p className="text-xs font-bold text-brand-400">
+            {song.aiScore.toFixed(1)}
+          </p>
           <p className="text-xs text-white/25">{song.soldLicenses} sold</p>
         </div>
       </a>
@@ -110,7 +147,8 @@ export default async function CityPage() {
   function StudioBuilding({ studio }: { studio: StudioRow }) {
     const avgScore =
       studio.user.songs.length > 0
-        ? studio.user.songs.reduce((s, x) => s + x.aiScore, 0) / studio.user.songs.length
+        ? studio.user.songs.reduce((s, x) => s + x.aiScore, 0) /
+          studio.user.songs.length
         : 0;
     const totalSold = studio.user.songs.reduce((s, x) => s + x.soldLicenses, 0);
     const height = Math.max(48, Math.min(128, 48 + avgScore));
@@ -126,7 +164,9 @@ export default async function CityPage() {
           className="w-10 rounded-t-sm bg-gradient-to-b from-brand-500/60 to-brand-900/80 border border-brand-500/30 flex items-end justify-center pb-1 transition group-hover:from-brand-400/80"
           style={{ height: `${height}px` }}
         >
-          <span className="text-[10px] font-bold text-brand-300">Lv{studio.level}</span>
+          <span className="text-[10px] font-bold text-brand-300">
+            Lv{studio.level}
+          </span>
         </div>
         {/* Base */}
         <div className="h-2 w-12 rounded-sm bg-white/10" />
@@ -142,9 +182,15 @@ export default async function CityPage() {
   }
 
   const studiosByDistrictMap = {
-    LABEL_ROW: studiosByDistrict.filter((s) => s.district === "LABEL_ROW").slice(0, 8),
-    DOWNTOWN_PRIME: studiosByDistrict.filter((s) => s.district === "DOWNTOWN_PRIME").slice(0, 8),
-    INDIE_BLOCKS: studiosByDistrict.filter((s) => s.district === "INDIE_BLOCKS").slice(0, 12),
+    LABEL_ROW: studiosByDistrict
+      .filter((s) => s.district === "LABEL_ROW")
+      .slice(0, 8),
+    DOWNTOWN_PRIME: studiosByDistrict
+      .filter((s) => s.district === "DOWNTOWN_PRIME")
+      .slice(0, 8),
+    INDIE_BLOCKS: studiosByDistrict
+      .filter((s) => s.district === "INDIE_BLOCKS")
+      .slice(0, 12),
   };
 
   const DISTRICT_VISUAL = {
@@ -183,9 +229,13 @@ export default async function CityPage() {
     const buildings = studiosByDistrictMap[district];
 
     return (
-      <section className={`rounded-3xl border ${visual.border} ${visual.bg} overflow-hidden`}>
+      <section
+        className={`rounded-3xl border ${visual.border} ${visual.bg} overflow-hidden`}
+      >
         {/* District header */}
-        <div className={`${visual.headerBg} border-b ${visual.border} px-6 py-4`}>
+        <div
+          className={`${visual.headerBg} border-b ${visual.border} px-6 py-4`}
+        >
           <div className="flex items-center gap-3">
             <DistrictBadge district={district} />
             <span className="text-sm text-white/40">{meta.description}</span>
@@ -214,7 +264,9 @@ export default async function CityPage() {
         <div className="p-6">
           {songs.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-sm text-white/25">No songs in this district yet.</p>
+              <p className="text-sm text-white/25">
+                No songs in this district yet.
+              </p>
               {district !== "INDIE_BLOCKS" && (
                 <a
                   href="/pricing"
@@ -266,56 +318,60 @@ export default async function CityPage() {
         {/* Header */}
         <div className="mb-8">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/8 px-3 py-1 text-xs font-semibold text-brand-400">
-            🏙️ Live City
+            Live city
           </div>
           <h1 className="text-4xl font-extrabold md:text-5xl">
-            The <span className="text-gradient-ems">City</span>
+            The <span className="text-gradient-ems">Music City</span>
           </h1>
           <p className="mt-3 text-white/45 max-w-xl">
-            Songs are ranked into districts based on their EMS Score. Higher
-            districts get more discovery exposure on the platform.
+            Tracks move through genre-driven districts based on EMS Score,
+            battle wins, plays, and license momentum.
           </p>
         </div>
 
         {/* ── 3-D City Scene ──────────────────────────────────────────────── */}
         <div className="mb-12">
-          <Suspense fallback={
-            <div className="flex h-64 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.02]">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-            </div>
-          }>
+          <Suspense
+            fallback={
+              <div className="flex h-64 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.02]">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+              </div>
+            }
+          >
             <CityScene3DClient buildings={cityBuildings} />
           </Suspense>
         </div>
 
         {/* District overview cards */}
         <div className="mb-12 grid gap-4 md:grid-cols-3">
-          {([
-            {
-              district: "LABEL_ROW" as const,
-              icon: "👑",
-              border: "border-gold-500/35",
-              bg: "bg-gold-500/8",
-              textColor: "text-gold-400",
-              lock: "Label plan",
-            },
-            {
-              district: "DOWNTOWN_PRIME" as const,
-              icon: "🏙️",
-              border: "border-brand-500/35",
-              bg: "bg-brand-500/8",
-              textColor: "text-brand-400",
-              lock: "Prime plan",
-            },
-            {
-              district: "INDIE_BLOCKS" as const,
-              icon: "🔮",
-              border: "border-white/12",
-              bg: "bg-white/3",
-              textColor: "text-white/60",
-              lock: null,
-            },
-          ] as const).map(({ district, icon, border, bg, textColor, lock }) => {
+          {(
+            [
+              {
+                district: "LABEL_ROW" as const,
+                icon: "◆",
+                border: "border-gold-500/35",
+                bg: "bg-gold-500/8",
+                textColor: "text-gold-400",
+                lock: "Label plan",
+              },
+              {
+                district: "DOWNTOWN_PRIME" as const,
+                icon: "▲",
+                border: "border-brand-500/35",
+                bg: "bg-brand-500/8",
+                textColor: "text-brand-400",
+                lock: "Prime plan",
+              },
+              {
+                district: "INDIE_BLOCKS" as const,
+                icon: "●",
+                border: "border-white/12",
+                bg: "bg-white/3",
+                textColor: "text-white/60",
+                lock: null,
+              },
+            ] as const
+          ).map(({ district, icon, border, bg, textColor, lock }) => {
             const meta = DISTRICT_META[district];
             return (
               <div
@@ -323,9 +379,13 @@ export default async function CityPage() {
                 className={`rounded-2xl border ${border} ${bg} p-5 text-center`}
               >
                 <p className="mb-2 text-3xl">{icon}</p>
-                <p className={`mb-1 font-extrabold ${textColor}`}>{meta.label}</p>
+                <p className={`mb-1 font-extrabold ${textColor}`}>
+                  {meta.label}
+                </p>
                 <p className="mb-3 text-xs text-white/40">{meta.description}</p>
-                <p className="text-2xl font-black">{meta.visibilityMultiplier}×</p>
+                <p className="text-2xl font-black">
+                  {meta.visibilityMultiplier}×
+                </p>
                 <p className="text-xs text-white/30">discovery boost</p>
                 {lock && (
                   <a
@@ -351,10 +411,12 @@ export default async function CityPage() {
         <div className="mt-12 rounded-3xl border border-brand-500/30 bg-brand-500/8 p-8 text-center">
           <p className="mb-2 text-3xl">🚀</p>
           <h3 className="mb-2 text-xl font-extrabold">
-            Claim a <span className="text-gradient-ems">premium studio spot</span>
+            Claim a{" "}
+            <span className="text-gradient-ems">better city position</span>
           </h3>
           <p className="mb-6 text-sm text-white/45">
-            Upgrade to Prime to unlock Downtown Prime. Hit Label Row with our Label plan.
+            Upgrade to Prime to unlock Mainstage Circuit. Hit Platinum Heights
+            with our Label plan.
           </p>
           <a
             href="/pricing"
@@ -365,8 +427,9 @@ export default async function CityPage() {
         </div>
 
         <p className="mt-8 text-center text-xs text-white/20">
-          Districts reflect algorithmic popularity metrics only. District placement
-          is not a financial endorsement and does not guarantee any revenue.
+          Districts reflect algorithmic popularity metrics only. District
+          placement is not a financial endorsement and does not guarantee any
+          revenue.
         </p>
       </div>
     </div>

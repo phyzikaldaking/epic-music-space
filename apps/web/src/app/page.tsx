@@ -72,24 +72,56 @@ const waveBars = [
   36, 58, 42, 74, 55, 88, 48, 69, 93, 64, 52, 81, 44, 70, 50, 62,
 ];
 
+const skylineTowers = [
+  { x: "8%", width: "7%", height: "36%", tone: "cyan", delay: "0ms" },
+  { x: "16%", width: "9%", height: "52%", tone: "violet", delay: "80ms" },
+  { x: "27%", width: "6%", height: "42%", tone: "blue", delay: "140ms" },
+  { x: "36%", width: "11%", height: "68%", tone: "gold", delay: "40ms" },
+  { x: "49%", width: "8%", height: "84%", tone: "violet", delay: "180ms" },
+  { x: "60%", width: "12%", height: "60%", tone: "cyan", delay: "110ms" },
+  { x: "74%", width: "7%", height: "46%", tone: "blue", delay: "220ms" },
+  { x: "84%", width: "10%", height: "72%", tone: "gold", delay: "70ms" },
+];
+
+const heroDistricts = [
+  {
+    name: "Platinum Heights",
+    genre: "sync / label / cinematic",
+    position: "left-[58%] top-[18%]",
+    tone: "gold",
+  },
+  {
+    name: "Mainstage Circuit",
+    genre: "hip-hop / pop / electronic",
+    position: "left-[12%] top-[39%]",
+    tone: "violet",
+  },
+  {
+    name: "Underground Grid",
+    genre: "indie / alt / experimental",
+    position: "left-[30%] top-[72%]",
+    tone: "cyan",
+  },
+];
+
 const districtRows = [
   {
-    name: "Label Row",
-    score: "90+ EMS score",
-    lift: "Premium placement",
-    body: "Top-scoring releases get the strongest discovery slots and label-facing visibility.",
+    name: "Platinum Heights",
+    score: "80+ EMS score",
+    lift: "Top-floor exposure",
+    body: "Sync-ready and label-grade releases get the loudest placement across the city.",
   },
   {
-    name: "Downtown Prime",
-    score: "70-89 EMS score",
-    lift: "Catalog momentum",
-    body: "Active tracks with strong plays, battles, and license activity move through the main district.",
+    name: "Mainstage Circuit",
+    score: "50-79 EMS score",
+    lift: "High-traffic rotation",
+    body: "Hip-hop, pop, electronic, and cinematic cuts climb here when demand starts moving.",
   },
   {
-    name: "Indie Blocks",
+    name: "Underground Grid",
     score: "Open entry",
-    lift: "Launch surface",
-    body: "New artists start here with the same licensing tools and a clear path upward.",
+    lift: "Discovery launchpad",
+    body: "Indie, alt, trailer, and experimental releases start with real tools and a path upward.",
   },
 ];
 
@@ -219,6 +251,88 @@ function coverStyle(url?: string | null): CSSProperties {
 
 function remainingLicenses(song: SampleSong) {
   return Math.max(song.totalLicenses - song.soldLicenses, 0);
+}
+
+function toneClasses(tone: string) {
+  if (tone === "gold") return "border-gold-300/45 bg-gold-300/10 text-gold-200";
+  if (tone === "violet")
+    return "border-brand-300/45 bg-brand-400/10 text-brand-100";
+  return "border-accent-300/45 bg-accent-400/10 text-accent-100";
+}
+
+function towerTone(tone: string) {
+  if (tone === "gold") {
+    return "from-gold-300/90 via-gold-500/45 to-[#16100b]";
+  }
+  if (tone === "violet") {
+    return "from-brand-300/80 via-brand-500/42 to-[#0b0b18]";
+  }
+  return "from-accent-300/85 via-accent-500/38 to-[#07131a]";
+}
+
+function MetaverseCity({ featured }: { featured: SampleSong | undefined }) {
+  return (
+    <div className="relative h-[520px] min-h-[420px] w-full overflow-hidden md:h-[min(72svh,720px)]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(102,250,255,.20),transparent_30%),radial-gradient(circle_at_82%_30%,rgba(255,218,0,.16),transparent_24%),linear-gradient(180deg,rgba(6,8,18,.12),#050509_96%)]" />
+
+      <div className="city-sun absolute left-1/2 top-[7%] h-32 w-32 -translate-x-1/2 rounded-full border border-accent-200/20 bg-accent-300/10 blur-[1px]" />
+
+      <div className="absolute inset-x-0 bottom-[18%] h-[62%]">
+        {skylineTowers.map((tower, index) => (
+          <span
+            key={`${tower.x}-${index}`}
+            className={`city-tower absolute bottom-0 rounded-t-[3px] border border-white/10 bg-gradient-to-b ${towerTone(tower.tone)}`}
+            style={{
+              left: tower.x,
+              width: tower.width,
+              height: tower.height,
+              animationDelay: tower.delay,
+            }}
+          />
+        ))}
+      </div>
+
+      <div className="city-grid absolute inset-x-[-18%] bottom-[-10%] h-[48%] origin-bottom rotate-x-[64deg] border-t border-accent-300/35" />
+      <div className="absolute inset-x-[-8%] bottom-[7%] h-20 bg-[linear-gradient(90deg,transparent,rgba(102,250,255,.25),transparent)] blur-2xl" />
+
+      {heroDistricts.map((district) => (
+        <div
+          key={district.name}
+          className={`city-district absolute z-10 max-w-[210px] rounded-md border px-3 py-2 backdrop-blur ${district.position} ${toneClasses(district.tone)}`}
+        >
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] opacity-60">
+            {district.genre}
+          </p>
+          <p className="mt-1 text-sm font-black">{district.name}</p>
+        </div>
+      ))}
+
+      {featured && (
+        <div className="absolute bottom-6 left-4 right-4 z-20 rounded-lg border border-white/12 bg-[#06070d]/88 p-4 shadow-2xl backdrop-blur md:left-auto md:w-[390px]">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/34">
+                Now playing in the city
+              </p>
+              <h2 className="mt-1 truncate text-xl font-black">
+                {featured.title}
+              </h2>
+              <p className="text-sm text-white/48">{featured.artist}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-lg font-black text-accent-300">
+                {formatPrice(featured.licensePrice)}
+              </p>
+              <p className="text-xs text-white/42">
+                {remainingLicenses(featured)} left
+              </p>
+            </div>
+          </div>
+          <AudioPlayer audioUrl={featured.audioUrl} title={featured.title} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ArrowRightIcon({ className = "h-4 w-4" }: IconProps) {
@@ -386,43 +500,81 @@ export default async function HomePage() {
     "Boost through battles",
   ];
 
+  const faqStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: "How does licensing work on Epic Music Space?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Each track shows transparent terms, license price, usage rights, and remaining supply before checkout so buyers can purchase with confidence.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Can artists control pricing and license supply?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Yes. Artists set pricing, license counts, and release strategy from their studio dashboard while tracking discovery and sales performance.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Do fans and creators preview tracks before purchase?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Yes. The marketplace includes playable previews so listeners can evaluate tracks before licensing.",
+        },
+      },
+    ],
+  };
+
   return (
     <div className="flex flex-col bg-[#050509] text-white">
-      <section className="relative isolate min-h-[calc(100svh-65px)] w-full overflow-hidden border-b border-white/8">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-br from-brand-950 via-[#050509] to-accent-950/30" />
-        <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,#050509_0%,rgba(5,5,9,.94)_34%,rgba(5,5,9,.58)_67%,rgba(5,5,9,.86)_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 -z-10 h-48 bg-[linear-gradient(0deg,#050509_0%,rgba(5,5,9,0)_100%)]" />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
+      />
+      <section className="relative isolate min-h-[calc(100svh-65px)] w-full overflow-hidden border-b border-white/8 bg-[#030408]">
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,#030408_0%,rgba(3,4,8,.92)_35%,rgba(3,4,8,.40)_72%,#030408_100%)]" />
+        <div className="absolute inset-x-0 bottom-0 -z-10 h-56 bg-[linear-gradient(0deg,#050509_0%,rgba(5,5,9,0)_100%)]" />
 
-        <div className="mx-auto grid min-h-[calc(100svh-65px)] max-w-7xl items-center gap-12 px-4 py-14 md:grid-cols-[minmax(0,0.9fr)_minmax(360px,0.72fr)] md:py-8">
+        <div className="absolute inset-y-0 right-0 -z-10 w-full opacity-95 md:w-[64%]">
+          <MetaverseCity featured={featured} />
+        </div>
+
+        <div className="relative mx-auto grid min-h-[calc(100svh-65px)] max-w-7xl items-center px-4 py-12 md:py-8">
           <div className="max-w-3xl animate-fade-up">
-            <p className="mb-5 inline-flex items-center gap-2 border-l-2 border-accent-400 pl-3 text-xs font-bold uppercase tracking-[0.22em] text-accent-300">
+            <p className="mb-5 inline-flex items-center gap-2 border-l-2 border-accent-400 pl-3 text-xs font-black uppercase tracking-[0.22em] text-accent-300">
               <WaveIcon className="h-4 w-4" />
-              Cinematic licensing marketplace
+              Open-world music licensing
             </p>
 
-            <h1 className="text-balance text-[clamp(3.25rem,8vw,7.25rem)] font-black leading-[0.88] tracking-tight">
+            <h1 className="text-balance text-[clamp(3.4rem,9vw,8rem)] font-black leading-[0.85] tracking-tight">
               Epic Music Space
             </h1>
 
-            <p className="mt-6 max-w-xl text-lg leading-8 text-white/64 md:text-xl">
-              Preview independent space, sci-fi, and game cues. Buy clear
-              digital music licenses from capped drops, or release your own
-              catalog into a discovery city built for artists.
+            <p className="mt-6 max-w-xl text-lg leading-8 text-white/68 md:text-xl">
+              A playable music city for licensing cinematic tracks, backing
+              artists, and moving releases through genre districts with real
+              demand.
             </p>
 
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <Link
-                href="/marketplace"
+                href="/city"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-white px-6 text-sm font-black text-[#050509] transition hover:bg-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
               >
-                Browse tracks
+                Enter the city
                 <ArrowRightIcon />
               </Link>
               <Link
-                href="/studio/new"
+                href="/marketplace"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-white/18 px-6 text-sm font-bold text-white/76 transition hover:border-white/34 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
               >
-                Release music
+                Browse drops
               </Link>
             </div>
 
@@ -439,46 +591,6 @@ export default async function HomePage() {
               ))}
             </dl>
           </div>
-
-          {featured && (
-            <div
-              className="animate-fade-up md:justify-self-end"
-              style={{ animationDelay: "120ms" }}
-            >
-              <div className="w-full max-w-[440px]">
-                <div
-                  aria-label={`${featured.title} cover art`}
-                  className="aspect-square w-full rounded-lg border border-white/12 shadow-[0_26px_90px_rgba(0,0,0,.55)]"
-                  style={coverStyle(featured.coverUrl)}
-                />
-                <div className="-mt-16 ml-4 mr-4 rounded-lg border border-white/12 bg-[#090a0f]/92 p-4 shadow-2xl backdrop-blur md:ml-8 md:mr-0">
-                  <div className="mb-4 flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/34">
-                        Featured license
-                      </p>
-                      <h2 className="mt-1 truncate text-xl font-black">
-                        {featured.title}
-                      </h2>
-                      <p className="text-sm text-white/48">{featured.artist}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-black text-accent-300">
-                        {formatPrice(featured.licensePrice)}
-                      </p>
-                      <p className="text-xs text-white/42">
-                        {remainingLicenses(featured)} left
-                      </p>
-                    </div>
-                  </div>
-                  <AudioPlayer
-                    audioUrl={featured.audioUrl}
-                    title={featured.title}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </section>
 
@@ -573,7 +685,11 @@ export default async function HomePage() {
                 </div>
 
                 <div className="min-w-0">
-                  <AudioPlayer audioUrl={song.audioUrl} title={song.title} songId={song.id} />
+                  <AudioPlayer
+                    audioUrl={song.audioUrl}
+                    title={song.title}
+                    songId={song.id}
+                  />
                   <Link
                     href={`/track/${song.id}`}
                     className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-accent-400/34 bg-accent-500/8 text-sm font-bold text-accent-200 transition hover:bg-accent-500/14 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"

@@ -234,7 +234,13 @@ async function handleLicenseCheckoutCompleted(
   if (supabase) {
     const song = await prisma.song.findUnique({
       where: { id: songId },
-      select: { title: true, artist: true, coverUrl: true, soldLicenses: true, licensePrice: true },
+      select: {
+        title: true,
+        artist: true,
+        coverUrl: true,
+        soldLicenses: true,
+        licensePrice: true,
+      },
     });
     if (song) {
       const payload = {
@@ -286,8 +292,35 @@ const TIER_MAP: Record<string, string> = {
   starter: "STARTER",
   pro: "PRO",
   prime: "PRIME",
+  team: "TEAM",
   label: "LABEL_TIER",
 };
+
+const PRICE_TO_TIER: Record<string, string> = {
+  ...(process.env.STRIPE_PRICE_ID_STARTER
+    ? { [process.env.STRIPE_PRICE_ID_STARTER]: "STARTER" }
+    : {}),
+  ...(process.env.STRIPE_PRICE_ID_PRO
+    ? { [process.env.STRIPE_PRICE_ID_PRO]: "PRO" }
+    : {}),
+  ...(process.env.STRIPE_PRICE_ID_PRIME
+    ? { [process.env.STRIPE_PRICE_ID_PRIME]: "PRIME" }
+    : {}),
+  ...(process.env.STRIPE_PRICE_ID_TEAM
+    ? { [process.env.STRIPE_PRICE_ID_TEAM]: "TEAM" }
+    : {}),
+  ...(process.env.STRIPE_PRICE_ID_LABEL
+    ? { [process.env.STRIPE_PRICE_ID_LABEL]: "LABEL_TIER" }
+    : {}),
+};
+
+function getTierFromSubscription(sub: Stripe.Subscription) {
+  for (const item of sub.items.data) {
+    const tier = PRICE_TO_TIER[item.price.id];
+    if (tier) return tier;
+  }
+  return null;
+}
 
 async function handleSubscriptionCheckoutCompleted(
   session: Stripe.Checkout.Session,
@@ -364,18 +397,26 @@ async function handleSubscriptionChange(
 ) {
   const customerId = sub.customer as string;
 
-  // Find user by stored customer ID
-  const tx = await prisma.transaction.findFirst({
-    where: {
-      metadata: {
-        path: ["stripeCustomerId"],
-        equals: customerId,
-      },
-    },
-    select: { userId: true },
+  // Find user by stored customer ID, with transaction metadata as a legacy fallback.
+  const user = await prisma.user.findUnique({
+    where: { stripeCustomerId: customerId },
+    select: { id: true },
   });
 
-  if (!tx) {
+  const tx = user
+    ? null
+    : await prisma.transaction.findFirst({
+        where: {
+          metadata: {
+            path: ["stripeCustomerId"],
+            equals: customerId,
+          },
+        },
+        select: { userId: true },
+      });
+
+  const userId = user?.id ?? tx?.userId;
+  if (!userId) {
     console.warn(`[stripe-webhook] No user found for customer ${customerId}`);
     return;
   }
@@ -387,14 +428,30 @@ async function handleSubscriptionChange(
 
   if (isCancelled) {
     await prisma.user.update({
-      where: { id: tx.userId },
+      where: { id: userId },
       data: { subscriptionTier: "FREE" as never },
     });
     await enqueueNotification({
-      userId: tx.userId,
+      userId,
       type: "SUBSCRIPTION_CANCELLED",
       title: "Subscription cancelled",
       body: "Your EMS subscription has ended. You can re-subscribe at any time from the pricing page.",
+    });
+    return;
+  }
+
+  const tier = getTierFromSubscription(sub);
+  if (tier && ["active", "trialing"].includes(sub.status)) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { subscriptionTier: tier as never },
+    });
+    await enqueueNotification({
+      userId,
+      type: "SUBSCRIPTION_UPDATED",
+      title: "Subscription updated",
+      body: "Your EMS subscription changes are now active.",
+      metadata: { tier },
     });
   }
 
@@ -430,7 +487,9 @@ async function handleBoostCheckoutCompleted(session: Stripe.Checkout.Session) {
     // Use a single atomic UPDATE with LEAST() so concurrent boost purchases
     // always accumulate correctly. A read-then-write pattern here would let
     // two simultaneous webhooks clobber each other's increments.
-    const [song] = await tx.$queryRaw<Array<{ title: string; boostScore: number }>>`
+    const [song] = await tx.$queryRaw<
+      Array<{ title: string; boostScore: number }>
+    >`
       UPDATE "Song"
       SET "boostScore" = LEAST(100.0, "boostScore" + ${points}::float8)
       WHERE id = ${songId}
@@ -532,7 +591,8 @@ async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
-  const { fromUserId, artistId, songId, message, amount } = session.metadata ?? {};
+  const { fromUserId, artistId, songId, message, amount } =
+    session.metadata ?? {};
   if (!fromUserId || !artistId) {
     console.error("[stripe-webhook] Tip missing metadata", session.metadata);
     return;
@@ -608,7 +668,9 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
       userId: artistId,
       type: "TIP_RECEIVED",
       title: `${tipperName} tipped you $${tipAmount.toFixed(2)}! 💸`,
-      body: message ? `"${message}"` : `${tipperName} supports your music. Keep creating!`,
+      body: message
+        ? `"${message}"`
+        : `${tipperName} supports your music. Keep creating!`,
       metadata: { fromUserId, amount: tipAmount, message: message ?? null },
     }),
     enqueueNotification({
@@ -620,17 +682,24 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
     }),
   ]);
 
-  console.log(`[stripe-webhook] Tip: from=${fromUserId} to=${artistId} amount=${tipAmount}`);
+  console.log(
+    `[stripe-webhook] Tip: from=${fromUserId} to=${artistId} amount=${tipAmount}`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Auction win checkout completed — grant license, settle auction
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Session) {
+async function handleAuctionWinCheckoutCompleted(
+  session: Stripe.Checkout.Session,
+) {
   const { auctionId, songId, userId, sellerId } = session.metadata ?? {};
   if (!auctionId || !songId || !userId || !sellerId) {
-    console.error("[stripe-webhook] Auction win missing metadata", session.metadata);
+    console.error(
+      "[stripe-webhook] Auction win missing metadata",
+      session.metadata,
+    );
     return;
   }
 
@@ -662,11 +731,20 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
     }
 
     const licenseToken = await tx.licenseToken.create({
-      data: { songId, holderId: userId, tokenNumber, price: winAmount, status: "ACTIVE" },
+      data: {
+        songId,
+        holderId: userId,
+        tokenNumber,
+        price: winAmount,
+        status: "ACTIVE",
+      },
     });
 
     await Promise.all([
-      tx.auction.update({ where: { id: auctionId }, data: { status: "SETTLED" } }),
+      tx.auction.update({
+        where: { id: auctionId },
+        data: { status: "SETTLED" },
+      }),
       tx.transaction.update({
         where: { stripeSessionId: session.id },
         data: {
@@ -694,7 +772,12 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
           amount: Math.round(artistShare * 100),
           currency: "usd",
           destination: connectId,
-          metadata: { emsUserId: sellerId, songId, auctionId, licenseTokenId: licenseToken.id },
+          metadata: {
+            emsUserId: sellerId,
+            songId,
+            auctionId,
+            licenseTokenId: licenseToken.id,
+          },
         });
         await tx.payout.updateMany({
           where: { userId: sellerId, songId, licenseTokenId: licenseToken.id },
@@ -725,7 +808,9 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
 
   await awardBadge(userId, "LICENSE_HOLDER");
 
-  console.log(`[stripe-webhook] Auction settled: auction=${auctionId} winner=${userId} song=${songId}`);
+  console.log(
+    `[stripe-webhook] Auction settled: auction=${auctionId} winner=${userId} song=${songId}`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -739,7 +824,10 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
 async function handleAdPurchaseCompleted(session: Stripe.Checkout.Session) {
   const { adId, userId } = session.metadata ?? {};
   if (!adId || !userId) {
-    console.error("[stripe-webhook] AD_PURCHASE missing metadata", session.metadata);
+    console.error(
+      "[stripe-webhook] AD_PURCHASE missing metadata",
+      session.metadata,
+    );
     return;
   }
 
