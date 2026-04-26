@@ -20,7 +20,7 @@
     "db:deploy": "npm --workspace packages/db run db:deploy",
     "db:seed": "npm --workspace packages/db run db:seed",
     "db:studio": "cd packages/db && npx prisma studio",
-    "vercel:build": "npm run clean:web && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma generate --schema packages/db/prisma/schema.prisma && npm --workspace apps/web run build && find packages/db/generated/client -name '*.node' -exec cp {} apps/web/.next/server/ \\;"
+    "vercel:build": "npm run clean:web && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma generate --schema packages/db/prisma/schema.prisma && mkdir -p apps/web/packages/db/generated/client && find packages/db/generated/client -name '*.node' -exec cp {} apps/web/packages/db/generated/client/ \\; && npm --workspace apps/web run build"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
