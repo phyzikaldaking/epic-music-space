@@ -11,8 +11,8 @@ export async function GET() {
     try {
       await prisma.$queryRaw`SELECT 1`;
       dbOk = true;
-    } catch {
-      // DB unreachable
+    } catch (err) {
+      console.error("DB_ERROR:", (err as Error).message ?? err);
     }
   }
 
