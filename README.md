@@ -16,7 +16,8 @@ This is a **Turborepo monorepo** with npm workspaces.
 epic-music-space/
 ├── apps/
 │   ├── web/                  # Next.js 15 app (App Router, TypeScript, Tailwind)
-│   └── api/                  # Standalone Hono REST API (@ems/api)
+│   ├── api/                  # Standalone Hono REST API (@ems/api)
+│   └── credit-care/          # Credit Care app workspace (@creditcare/app)
 ├── packages/
 │   ├── db/                   # Prisma schema + generated client (@ems/db)
 │   ├── ui/                   # Shared React components (@ems/ui)
@@ -24,6 +25,15 @@ epic-music-space/
 ├── turbo.json
 └── package.json
 ```
+
+## 🧩 Multi-Entity Separation
+
+This repo now enforces a clean separation between:
+
+- **Epic Music Space (EMS)** — music licensing product
+- **Credit Care** — separate product and legal entity
+
+Even when infrastructure is shared (for example, payments or banking operations), product-domain code must remain isolated by workspace. See [`docs/ENTITY_SEPARATION.md`](./docs/ENTITY_SEPARATION.md).
 
 ## 📦 Tech Stack
 
