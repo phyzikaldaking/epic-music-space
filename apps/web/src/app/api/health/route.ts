@@ -12,7 +12,12 @@ export async function GET() {
       await prisma.$queryRaw`SELECT 1`;
       dbOk = true;
     } catch (err) {
-      console.error("DB_ERROR:", (err as Error).message ?? err);
+      const msg = (err as Error).message ?? String(err);
+      console.error("DB_ERROR:", msg);
+      return NextResponse.json(
+        { status: "degraded", error: msg, timestamp: new Date().toISOString() },
+        { status: 503 }
+      );
     }
   }
 
