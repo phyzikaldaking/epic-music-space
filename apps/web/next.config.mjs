@@ -39,6 +39,9 @@ const securityHeaders = [
 const nextConfig = {
   compress: true,
   outputFileTracingRoot: path.resolve(__dirname, "../.."),
+  outputFileTracingIncludes: {
+    "/**": ["../../packages/db/generated/client/*.node"],
+  },
   poweredByHeader: false,
   transpilePackages: ["@ems/utils"],
   images: {
