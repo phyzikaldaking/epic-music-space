@@ -108,3 +108,69 @@ export async function maybeAwardEarlyAdopter(userId: string) {
     await awardBadge(userId, "EARLY_ADOPTER");
   }
 }
+
+/**
+ * Finalize a VersusMatch that has just ended.
+ * - Marks the match COMPLETED (idempotent).
+ * - Increments versusWins / versusLosses on both songs.
+ * - Awards FIRST_BATTLE_WIN to the winning artist.
+ * - Returns the winner's songId (or null on a tie).
+ */
+export async function finalizeVersusMatch(matchId: string): Promise<string | null> {
+  const match = await prisma.versusMatch.findUnique({
+    where: { id: matchId },
+    include: {
+      songA: { select: { id: true, artistId: true, versusWins: true, versusLosses: true } },
+      songB: { select: { id: true, artistId: true, versusWins: true, versusLosses: true } },
+    },
+  });
+
+  if (!match) return null;
+
+  // Mark COMPLETED if not already
+  if (match.status !== "COMPLETED") {
+    await prisma.versusMatch.update({
+      where: { id: matchId },
+      data: { status: "COMPLETED" },
+    });
+  }
+
+  if (match.votesA === match.votesB) {
+    // Tie — no winner; still increment losses for both (optional policy)
+    return null;
+  }
+
+  const winnerSong = match.votesA > match.votesB ? match.songA : match.songB;
+  const loserSong  = match.votesA > match.votesB ? match.songB : match.songA;
+
+  // Update W/L counts
+  await Promise.all([
+    prisma.song.update({
+      where: { id: winnerSong.id },
+      data: { versusWins: { increment: 1 } },
+    }),
+    prisma.song.update({
+      where: { id: loserSong.id },
+      data: { versusLosses: { increment: 1 } },
+    }),
+  ]);
+
+  // Award badge to winning artist (idempotent)
+  await awardBadge(winnerSong.artistId, "FIRST_BATTLE_WIN");
+
+  // Send winner notification (best-effort)
+  try {
+    const { enqueueNotification } = await import("./queues");
+    await enqueueNotification({
+      userId: winnerSong.artistId,
+      type: "VERSUS_WIN",
+      title: "Battle won! ⚔️🏆",
+      body: `Your track won the Versus battle! Check the results at /versus/${matchId}`,
+      metadata: { matchId, winnerSongId: winnerSong.id },
+    });
+  } catch {
+    // notification failure is non-critical
+  }
+
+  return winnerSong.id;
+}

@@ -9,6 +9,43 @@ const voteSchema = z.object({
   votedSongId: z.string().min(1, "votedSongId is required"),
 });
 
+/**
+ * Finalize an expired match: update W/L stats and award FIRST_BATTLE_WIN badge.
+ * Idempotent — safe to call multiple times for the same match.
+ */
+async function finalizeMatch(match: {
+  id: string;
+  votesA: number;
+  votesB: number;
+  songAId: string;
+  songBId: string;
+}): Promise<void> {
+  await prisma.versusMatch.update({
+    where: { id: match.id },
+    data: { status: "COMPLETED" },
+  });
+
+  if (match.votesA === match.votesB) return; // tie — no winner
+
+  const winnerSongId = match.votesA > match.votesB ? match.songAId : match.songBId;
+  const loserSongId  = match.votesA > match.votesB ? match.songBId : match.songAId;
+
+  const winnerSong = await prisma.song.findUnique({
+    where: { id: winnerSongId },
+    select: { artistId: true },
+  });
+
+  await Promise.allSettled([
+    prisma.song.update({ where: { id: winnerSongId }, data: { versusWins: { increment: 1 } } }),
+    prisma.song.update({ where: { id: loserSongId }, data: { versusLosses: { increment: 1 } } }),
+    winnerSong
+      ? prisma.userBadge
+          .create({ data: { userId: winnerSong.artistId, type: "FIRST_BATTLE_WIN" } })
+          .catch(() => null) // ignore duplicate
+      : Promise.resolve(),
+  ]);
+}
+
 export const versusRouter = new Hono();
 
 /**
@@ -54,11 +91,8 @@ versusRouter.post(
       return c.json({ error: "This match has ended" }, 409);
     }
     if (match.endsAt < new Date()) {
-      // Auto-close
-      await prisma.versusMatch.update({
-        where: { id: matchId },
-        data: { status: "COMPLETED" },
-      });
+      // Auto-close and finalize (W/L stats + FIRST_BATTLE_WIN badge)
+      await finalizeMatch(match);
       return c.json({ error: "This match has ended" }, 409);
     }
     if (votedSongId !== match.songAId && votedSongId !== match.songBId) {

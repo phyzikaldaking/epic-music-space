@@ -5,6 +5,7 @@ import { z } from "zod";
 import { calculateAiScore, scoreToDistrict } from "@/lib/scoring";
 import { moderateLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
+import { finalizeVersusMatch } from "@/lib/badges";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 
 interface Params {
@@ -52,11 +53,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "This match has ended." }, { status: 409 });
   }
   if (match.endsAt < new Date()) {
-    // Auto-close the match
-    await prisma.versusMatch.update({
-      where: { id: matchId },
-      data: { status: "COMPLETED" },
-    });
+    // Auto-close and finalize (updates W/L stats + awards FIRST_BATTLE_WIN badge)
+    await finalizeVersusMatch(matchId);
     return NextResponse.json({ error: "This match has ended." }, { status: 409 });
   }
   if (votedSongId !== match.songAId && votedSongId !== match.songBId) {
