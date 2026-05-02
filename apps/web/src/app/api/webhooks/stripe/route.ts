@@ -124,9 +124,75 @@ async function handlePlacementBidCompleted(session: Stripe.Checkout.Session) {
 async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) {
   const { songId, userId } = session.metadata ?? {};
   if (!songId || !userId) return;
-  const existing = await prisma.transaction.findUnique({ where: { stripeSessionId: session.id } });
-  if (existing?.status === "SUCCEEDED") return;
-  await prisma.transaction.updateMany({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
+
+  const existing = await prisma.transaction.findUnique({
+    where: { stripeSessionId: session.id },
+    include: { song: true },
+  });
+  if (!existing || existing.status === "SUCCEEDED") return;
+
+  const song = existing.song;
+  if (!song) {
+    console.error("[stripe-webhook] License checkout: transaction has no associated song", session.id);
+    return;
+  }
+
+  const license = await prisma.licenseToken.create({
+    data: {
+      tokenNumber: song.soldLicenses + 1,
+      price: existing.amount,
+      songId: song.id,
+      holderId: existing.userId,
+    },
+  });
+
+  await prisma.song.update({
+    where: { id: song.id },
+    data: { soldLicenses: { increment: 1 } },
+  });
+
+  await prisma.transaction.update({
+    where: { id: existing.id },
+    data: {
+      status: "SUCCEEDED",
+      stripePaymentIntentId: session.payment_intent as string | undefined,
+      licenseTokenId: license.id,
+    },
+  });
+
+  const revenueShare = Number(song.revenueSharePct) / 100;
+  const payoutAmount = Number(existing.amount) * revenueShare;
+
+  await prisma.payout.create({
+    data: {
+      amount: payoutAmount,
+      userId: song.artistId,
+      songId: song.id,
+      licenseTokenId: license.id,
+      period: "instant",
+    },
+  });
+
+  try {
+    const artist = await prisma.user.findUnique({ where: { id: song.artistId } });
+    if (artist?.stripeConnectId && payoutAmount > 0) {
+      await stripe.transfers.create({
+        amount: Math.round(payoutAmount * 100),
+        currency: "usd",
+        destination: artist.stripeConnectId,
+        metadata: { songId: song.id, licenseId: license.id },
+      });
+      await prisma.payout.updateMany({
+        where: { userId: artist.id, songId: song.id, licenseTokenId: license.id },
+        data: { status: "PAID", paidAt: new Date() },
+      });
+    }
+  } catch (err) {
+    console.error("[stripe-webhook] artist payout transfer failed", err);
+  }
+
+  track({ event: "license_purchased", userId, properties: { songId, licenseId: license.id, amount: Number(existing.amount) } });
+  console.log(`[stripe-webhook] License fulfilled: song=${songId} user=${userId} license=${license.id}`);
 }
 
 const TIER_MAP: Record<string, string> = { starter: "STARTER", pro: "PRO", prime: "PRIME", team: "TEAM", label: "LABEL_TIER" };
