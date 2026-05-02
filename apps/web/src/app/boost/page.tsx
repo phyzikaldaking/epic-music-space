@@ -1,9 +1,18 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getTierLimits } from "@/lib/tierLimits";
+import { redirect } from "next/navigation";
 import BoostPurchaseSection from "./BoostPurchaseSection";
 
 export default async function BoostPage() {
   const session = await auth();
+
+  if (session?.user?.id) {
+    const tier = session.user.subscriptionTier ?? "FREE";
+    if (!getTierLimits(tier).canBoost) {
+      redirect("/pricing?reason=boost");
+    }
+  }
 
   // Fetch artist's songs if logged in
   let songs: { id: string; title: string; boostScore: number; aiScore: number }[] = [];

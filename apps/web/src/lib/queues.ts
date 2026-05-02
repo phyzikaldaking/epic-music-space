@@ -88,6 +88,10 @@ export async function enqueueNotification(data: NotificationJobData) {
 }
 
 export async function enqueueAnalytics(data: AnalyticsJobData) {
-  if (!analyticsQueue) return;
-  await analyticsQueue.add("track", data);
+  if (analyticsQueue) {
+    await analyticsQueue.add("track", data);
+    return;
+  }
+  // No Redis — log so analytics events are not silently dropped
+  console.info("[analytics]", JSON.stringify({ ...data, queued: false }));
 }

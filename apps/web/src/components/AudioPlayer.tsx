@@ -10,7 +10,6 @@ interface AudioPlayerProps {
 
 export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const streamedRef = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0); // 0–100
   const [duration, setDuration] = useState(0);
@@ -68,8 +67,7 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
         .then(() => {
           setPlaying(true);
           setLoading(false);
-          if (songId && !streamedRef.current) {
-            streamedRef.current = true;
+          if (songId) {
             void fetch(`/api/songs/${songId}/stream`, { method: "POST" });
           }
         })
