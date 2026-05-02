@@ -15,6 +15,8 @@ const createSongSchema = z.object({
   description: z.string().max(2000).optional(),
   audioUrl: z.string().url("audioUrl must be a valid URL"),
   coverUrl: z.string().url("coverUrl must be a valid URL").optional(),
+  stemUrl: z.string().url("stemUrl must be a valid URL").optional(),
+  hasStems: z.boolean().default(false),
   bpm: z.coerce.number().int().min(20).max(999).optional(),
   key: z.string().max(10).optional(),
   licensePrice: z.coerce

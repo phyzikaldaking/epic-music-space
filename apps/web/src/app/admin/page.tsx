@@ -1,24 +1,57 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import AdminUsersClient from "./AdminUsersClient";
+import AdminSongsClient from "./AdminSongsClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await auth();
 
   if (!session?.user?.id) redirect("/auth/signin?callbackUrl=/admin");
   if (session.user.role !== "ADMIN") redirect("/dashboard");
 
+  const { tab } = await searchParams;
+  const activeTab = tab === "songs" ? "songs" : "users";
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
-      <div className="mb-8">
-        <h1 className="text-3xl font-extrabold">
-          <span className="text-gradient-ems">Admin Panel</span>
-        </h1>
-        <p className="mt-1 text-white/40">Manage users, roles, and platform access.</p>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-extrabold">
+            <span className="text-gradient-ems">Owner Portal</span>
+          </h1>
+          <p className="mt-1 text-white/40">Manage users, songs, and platform access.</p>
+        </div>
+        <div className="flex gap-2">
+          <a
+            href="/admin"
+            className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "users"
+                ? "border-brand-500/50 bg-brand-500/15 text-brand-300"
+                : "border-white/15 text-white/50 hover:text-white"
+            }`}
+          >
+            Users
+          </a>
+          <a
+            href="/admin?tab=songs"
+            className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "songs"
+                ? "border-brand-500/50 bg-brand-500/15 text-brand-300"
+                : "border-white/15 text-white/50 hover:text-white"
+            }`}
+          >
+            Songs
+          </a>
+        </div>
       </div>
-      <AdminUsersClient />
+
+      {activeTab === "songs" ? <AdminSongsClient /> : <AdminUsersClient />}
     </main>
   );
 }

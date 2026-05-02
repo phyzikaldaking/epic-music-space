@@ -22,8 +22,20 @@ const ALLOWED_IMAGE_TYPES = [
   "image/gif",
 ];
 
-const MAX_AUDIO_SIZE = 50 * 1024 * 1024; // 50 MB
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024;  // 5 MB
+const ALLOWED_STEM_TYPES = [
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/octet-stream",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/flac",
+];
+
+const MAX_AUDIO_SIZE = 50 * 1024 * 1024;  // 50 MB
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;   // 5 MB
+const MAX_STEM_SIZE  = 500 * 1024 * 1024; // 500 MB
 
 /**
  * POST /api/upload
@@ -75,16 +87,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }
 
-  if (!uploadType || !["audio", "cover"].includes(uploadType)) {
+  if (!uploadType || !["audio", "cover", "stem"].includes(uploadType)) {
     return NextResponse.json(
-      { error: "type must be 'audio' or 'cover'" },
+      { error: "type must be 'audio', 'cover', or 'stem'" },
       { status: 400 }
     );
   }
 
   const isAudio = uploadType === "audio";
-  const allowedTypes = isAudio ? ALLOWED_AUDIO_TYPES : ALLOWED_IMAGE_TYPES;
-  const maxSize = isAudio ? MAX_AUDIO_SIZE : MAX_IMAGE_SIZE;
+  const isStem  = uploadType === "stem";
+  const allowedTypes = isStem ? ALLOWED_STEM_TYPES : isAudio ? ALLOWED_AUDIO_TYPES : ALLOWED_IMAGE_TYPES;
+  const maxSize = isStem ? MAX_STEM_SIZE : isAudio ? MAX_AUDIO_SIZE : MAX_IMAGE_SIZE;
 
   if (!allowedTypes.includes(file.type)) {
     return NextResponse.json(
@@ -111,9 +124,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ext = file.name.split(".").pop() ?? (isAudio ? "mp3" : "jpg");
-  const bucket = isAudio ? "audio" : "covers";
-  const path = `${session.user.id}/${Date.now()}.${ext}`;
+  const ext = file.name.split(".").pop() ?? (isStem ? "zip" : isAudio ? "mp3" : "jpg");
+  const bucket = isStem ? "audio" : isAudio ? "audio" : "covers";
+  const pathPrefix = isStem ? `stems/${session.user.id}` : session.user.id;
+  const path = `${pathPrefix}/${Date.now()}.${ext}`;
 
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);

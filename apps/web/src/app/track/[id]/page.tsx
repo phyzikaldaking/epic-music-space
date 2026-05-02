@@ -29,6 +29,7 @@ type TrackDetail = {
   totalLicenses: number;
   aiScore: number | null;
   isActive: boolean;
+  hasStems: boolean;
   artist_: { id: string; name: string | null; image: string | null } | null;
   _count: { licenses: number };
   isDemo: boolean;
@@ -66,6 +67,7 @@ async function getTrack(id: string): Promise<TrackDetail | null> {
       totalLicenses: demo.totalLicenses,
       aiScore: demo.aiScore,
       isActive: true,
+      hasStems: false,
       artist_: null,
       _count: { licenses: demo.soldLicenses },
       isDemo: true,
@@ -280,6 +282,16 @@ export default async function TrackPage({ params, searchParams }: Props) {
                 />
               </div>
             </div>
+
+            {/* Download trackout for existing license holders */}
+            {!song.isDemo && userLicense && song.hasStems && (
+              <a
+                href={`/api/licenses/${userLicense.id}/download`}
+                className="mb-3 flex items-center justify-center gap-2 rounded-xl border border-brand-500/40 bg-brand-500/10 py-3 text-sm font-semibold text-brand-300 transition hover:bg-brand-500/20"
+              >
+                ↓ Download Trackout / Stems
+              </a>
+            )}
 
             {/* CTA */}
             {song.isDemo ? (

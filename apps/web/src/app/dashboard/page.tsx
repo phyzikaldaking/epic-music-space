@@ -173,14 +173,24 @@ export default async function DashboardPage() {
               )}
             </div>
           </div>
-          {user.role !== "LISTENER" && (
-            <Link
-              href="/studio/new"
-              className="inline-flex h-11 items-center justify-center rounded-md bg-white px-5 text-sm font-black text-[#050509] transition hover:bg-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
-            >
-              Upload song
-            </Link>
-          )}
+          <div className="flex gap-3">
+            {user.role === "ADMIN" && (
+              <Link
+                href="/admin"
+                className="inline-flex h-11 items-center justify-center rounded-md border border-red-500/40 bg-red-500/10 px-5 text-sm font-black text-red-400 transition hover:bg-red-500/20"
+              >
+                Owner Portal
+              </Link>
+            )}
+            {user.role !== "LISTENER" && (
+              <Link
+                href="/studio/new"
+                className="inline-flex h-11 items-center justify-center rounded-md bg-white px-5 text-sm font-black text-[#050509] transition hover:bg-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+              >
+                Upload song
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* ── Studio setup prompt (artists without a studio) ─────────────── */}
@@ -298,6 +308,7 @@ export default async function DashboardPage() {
                     <th className="px-5 py-3.5 text-left">Price paid</th>
                     <th className="px-5 py-3.5 text-left">Status</th>
                     <th className="px-5 py-3.5 text-left">Purchased</th>
+                    <th className="px-5 py-3.5 text-left">Download</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -334,6 +345,18 @@ export default async function DashboardPage() {
                       </td>
                       <td className="px-5 py-3.5 text-white/40 text-xs">
                         {new Date(l.purchasedAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {l.song.hasStems ? (
+                          <a
+                            href={`/api/licenses/${l.id}/download`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs font-semibold text-brand-400 transition hover:bg-brand-500/20"
+                          >
+                            ↓ Trackout
+                          </a>
+                        ) : (
+                          <span className="text-xs text-white/20">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -150,6 +150,11 @@ model Song {
   streamCount  Int      @default(0)
   district     District @default(INDIE_BLOCKS)
 
+  // Trackout / stems delivery
+  stemUrl   String? // download file URL (ZIP or primary stem)
+  stemFiles Json?   // [{name, url, size}] for multi-stem packages
+  hasStems  Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

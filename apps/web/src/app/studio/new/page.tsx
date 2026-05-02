@@ -22,17 +22,21 @@ export default function StudioNewPage() {
   // File state
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [, setCoverFile] = useState<File | null>(null);
+  const [stemFile, setStemFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
+  const [stemUrl, setStemUrl] = useState("");
 
   const [audioUploadState, setAudioUploadState] = useState<UploadState>("idle");
   const [coverUploadState, setCoverUploadState] = useState<UploadState>("idle");
+  const [stemUploadState, setStemUploadState] = useState<UploadState>("idle");
   const [submitState, setSubmitState] = useState<UploadState>("idle");
   const [error, setError] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
+  const stemRef = useRef<HTMLInputElement>(null);
 
   async function uploadFile(file: File, type: "audio" | "cover"): Promise<string> {
     const form = new FormData();
@@ -82,6 +86,27 @@ export default function StudioNewPage() {
     }
   }
 
+  async function handleStemChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStemFile(file);
+    setStemUploadState("uploading");
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("type", "stem");
+      const res = await fetch("/api/upload", { method: "POST", body: form });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Upload failed");
+      setStemUrl(data.url);
+      setStemUploadState("done");
+    } catch (err) {
+      setStemUploadState("error");
+      setError(err instanceof Error ? err.message : "Stem upload failed");
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -94,7 +119,7 @@ export default function StudioNewPage() {
       return;
     }
 
-    if (audioUploadState === "uploading" || coverUploadState === "uploading") {
+    if (audioUploadState === "uploading" || coverUploadState === "uploading" || stemUploadState === "uploading") {
       setError("Please wait for uploads to complete.");
       return;
     }
@@ -108,6 +133,8 @@ export default function StudioNewPage() {
       description: description.trim() || undefined,
       audioUrl: finalAudioUrl,
       coverUrl: finalCoverUrl || undefined,
+      stemUrl: stemUrl.trim() || undefined,
+      hasStems: !!stemUrl.trim(),
       bpm: bpm ? Number(bpm) : undefined,
       key: key.trim() || undefined,
       licensePrice: Number(licensePrice),
@@ -133,7 +160,7 @@ export default function StudioNewPage() {
     router.push(`/track/${data.id}`);
   }
 
-  const uploading = audioUploadState === "uploading" || coverUploadState === "uploading";
+  const uploading = audioUploadState === "uploading" || coverUploadState === "uploading" || stemUploadState === "uploading";
   const submitting = submitState === "uploading";
 
   return (
@@ -241,6 +268,57 @@ export default function StudioNewPage() {
               className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60"
             />
           </div>
+        </div>
+
+        {/* Trackout / Stems */}
+        <div className="glass-card rounded-2xl p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <label className="text-sm font-semibold text-white/70">
+              Trackout / Stems{" "}
+              <span className="ml-1 rounded-full bg-brand-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-400">
+                Instant Download
+              </span>
+            </label>
+          </div>
+          <p className="mb-4 text-xs text-white/35">
+            Upload a ZIP with all stems or a single trackout WAV/MP3. Buyers receive a download link instantly after purchase.
+          </p>
+          <button
+            type="button"
+            onClick={() => stemRef.current?.click()}
+            className="w-full rounded-xl border-2 border-dashed border-white/15 p-5 text-center hover:border-brand-500/60 transition"
+          >
+            {stemFile ? (
+              <div className="flex items-center justify-center gap-3">
+                <span className="text-2xl">📦</span>
+                <div className="text-left">
+                  <p className="text-sm font-medium truncate max-w-xs">{stemFile.name}</p>
+                  <p className="text-xs text-white/40">
+                    {(stemFile.size / (1024 * 1024)).toFixed(1)} MB
+                  </p>
+                </div>
+                {stemUploadState === "uploading" && (
+                  <div className="h-5 w-5 rounded-full border-2 border-brand-400 border-t-transparent animate-spin ml-2" />
+                )}
+                {stemUploadState === "done" && <span className="text-green-400 ml-2">✓ Uploaded</span>}
+                {stemUploadState === "error" && <span className="text-red-400 ml-2">✗ Failed</span>}
+              </div>
+            ) : (
+              <div className="text-white/40">
+                <p className="text-lg mb-1">📦</p>
+                <p className="text-sm">Click to upload trackout / stems</p>
+                <p className="text-xs mt-1">ZIP, WAV, MP3, FLAC — max 500MB · Optional</p>
+              </div>
+            )}
+          </button>
+          <input
+            ref={stemRef}
+            type="file"
+            accept=".zip,.wav,.mp3,.flac,audio/*,application/zip"
+            aria-label="Trackout or stems file"
+            className="hidden"
+            onChange={handleStemChange}
+          />
         </div>
 
         {/* Track details */}
