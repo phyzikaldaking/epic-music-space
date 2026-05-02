@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { stripe, getStripeWebhookSecret } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
+import { getTierFromStripePriceId } from "@/lib/subscriptions";
 
 export async function POST(req: Request) {
   const sig = headers().get("stripe-signature");
@@ -25,6 +26,24 @@ export async function POST(req: Request) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as any;
 
+    // 🔥 SUBSCRIPTION FLOW
+    if (session.mode === "subscription") {
+      const userId = session.metadata?.userId;
+      const priceId = session.display_items?.[0]?.price?.id || session.metadata?.priceId;
+
+      const tier = getTierFromStripePriceId(priceId);
+
+      if (userId) {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { subscriptionTier: tier },
+        });
+      }
+
+      return NextResponse.json({ received: true });
+    }
+
+    // 🔥 LICENSE PURCHASE FLOW (existing)
     const transactionId = session.metadata?.transactionId;
     if (!transactionId) {
       return NextResponse.json({ received: true });
@@ -44,7 +63,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Song missing" }, { status: 500 });
     }
 
-    // Allocate next license number
     const nextTokenNumber = song.soldLicenses + 1;
 
     const license = await prisma.licenseToken.create({
@@ -71,7 +89,6 @@ export async function POST(req: Request) {
       },
     });
 
-    // Artist payout calculation
     const revenueShare = Number(song.revenueSharePct) / 100;
     const payoutAmount = Number(transaction.amount) * revenueShare;
 
@@ -85,7 +102,6 @@ export async function POST(req: Request) {
       },
     });
 
-    // (Phase 2) Optional: send Stripe transfer if connected
     try {
       const artist = await prisma.user.findUnique({
         where: { id: song.artistId },
@@ -114,9 +130,7 @@ export async function POST(req: Request) {
           },
         });
       }
-    } catch (err) {
-      // safe fail — payout stays pending
-    }
+    } catch (err) {}
   }
 
   return NextResponse.json({ received: true });
