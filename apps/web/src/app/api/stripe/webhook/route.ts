@@ -19,31 +19,106 @@ export async function POST(req: Request) {
       sig,
       getStripeWebhookSecret(),
     );
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as any;
 
-    // 🔥 SUBSCRIPTION FLOW
     if (session.mode === "subscription") {
       const userId = session.metadata?.userId;
-      const priceId = session.display_items?.[0]?.price?.id || session.metadata?.priceId;
-
-      const tier = getTierFromStripePriceId(priceId);
-
+      const tier = session.metadata?.tier || getTierFromStripePriceId(session.metadata?.priceId);
       if (userId) {
         await prisma.user.update({
           where: { id: userId },
           data: { subscriptionTier: tier },
         });
       }
+      return NextResponse.json({ received: true });
+    }
+
+    const metadataType = session.metadata?.type || session.metadata?.emsType;
+
+    if (metadataType === "boost") {
+      const songId = session.metadata?.songId;
+      const userId = session.metadata?.userId;
+      const boostPoints = Number(session.metadata?.boostPoints ?? 0);
+
+      if (songId && userId && boostPoints > 0) {
+        await prisma.song.update({
+          where: { id: songId },
+          data: { boostScore: { increment: boostPoints } },
+        });
+
+        await prisma.transaction.updateMany({
+          where: {
+            stripeSessionId: session.id,
+            userId,
+            songId,
+            type: "BOOST",
+          },
+          data: {
+            status: "SUCCEEDED",
+            metadata: {
+              type: "boost",
+              packageId: session.metadata?.packageId,
+              boostPoints,
+              finalizedAt: new Date().toISOString(),
+            },
+          },
+        });
+      }
 
       return NextResponse.json({ received: true });
     }
 
-    // 🔥 LICENSE PURCHASE FLOW (existing)
+    if (metadataType === "PAID_PLACEMENT") {
+      const ownerId = session.metadata?.userId;
+      const title = session.metadata?.title ?? "Premium Placement";
+      const location = session.metadata?.location ?? "MARKETPLACE_BANNER";
+      const days = Number(session.metadata?.days ?? 7);
+      const amount = Number(session.amount_total ?? 0) / 100;
+
+      if (ownerId && amount > 0) {
+        const now = new Date();
+        const endDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+        await prisma.adPlacement.create({
+          data: {
+            ownerId,
+            title,
+            location,
+            mediaUrl: session.metadata?.mediaUrl ?? "",
+            linkUrl: session.metadata?.linkUrl ?? null,
+            price: amount,
+            startDate: now,
+            endDate,
+            isActive: true,
+          },
+        });
+
+        await prisma.transaction.updateMany({
+          where: {
+            stripeSessionId: session.id,
+            userId: ownerId,
+            type: "BOOST",
+          },
+          data: {
+            status: "SUCCEEDED",
+            metadata: {
+              type: "paid_placement",
+              location,
+              days,
+              finalizedAt: now.toISOString(),
+            },
+          },
+        });
+      }
+
+      return NextResponse.json({ received: true });
+    }
+
     const transactionId = session.metadata?.transactionId;
     if (!transactionId) {
       return NextResponse.json({ received: true });
@@ -76,9 +151,7 @@ export async function POST(req: Request) {
 
     await prisma.song.update({
       where: { id: song.id },
-      data: {
-        soldLicenses: { increment: 1 },
-      },
+      data: { soldLicenses: { increment: 1 } },
     });
 
     await prisma.transaction.update({
@@ -103,19 +176,14 @@ export async function POST(req: Request) {
     });
 
     try {
-      const artist = await prisma.user.findUnique({
-        where: { id: song.artistId },
-      });
+      const artist = await prisma.user.findUnique({ where: { id: song.artistId } });
 
       if (artist?.stripeConnectId && payoutAmount > 0) {
         await stripe.transfers.create({
           amount: Math.round(payoutAmount * 100),
           currency: "usd",
           destination: artist.stripeConnectId,
-          metadata: {
-            songId: song.id,
-            licenseId: license.id,
-          },
+          metadata: { songId: song.id, licenseId: license.id },
         });
 
         await prisma.payout.updateMany({
@@ -124,13 +192,10 @@ export async function POST(req: Request) {
             songId: song.id,
             licenseTokenId: license.id,
           },
-          data: {
-            status: "PAID",
-            paidAt: new Date(),
-          },
+          data: { status: "PAID", paidAt: new Date() },
         });
       }
-    } catch (err) {}
+    } catch {}
   }
 
   return NextResponse.json({ received: true });
