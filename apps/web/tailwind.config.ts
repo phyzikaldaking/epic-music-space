@@ -32,6 +32,7 @@ const config: Config = {
         },
         // Gold — premium / earnings
         gold: {
+          DEFAULT: "#FFD700",
           300: "#ffe566",
           400: "#ffda00",
           500: "#FFD700",   // EMS gold

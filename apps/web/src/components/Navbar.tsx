@@ -1,12 +1,39 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import NavbarMobile from "./NavbarMobile";
+
+const PUBLIC_LINKS = [
+  { href: "/marketplace", label: "Marketplace" },
+  { href: "/city",        label: "City" },
+  { href: "/versus",      label: "Versus" },
+  { href: "/leaderboard", label: "Charts" },
+  { href: "/label",       label: "Labels" },
+  { href: "/ai",          label: "AI" },
+  { href: "/pricing",     label: "Pricing" },
+];
+
+const AUTH_LINKS = [
+  { href: "/dashboard",   label: "Dashboard" },
+  { href: "/profile/edit",label: "Profile" },
+  { href: "/analytics",   label: "Analytics" },
+  { href: "/invite",      label: "🔗 Invite",  className: "text-green-400/80 hover:bg-green-500/10 hover:text-green-400 font-semibold" },
+  { href: "/boost",       label: "⚡ Boost",   className: "text-brand-400/80 hover:bg-brand-500/10 hover:text-brand-400 font-semibold" },
+];
 
 export default async function Navbar() {
   const session = await auth();
+  const isLoggedIn = !!session?.user?.id;
+
+  const allMobileLinks = isLoggedIn
+    ? [...PUBLIC_LINKS, ...AUTH_LINKS]
+    : PUBLIC_LINKS;
+
+  const userInitial = (session?.user?.name ?? session?.user?.email ?? "?")[0]?.toUpperCase() ?? "?";
+  const userName = session?.user?.name ?? session?.user?.email ?? "";
 
   return (
     <nav className="sticky top-0 z-50 border-b border-white/8 bg-[#0a0a0a]/85 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+      <div className="relative mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2.5 font-extrabold text-xl tracking-tight">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/20 text-lg glow-purple-sm border border-brand-500/30">
@@ -15,17 +42,9 @@ export default async function Navbar() {
           <span className="text-gradient-ems">Epic Music Space</span>
         </Link>
 
-        {/* Nav links */}
+        {/* Desktop nav links */}
         <div className="hidden items-center gap-1 text-sm font-medium md:flex">
-          {[
-            { href: "/marketplace", label: "Marketplace" },
-            { href: "/city",        label: "City" },
-            { href: "/versus",      label: "Versus" },
-            { href: "/leaderboard", label: "Charts" },
-            { href: "/label",       label: "Labels" },
-            { href: "/ai",          label: "AI" },
-            { href: "/pricing",     label: "Pricing" },
-          ].map((link) => (
+          {PUBLIC_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -34,53 +53,26 @@ export default async function Navbar() {
               {link.label}
             </Link>
           ))}
-          {session && (
-            <>
-              <Link
-                href="/dashboard"
-                className="rounded-lg px-3 py-2 text-white/60 transition hover:bg-white/6 hover:text-white"
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/profile/edit"
-                className="rounded-lg px-3 py-2 text-white/60 transition hover:bg-white/6 hover:text-white"
-              >
-                Profile
-              </Link>
-              <Link
-                href="/analytics"
-                className="rounded-lg px-3 py-2 text-white/60 transition hover:bg-white/6 hover:text-white"
-              >
-                Analytics
-              </Link>
-              <Link
-                href="/invite"
-                className="rounded-lg px-3 py-2 text-green-400/80 transition hover:bg-green-500/10 hover:text-green-400 font-semibold"
-              >
-                🔗 Invite
-              </Link>
-              <Link
-                href="/boost"
-                className="rounded-lg px-3 py-2 text-brand-400/80 transition hover:bg-brand-500/10 hover:text-brand-400 font-semibold"
-              >
-                ⚡ Boost
-              </Link>
-            </>
-          )}
+          {isLoggedIn && AUTH_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`rounded-lg px-3 py-2 transition ${link.className ?? "text-white/60 hover:bg-white/6 hover:text-white"}`}
+            >
+              {link.label}
+            </Link>
+          ))}
         </div>
 
-        {/* Auth */}
-        <div className="flex items-center gap-3">
-          {session ? (
+        {/* Desktop auth */}
+        <div className="hidden md:flex items-center gap-3">
+          {isLoggedIn ? (
             <div className="flex items-center gap-3">
-              <div className="hidden md:flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5">
                 <div className="h-7 w-7 rounded-full bg-brand-500/20 border border-brand-500/40 flex items-center justify-center text-xs font-bold text-brand-400">
-                  {(session.user?.name ?? session.user?.email ?? "?")[0]?.toUpperCase()}
+                  {userInitial}
                 </div>
-                <span className="text-sm text-white/55">
-                  {session.user?.name ?? session.user?.email}
-                </span>
+                <span className="text-sm text-white/55">{userName}</span>
               </div>
               <form action="/api/auth/signout" method="POST">
                 <button
@@ -108,8 +100,17 @@ export default async function Navbar() {
             </>
           )}
         </div>
+
+        {/* Mobile hamburger + drawer (client component) */}
+        <NavbarMobile
+          links={allMobileLinks}
+          isLoggedIn={isLoggedIn}
+          userInitial={userInitial}
+          userName={userName}
+        />
       </div>
     </nav>
   );
 }
+
 
