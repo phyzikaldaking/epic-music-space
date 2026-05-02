@@ -127,7 +127,7 @@ export default async function StudioPage({ params, searchParams }: Props) {
           <div className="glass rounded-2xl p-5">
             <div className="mb-4 flex items-center justify-between">
               <span className="text-2xl font-extrabold text-brand-400">
-                {formatPrice(song.licensePrice)}
+                {formatPrice(Number(song.licensePrice))}
               </span>
               <span className="text-sm text-white/60">
                 {String(song.revenueSharePct)}% revenue share
@@ -166,7 +166,7 @@ export default async function StudioPage({ params, searchParams }: Props) {
                   type="submit"
                   className="w-full rounded-xl bg-brand-500 py-3 font-semibold text-white hover:bg-brand-600 transition"
                 >
-                  License this song for {formatPrice(song.licensePrice)}
+                  License this song for {formatPrice(Number(song.licensePrice))}
                 </button>
               </form>
             ) : (

@@ -192,7 +192,7 @@ async function handleSubscriptionActivated(session: Stripe.Checkout.Session) {
       metadata: {
         stripeCustomerId: session.customer as string,
         tier,
-        subscriptionId: session.subscription,
+        subscriptionId: typeof session.subscription === "string" ? session.subscription : (session.subscription?.id ?? null),
       },
     },
   });

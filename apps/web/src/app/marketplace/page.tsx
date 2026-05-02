@@ -116,8 +116,8 @@ export default async function MarketplacePage({ searchParams }: Props) {
                     genre={song.genre}
                     coverUrl={song.coverUrl}
                     audioUrl={song.audioUrl}
-                    licensePrice={song.licensePrice}
-                    revenueSharePct={song.revenueSharePct}
+                    licensePrice={Number(song.licensePrice)}
+                    revenueSharePct={Number(song.revenueSharePct)}
                     soldLicenses={song.soldLicenses}
                     totalLicenses={song.totalLicenses}
                     aiScore={song.aiScore}
@@ -146,8 +146,8 @@ export default async function MarketplacePage({ searchParams }: Props) {
                   genre={song.genre}
                   coverUrl={song.coverUrl}
                   audioUrl={song.audioUrl}
-                  licensePrice={song.licensePrice}
-                  revenueSharePct={song.revenueSharePct}
+                  licensePrice={Number(song.licensePrice)}
+                  revenueSharePct={Number(song.revenueSharePct)}
                   soldLicenses={song.soldLicenses}
                   totalLicenses={song.totalLicenses}
                   aiScore={song.aiScore}

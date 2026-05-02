@@ -22,12 +22,12 @@ function makeQueue<T extends Record<string, unknown>>(name: string) {
 }
 
 // Queue: run AI scoring after a song is uploaded
-export interface AiScoringJobData {
+export interface AiScoringJobData extends Record<string, unknown> {
   songId: string;
 }
 
 // Queue: fan-out a notification to a user
-export interface NotificationJobData {
+export interface NotificationJobData extends Record<string, unknown> {
   userId: string;
   type: string;
   title: string;
@@ -36,7 +36,7 @@ export interface NotificationJobData {
 }
 
 // Queue: record analytics events
-export interface AnalyticsJobData {
+export interface AnalyticsJobData extends Record<string, unknown> {
   event: string;
   userId?: string;
   songId?: string;

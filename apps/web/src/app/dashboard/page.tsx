@@ -6,7 +6,7 @@ import { BADGE_META } from "@/lib/badges";
 
 export default async function DashboardPage() {
   const session = await auth();
-  if (!session) redirect("/auth/signin");
+  if (!session?.user?.id) redirect("/auth/signin");
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: session.user.id },
@@ -293,7 +293,7 @@ export default async function DashboardPage() {
                         #{l.tokenNumber}
                       </td>
                       <td className="px-5 py-3.5 text-gold-400 font-semibold">
-                        {formatPrice(l.price)}
+                        {formatPrice(Number(l.price))}
                       </td>
                       <td className="px-5 py-3.5">
                         <span
@@ -368,7 +368,7 @@ export default async function DashboardPage() {
                           </span>
                         </td>
                         <td className="px-5 py-3.5 text-gold-400 font-semibold">
-                          {formatPrice(s.licensePrice)}
+                          {formatPrice(Number(s.licensePrice))}
                         </td>
                         <td className="px-5 py-3.5 text-accent-400">
                           {String(s.revenueSharePct)}%
@@ -511,7 +511,7 @@ export default async function DashboardPage() {
                           {s.soldLicenses} / {s.totalLicenses}
                         </td>
                         <td className="px-5 py-3.5 text-white/60">
-                          {formatPrice(s.licensePrice)}
+                          {formatPrice(Number(s.licensePrice))}
                         </td>
                         <td className="px-5 py-3.5 font-semibold text-gold-400">
                           {formatPrice(revenue)}
@@ -563,7 +563,7 @@ export default async function DashboardPage() {
                         {t.type.replace(/_/g, " ")}
                       </td>
                       <td className="px-5 py-3.5 text-gold-400 font-semibold">
-                        {formatPrice(t.amount)}
+                        {formatPrice(Number(t.amount))}
                       </td>
                       <td className="px-5 py-3.5">
                         <span

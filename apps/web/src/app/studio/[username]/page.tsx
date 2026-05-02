@@ -195,8 +195,8 @@ export default async function StudioProfilePage({ params }: Props) {
                 artist={song.artist}
                 genre={song.genre}
                 coverUrl={song.coverUrl}
-                licensePrice={song.licensePrice}
-                revenueSharePct={song.revenueSharePct}
+                licensePrice={Number(song.licensePrice)}
+                revenueSharePct={Number(song.revenueSharePct)}
                 soldLicenses={song.soldLicenses}
                 totalLicenses={song.totalLicenses}
               />

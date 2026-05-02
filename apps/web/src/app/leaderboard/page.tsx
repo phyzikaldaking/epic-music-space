@@ -51,7 +51,7 @@ export default async function LeaderboardPage({
   const artistRows = artists
     .map((a) => ({
       id: a.id,
-      name: a.name,
+      name: a.name ?? undefined,
       image: a.image,
       username: a.studio?.username,
       district: a.studio?.district,
