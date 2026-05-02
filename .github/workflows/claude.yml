@@ -51,5 +51,4 @@ jobs:
           # Pass the workflow_dispatch input through as the prompt when triggered manually.
           # Ignored on @claude mention triggers.
           prompt: ${{ github.event.inputs.prompt }}
-          # Allow Claude to use Bash for build/test/deploy commands.
-          allowed_tools: "Bash,Read,Write,Edit,Glob,Grep"
+          claude_args: "--allowedTools Bash,Read,Write,Edit,Glob,Grep,mcp__github__update_file,mcp__github__create_file,mcp__github__create_branch,mcp__github__create_pull_request,mcp__github__merge_pull_request"
