@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { getTierFromStripePriceId } from "@/lib/subscriptions";
 
 export async function POST(req: Request) {
-  const sig = headers().get("stripe-signature");
+  const headersList = await headers();
+  const sig = headersList.get("stripe-signature");
   if (!sig) {
     return NextResponse.json({ error: "Missing signature" }, { status: 400 });
   }

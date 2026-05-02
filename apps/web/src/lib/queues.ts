@@ -77,7 +77,7 @@ async function enqueueWithRetry<T extends Record<string, unknown>>(
   if (!queue) return false;
 
   try {
-    await retry(() => queue.add(jobName, data), { retries: 2, baseDelayMs: 400 });
+    await retry(() => queue.add(jobName as Parameters<typeof queue.add>[0], data), { retries: 2, baseDelayMs: 400 });
     return true;
   } catch (error) {
     console.error(`[queue:${queueName}] enqueue failed`, error);
