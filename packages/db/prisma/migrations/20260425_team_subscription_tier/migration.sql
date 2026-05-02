@@ -1,0 +1,1 @@
+ALTER TYPE "SubscriptionTier" ADD VALUE IF NOT EXISTS 'TEAM';

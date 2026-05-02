@@ -8,9 +8,8 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
-  const isVercelCron = req.headers.get("x-vercel-cron") === "1";
   const isAuthorized = secret && req.headers.get("authorization") === `Bearer ${secret}`;
-  if (!isVercelCron && !isAuthorized) {
+  if (!isAuthorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

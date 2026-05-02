@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+
+const patchSchema = z.object({
+  ids: z.array(z.string().cuid()).max(500).optional(),
+});
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -29,11 +34,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json();
-  const ids: string[] = body.ids ?? [];
+  const body = await req.json().catch(() => ({}));
+  const parsed = patchSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
 
-  if (ids.length === 0) {
-    // Mark all as read
+  const { ids } = parsed.data;
+
+  if (!ids || ids.length === 0) {
     await prisma.notification.updateMany({
       where: { userId: session.user.id, read: false },
       data: { read: true },

@@ -16,6 +16,10 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   applicationName: "Epic Music Space",
+  manifest: "/manifest.webmanifest",
+  category: "music",
+  creator: "Epic Music Space",
+  publisher: "Epic Music Space",
   title: {
     default: "Epic Music Space | Cinematic Music Licensing",
     template: "%s | Epic Music Space",
@@ -55,6 +59,19 @@ export const metadata: Metadata = {
   robots: {
     index: true,
     follow: true,
+  },
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  alternates: {
+    canonical: "/",
+  },
+  appleWebApp: {
+    title: "Epic Music Space",
+    capable: true,
+    statusBarStyle: "black-translucent",
   },
 };
 

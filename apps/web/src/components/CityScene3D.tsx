@@ -23,7 +23,7 @@ interface Props {
 // ─── District config ─────────────────────────────────────────────────────────
 const DISTRICT_CONFIG = {
   LABEL_ROW: {
-    label: "👑 Label Row",
+    label: "◆ Platinum Heights",
     color: { r: 1, g: 0.84, b: 0 }, // gold
     emissive: { r: 0.4, g: 0.28, b: 0 },
     platformColor: { r: 0.15, g: 0.12, b: 0.02 },
@@ -31,7 +31,7 @@ const DISTRICT_CONFIG = {
     center: { x: 0, z: -20 },
   },
   DOWNTOWN_PRIME: {
-    label: "🏙️ Downtown Prime",
+    label: "▲ Mainstage Circuit",
     color: { r: 0.42, g: 0.36, b: 0.9 }, // brand purple
     emissive: { r: 0.15, g: 0.12, b: 0.35 },
     platformColor: { r: 0.08, g: 0.06, b: 0.2 },
@@ -39,7 +39,7 @@ const DISTRICT_CONFIG = {
     center: { x: -22, z: 14 },
   },
   INDIE_BLOCKS: {
-    label: "🔮 Indie Blocks",
+    label: "● Underground Grid",
     color: { r: 0, g: 0.96, b: 1 }, // accent cyan
     emissive: { r: 0, g: 0.18, b: 0.22 },
     platformColor: { r: 0.03, g: 0.1, b: 0.12 },

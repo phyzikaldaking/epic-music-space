@@ -54,13 +54,20 @@ export async function GET(req: NextRequest) {
     prisma.user.count({ where }),
   ]);
 
-  return NextResponse.json({ users, total, page, pages: Math.ceil(total / take) });
+  return NextResponse.json({
+    users,
+    total,
+    page,
+    pages: Math.ceil(total / take),
+  });
 }
 
 const patchSchema = z.object({
   userId: z.string().cuid(),
   role: z.enum(["LISTENER", "ARTIST", "LABEL", "ADMIN"]).optional(),
-  subscriptionTier: z.enum(["FREE", "STARTER", "PRO", "PRIME", "LABEL_TIER"]).optional(),
+  subscriptionTier: z
+    .enum(["FREE", "STARTER", "PRO", "PRIME", "TEAM", "LABEL_TIER"])
+    .optional(),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -71,7 +78,10 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 400 });
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message },
+      { status: 400 },
+    );
   }
 
   const { userId, role, subscriptionTier } = parsed.data;

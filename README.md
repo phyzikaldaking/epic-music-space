@@ -117,6 +117,19 @@ Vercel runs `npm run vercel:build`, which generates the Prisma client and
 builds `apps/web`. Database migrations are explicit so preview deployments do
 not fail or mutate production data during the build step.
 
+## 🤖 AI Ops Workflow
+
+Use the repo-local control plane to wire GitHub, Vercel, Doppler, Stripe, and
+Supabase for AI-assisted work:
+
+```bash
+npm run agent:setup
+npm run env:pull
+npm run agent:doctor
+```
+
+The full operator guide lives in `docs/AI_COMMAND_WORKFLOW.md`.
+
 ## 🔌 API Routes
 
 | Method | Path                      | Description                          |

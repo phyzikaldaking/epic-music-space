@@ -18,8 +18,8 @@ export interface ScoreInputs {
   streamCount: number;
   versusWins: number;
   versusLosses: number;
-  aiSentiment: number;   // 0–1 from OpenAI analysis
-  boostScore: number;    // 0–100 from paid boost packages
+  aiSentiment: number; // 0–1 from OpenAI analysis
+  boostScore: number; // 0–100 from paid boost packages
   createdAt: Date;
 }
 
@@ -66,11 +66,11 @@ export function calculateAiScore(inputs: ScoreInputs): number {
   const boost = Math.min(100, Math.max(0, boostScore));
 
   const score =
-    salesPct * 0.30 +
-    engagement * 0.20 +
+    salesPct * 0.3 +
+    engagement * 0.2 +
     versusScore * 0.15 +
-    sentiment * 0.10 +
-    recency * 0.10 +
+    sentiment * 0.1 +
+    recency * 0.1 +
     boost * 0.15;
 
   return Math.round(Math.min(100, Math.max(0, score)) * 10) / 10;
@@ -78,7 +78,7 @@ export function calculateAiScore(inputs: ScoreInputs): number {
 
 /** Determine district based on score */
 export function scoreToDistrict(
-  score: number
+  score: number,
 ): "INDIE_BLOCKS" | "DOWNTOWN_PRIME" | "LABEL_ROW" {
   if (score >= 80) return "LABEL_ROW";
   if (score >= 50) return "DOWNTOWN_PRIME";
@@ -88,24 +88,24 @@ export function scoreToDistrict(
 /** District display metadata */
 export const DISTRICT_META = {
   INDIE_BLOCKS: {
-    label: "Indie Blocks",
+    label: "Underground Grid",
     color: "text-white/60",
     bg: "bg-white/10",
-    description: "General discovery tier",
+    description: "Indie, alt, and experimental entry sector",
     visibilityMultiplier: 1,
   },
   DOWNTOWN_PRIME: {
-    label: "Downtown Prime",
+    label: "Mainstage Circuit",
     color: "text-brand-400",
     bg: "bg-brand-500/20",
-    description: "High-visibility placement",
+    description: "High-visibility hip-hop, pop, and electronic lanes",
     visibilityMultiplier: 2,
   },
   LABEL_ROW: {
-    label: "Label Row",
+    label: "Platinum Heights",
     color: "text-accent-400",
     bg: "bg-accent-500/20",
-    description: "Elite — top performers only",
+    description: "Top-performing sync-ready releases",
     visibilityMultiplier: 4,
   },
 } as const;
