@@ -5,23 +5,84 @@ import { notFound } from "next/navigation";
 import AudioPlayer from "@/components/AudioPlayer";
 import SongCard from "@/components/SongCard";
 import type { Metadata } from "next";
+import { demoTracks } from "@/lib/demoTracks";
 
 interface Props {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ checkout?: string }>;
 }
 
+type TrackDetail = {
+  id: string;
+  title: string;
+  artist: string;
+  description: string | null;
+  coverUrl: string | null;
+  audioUrl: string | null;
+  genre: string | null;
+  bpm: number | null;
+  key: string | null;
+  licensePrice: { toString(): string };
+  revenueSharePct: { toString(): string };
+  soldLicenses: number;
+  totalLicenses: number;
+  aiScore: number | null;
+  isActive: boolean;
+  artist_: { id: string; name: string | null; image: string | null } | null;
+  _count: { licenses: number };
+  isDemo: boolean;
+};
+
+async function getTrack(id: string): Promise<TrackDetail | null> {
+  try {
+    const song = await prisma.song.findUnique({
+      where: { id },
+      include: {
+        artist_: { select: { id: true, name: true, image: true } },
+        _count: { select: { licenses: true } },
+      },
+    });
+    if (song) return { ...song, isDemo: false };
+  } catch {
+    // DB unavailable — fall through to demo check
+  }
+
+  const demo = demoTracks.find((d) => d.id === id);
+  if (demo) {
+    return {
+      id: demo.id,
+      title: demo.title,
+      artist: demo.artist,
+      description: demo.description,
+      coverUrl: demo.coverUrl,
+      audioUrl: demo.audioUrl,
+      genre: demo.genre,
+      bpm: demo.bpm,
+      key: demo.key,
+      licensePrice: { toString: () => demo.licensePrice },
+      revenueSharePct: { toString: () => demo.revenueSharePct },
+      soldLicenses: demo.soldLicenses,
+      totalLicenses: demo.totalLicenses,
+      aiScore: demo.aiScore,
+      isActive: true,
+      artist_: null,
+      _count: { licenses: demo.soldLicenses },
+      isDemo: true,
+    };
+  }
+
+  return null;
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  const song = await prisma.song.findUnique({
-    where: { id },
-    select: { title: true, artist: true, description: true, coverUrl: true, licensePrice: true, revenueSharePct: true },
-  });
+  const song = await getTrack(id);
   if (!song) return { title: "Track Not Found" };
 
   const title = `${song.title} by ${song.artist} — EMS`;
-  const description = song.description
-    ?? `License "${song.title}" by ${song.artist} and earn ${String(song.revenueSharePct)}% streaming revenue forever. ${formatPrice(song.licensePrice)} per license on Epic Music Space.`;
+  const description =
+    song.description ??
+    `License "${song.title}" by ${song.artist} and earn ${song.revenueSharePct.toString()}% streaming revenue forever. ${formatPrice(song.licensePrice)} per license on Epic Music Space.`;
 
   return {
     title,
@@ -41,46 +102,68 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function StudioPage({ params, searchParams }: Props) {
+export default async function TrackPage({ params, searchParams }: Props) {
   const { id } = await params;
   const { checkout } = await searchParams;
-  const session = await auth();
 
-  const song = await prisma.song.findUnique({
-    where: { id },
-    include: {
-      artist_: { select: { id: true, name: true, image: true } },
-      _count: { select: { licenses: true } },
-    },
-  });
-
+  const song = await getTrack(id);
   if (!song) notFound();
 
-  // Related: same genre, exclude current, ordered by aiScore
-  const related = await prisma.song.findMany({
-    where: {
-      isActive: true,
-      id: { not: id },
-      ...(song.genre ? { genre: { equals: song.genre, mode: "insensitive" as const } } : {}),
-    },
-    orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
-    take: 4,
-  });
+  const session = await auth();
+
+  // Related tracks (skip for demo tracks)
+  const related: TrackDetail[] = [];
+  if (!song.isDemo) {
+    try {
+      const rows = await prisma.song.findMany({
+        where: {
+          isActive: true,
+          id: { not: id },
+          ...(song.genre ? { genre: { equals: song.genre, mode: "insensitive" as const } } : {}),
+        },
+        orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
+        take: 4,
+        include: {
+          artist_: { select: { id: true, name: true, image: true } },
+          _count: { select: { licenses: true } },
+        },
+      });
+      related.push(...rows.map((r) => ({ ...r, isDemo: false })));
+    } catch {
+      // non-fatal
+    }
+  }
 
   const remaining = song.totalLicenses - song.soldLicenses;
-  const soldOutPct = Math.round((song.soldLicenses / song.totalLicenses) * 100);
+  const soldOutPct = song.totalLicenses > 0
+    ? Math.round((song.soldLicenses / song.totalLicenses) * 100)
+    : 0;
 
-  // Check if current user already holds a license
   let userLicense = null;
-  if (session?.user?.id) {
-    userLicense = await prisma.licenseToken.findFirst({
-      where: { songId: id, holderId: session.user.id, status: "ACTIVE" },
-    });
+  if (!song.isDemo && session?.user?.id) {
+    try {
+      userLicense = await prisma.licenseToken.findFirst({
+        where: { songId: id, holderId: session.user.id, status: "ACTIVE" },
+      });
+    } catch {
+      // non-fatal
+    }
   }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
-      {/* Checkout status banners */}
+      {song.isDemo && (
+        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-4 text-sm text-cyan-300">
+          <span className="text-xl">🎧</span>
+          <div>
+            <p className="font-semibold">Demo Track</p>
+            <p className="text-cyan-300/70">
+              This is a sample track. Real licensed music is available once artists upload to the marketplace.
+            </p>
+          </div>
+        </div>
+      )}
+
       {checkout === "success" && (
         <div className="mb-6 flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/10 px-5 py-4 text-sm text-green-400">
           <span className="text-xl">✅</span>
@@ -177,7 +260,7 @@ export default async function StudioPage({ params, searchParams }: Props) {
                 {formatPrice(song.licensePrice)}
               </span>
               <span className="text-sm text-white/60">
-                {String(song.revenueSharePct)}% revenue share
+                {song.revenueSharePct.toString()}% revenue share
               </span>
             </div>
 
@@ -198,7 +281,11 @@ export default async function StudioPage({ params, searchParams }: Props) {
             </div>
 
             {/* CTA */}
-            {userLicense ? (
+            {song.isDemo ? (
+              <div className="rounded-xl bg-cyan-500/20 px-4 py-3 text-center text-sm font-semibold text-cyan-300">
+                Demo track — not available for purchase
+              </div>
+            ) : userLicense ? (
               <div className="rounded-xl bg-green-500/20 px-4 py-3 text-center text-sm font-semibold text-green-400">
                 ✓ You hold license #{userLicense.tokenNumber}
               </div>
@@ -226,16 +313,18 @@ export default async function StudioPage({ params, searchParams }: Props) {
             )}
           </div>
 
-          <p className="text-xs text-white/30">
-            Purchasing a license entitles you to {String(song.revenueSharePct)}%
-            ÷ {song.totalLicenses} licenses of this song&apos;s streaming
-            revenue, paid quarterly. This is a digital content license, not a
-            security. See our{" "}
-            <a href="/legal/licensing" className="underline hover:text-white/60">
-              Licensing Agreement
-            </a>
-            .
-          </p>
+          {!song.isDemo && (
+            <p className="text-xs text-white/30">
+              Purchasing a license entitles you to {song.revenueSharePct.toString()}%
+              ÷ {song.totalLicenses} licenses of this song&apos;s streaming
+              revenue, paid quarterly. This is a digital content license, not a
+              security. See our{" "}
+              <a href="/legal/licensing" className="underline hover:text-white/60">
+                Licensing Agreement
+              </a>
+              .
+            </p>
+          )}
         </div>
       </div>
 
@@ -269,7 +358,7 @@ export default async function StudioPage({ params, searchParams }: Props) {
                 totalLicenses={r.totalLicenses}
                 bpm={r.bpm}
                 musicalKey={r.key}
-                aiScore={r.aiScore}
+                aiScore={r.aiScore ?? undefined}
               />
             ))}
           </div>
