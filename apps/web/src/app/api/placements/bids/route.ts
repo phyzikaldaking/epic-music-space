@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { stripe } from "@/lib/stripe";
+import { getSiteUrl } from "@/lib/site";
 import { z } from "zod";
 
 const bidSchema = z.object({
@@ -15,19 +17,18 @@ const SLOT_MULTIPLIER = {
   prime_takeover: 4,
 } as const;
 
+const PLACEMENT_LABEL = {
+  premium_screen: "Premium Screen Bid",
+  billboard: "3D Billboard Bid",
+  prime_takeover: "Prime Wall Takeover Bid",
+} as const;
+
 export async function GET() {
   const songs = await prisma.song.findMany({
     where: { isActive: true, boostScore: { gt: 0 } },
     orderBy: [{ boostScore: "desc" }, { aiScore: "desc" }],
     take: 25,
-    select: {
-      id: true,
-      title: true,
-      artist: true,
-      aiScore: true,
-      boostScore: true,
-      updatedAt: true,
-    },
+    select: { id: true, title: true, artist: true, aiScore: true, boostScore: true, updatedAt: true },
   });
 
   return NextResponse.json({
@@ -60,36 +61,47 @@ export async function POST(req: NextRequest) {
   if (song.artistId !== session.user.id) return NextResponse.json({ error: "You can only bid with your own song." }, { status: 403 });
 
   const bidPower = Math.round(amountUsd * SLOT_MULTIPLIER[placement]);
-  const updated = await prisma.$transaction(async (tx) => {
-    await tx.transaction.create({
-      data: {
-        userId: session.user.id,
-        songId,
-        amount: amountUsd,
-        type: "BOOST",
-        status: "PENDING",
-        metadata: {
-          type: "PLACEMENT_BID",
-          placement,
-          bidPower,
-          amountUsd,
+  const baseUrl = getSiteUrl();
+
+  const checkout = await stripe.checkout.sessions.create({
+    mode: "payment",
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(amountUsd * 100),
+          product_data: {
+            name: `EMS Bid: ${PLACEMENT_LABEL[placement]}`,
+            description: `${song.title} receives ${bidPower} bid power after payment confirmation.`,
+          },
         },
       },
-    });
-
-    return tx.song.update({
-      where: { id: songId },
-      data: { boostScore: { increment: bidPower } },
-      select: { id: true, title: true, artist: true, aiScore: true, boostScore: true },
-    });
+    ],
+    metadata: {
+      type: "PLACEMENT_BID",
+      songId,
+      userId: session.user.id,
+      amountUsd: String(amountUsd),
+      placement,
+      bidPower: String(bidPower),
+    },
+    success_url: `${baseUrl}/marketplace?bid=success&song=${songId}`,
+    cancel_url: `${baseUrl}/marketplace?bid=cancelled&song=${songId}`,
   });
 
-  return NextResponse.json({
-    ok: true,
-    bid: { songId, amountUsd, placement, bidPower },
-    song: {
-      ...updated,
-      rankScore: updated.aiScore + updated.boostScore,
+  await prisma.transaction.create({
+    data: {
+      userId: session.user.id,
+      songId,
+      amount: amountUsd,
+      type: "BOOST",
+      status: "PENDING",
+      stripeSessionId: checkout.id,
+      metadata: { type: "PLACEMENT_BID", placement, bidPower, amountUsd },
     },
-  }, { status: 201 });
+  });
+
+  return NextResponse.json({ checkoutUrl: checkout.url, bid: { songId, amountUsd, placement, bidPower } }, { status: 201 });
 }
