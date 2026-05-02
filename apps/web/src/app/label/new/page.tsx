@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { getSiteUrl } from "@/lib/site";
 
 function toSlug(value: string) {
@@ -72,12 +73,12 @@ export default function NewLabelPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-16">
       <div className="mb-10">
-        <a
+        <Link
           href="/label"
           className="text-sm text-white/40 hover:text-white/70 transition mb-4 inline-block"
         >
           ← Back to Labels
-        </a>
+        </Link>
         <h1 className="text-4xl font-extrabold text-gradient-ems">Create a Label</h1>
         <p className="mt-2 text-white/50">
           Build your roster, sign artists, and earn a revenue share from every license they sell.

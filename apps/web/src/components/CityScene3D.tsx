@@ -88,8 +88,6 @@ export default function CityScene3D({ buildings }: Props) {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
 
-    let engine: import("@babylonjs/core").Engine | undefined;
-
     async function initScene() {
       const {
         Engine,
@@ -118,8 +116,6 @@ export default function CityScene3D({ buildings }: Props) {
         stencil: true,
         antialias: true,
       });
-      engine = engineInstance;
-
       const scene = new Scene(engineInstance);
       scene.clearColor = new Color4(0.04, 0.04, 0.06, 1);
 
@@ -379,7 +375,7 @@ export default function CityScene3D({ buildings }: Props) {
           box.actionManager = new ActionManager(scene);
 
           box.actionManager.registerAction(
-            new ExecuteCodeAction(ActionManager.OnPointerOverTrigger, (evt) => {
+            new ExecuteCodeAction(ActionManager.OnPointerOverTrigger, (_evt) => {
               const building = usernameMap.get(b.username);
               if (!building) return;
               const meshPos = box.getAbsolutePosition();

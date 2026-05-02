@@ -32,13 +32,12 @@ export default async function middleware(req: NextRequest) {
     "/invite",
     "/notifications",
     "/admin",
+    "/label",
+    "/studio/new",
+    "/versus/new",
   ];
 
   if (protectedPrefixes.some((prefix) => pathname.startsWith(prefix))) {
-    if (!isAuthed) return redirectToSignIn();
-  }
-
-  if (pathname === "/studio/new") {
     if (!isAuthed) return redirectToSignIn();
   }
 
@@ -60,6 +59,8 @@ export const config = {
     "/boost/:path*",
     "/analytics/:path*",
     "/studio/new",
+    "/versus/new",
+    "/label/:path*",
     "/profile/:path*",
     "/invite/:path*",
     "/notifications/:path*",

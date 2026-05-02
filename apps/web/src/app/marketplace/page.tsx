@@ -132,7 +132,28 @@ export default async function MarketplacePage() {
             <MarketplaceConfidencePanel tracks={rankedSongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore }))} />
             <MarketplaceRetentionTools tracks={rankedSongs.map((song) => ({ id: song.id, title: song.title }))} />
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {rankedSongs.map((song, index) => (<SongCard key={song.id} {...(song as any)} boostScore={song.boostScore} rankPosition={index + 1} competitorGap={getCompetitorGap(song, rankedSongs[index - 1])} placementLabel={index === 0 ? "Billboard Owner" : index < 3 ? "Top Placement" : Number(song.boostScore ?? 0) > 0 ? "Sponsored Push" : null} />))}
+              {rankedSongs.map((song, index) => (
+                <SongCard
+                  key={song.id}
+                  id={song.id}
+                  title={song.title}
+                  artist={song.artist}
+                  genre={song.genre}
+                  coverUrl={song.coverUrl}
+                  audioUrl={song.audioUrl}
+                  licensePrice={song.licensePrice}
+                  revenueSharePct={song.revenueSharePct}
+                  soldLicenses={song.soldLicenses}
+                  totalLicenses={song.totalLicenses}
+                  bpm={song.bpm}
+                  musicalKey={song.key}
+                  aiScore={song.aiScore}
+                  boostScore={song.boostScore}
+                  rankPosition={index + 1}
+                  competitorGap={getCompetitorGap(song, rankedSongs[index - 1])}
+                  placementLabel={index === 0 ? "Billboard Owner" : index < 3 ? "Top Placement" : Number(song.boostScore ?? 0) > 0 ? "Sponsored Push" : null}
+                />
+              ))}
             </div>
           </div>
         </section>

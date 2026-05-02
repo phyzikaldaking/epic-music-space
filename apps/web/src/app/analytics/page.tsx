@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -148,12 +149,12 @@ export default async function AnalyticsPage() {
           <p className="text-white/40 mb-6 text-sm">
             Upload your first song to start seeing analytics.
           </p>
-          <a
+          <Link
             href="/studio/new"
             className="inline-block rounded-xl bg-brand-500 px-6 py-3 font-semibold hover:bg-brand-600 transition"
           >
             Upload Track
-          </a>
+          </Link>
         </div>
       ) : (
         <>

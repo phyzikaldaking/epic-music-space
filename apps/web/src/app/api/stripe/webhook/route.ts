@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { stripe, getStripeWebhookSecret } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { getTierFromStripePriceId } from "@/lib/subscriptions";
+import type Stripe from "stripe";
+import type { AdLocation } from "@ems/db";
 
 export async function POST(req: Request) {
   const headersList = await headers();
@@ -25,11 +27,11 @@ export async function POST(req: Request) {
   }
 
   if (event.type === "checkout.session.completed") {
-    const session = event.data.object as any;
+    const session = event.data.object as Stripe.Checkout.Session;
 
     if (session.mode === "subscription") {
       const userId = session.metadata?.userId;
-      const tier = session.metadata?.tier || getTierFromStripePriceId(session.metadata?.priceId);
+      const tier = (session.metadata?.tier || getTierFromStripePriceId(session.metadata?.priceId)) as import("@ems/db").SubscriptionTier;
       if (userId) {
         await prisma.user.update({
           where: { id: userId },
@@ -89,7 +91,7 @@ export async function POST(req: Request) {
           data: {
             ownerId,
             title,
-            location,
+            location: location as AdLocation,
             mediaUrl: session.metadata?.mediaUrl ?? "",
             linkUrl: session.metadata?.linkUrl ?? null,
             price: amount,

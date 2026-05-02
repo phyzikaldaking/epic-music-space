@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe, getStripeWebhookSecret } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { enqueueNotification } from "@/lib/queues";
-import { awardBadge } from "@/lib/badges";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { track } from "@/lib/analytics";
 import type Stripe from "stripe";

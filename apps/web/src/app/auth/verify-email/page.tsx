@@ -143,7 +143,7 @@ function VerifyEmailContent() {
       body={`We sent a verification link to ${email || "your email"}. Click the link to activate your account. It expires in 24 hours.`}
       cta={
         <div className="space-y-3 text-center text-sm text-white/40">
-          <p>Didn't receive it?</p>
+          <p>Didn&apos;t receive it?</p>
           <ResendForm
             email={resendEmail}
             setEmail={setResendEmail}

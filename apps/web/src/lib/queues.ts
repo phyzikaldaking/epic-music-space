@@ -68,16 +68,17 @@ export const deadLetterQueue = makeQueue<DeadLetterJobData>(
   `${QUEUE_NAMES.analytics}:dead-letter`,
 );
 
-async function enqueueWithRetry<T extends Record<string, unknown>>(
+async function enqueueWithRetry<T>(
   queueName: string,
-  queue: Queue<T> | null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  queue: Queue<any, any, string> | null,
   jobName: string,
   data: T,
 ) {
   if (!queue) return false;
 
   try {
-    await retry(() => queue.add(jobName as Parameters<typeof queue.add>[0], data), { retries: 2, baseDelayMs: 400 });
+    await retry(() => queue.add(jobName, data), { retries: 2, baseDelayMs: 400 });
     return true;
   } catch (error) {
     console.error(`[queue:${queueName}] enqueue failed`, error);
@@ -86,7 +87,7 @@ async function enqueueWithRetry<T extends Record<string, unknown>>(
       await deadLetterQueue.add("dead-letter", {
         queue: queueName,
         reason: error instanceof Error ? error.message : "unknown",
-        payload: data,
+        payload: data as Record<string, unknown>,
         createdAt: new Date().toISOString(),
       });
     }

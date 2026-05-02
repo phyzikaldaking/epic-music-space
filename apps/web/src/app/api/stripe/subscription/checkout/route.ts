@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
 import { getStripePriceIdForTier } from "@/lib/subscriptions";
+import type { SubscriptionTier } from "@ems/db";
 
 const schema = z.object({
   tier: z.string(),
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const tier = parsed.data.tier as any;
+  const tier = parsed.data.tier as SubscriptionTier;
   const priceId = getStripePriceIdForTier(tier);
 
   if (!priceId) {

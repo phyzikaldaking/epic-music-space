@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPrice } from "@ems/utils";
 import PromoteSongButton from "@/components/PromoteSongButton";
@@ -195,7 +196,7 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
         <div className="pointer-events-none absolute left-2 top-2 z-10 rounded-full border border-white/10 bg-black/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/55">{getTierLabel(tier)}</div>
         <div className="relative aspect-[16/11] overflow-hidden rounded-[1rem] border border-white/10 bg-black shadow-inner shadow-black/90">
           {coverUrl ? (
-            <img src={coverUrl} alt={`${title} cover art`} width={640} height={640} loading="lazy" decoding="async" className="h-full w-full object-cover opacity-[0.82] saturate-[1.08] transition duration-500 group-hover:scale-110 group-hover:opacity-100" />
+            <Image src={coverUrl} alt={`${title} cover art`} fill sizes="(max-width: 640px) 100vw, 640px" className="object-cover opacity-[0.82] saturate-[1.08] transition duration-500 group-hover:scale-110 group-hover:opacity-100" />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_20%_15%,rgba(108,92,231,.45),transparent_32%),radial-gradient(circle_at_80%_35%,rgba(0,245,255,.22),transparent_28%),linear-gradient(135deg,#171126,#061014)]"><svg aria-hidden="true" className="h-16 w-16 text-white/42" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h6V3h-8Z" /></svg></div>
           )}
