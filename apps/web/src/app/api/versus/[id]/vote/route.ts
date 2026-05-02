@@ -93,6 +93,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       versusWins: songA.versusWins,
       versusLosses: songA.versusLosses,
       aiSentiment: 0.5,
+      boostScore: songA.boostScore,
       createdAt: songA.createdAt,
     });
     await prisma.song.update({
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       versusWins: songB.versusWins,
       versusLosses: songB.versusLosses,
       aiSentiment: 0.5,
+      boostScore: songB.boostScore,
       createdAt: songB.createdAt,
     });
     await prisma.song.update({
