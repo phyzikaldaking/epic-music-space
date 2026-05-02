@@ -22,3 +22,48 @@ jobs:
           test -f apps/web/index.html
           test -f apps/web/styles.css
           test -f apps/web/main.js
+
+  quality-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web
+        run: npm --workspace apps/web run build
+
+      - name: API test suite (contracts)
+        run: npm --workspace apps/api run test
+
+  post-deploy-smoke:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - baseline-checks
+      - quality-gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run production smoke checks
+        env:
+          SYNTHETICS_BASE_URL: ${{ secrets.SYNTHETICS_BASE_URL }}
+        run: npm run reliability:smoke

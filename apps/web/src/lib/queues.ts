@@ -3,6 +3,7 @@ import { getRedis } from "./redis";
 import { QUEUE_NAMES } from "./queueNames";
 import { prisma } from "./prisma";
 import type { Prisma } from "@ems/db";
+import { retry } from "./resilience";
 
 const connection = getRedis();
 
@@ -47,6 +48,13 @@ export interface AnalyticsJobData {
   timestamp: string;
 }
 
+export interface DeadLetterJobData {
+  queue: string;
+  reason: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 export const aiScoringQueue = makeQueue<AiScoringJobData>(
   QUEUE_NAMES.aiScoring,
 );
@@ -56,19 +64,59 @@ export const notificationQueue = makeQueue<NotificationJobData>(
 export const analyticsQueue = makeQueue<AnalyticsJobData>(
   QUEUE_NAMES.analytics,
 );
+export const deadLetterQueue = makeQueue<DeadLetterJobData>(
+  `${QUEUE_NAMES.analytics}:dead-letter`,
+);
+
+async function enqueueWithRetry<T extends Record<string, unknown>>(
+  queueName: string,
+  queue: Queue<T> | null,
+  jobName: string,
+  data: T,
+) {
+  if (!queue) return false;
+
+  try {
+    await retry(() => queue.add(jobName, data), { retries: 2, baseDelayMs: 400 });
+    return true;
+  } catch (error) {
+    console.error(`[queue:${queueName}] enqueue failed`, error);
+
+    if (deadLetterQueue) {
+      await deadLetterQueue.add("dead-letter", {
+        queue: queueName,
+        reason: error instanceof Error ? error.message : "unknown",
+        payload: data,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    return false;
+  }
+}
 
 // ---------------------------------------------------------
 // Typed job enqueue helpers
 // ---------------------------------------------------------
 
 export async function enqueueAiScoring(songId: string) {
-  if (!aiScoringQueue) return;
-  await aiScoringQueue.add("score-song", { songId }, { jobId: `ai:${songId}` });
+  await enqueueWithRetry(
+    QUEUE_NAMES.aiScoring,
+    aiScoringQueue,
+    "score-song",
+    { songId },
+  );
 }
 
 export async function enqueueNotification(data: NotificationJobData) {
-  if (notificationQueue) {
-    await notificationQueue.add("send-notification", data);
+  const queued = await enqueueWithRetry(
+    QUEUE_NAMES.notifications,
+    notificationQueue,
+    "send-notification",
+    data,
+  );
+
+  if (queued) {
     return;
   }
   // No Redis — write directly to DB so notifications are never silently dropped
@@ -88,8 +136,14 @@ export async function enqueueNotification(data: NotificationJobData) {
 }
 
 export async function enqueueAnalytics(data: AnalyticsJobData) {
-  if (analyticsQueue) {
-    await analyticsQueue.add("track", data);
+  const queued = await enqueueWithRetry(
+    QUEUE_NAMES.analytics,
+    analyticsQueue,
+    "track",
+    data,
+  );
+
+  if (queued) {
     return;
   }
   // No Redis — log so analytics events are not silently dropped

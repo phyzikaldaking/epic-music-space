@@ -9,7 +9,7 @@ import { getSiteUrl } from "@/lib/site";
 import { getTierLimits } from "@/lib/tierLimits";
 import { track } from "@/lib/analytics";
 import { buildIdempotencyKey } from "@/lib/idempotency";
-import { fireAndForget, retry, withTimeout } from "@/lib/resilience";
+import { fireAndForget, retry, withCircuitBreaker, withTimeout } from "@/lib/resilience";
 
 const buySchema = z.object({
   songId: z.string().min(1, "songId is required"),
@@ -123,11 +123,14 @@ export async function POST(req: NextRequest) {
   const baseUrl = getSiteUrl();
 
   // ── Create Stripe checkout session ─────────────────────────────────────────
-  const stripeSession = await retry(
+  const stripeSession = await withCircuitBreaker(
+    "stripe.checkout.sessions.create",
     () =>
-      withTimeout(
+      retry(
         () =>
-          stripe.checkout.sessions.create(
+          withTimeout(
+            () =>
+              stripe.checkout.sessions.create(
             {
               mode: "payment",
               payment_method_types: ["card"],
@@ -154,12 +157,14 @@ export async function POST(req: NextRequest) {
               success_url: `${baseUrl}/track/${songId}?checkout=success`,
               cancel_url: `${baseUrl}/track/${songId}?checkout=cancelled`,
             },
-            { idempotencyKey },
-          ),
-        8000,
-        "stripe.checkout.sessions.create",
+              { idempotencyKey },
+            ),
+          8000,
+          "stripe.checkout.sessions.create",
+        ),
+        { retries: 1, baseDelayMs: 300 },
       ),
-    { retries: 1, baseDelayMs: 300 },
+    { failureThreshold: 4, cooldownMs: 15_000 },
   );
 
   // ── Record pending transaction ─────────────────────────────────────────────

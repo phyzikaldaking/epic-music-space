@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 import { lenientLimiter } from "@/lib/rateLimit";
+import { withQueryBudget } from "@/lib/queryBudget";
 
 const EDGE_CACHE_LEADERBOARD = "public, s-maxage=60, stale-while-revalidate=120";
 
@@ -43,22 +44,27 @@ export async function GET(req: NextRequest) {
     }
 
     // Top artists by total licenses sold across all their songs
-    const artists = await prisma.user.findMany({
-      where: { role: { in: ["ARTIST", "LABEL"] } },
-      select: {
-        id: true,
-        name: true,
-        image: true,
-        studio: { select: { username: true, district: true } },
-        songs: {
-          where: { isActive: true },
-          select: { soldLicenses: true, aiScore: true },
-          take: 200,
-        },
-        _count: { select: { followers: true } },
-      },
-      take: limit * 3, // over-fetch then sort
-    });
+    const artists = await withQueryBudget(
+      "leaderboard.artists.findMany",
+      () =>
+        prisma.user.findMany({
+          where: { role: { in: ["ARTIST", "LABEL"] } },
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            studio: { select: { username: true, district: true } },
+            songs: {
+              where: { isActive: true },
+              select: { soldLicenses: true, aiScore: true },
+              take: 200,
+            },
+            _count: { select: { followers: true } },
+          },
+          take: limit * 3,
+        }),
+      { warnAfterMs: 300, hardAfterMs: 1200, meta: { route: "leaderboard", type } },
+    );
 
     const ranked = artists
       .map((a) => ({
@@ -93,25 +99,30 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const songs = await prisma.song.findMany({
-    where: { isActive: true },
-    orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
-    take: limit,
-    select: {
-      id: true,
-      title: true,
-      artist: true,
-      genre: true,
-      coverUrl: true,
-      licensePrice: true,
-      revenueSharePct: true,
-      soldLicenses: true,
-      totalLicenses: true,
-      aiScore: true,
-      district: true,
-      versusWins: true,
-    },
-  });
+  const songs = await withQueryBudget(
+    "leaderboard.songs.findMany",
+    () =>
+      prisma.song.findMany({
+        where: { isActive: true },
+        orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          artist: true,
+          genre: true,
+          coverUrl: true,
+          licensePrice: true,
+          revenueSharePct: true,
+          soldLicenses: true,
+          totalLicenses: true,
+          aiScore: true,
+          district: true,
+          versusWins: true,
+        },
+      }),
+    { warnAfterMs: 250, hardAfterMs: 1000, meta: { route: "leaderboard", type } },
+  );
 
   await cacheSet(cacheKey, songs, CACHE_TTL.leaderboard);
   return NextResponse.json(songs, {

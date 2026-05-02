@@ -48,6 +48,13 @@ export const optionalRequirements = {
     "DOPPLER_CONFIG_PROD",
   ],
   StripeWebhookForward: ["STRIPE_WEBHOOK_FORWARD_URL"],
+  ReliabilityAlerts: [
+    "RELIABILITY_ALERT_WEBHOOK_URL",
+    "SYNTH_WARN_FAILURE_RATE",
+    "SYNTH_HARD_FAILURE_RATE",
+    "SYNTH_WARN_P95_MS",
+    "SYNTH_HARD_P95_MS",
+  ],
 };
 
 export const sharedAppKeys = unique([

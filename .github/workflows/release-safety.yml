@@ -1,0 +1,55 @@
+name: Release Safety
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_url:
+        description: Deployment URL to validate before alias promotion
+        required: true
+        type: string
+      alias_domain:
+        description: "Domain alias to promote to (example: epicmusicspace.com)"
+        required: true
+        default: epicmusicspace.com
+        type: string
+      rollback_url:
+        description: Optional previous stable deployment URL for rollback
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  canary-and-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Canary smoke checks on candidate
+        env:
+          SYNTHETICS_BASE_URL: ${{ github.event.inputs.candidate_url }}
+        run: npm run reliability:smoke
+
+      - name: Promote candidate alias
+        if: success()
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel alias set "${{ github.event.inputs.candidate_url }}" "${{ github.event.inputs.alias_domain }}" --token "$VERCEL_TOKEN"
+
+      - name: Rollback alias if canary failed
+        if: failure() && github.event.inputs.rollback_url != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel alias set "${{ github.event.inputs.rollback_url }}" "${{ github.event.inputs.alias_domain }}" --token "$VERCEL_TOKEN"

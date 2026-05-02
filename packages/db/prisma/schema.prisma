@@ -167,6 +167,7 @@ model Song {
   @@index([district])
   @@index([isActive])
   @@index([aiScore])
+  @@index([isActive, aiScore, createdAt])
 }
 
 // ─────────────────────────────────────────
@@ -228,6 +229,8 @@ model Transaction {
 
   @@index([userId])
   @@index([status])
+  @@index([userId, createdAt])
+  @@index([songId, status])
 }
 
 enum TransactionType {
@@ -430,6 +433,7 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId, read])
+  @@index([userId, createdAt])
 }
 
 // ─────────────────────────────────────────

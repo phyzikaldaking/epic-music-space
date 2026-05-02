@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { lenientLimiter } from "@/lib/rateLimit";
 import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
+import { withQueryBudget } from "@/lib/queryBudget";
 
 const EDGE_CACHE_LISTINGS = "public, s-maxage=15, stale-while-revalidate=60";
 
@@ -42,26 +43,31 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const allActive = await prisma.song.findMany({
-    where: { isActive: true },
-    orderBy: [{ aiScore: "desc" }, { createdAt: "desc" }],
-    select: {
-      id: true,
-      title: true,
-      artist: true,
-      genre: true,
-      coverUrl: true,
-      licensePrice: true,
-      revenueSharePct: true,
-      totalLicenses: true,
-      soldLicenses: true,
-      aiScore: true,
-      district: true,
-      versusWins: true,
-      createdAt: true,
-    },
-    take: 200,
-  });
+  const allActive = await withQueryBudget(
+    "market.listings.findMany",
+    () =>
+      prisma.song.findMany({
+        where: { isActive: true },
+        orderBy: [{ aiScore: "desc" }, { createdAt: "desc" }],
+        select: {
+          id: true,
+          title: true,
+          artist: true,
+          genre: true,
+          coverUrl: true,
+          licensePrice: true,
+          revenueSharePct: true,
+          totalLicenses: true,
+          soldLicenses: true,
+          aiScore: true,
+          district: true,
+          versusWins: true,
+          createdAt: true,
+        },
+        take: 200,
+      }),
+    { warnAfterMs: 250, hardAfterMs: 1000, meta: { route: "market/listings" } },
+  );
 
   const result = allActive
     .filter((s) => s.soldLicenses < s.totalLicenses)

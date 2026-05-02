@@ -1,0 +1,36 @@
+name: Reliability Synthetics
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run synthetic checks
+        env:
+          SYNTHETICS_BASE_URL: ${{ secrets.SYNTHETICS_BASE_URL }}
+          RELIABILITY_ALERT_WEBHOOK_URL: ${{ secrets.RELIABILITY_ALERT_WEBHOOK_URL }}
+          SYNTH_WARN_FAILURE_RATE: ${{ secrets.SYNTH_WARN_FAILURE_RATE }}
+          SYNTH_HARD_FAILURE_RATE: ${{ secrets.SYNTH_HARD_FAILURE_RATE }}
+          SYNTH_WARN_P95_MS: ${{ secrets.SYNTH_WARN_P95_MS }}
+          SYNTH_HARD_P95_MS: ${{ secrets.SYNTH_HARD_P95_MS }}
+        run: npm run reliability:synthetics

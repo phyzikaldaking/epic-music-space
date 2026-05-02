@@ -5,7 +5,7 @@ import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
 import { strictLimiter } from "@/lib/rateLimit";
 import { buildIdempotencyKey } from "@/lib/idempotency";
-import { retry, withTimeout } from "@/lib/resilience";
+import { retry, withCircuitBreaker, withTimeout } from "@/lib/resilience";
 import { z } from "zod";
 
 const placementSchema = z.object({
@@ -53,11 +53,14 @@ export async function POST(req: NextRequest) {
   if (song.artistId !== session.user.id) return NextResponse.json({ error: "You can only promote your own song." }, { status: 403 });
 
   const baseUrl = getSiteUrl();
-  const checkout = await retry(
+  const checkout = await withCircuitBreaker(
+    "stripe.checkout.sessions.create",
     () =>
-      withTimeout(
+      retry(
         () =>
-          stripe.checkout.sessions.create(
+          withTimeout(
+            () =>
+              stripe.checkout.sessions.create(
             {
               mode: "payment",
               payment_method_types: ["card"],
@@ -86,12 +89,14 @@ export async function POST(req: NextRequest) {
               success_url: `${baseUrl}/marketplace?placement=success&song=${songId}`,
               cancel_url: `${baseUrl}/marketplace?placement=cancelled&song=${songId}`,
             },
-            { idempotencyKey },
-          ),
-        8000,
-        "stripe.checkout.sessions.create",
+              { idempotencyKey },
+            ),
+          8000,
+          "stripe.checkout.sessions.create",
+        ),
+        { retries: 1, baseDelayMs: 300 },
       ),
-    { retries: 1, baseDelayMs: 300 },
+    { failureThreshold: 4, cooldownMs: 15_000 },
   );
 
   try {
