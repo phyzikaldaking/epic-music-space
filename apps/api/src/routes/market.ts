@@ -4,6 +4,7 @@ import { prisma } from "@ems/db";
 import Stripe from "stripe";
 import { rateLimit, strictLimiter, lenientLimiter } from "../middleware/rateLimit";
 import { authMiddleware } from "../middleware/auth";
+import type { HonoEnv } from "../types";
 
 // ─────────────────────────────────────────────────────────
 // Stripe
@@ -12,7 +13,7 @@ import { authMiddleware } from "../middleware/auth";
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
-  return new Stripe(key, { apiVersion: "2024-11-20.acacia", typescript: true });
+  return new Stripe(key, { apiVersion: "2025-02-24.acacia", typescript: true });
 }
 
 // ─────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ const buySchema = z.object({
 // Router
 // ─────────────────────────────────────────────────────────
 
-export const marketRouter = new Hono();
+export const marketRouter = new Hono<HonoEnv>();
 
 /**
  * GET /api/market/listings
@@ -92,7 +93,7 @@ marketRouter.post(
   rateLimit(strictLimiter),
   authMiddleware,
   async (c) => {
-    const userId: string = c.get("userId");
+    const userId = c.var.userId;
 
     // ── Parse + validate body ──────────────────────────────────────────────
     let rawBody: unknown;

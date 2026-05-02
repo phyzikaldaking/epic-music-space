@@ -1,4 +1,5 @@
 import type { Context, Next } from "hono";
+import type { HonoEnv } from "../types";
 
 /**
  * Lightweight auth middleware for the standalone API.
@@ -10,7 +11,7 @@ import type { Context, Next } from "hono";
  * On success the authenticated user ID is stored in `c.var.userId`.
  * On failure a 401 JSON response is returned immediately.
  */
-export async function authMiddleware(c: Context, next: Next) {
+export async function authMiddleware(c: Context<HonoEnv>, next: Next) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 

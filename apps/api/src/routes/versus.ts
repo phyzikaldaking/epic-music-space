@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@ems/db";
 import { rateLimit, strictLimiter } from "../middleware/rateLimit";
 import { authMiddleware } from "../middleware/auth";
+import type { HonoEnv } from "../types";
 
 const voteSchema = z.object({
   matchId: z.string().min(1, "matchId is required"),
@@ -46,7 +47,7 @@ async function finalizeMatch(match: {
   ]);
 }
 
-export const versusRouter = new Hono();
+export const versusRouter = new Hono<HonoEnv>();
 
 /**
  * POST /api/versus/vote
@@ -62,7 +63,7 @@ versusRouter.post(
   rateLimit(strictLimiter),
   authMiddleware,
   async (c) => {
-    const userId: string = c.get("userId");
+    const userId = c.var.userId;
 
     // ── Parse body ─────────────────────────────────────────────────────────
     let rawBody: unknown;

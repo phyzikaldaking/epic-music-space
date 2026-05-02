@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@ems/db";
 import { rateLimit, strictLimiter } from "../middleware/rateLimit";
 import { authMiddleware } from "../middleware/auth";
+import type { HonoEnv } from "../types";
 
 const AUDIO_MIME_TYPES = new Set([
   "audio/mpeg",
@@ -33,7 +34,7 @@ const uploadSchema = z.object({
   audioMimeType: z.string().optional(),
 });
 
-export const songsRouter = new Hono();
+export const songsRouter = new Hono<HonoEnv>();
 
 /**
  * POST /api/song/upload
@@ -47,7 +48,7 @@ songsRouter.post(
   rateLimit(strictLimiter),
   authMiddleware,
   async (c) => {
-    const userId: string = c.get("userId");
+    const userId = c.var.userId;
 
     // ── Role check ─────────────────────────────────────────────────────────
     const user = await prisma.user.findUnique({ where: { id: userId } });

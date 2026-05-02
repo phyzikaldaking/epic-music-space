@@ -1,5 +1,6 @@
 import { RateLimiterMemory, RateLimiterRedis } from "rate-limiter-flexible";
-import type { Context, Next } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
+import type { HonoEnv } from "../types";
 import Redis from "ioredis";
 
 // ─────────────────────────────────────────────────────────
@@ -44,8 +45,8 @@ export const lenientLimiter = createLimiter("api:rl:lenient", 100, 60);
 
 type Limiter = typeof strictLimiter;
 
-export function rateLimit(limiter: Limiter) {
-  return async (c: Context, next: Next) => {
+export function rateLimit(limiter: Limiter): MiddlewareHandler<HonoEnv> {
+  return async (c: Context<HonoEnv>, next) => {
     const ip =
       c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
       c.req.header("x-real-ip") ??
