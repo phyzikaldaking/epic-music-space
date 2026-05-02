@@ -26,7 +26,13 @@ export async function GET(req: NextRequest) {
 
   // Serve from Redis cache when available
   const cached = await cacheGet<unknown[]>(CACHE_KEYS.listings);
-  if (cached) return NextResponse.json(cached);
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: {
+        "Cache-Control": "public, s-maxage=15, stale-while-revalidate=60",
+      },
+    });
+  }
 
   const allActive = await prisma.song.findMany({
     where: { isActive: true },
@@ -60,5 +66,9 @@ export async function GET(req: NextRequest) {
     }));
 
   await cacheSet(CACHE_KEYS.listings, result, CACHE_TTL.listings);
-  return NextResponse.json(result);
+  return NextResponse.json(result, {
+    headers: {
+      "Cache-Control": "public, s-maxage=15, stale-while-revalidate=60",
+    },
+  });
 }

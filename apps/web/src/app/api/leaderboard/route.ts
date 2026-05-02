@@ -26,7 +26,13 @@ export async function GET(req: NextRequest) {
   if (type === "artists") {
     const cacheKey = CACHE_KEYS.leaderboardArtists;
     const cached = await cacheGet<unknown[]>(cacheKey);
-    if (cached) return NextResponse.json(cached);
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+        },
+      });
+    }
 
     // Top artists by total licenses sold across all their songs
     const artists = await prisma.user.findMany({
@@ -65,13 +71,23 @@ export async function GET(req: NextRequest) {
       .slice(0, limit);
 
     await cacheSet(cacheKey, ranked, CACHE_TTL.leaderboard);
-    return NextResponse.json(ranked);
+    return NextResponse.json(ranked, {
+      headers: {
+        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+      },
+    });
   }
 
   // Default: top songs by AI score
   const cacheKey = CACHE_KEYS.leaderboardSongs;
   const cached = await cacheGet<unknown[]>(cacheKey);
-  if (cached) return NextResponse.json(cached);
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: {
+        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+      },
+    });
+  }
 
   const songs = await prisma.song.findMany({
     where: { isActive: true },
@@ -94,6 +110,10 @@ export async function GET(req: NextRequest) {
   });
 
   await cacheSet(cacheKey, songs, CACHE_TTL.leaderboard);
-  return NextResponse.json(songs);
+  return NextResponse.json(songs, {
+    headers: {
+      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+    },
+  });
 }
 

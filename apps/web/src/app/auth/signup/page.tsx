@@ -56,6 +56,7 @@ function SignUpContent() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [taskChecks, setTaskChecks] = useState<Record<string, boolean>>({});
 
   // Read invite code from URL param
   const inviteCode = searchParams.get("invite") ?? "";
@@ -90,6 +91,18 @@ function SignUpContent() {
   function update(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
+
+  const roleTasks =
+    selectedRole === "ARTIST"
+      ? ["Create profile", "Upload first song", "Set price"]
+      : selectedRole === "LABEL"
+      ? ["Create label profile", "Invite first artist", "Launch campaign"]
+      : ["Save first search", "Watchlist 3 tracks", "License first track"];
+
+  const completedTasks = roleTasks.filter((task) => taskChecks[task]).length;
+  const taskProgressPct = Math.round((completedTasks / roleTasks.length) * 100);
+  const taskProgressWidthClass =
+    taskProgressPct >= 100 ? "w-full" : taskProgressPct >= 67 ? "w-2/3" : taskProgressPct >= 34 ? "w-1/3" : "w-0";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -246,6 +259,35 @@ function SignUpContent() {
                 </div>
               </>
             )}
+
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
+              <div className="mb-2 flex items-center justify-between text-xs text-white/55">
+                <span className="uppercase tracking-[0.16em]">First session checklist</span>
+                <span>{taskProgressPct}%</span>
+              </div>
+              <div className="mb-3 h-1.5 w-full rounded-full bg-white/10">
+                <div
+                  className={`h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-500 transition-all ${taskProgressWidthClass}`}
+                />
+              </div>
+              <div className="space-y-2">
+                {roleTasks.map((task) => (
+                  <label key={task} className="flex items-center gap-2 text-sm text-white/75">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(taskChecks[task])}
+                      onChange={(e) =>
+                        setTaskChecks((prev) => ({
+                          ...prev,
+                          [task]: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>{task}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
 
           {error && (

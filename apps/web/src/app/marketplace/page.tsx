@@ -3,12 +3,14 @@ import SongCard from "@/components/SongCard";
 import MarketplaceFilters from "@/components/MarketplaceFilters";
 import MarketplaceWorld3D from "@/components/MarketplaceWorld3D";
 import MarketplacePresence from "@/components/MarketplacePresence";
+import MarketplaceConfidencePanel from "@/components/MarketplaceConfidencePanel";
+import MarketplaceRetentionTools from "@/components/MarketplaceRetentionTools";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import type { Song } from "@ems/db";
 import { demoTracks } from "@/lib/demoTracks";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export const metadata: Metadata = {
   title: "Browse Music Licenses",
@@ -44,6 +46,23 @@ export default async function MarketplacePage() {
         <Suspense>
           <MarketplaceFilters totalCount={rankedSongs.length} />
         </Suspense>
+
+        <MarketplaceConfidencePanel
+          tracks={rankedSongs.map((song) => ({
+            id: song.id,
+            title: song.title,
+            artist: song.artist,
+            audioUrl: song.audioUrl,
+            aiScore: song.aiScore,
+          }))}
+        />
+
+        <MarketplaceRetentionTools
+          tracks={rankedSongs.map((song) => ({
+            id: song.id,
+            title: song.title,
+          }))}
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {rankedSongs.map((song) => (

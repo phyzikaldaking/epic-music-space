@@ -6,6 +6,8 @@ import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
 import { getSiteUrl } from "@/lib/site";
+import { buildIdempotencyKey } from "@/lib/idempotency";
+import { fireAndForget, retry, withTimeout } from "@/lib/resilience";
 
 const checkoutSchema = z.object({
   songId: z.string().min(1, "songId is required"),
@@ -62,6 +64,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { songId, quantity } = parsed.data;
+  const idempotencyKey = buildIdempotencyKey(req, "payments-checkout", [
+    session.user.id,
+    songId,
+    quantity,
+  ]);
 
   // ── Fetch & validate song ──────────────────────────────────────────────────
   const song = await prisma.song.findUnique({ where: { id: songId } });
@@ -96,49 +103,74 @@ export async function POST(req: NextRequest) {
   const baseUrl = getSiteUrl();
 
   // ── Create Stripe checkout session ─────────────────────────────────────────
-  const stripeSession = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          unit_amount: Math.round(Number(song.licensePrice) * 100),
-          product_data: {
-            name: `License: ${song.title} by ${song.artist}`,
-            description: `Digital music license — ${String(song.revenueSharePct)}% revenue share per license`,
-            images: song.coverUrl ? [song.coverUrl] : [],
-          },
-        },
-        quantity,
-      },
-    ],
-    metadata: { songId, userId: session.user.id, quantity: String(quantity) },
-    success_url: `${baseUrl}/track/${songId}?checkout=success`,
-    cancel_url: `${baseUrl}/track/${songId}?checkout=cancelled`,
-  });
+  const stripeSession = await retry(
+    () =>
+      withTimeout(
+        () =>
+          stripe.checkout.sessions.create(
+            {
+              mode: "payment",
+              payment_method_types: ["card"],
+              line_items: [
+                {
+                  price_data: {
+                    currency: "usd",
+                    unit_amount: Math.round(Number(song.licensePrice) * 100),
+                    product_data: {
+                      name: `License: ${song.title} by ${song.artist}`,
+                      description: `Digital music license — ${String(song.revenueSharePct)}% revenue share per license`,
+                      images: song.coverUrl ? [song.coverUrl] : [],
+                    },
+                  },
+                  quantity,
+                },
+              ],
+              metadata: {
+                songId,
+                userId: session.user.id,
+                quantity: String(quantity),
+                idempotencyKey,
+              },
+              success_url: `${baseUrl}/track/${songId}?checkout=success`,
+              cancel_url: `${baseUrl}/track/${songId}?checkout=cancelled`,
+            },
+            { idempotencyKey },
+          ),
+        8000,
+        "stripe.checkout.sessions.create",
+      ),
+    { retries: 1, baseDelayMs: 300 },
+  );
 
   // ── Record pending transaction ─────────────────────────────────────────────
-  await prisma.transaction.create({
-    data: {
-      userId: session.user.id,
-      songId,
-      amount: Number(song.licensePrice) * quantity,
-      type: "LICENSE_PURCHASE",
-      status: "PENDING",
-      stripeSessionId: stripeSession.id,
-      metadata: { quantity },
-    },
-  });
+  try {
+    await prisma.transaction.create({
+      data: {
+        userId: session.user.id,
+        songId,
+        amount: Number(song.licensePrice) * quantity,
+        type: "LICENSE_PURCHASE",
+        status: "PENDING",
+        stripeSessionId: stripeSession.id,
+        metadata: { quantity, idempotencyKey },
+      },
+    });
+  } catch (error) {
+    const known = error as { code?: string };
+    if (known.code !== "P2002") throw error;
+  }
 
   // ── Analytics ──────────────────────────────────────────────────────────────
-  await enqueueAnalytics({
-    event: "checkout_created",
-    userId: session.user.id,
-    songId,
-    metadata: { quantity },
-    timestamp: new Date().toISOString(),
-  });
+  fireAndForget(
+    enqueueAnalytics({
+      event: "checkout_created",
+      userId: session.user.id,
+      songId,
+      metadata: { quantity, idempotencyKey },
+      timestamp: new Date().toISOString(),
+    }),
+    "enqueueAnalytics checkout_created",
+  );
 
   return NextResponse.json({ checkoutUrl: stripeSession.url }, { status: 201 });
 }

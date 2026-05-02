@@ -8,6 +8,8 @@ import { enqueueAnalytics } from "@/lib/queues";
 import { getSiteUrl } from "@/lib/site";
 import { getTierLimits } from "@/lib/tierLimits";
 import { track } from "@/lib/analytics";
+import { buildIdempotencyKey } from "@/lib/idempotency";
+import { fireAndForget, retry, withTimeout } from "@/lib/resilience";
 
 const buySchema = z.object({
   songId: z.string().min(1, "songId is required"),
@@ -59,6 +61,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { songId, quantity } = parsed.data;
+  const idempotencyKey = buildIdempotencyKey(req, "market-buy", [
+    session.user.id,
+    songId,
+    quantity,
+  ]);
 
   // ── Tier license limit check ───────────────────────────────────────────────
   const buyer = await prisma.user.findUnique({
@@ -116,59 +123,89 @@ export async function POST(req: NextRequest) {
   const baseUrl = getSiteUrl();
 
   // ── Create Stripe checkout session ─────────────────────────────────────────
-  const stripeSession = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          unit_amount: Math.round(Number(song.licensePrice) * 100),
-          product_data: {
-            name: `License: ${song.title} by ${song.artist}`,
-            description: `Digital music license — ${String(song.revenueSharePct)}% revenue share per license`,
-            images: song.coverUrl ? [song.coverUrl] : [],
-          },
-        },
-        quantity,
-      },
-    ],
-    metadata: { songId, userId: session.user.id, quantity: String(quantity) },
-    success_url: `${baseUrl}/track/${songId}?checkout=success`,
-    cancel_url: `${baseUrl}/track/${songId}?checkout=cancelled`,
-  });
+  const stripeSession = await retry(
+    () =>
+      withTimeout(
+        () =>
+          stripe.checkout.sessions.create(
+            {
+              mode: "payment",
+              payment_method_types: ["card"],
+              line_items: [
+                {
+                  price_data: {
+                    currency: "usd",
+                    unit_amount: Math.round(Number(song.licensePrice) * 100),
+                    product_data: {
+                      name: `License: ${song.title} by ${song.artist}`,
+                      description: `Digital music license — ${String(song.revenueSharePct)}% revenue share per license`,
+                      images: song.coverUrl ? [song.coverUrl] : [],
+                    },
+                  },
+                  quantity,
+                },
+              ],
+              metadata: {
+                songId,
+                userId: session.user.id,
+                quantity: String(quantity),
+                idempotencyKey,
+              },
+              success_url: `${baseUrl}/track/${songId}?checkout=success`,
+              cancel_url: `${baseUrl}/track/${songId}?checkout=cancelled`,
+            },
+            { idempotencyKey },
+          ),
+        8000,
+        "stripe.checkout.sessions.create",
+      ),
+    { retries: 1, baseDelayMs: 300 },
+  );
 
   // ── Record pending transaction ─────────────────────────────────────────────
-  await prisma.transaction.create({
-    data: {
-      userId: session.user.id,
-      songId,
-      amount: Number(song.licensePrice) * quantity,
-      type: "LICENSE_PURCHASE",
-      status: "PENDING",
-      stripeSessionId: stripeSession.id,
-      metadata: { quantity },
-    },
-  });
-
-  // ── Analytics ──────────────────────────────────────────────────────────────
-  await enqueueAnalytics({
-    event: "market_buy_initiated",
-    userId: session.user.id,
-    songId,
-    metadata: { quantity },
-    timestamp: new Date().toISOString(),
-  });
-
-  if (activeLicensesCount === 0) {
-    track({
-      event: "funnel_buyer_visit_to_first_license_purchase",
-      userId: session.user.id,
-      properties: {
+  try {
+    await prisma.transaction.create({
+      data: {
+        userId: session.user.id,
         songId,
-        quantity,
+        amount: Number(song.licensePrice) * quantity,
+        type: "LICENSE_PURCHASE",
+        status: "PENDING",
+        stripeSessionId: stripeSession.id,
+        metadata: { quantity, idempotencyKey },
       },
     });
+  } catch (error) {
+    const known = error as { code?: string };
+    if (known.code !== "P2002") throw error;
+  }
+
+  // ── Analytics ──────────────────────────────────────────────────────────────
+  fireAndForget(
+    enqueueAnalytics({
+      event: "market_buy_initiated",
+      userId: session.user.id,
+      songId,
+      metadata: { quantity, idempotencyKey },
+      timestamp: new Date().toISOString(),
+    }),
+    "enqueueAnalytics market_buy_initiated",
+  );
+
+  if (activeLicensesCount === 0) {
+    fireAndForget(
+      Promise.resolve(
+        track({
+          event: "funnel_buyer_visit_to_first_license_purchase",
+          userId: session.user.id,
+          properties: {
+            songId,
+            quantity,
+          },
+        }),
+      ),
+      "track funnel_buyer_visit_to_first_license_purchase",
+    );
   }
 
   return NextResponse.json({ checkoutUrl: stripeSession.url }, { status: 201 });
