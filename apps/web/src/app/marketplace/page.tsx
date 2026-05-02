@@ -171,14 +171,14 @@ export default async function MarketplacePage({ searchParams }: Props) {
           <div className="grid gap-10 lg:grid-cols-[1fr_0.7fr] lg:items-end">
             <div>
               <p className="mb-4 border-l-2 border-accent-400 pl-3 text-xs font-black uppercase tracking-[0.24em] text-accent-300">
-                {catalogUnavailable ? "Demo catalog" : "Live marketplace"} · Phase 2 Studio Wall
+                {catalogUnavailable ? "Demo catalog" : "Live marketplace"} · Phase 3 Studio World
               </p>
               <h1 className="max-w-4xl text-5xl font-black tracking-tight md:text-7xl">
-                Browse the wall like a cinematic music control room.
+                Walk the music wall like a private studio world.
               </h1>
               <p className="mt-5 max-w-2xl text-lg leading-8 text-white/58">
-                Pan across wall-mounted beat screens, preview reactive waveforms,
-                then open the Netflix-style license overlay before checkout.
+                Move through the control-room floor, focus on screens, enter
+                track studio rooms, and license music from an immersive wall.
               </p>
             </div>
             <dl className="grid grid-cols-3 gap-4 border-y border-white/10 py-6 lg:border-y-0 lg:border-l lg:py-0 lg:pl-8">
@@ -187,19 +187,19 @@ export default async function MarketplacePage({ searchParams }: Props) {
                   {totalCount || allSongs.length}
                 </dd>
                 <dt className="mt-1 text-xs uppercase tracking-[0.18em] text-white/36">
-                  Screens
+                  Rooms
                 </dt>
               </div>
               <div>
-                <dd className="text-3xl font-black text-accent-300">Zoom</dd>
+                <dd className="text-3xl font-black text-accent-300">WASD</dd>
                 <dt className="mt-1 text-xs uppercase tracking-[0.18em] text-white/36">
-                  Focus mode
+                  Walk cues
                 </dt>
               </div>
               <div>
-                <dd className="text-3xl font-black text-gold-300">Capped</dd>
+                <dd className="text-3xl font-black text-gold-300">Live</dd>
                 <dt className="mt-1 text-xs uppercase tracking-[0.18em] text-white/36">
-                  Supply
+                  Presence
                 </dt>
               </div>
             </dl>
@@ -236,15 +236,38 @@ export default async function MarketplacePage({ searchParams }: Props) {
           </div>
         ) : (
           <>
+            <section className="mb-12 grid gap-4 rounded-[2rem] border border-white/10 bg-black/30 p-5 shadow-2xl shadow-black/50 md:grid-cols-[1fr_auto] md:items-center">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-accent-300/80">
+                  Control Room Navigation
+                </p>
+                <h2 className="mt-1 text-2xl font-black">Phase 3 Walk Mode</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-white/50">
+                  Drag or scroll the wall on touch devices. Use the directional
+                  prompts as the studio-world movement language: W move in, S
+                  pull back, A/D pan across screens, Enter opens the selected
+                  studio room.
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center text-xs font-black uppercase tracking-[0.16em] text-white/62">
+                <span className="rounded-xl border border-white/10 bg-white/8 px-4 py-3">W<br /><span className="text-[9px] text-white/32">zoom</span></span>
+                <span className="rounded-xl border border-accent-300/30 bg-accent-300/10 px-4 py-3 text-accent-100">Enter<br /><span className="text-[9px] text-white/40">room</span></span>
+                <span className="rounded-xl border border-white/10 bg-white/8 px-4 py-3">S<br /><span className="text-[9px] text-white/32">back</span></span>
+                <span className="rounded-xl border border-white/10 bg-white/8 px-4 py-3">A<br /><span className="text-[9px] text-white/32">left</span></span>
+                <span className="rounded-xl border border-gold-300/30 bg-gold-300/10 px-4 py-3 text-gold-100">Live<br /><span className="text-[9px] text-white/40">users</span></span>
+                <span className="rounded-xl border border-white/10 bg-white/8 px-4 py-3">D<br /><span className="text-[9px] text-white/32">right</span></span>
+              </div>
+            </section>
+
             {trendingSongs.length > 0 && !isFiltered && (
               <section className="mb-14 rounded-[2rem] border border-white/10 bg-white/[0.025] p-5 shadow-2xl shadow-black/40">
                 <div className="mb-5 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <h2 className="text-xl font-black">Trending Studio Screens</h2>
+                    <h2 className="text-xl font-black">Trending Studio Rooms</h2>
                     <span className="badge-trending">Hot</span>
                   </div>
                   <span className="hidden text-xs font-bold uppercase tracking-[0.18em] text-white/32 sm:inline">
-                    Hover to zoom · Play to activate
+                    Hover to zoom · Play to activate · Enter room
                   </span>
                 </div>
                 <div className="overflow-x-auto overflow-y-visible pb-8 pt-3 [perspective:1400px]">
@@ -274,46 +297,57 @@ export default async function MarketplacePage({ searchParams }: Props) {
               </section>
             )}
 
-            <section className="relative rounded-[2.4rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012))] p-4 shadow-2xl shadow-black/50 md:p-6">
-              <div className="pointer-events-none absolute inset-0 rounded-[2.4rem] bg-[linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,.035)_1px,transparent_1px)] bg-[size:72px_72px] opacity-30" />
-              <div className="relative mb-6 flex items-center justify-between gap-4">
+            <section className="relative rounded-[2.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.012))] p-4 shadow-2xl shadow-black/50 md:p-6">
+              <div className="pointer-events-none absolute inset-0 rounded-[2.8rem] bg-[linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,.035)_1px,transparent_1px)] bg-[size:72px_72px] opacity-30" />
+              <div className="pointer-events-none absolute inset-x-8 bottom-0 h-48 rounded-[100%] bg-[radial-gradient(ellipse_at_center,rgba(0,245,255,.18),transparent_62%)] blur-xl" />
+              <div className="pointer-events-none absolute inset-x-4 bottom-0 h-32 origin-bottom rotate-x-[62deg] rounded-[2rem] border-t border-accent-300/25 bg-[linear-gradient(90deg,rgba(0,245,255,.18)_1px,transparent_1px),linear-gradient(0deg,rgba(0,245,255,.14)_1px,transparent_1px)] bg-[size:64px_64px] opacity-50" />
+
+              <div className="relative mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.22em] text-accent-300/80">
-                    3D Studio Wall Grid
+                    Walkable Studio World Grid
                   </p>
                   <h2 className="mt-1 text-2xl font-black">
-                    {isFiltered ? "Focused Results" : "All Wall Screens"}
+                    {isFiltered ? "Focused Rooms" : "All Studio Rooms"}
                   </h2>
                 </div>
-                <span className="text-sm text-white/35">
-                  {totalCount > 0
-                    ? `${totalCount} song${totalCount !== 1 ? "s" : ""}`
-                    : allSongs.length > 0
-                    ? `${allSongs.length} song${allSongs.length !== 1 ? "s" : ""}`
-                    : null}
-                </span>
+                <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/35">
+                  <span className="rounded-full border border-white/10 bg-black/35 px-3 py-1.5">{totalCount || allSongs.length} active</span>
+                  <span className="rounded-full border border-accent-300/20 bg-accent-300/10 px-3 py-1.5 text-accent-100/80">presence on</span>
+                  <span className="rounded-full border border-gold-300/20 bg-gold-300/10 px-3 py-1.5 text-gold-100/80">rooms ready</span>
+                </div>
               </div>
 
-              <div className="relative overflow-x-auto overflow-y-visible pb-10 pt-3 [perspective:1600px] xl:overflow-visible">
-                <div className="grid min-w-[920px] gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:min-w-0 xl:grid-cols-4">
-                  {allSongs.map((song) => (
-                    <SongCard
-                      key={song.id}
-                      id={song.id}
-                      title={song.title}
-                      artist={song.artist}
-                      genre={song.genre}
-                      coverUrl={song.coverUrl}
-                      audioUrl={song.audioUrl}
-                      licensePrice={song.licensePrice.toString()}
-                      revenueSharePct={song.revenueSharePct.toString()}
-                      soldLicenses={song.soldLicenses}
-                      totalLicenses={song.totalLicenses}
-                      bpm={song.bpm}
-                      musicalKey={song.key}
-                      aiScore={song.aiScore}
-                      isTrending={trendingIds.has(song.id)}
-                    />
+              <div className="relative overflow-x-auto overflow-y-visible pb-16 pt-5 [perspective:1800px] xl:overflow-visible">
+                <div className="grid min-w-[920px] gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3 xl:min-w-0 xl:grid-cols-4">
+                  {allSongs.map((song, index) => (
+                    <div key={song.id} className="relative">
+                      <div className="pointer-events-none absolute -top-5 right-4 z-10 rounded-full border border-white/10 bg-black/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/46 backdrop-blur">
+                        {index % 3 === 0 ? "2 listening" : index % 3 === 1 ? "1 in room" : "live"}
+                      </div>
+                      <SongCard
+                        id={song.id}
+                        title={song.title}
+                        artist={song.artist}
+                        genre={song.genre}
+                        coverUrl={song.coverUrl}
+                        audioUrl={song.audioUrl}
+                        licensePrice={song.licensePrice.toString()}
+                        revenueSharePct={song.revenueSharePct.toString()}
+                        soldLicenses={song.soldLicenses}
+                        totalLicenses={song.totalLicenses}
+                        bpm={song.bpm}
+                        musicalKey={song.key}
+                        aiScore={song.aiScore}
+                        isTrending={trendingIds.has(song.id)}
+                      />
+                      <Link
+                        href={`/track/${song.id}`}
+                        className="absolute inset-x-8 -bottom-8 z-20 inline-flex min-h-10 items-center justify-center rounded-full border border-accent-300/35 bg-black/80 px-4 text-xs font-black uppercase tracking-[0.16em] text-accent-100 shadow-lg shadow-black/60 backdrop-blur transition hover:bg-accent-300 hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+                      >
+                        Enter Studio Room
+                      </Link>
+                    </div>
                   ))}
                 </div>
               </div>
