@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
         songs: {
           where: { isActive: true },
           select: { soldLicenses: true, aiScore: true },
+          take: 200,
         },
         _count: { select: { followers: true } },
       },

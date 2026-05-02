@@ -3,7 +3,9 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { maybeAwardEarlyAdopter } from "@/lib/badges";
+import { sendVerificationEmail } from "@/lib/email";
 import { randomBytes } from "crypto";
+import { strictLimiter } from "@/lib/rateLimit";
 
 function generateCode(): string {
   return randomBytes(5).toString("hex").toUpperCase(); // 10-char hex code
@@ -18,6 +20,20 @@ const registerSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown";
+
+  try {
+    await strictLimiter.consume(`register:${ip}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many registration attempts. Please try again later." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
   try {
     const body = await req.json();
     const parsed = registerSchema.safeParse(body);
@@ -72,7 +88,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ user }, { status: 201 });
+    // Create email verification token and send welcome email
+    const verifyToken = randomBytes(32).toString("hex");
+    await prisma.verificationToken.create({
+      data: {
+        identifier: email,
+        token: verifyToken,
+        expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      },
+    });
+    await sendVerificationEmail(email, verifyToken);
+
+    return NextResponse.json({ user, requiresVerification: true }, { status: 201 });
   } catch (err) {
     console.error("[register]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

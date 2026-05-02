@@ -1,6 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
+import Link from "next/link";
 import AudioPlayer from "@/components/AudioPlayer";
 
 interface Song {
@@ -98,10 +100,10 @@ export default function VersusResultCard({ match }: { match: Match }) {
       {(match.songA.audioUrl || match.songB.audioUrl) && (
         <div className="mb-8 grid gap-4 sm:grid-cols-2">
           {match.songA.audioUrl && (
-            <AudioPlayer audioUrl={match.songA.audioUrl} title={match.songA.title} />
+            <AudioPlayer audioUrl={match.songA.audioUrl} title={match.songA.title} songId={match.songA.id} />
           )}
           {match.songB.audioUrl && (
-            <AudioPlayer audioUrl={match.songB.audioUrl} title={match.songB.title} />
+            <AudioPlayer audioUrl={match.songB.audioUrl} title={match.songB.title} songId={match.songB.id} />
           )}
         </div>
       )}
@@ -126,18 +128,18 @@ export default function VersusResultCard({ match }: { match: Match }) {
           >
             𝕏 Share on X
           </a>
-          <a
+          <Link
             href="/versus"
             className="rounded-xl border border-white/15 px-5 py-2.5 text-sm text-white/50 hover:bg-white/6 hover:text-white transition"
           >
             ← More Battles
-          </a>
-          <a
+          </Link>
+          <Link
             href="/auth/signup"
             className="rounded-xl bg-accent-500/20 border border-accent-500/40 px-5 py-2.5 text-sm font-semibold text-accent-400 hover:bg-accent-500/30 transition"
           >
             Join EMS Free →
-          </a>
+          </Link>
         </div>
       </div>
     </div>
@@ -178,8 +180,7 @@ function SongResultCard({
       {/* Cover */}
       <div className="relative h-36 w-36 overflow-hidden rounded-xl bg-gradient-to-br from-brand-900 to-accent-600 flex-shrink-0">
         {song.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={song.coverUrl} alt={song.title} className="h-full w-full object-cover" />
+          <Image src={song.coverUrl} alt={song.title} fill className="object-cover" unoptimized />
         ) : (
           <span className="flex h-full w-full items-center justify-center text-4xl">🎵</span>
         )}

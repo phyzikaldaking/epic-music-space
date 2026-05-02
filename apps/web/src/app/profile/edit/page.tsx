@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 interface ProfileData {
   name: string | null;
@@ -22,6 +23,28 @@ export default function ProfileEditPage() {
   const [imageUrl, setImageUrl] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    const form = new FormData();
+    form.append("file", file);
+    form.append("type", "cover");
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: form });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok) { setError(data.error ?? "Upload failed."); return; }
+      setImageUrl(data.url ?? "");
+    } catch {
+      setError("Upload failed. Paste a URL instead.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/user/profile")
@@ -114,10 +137,9 @@ export default function ProfileEditPage() {
 
       {/* Current avatar preview */}
       <div className="mb-6 flex items-center gap-4">
-        <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/15 bg-brand-500/20 flex items-center justify-center text-2xl flex-shrink-0">
+        <div className="relative h-16 w-16 overflow-hidden rounded-2xl border border-white/15 bg-brand-500/20 flex items-center justify-center text-2xl flex-shrink-0">
           {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={imageUrl} alt="Avatar" className="h-full w-full object-cover" />
+            <Image src={imageUrl} alt="Avatar" fill className="object-cover" sizes="64px" unoptimized />
           ) : (
             <span>{name?.[0]?.toUpperCase() ?? "?"}</span>
           )}
@@ -159,11 +181,32 @@ export default function ProfileEditPage() {
           />
         </div>
 
-        {/* Avatar URL */}
+        {/* Avatar upload */}
         <div>
           <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-white/40">
-            Avatar URL
+            Avatar
           </label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+            aria-label="Upload avatar image"
+            className="hidden"
+            onChange={handleAvatarFile}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/4 px-4 py-2.5 text-sm text-white/70 transition hover:border-brand-500/50 hover:text-white disabled:opacity-50"
+          >
+            {uploading ? (
+              <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            ) : (
+              <span>📁</span>
+            )}
+            {uploading ? "Uploading…" : "Upload image"}
+          </button>
           <input
             type="url"
             value={imageUrl}
@@ -172,7 +215,7 @@ export default function ProfileEditPage() {
             className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-sm text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
           />
           <p className="mt-1 text-xs text-white/25">
-            Paste a direct image URL. Upload your image to any host and paste the link here.
+            Upload a file or paste a direct image URL.
           </p>
         </div>
 

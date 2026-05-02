@@ -1,24 +1,27 @@
 {
   "framework": "nextjs",
-  "installCommand": "npm install",
-  "buildCommand": "cd apps/web && npm run build",
+  "installCommand": "npm install --include=dev",
+  "buildCommand": "npm run vercel:build",
   "outputDirectory": "apps/web/.next",
+  "crons": [
+    { "path": "/api/cron/expire-battles", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/settle-auctions", "schedule": "*/5 * * * *" }
+  ],
   "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
-      ]
-    },
     {
       "source": "/(.*)",
       "headers": [
         { "key": "X-DNS-Prefetch-Control", "value": "on" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains; preload"
+        }
       ]
     }
   ]

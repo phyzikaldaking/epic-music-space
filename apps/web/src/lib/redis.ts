@@ -4,12 +4,27 @@ const REDIS_URL = process.env.REDIS_URL;
 
 let redis: Redis | null = null;
 
+function hasUsableRedisUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const placeholderHosts = new Set(["host", "hostname", "example.com"]);
+
+    if (!["redis:", "rediss:"].includes(url.protocol)) return false;
+    if (placeholderHosts.has(url.hostname.toLowerCase())) return false;
+    if (url.password.toLowerCase() === "password") return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Returns a shared ioredis client, or null when REDIS_URL is not configured.
- * All callers must handle the null case — Redis features degrade gracefully.
+ * All callers must handle the null case; Redis features degrade gracefully.
  */
 export function getRedis(): Redis | null {
-  if (!REDIS_URL) return null;
+  if (!REDIS_URL || !hasUsableRedisUrl(REDIS_URL)) return null;
 
   if (!redis) {
     redis = new Redis(REDIS_URL, {
@@ -35,15 +50,15 @@ export function getRedis(): Redis | null {
   return redis;
 }
 
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 // Cache helpers
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 
 export const CACHE_TTL = {
-  leaderboard: 60,       // 1 minute
-  trendingSongs: 30,     // 30 seconds
-  listings: 15,          // 15 seconds
-  studioProfile: 120,    // 2 minutes
+  leaderboard: 60, // 1 minute
+  trendingSongs: 30, // 30 seconds
+  listings: 15, // 15 seconds
+  studioProfile: 120, // 2 minutes
 } as const;
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
@@ -61,7 +76,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
 export async function cacheSet(
   key: string,
   value: unknown,
-  ttlSeconds: number
+  ttlSeconds: number,
 ): Promise<void> {
   const client = getRedis();
   if (!client) return;

@@ -1,25 +1,51 @@
 {
   "name": "epic-music-space",
   "private": true,
+  "packageManager": "npm@11.11.0",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "build": "turbo run build",
+    "agent:setup": "node scripts/ops/agent-setup.mjs",
+    "agent:doctor": "node scripts/ops/agent-doctor.mjs",
+    "build": "npm run build:web && npm --workspace apps/api run build",
+    "build:ems": "npm run build",
+    "build:credit-care": "npm --workspace apps/credit-care run build",
+    "build:turbo": "turbo run build",
+    "build:web": "npm run clean:web && npx prisma generate --schema packages/db/prisma/schema.prisma && npm --workspace apps/web run build",
+    "clean:web": "rm -rf apps/web/.next",
     "dev": "turbo run dev",
+    "dev:ems": "turbo run dev --filter=@ems/*",
+    "dev:credit-care": "npm --workspace apps/credit-care run dev",
+    "env:check": "node scripts/ops/env-check.mjs",
+    "env:pull": "node scripts/ops/env-pull.mjs",
+    "env:push:preview": "node scripts/ops/env-push.mjs preview",
+    "env:push:prod": "node scripts/ops/env-push.mjs prod",
+    "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "db:generate": "turbo run db:generate",
     "db:migrate": "turbo run db:migrate",
-    "db:studio": "cd packages/db && npx prisma studio"
+    "db:deploy": "npm --workspace packages/db run db:deploy",
+    "db:seed": "npm --workspace packages/db run db:seed",
+    "db:studio": "cd packages/db && npx prisma studio",
+    "stripe:listen": "node scripts/ops/stripe-listen.mjs",
+    "supabase:link": "node scripts/ops/supabase-link.mjs",
+    "vercel:build": "npm run clean:web && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma generate --schema packages/db/prisma/schema.prisma && mkdir -p apps/web/packages/db/generated/client && find packages/db/generated/client -name '*.node' -exec cp {} apps/web/packages/db/generated/client/ \\; && npm --workspace apps/web run build"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.9.1",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.1",
+    "typescript": "^5.6.3"
   },
   "devDependencies": {
     "prettier": "^3.3.3",
-    "turbo": "^2.3.3",
-    "typescript": "^5.6.3"
+    "turbo": "^2.3.3"
   },
-  "packageManager": "yarn@1.22.22",
   "engines": {
     "node": ">=20"
   }

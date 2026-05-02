@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" role="img" aria-labelledby="title desc">
+  <title id="title">Nebula Rise cover art</title>
+  <desc id="desc">An emerald and violet nebula cresting over a dark horizon.</desc>
+  <defs>
+    <radialGradient id="nebula" cx="42%" cy="36%" r="70%">
+      <stop offset="0" stop-color="#00f5ff"/>
+      <stop offset=".34" stop-color="#5ee08c"/>
+      <stop offset=".66" stop-color="#6c5ce7"/>
+      <stop offset="1" stop-color="#040507"/>
+    </radialGradient>
+  </defs>
+  <rect width="800" height="800" fill="url(#nebula)"/>
+  <path d="M0 560 C142 500 260 530 382 488 C520 440 618 444 800 376 L800 800 L0 800 Z" fill="#05060a" opacity=".9"/>
+  <path d="M0 562 C142 500 260 530 382 488 C520 440 618 444 800 376" fill="none" stroke="#ffd700" stroke-width="7" opacity=".82"/>
+  <g fill="#ffffff" opacity=".82">
+    <circle cx="156" cy="168" r="5"/>
+    <circle cx="652" cy="142" r="4"/>
+    <circle cx="610" cy="332" r="3"/>
+    <circle cx="320" cy="256" r="3"/>
+  </g>
+  <text x="56" y="692" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="800">Nebula Rise</text>
+  <text x="58" y="736" fill="rgba(255,255,255,.72)" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700" letter-spacing="6">EMS DEMO CUE</text>
+</svg>

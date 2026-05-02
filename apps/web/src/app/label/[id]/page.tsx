@@ -1,7 +1,9 @@
+import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import LabelOfferActions from "@/components/LabelOfferActions";
+import LabelInviteForm from "@/components/LabelInviteForm";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -46,8 +48,7 @@ export default async function LabelDetailPage({ params }: Props) {
       <div className="mb-8 flex items-center gap-5">
         <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-brand-900 to-accent-600 flex items-center justify-center text-3xl">
           {label.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={label.logoUrl} alt={label.name} className="h-full w-full object-cover" />
+            <Image src={label.logoUrl} alt={label.name} fill className="object-cover" unoptimized />
           ) : (
             "🏷️"
           )}
@@ -162,15 +163,7 @@ export default async function LabelDetailPage({ params }: Props) {
       )}
 
       {/* Owner actions */}
-      {isOwner && (
-        <section className="glass rounded-2xl p-5">
-          <h3 className="mb-3 font-semibold">Label Owner Actions</h3>
-          <p className="text-sm text-white/50">
-            Use the API (<code className="text-brand-400">POST /api/labels/{id}/artists</code>) to
-            send signing offers to artists by their user ID.
-          </p>
-        </section>
-      )}
+      {isOwner && <LabelInviteForm labelId={id} />}
     </div>
   );
 }

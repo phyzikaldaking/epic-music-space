@@ -20,6 +20,21 @@ interface LeaderboardTableProps {
 }
 
 export default function LeaderboardTable({ entries, type }: LeaderboardTableProps) {
+  if (entries.length === 0) {
+    return (
+      <div className="rounded-2xl border border-white/10 py-16 text-center">
+        <p className="text-sm font-semibold text-white/30">
+          {type === "songs" ? "No songs on the leaderboard yet." : "No artists on the leaderboard yet."}
+        </p>
+        <p className="mt-1 text-xs text-white/20">
+          {type === "songs"
+            ? "Upload tracks and sell licenses to appear here."
+            : "Artists appear here once they have sold licenses."}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/10">
       <table className="w-full text-sm">
@@ -31,7 +46,11 @@ export default function LeaderboardTable({ entries, type }: LeaderboardTableProp
             </th>
             {type === "songs" && (
               <>
-                <th className="px-4 py-3 text-left">EMS Score</th>
+                <th className="px-4 py-3 text-left">
+                  <span title="Composite score based on license sales, streams, battle wins, and AI sentiment">
+                    EMS Score ⓘ
+                  </span>
+                </th>
                 <th className="px-4 py-3 text-left">Licenses Sold</th>
               </>
             )}
@@ -57,6 +76,10 @@ export default function LeaderboardTable({ entries, type }: LeaderboardTableProp
                       <img
                         src={(entry.coverUrl ?? entry.image)!}
                         alt={entry.title ?? entry.name ?? ""}
+                        width={80}
+                        height={80}
+                        loading="lazy"
+                        decoding="async"
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -66,18 +89,22 @@ export default function LeaderboardTable({ entries, type }: LeaderboardTableProp
                   <div>
                     {type === "songs" ? (
                       <a
-                        href={`/studio/${entry.id}`}
+                        href={`/track/${entry.id}`}
                         className="font-medium text-brand-400 hover:underline"
                       >
                         {entry.title}
                       </a>
-                    ) : (
+                    ) : entry.username ? (
                       <a
-                        href={entry.username ? `/studio/${entry.username}` : "#"}
+                        href={`/studio/${entry.username}`}
                         className="font-medium text-brand-400 hover:underline"
                       >
-                        {entry.name ?? "Unknown Artist"}
+                        {entry.name ?? entry.username}
                       </a>
+                    ) : (
+                      <span className="font-medium text-white/60">
+                        {entry.name ?? "Unknown Artist"}
+                      </span>
                     )}
                     {entry.artist && (
                       <p className="text-xs text-white/40">{entry.artist}</p>

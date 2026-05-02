@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe";
 import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
+import { getSiteUrl } from "@/lib/site";
 
 const checkoutSchema = z.object({
   songId: z.string().min(1, "songId is required"),
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = getSiteUrl();
 
   // ── Create Stripe checkout session ─────────────────────────────────────────
   const stripeSession = await stripe.checkout.sessions.create({
@@ -113,8 +114,8 @@ export async function POST(req: NextRequest) {
       },
     ],
     metadata: { songId, userId: session.user.id, quantity: String(quantity) },
-    success_url: `${baseUrl}/studio/${songId}?checkout=success`,
-    cancel_url: `${baseUrl}/studio/${songId}?checkout=cancelled`,
+    success_url: `${baseUrl}/track/${songId}?checkout=success`,
+    cancel_url: `${baseUrl}/track/${songId}?checkout=cancelled`,
   });
 
   // ── Record pending transaction ─────────────────────────────────────────────

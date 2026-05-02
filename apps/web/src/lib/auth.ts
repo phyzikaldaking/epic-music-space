@@ -4,12 +4,17 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { prisma } from "@ems/db";
+import { prisma } from "@/lib/prisma";
+import type { Role, SubscriptionTier } from "@ems/db";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
 });
+
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const googleEnabled = Boolean(googleClientId && googleClientSecret);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -19,10 +24,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     error: "/auth/signin",
   },
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
+    ...(googleEnabled
+      ? [
+          GoogleProvider({
+            clientId: googleClientId!,
+            clientSecret: googleClientSecret!,
+          }),
+        ]
+      : []),
     CredentialsProvider({
       name: "Credentials",
       credentials: {
@@ -41,11 +50,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const valid = await bcrypt.compare(
           parsed.data.password,
-          user.passwordHash
+          user.passwordHash,
         );
         if (!valid) return null;
 
-        return { id: user.id, email: user.email, name: user.name, role: user.role };
+        // Block unverified credential accounts (OAuth sets emailVerified automatically)
+        if (!user.emailVerified) {
+          throw new Error("EMAIL_NOT_VERIFIED");
+        }
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          subscriptionTier: user.subscriptionTier,
+        };
       },
     }),
   ],
@@ -53,16 +73,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        // @ts-expect-error role is a custom field
         token.role = user.role;
+        token.subscriptionTier = user.subscriptionTier;
       }
       return token;
     },
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string;
-        // @ts-expect-error role is a custom field
-        session.user.role = token.role;
+        session.user.role = token.role as Role;
+        session.user.subscriptionTier = token.subscriptionTier as SubscriptionTier | undefined;
       }
       return session;
     },

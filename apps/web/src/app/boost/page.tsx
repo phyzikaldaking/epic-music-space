@@ -1,9 +1,18 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getTierLimits } from "@/lib/tierLimits";
+import { redirect } from "next/navigation";
 import BoostPurchaseSection from "./BoostPurchaseSection";
 
 export default async function BoostPage() {
   const session = await auth();
+
+  if (session?.user?.id) {
+    const tier = session.user.subscriptionTier ?? "FREE";
+    if (!getTierLimits(tier).canBoost) {
+      redirect("/pricing?reason=boost");
+    }
+  }
 
   // Fetch artist's songs if logged in
   let songs: { id: string; title: string; boostScore: number; aiScore: number }[] = [];
@@ -14,6 +23,8 @@ export default async function BoostPage() {
       orderBy: { createdAt: "desc" },
     });
   }
+
+  const boostedCount = await prisma.song.count({ where: { boostScore: { gt: 0 } } });
 
   const packages = [
     {
@@ -68,11 +79,9 @@ export default async function BoostPage() {
           Invest in visibility. Every boost drives real plays and elevates your track on the EMS ranking algorithm.
         </p>
         <div className="mt-6 flex items-center justify-center gap-6 text-sm text-white/40">
-          <span><span className="text-brand-400 font-bold">2,847</span> tracks boosted</span>
+          <span><span className="text-brand-400 font-bold">{boostedCount.toLocaleString()}</span> tracks boosted</span>
           <span>•</span>
-          <span><span className="text-accent-400 font-bold">94%</span> see rank improvement</span>
-          <span>•</span>
-          <span><span className="text-gold font-bold">$128K</span> in boosts this month</span>
+          <span>Real plays. Real ranking impact.</span>
         </div>
       </div>
 

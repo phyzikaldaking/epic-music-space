@@ -1,10 +1,3 @@
-/**
- * EMS Badge Award Utility
- *
- * Idempotent — safe to call multiple times; @@unique([userId, type]) in the
- * schema prevents duplicates at the DB level too.
- */
-
 import { prisma } from "./prisma";
 
 // Re-export the enum type from Prisma so callers don't import from @ems/db
@@ -88,7 +81,7 @@ export async function awardBadge(userId: string, type: BadgeType) {
 }
 
 /**
- * Check invite milestone badges for a user.
+ * Check invite milestone badges and issue actual rewards for a user.
  * Call this after a new user registers with their invite code.
  */
 export async function checkInviteMilestones(inviterId: string) {
@@ -96,9 +89,61 @@ export async function checkInviteMilestones(inviterId: string) {
     where: { createdById: inviterId, usedById: { not: null } },
   });
 
-  if (count >= 5)  await awardBadge(inviterId, "INVITE_5");
-  if (count >= 10) await awardBadge(inviterId, "INVITE_10");
-  if (count >= 50) await awardBadge(inviterId, "INVITE_50");
+  if (count >= 5) {
+    const badge = await awardBadge(inviterId, "INVITE_5");
+    if (badge) {
+      // New milestone — notify about ad credit reward
+      await prisma.notification.create({
+        data: {
+          userId: inviterId,
+          type: "MILESTONE_REWARD",
+          title: "5-invite milestone reached! 🎉",
+          body: "You've unlocked a free City Billboard ad slot. Visit /ads to claim your credit.",
+          metadata: { milestone: "INVITE_5", reward: "billboard_credit" },
+        },
+      });
+    }
+  }
+
+  if (count >= 10) {
+    const badge = await awardBadge(inviterId, "INVITE_10");
+    if (badge) {
+      // Level up their studio
+      await prisma.studio.updateMany({
+        where: { userId: inviterId },
+        data: { level: { increment: 1 } },
+      });
+      await prisma.notification.create({
+        data: {
+          userId: inviterId,
+          type: "MILESTONE_REWARD",
+          title: "10-invite milestone reached! 📢",
+          body: "Your studio level has been upgraded! Your profile now shows Premium Studio status.",
+          metadata: { milestone: "INVITE_10", reward: "studio_level_up" },
+        },
+      });
+    }
+  }
+
+  if (count >= 50) {
+    const badge = await awardBadge(inviterId, "INVITE_50");
+    if (badge) {
+      // Grant Prime subscription tier
+      await prisma.user.update({
+        where: { id: inviterId },
+        data: { subscriptionTier: "PRIME" as never },
+      });
+      await prisma.notification.create({
+        data: {
+          userId: inviterId,
+          type: "MILESTONE_REWARD",
+          title: "Legend status unlocked! 👑",
+          body: "You've been upgraded to Prime — unlimited uploads, licenses, and Versus creation. All on us.",
+          metadata: { milestone: "INVITE_50", reward: "prime_tier" },
+        },
+      });
+    }
+  }
 }
 
 /** Award EARLY_ADOPTER if total users < 1 000 */

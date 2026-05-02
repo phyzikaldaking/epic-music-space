@@ -113,6 +113,11 @@ export default function CityScene3D({ buildings }: Props) {
         ExecuteCodeAction,
         ParticleSystem,
         Texture,
+        DefaultRenderingPipeline,
+        GlowLayer,
+        Animation,
+        QuadraticEase,
+        EasingFunction,
       } = await import("@babylonjs/core");
 
       const engineInstance = new Engine(canvas, true, {
@@ -132,6 +137,13 @@ export default function CityScene3D({ buildings }: Props) {
       scene.fogStart = 70;
       scene.fogEnd = 150;
 
+      // ── Glow layer for neon bloom ─────────────────────────────────────────
+      const glowLayer = new GlowLayer("glow", scene, {
+        blurKernelSize: 64,
+        mainTextureFixedSize: 512,
+      });
+      glowLayer.intensity = 0.8;
+
       // ── Camera ────────────────────────────────────────────────────────────
       const camera = new ArcRotateCamera(
         "cam",
@@ -139,7 +151,7 @@ export default function CityScene3D({ buildings }: Props) {
         Math.PI / 3.2,
         78,
         new Vector3(0, 2, 0),
-        scene
+        scene,
       );
       camera.lowerRadiusLimit = 18;
       camera.upperRadiusLimit = 150;
@@ -148,6 +160,29 @@ export default function CityScene3D({ buildings }: Props) {
       camera.attachControl(canvas, true);
       camera.wheelPrecision = 3;
       camera.pinchPrecision = 50;
+      camera.useAutoRotationBehavior = true;
+      const autoRotation = camera.autoRotationBehavior;
+      if (autoRotation) {
+        autoRotation.idleRotationSpeed = 0.08;
+        autoRotation.idleRotationWaitTime = 3000;
+        autoRotation.idleRotationSpinupTime = 1500;
+        autoRotation.zoomStopsAnimation = true;
+      }
+
+      // ── Post-processing pipeline ─────────────────────────────────────────
+      const pipeline = new DefaultRenderingPipeline("pipeline", true, scene, [
+        camera,
+      ]);
+      pipeline.bloomEnabled = true;
+      pipeline.bloomThreshold = 0.3;
+      pipeline.bloomWeight = 0.6;
+      pipeline.bloomKernel = 64;
+      pipeline.bloomScale = 0.5;
+      pipeline.chromaticAberrationEnabled = true;
+      pipeline.chromaticAberration.aberrationAmount = 15;
+      pipeline.grainEnabled = true;
+      pipeline.grain.intensity = 8;
+      pipeline.grain.animated = true;
 
       // ── Lighting: dark night + cool moonlight ─────────────────────────────
       const ambient = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
@@ -163,7 +198,7 @@ export default function CityScene3D({ buildings }: Props) {
       const ground = MeshBuilder.CreateGround(
         "ground",
         { width: 150, height: 150 },
-        scene
+        scene,
       );
       const groundMat = new StandardMaterial("groundMat", scene);
       groundMat.diffuseColor = new Color3(0.04, 0.04, 0.055);
@@ -187,7 +222,7 @@ export default function CityScene3D({ buildings }: Props) {
         const road = MeshBuilder.CreateBox(
           `vroad_${rx}`,
           { width: ROAD_W, depth: 148, height: 0.1 },
-          scene
+          scene,
         );
         road.position.set(rx, -0.07, 0);
         road.material = roadMat;
@@ -196,7 +231,7 @@ export default function CityScene3D({ buildings }: Props) {
         const road = MeshBuilder.CreateBox(
           `hroad_${rz}`,
           { width: 148, depth: ROAD_W, height: 0.1 },
-          scene
+          scene,
         );
         road.position.set(0, -0.07, rz);
         road.material = roadMat;
@@ -211,7 +246,7 @@ export default function CityScene3D({ buildings }: Props) {
         const line = MeshBuilder.CreateBox(
           `vline_${rx}`,
           { width: 0.12, depth: 144, height: 0.12 },
-          scene
+          scene,
         );
         line.position.set(rx, 0.01, 0);
         line.material = laneMat;
@@ -220,13 +255,13 @@ export default function CityScene3D({ buildings }: Props) {
         const line = MeshBuilder.CreateBox(
           `hline_${rz}`,
           { width: 144, depth: 0.12, height: 0.12 },
-          scene
+          scene,
         );
         line.position.set(0, 0.01, rz);
         line.material = laneMat;
       }
 
-      // ── Background filler buildings (dense city feel) ──────────────────────
+      // ── Background filler buildings (dense city feel) ─────────────────────
       const bgWinMat = new StandardMaterial("bgWinMat", scene);
       bgWinMat.emissiveColor = new Color3(0.62, 0.52, 0.26);
 
@@ -244,7 +279,7 @@ export default function CityScene3D({ buildings }: Props) {
 
       function inDistrictZone(x: number, z: number): boolean {
         return districtExcludeZones.some(
-          (d) => Math.hypot(x - d.cx, z - d.cz) < d.r
+          (d) => Math.hypot(x - d.cx, z - d.cz) < d.r,
         );
       }
 
@@ -263,7 +298,7 @@ export default function CityScene3D({ buildings }: Props) {
           const bgBox = MeshBuilder.CreateBox(
             `bg_${bgSeed}`,
             { width: bw, depth: bw * (0.7 + sr(bgSeed * 5) * 0.6), height: bh },
-            scene
+            scene,
           );
           bgBox.position.set(jx, bh / 2, jz);
 
@@ -285,7 +320,7 @@ export default function CityScene3D({ buildings }: Props) {
           const winOverlay = MeshBuilder.CreateBox(
             `bgwin_${bgSeed}`,
             { width: bw * 0.8, depth: 0.045, height: winH },
-            scene
+            scene,
           );
           winOverlay.position.set(jx, bh * 0.5 + 0.1, jz + bw / 2 + 0.015);
           winOverlay.material = bgWinMat;
@@ -302,7 +337,7 @@ export default function CityScene3D({ buildings }: Props) {
                   height: 1.6 + sr(bgSeed) * 2.2,
                   tessellation: 5,
                 },
-                scene
+                scene,
               );
               ant.position.set(jx + bw * 0.28, bh + 0.85, jz + bw * 0.18);
               const antMat = new StandardMaterial(`bgantMat_${bgSeed}`, scene);
@@ -313,7 +348,7 @@ export default function CityScene3D({ buildings }: Props) {
               const wt = MeshBuilder.CreateCylinder(
                 `bgwt_${bgSeed}`,
                 { diameter: bw * 0.38, height: 0.9, tessellation: 8 },
-                scene
+                scene,
               );
               wt.position.set(jx - bw * 0.22, bh + 0.45, jz - bw * 0.22);
               const wtMat = new StandardMaterial(`bgwtMat_${bgSeed}`, scene);
@@ -333,26 +368,26 @@ export default function CityScene3D({ buildings }: Props) {
         const platform = MeshBuilder.CreateBox(
           `platform_${dk}`,
           { width: 28, depth: 28, height: 0.35 },
-          scene
+          scene,
         );
         platform.position.set(cfg.center.x, -0.07, cfg.center.z);
         const platMat = new StandardMaterial(`platMat_${dk}`, scene);
         platMat.diffuseColor = new Color3(
           cfg.platformColor.r,
           cfg.platformColor.g,
-          cfg.platformColor.b
+          cfg.platformColor.b,
         );
         platMat.emissiveColor = new Color3(
           cfg.emissive.r * 0.45,
           cfg.emissive.g * 0.45,
-          cfg.emissive.b * 0.45
+          cfg.emissive.b * 0.45,
         );
         platform.material = platMat;
 
         const ring = MeshBuilder.CreateTorus(
           `ring_${dk}`,
           { diameter: 30, thickness: 0.22, tessellation: 72 },
-          scene
+          scene,
         );
         ring.position.set(cfg.center.x, 0.08, cfg.center.z);
         ring.rotation.x = Math.PI / 2;
@@ -363,17 +398,17 @@ export default function CityScene3D({ buildings }: Props) {
         const distLight = new PointLight(
           `light_${dk}`,
           new Vector3(cfg.center.x, 10, cfg.center.z),
-          scene
+          scene,
         );
         distLight.diffuse = new Color3(
           cfg.lightColor.r,
           cfg.lightColor.g,
-          cfg.lightColor.b
+          cfg.lightColor.b,
         );
         distLight.specular = new Color3(
           cfg.lightColor.r,
           cfg.lightColor.g,
-          cfg.lightColor.b
+          cfg.lightColor.b,
         );
         distLight.intensity = 1.8;
         distLight.range = 55;
@@ -401,7 +436,7 @@ export default function CityScene3D({ buildings }: Props) {
         wm.emissiveColor = new Color3(
           Math.min(1, cfg.color.r * 0.35 + 0.58),
           Math.min(1, cfg.color.g * 0.35 + 0.55),
-          Math.min(1, cfg.color.b * 0.25 + 0.28)
+          Math.min(1, cfg.color.b * 0.25 + 0.28),
         );
         distWinMats[dk] = wm;
       }
@@ -428,7 +463,7 @@ export default function CityScene3D({ buildings }: Props) {
           const box = MeshBuilder.CreateBox(
             `building_${b.username}`,
             { width: bw, depth: bdepth, height },
-            scene
+            scene,
           );
           box.position.set(px, height / 2, pz);
 
@@ -436,16 +471,26 @@ export default function CityScene3D({ buildings }: Props) {
           mat.diffuseColor = new Color3(
             cfg.color.r * 0.5,
             cfg.color.g * 0.5,
-            cfg.color.b * 0.5
+            cfg.color.b * 0.5,
           );
           mat.emissiveColor = new Color3(cfg.emissive.r, cfg.emissive.g, cfg.emissive.b);
           mat.specularColor = new Color3(
             cfg.color.r * 0.35,
             cfg.color.g * 0.35,
-            cfg.color.b * 0.35
+            cfg.color.b * 0.35,
           );
           mat.specularPower = 28;
           box.material = mat;
+
+          // Cyberpunk edge outline
+          box.enableEdgesRendering();
+          box.edgesWidth = 2.5;
+          box.edgesColor = new Color4(
+            cfg.color.r,
+            cfg.color.g,
+            cfg.color.b,
+            0.6,
+          );
 
           // ── Window strips (front + back faces, per floor) ──────────────────
           const wm = distWinMats[dk];
@@ -458,7 +503,7 @@ export default function CityScene3D({ buildings }: Props) {
             const wFront = MeshBuilder.CreateBox(
               `wf_${b.username}_${fl}`,
               { width: bw * 0.82, depth: 0.04, height: 0.28 },
-              scene
+              scene,
             );
             wFront.position.set(px, wy, pz + bdepth / 2 + 0.02);
             wFront.material = wm;
@@ -466,7 +511,7 @@ export default function CityScene3D({ buildings }: Props) {
             const wBack = MeshBuilder.CreateBox(
               `wb_${b.username}_${fl}`,
               { width: bw * 0.82, depth: 0.04, height: 0.28 },
-              scene
+              scene,
             );
             wBack.position.set(px, wy, pz - bdepth / 2 - 0.02);
             wBack.material = wm;
@@ -478,12 +523,12 @@ export default function CityScene3D({ buildings }: Props) {
             signMat.emissiveColor = new Color3(
               Math.min(1, cfg.color.r * 0.5 + 0.5),
               Math.min(1, cfg.color.g * 0.4 + 0.3),
-              Math.min(1, cfg.color.b * 0.6 + 0.4)
+              Math.min(1, cfg.color.b * 0.6 + 0.4),
             );
             const sign = MeshBuilder.CreateBox(
               `sign_${b.username}`,
               { width: bw * 0.65, depth: 0.07, height: 0.55 },
-              scene
+              scene,
             );
             sign.position.set(px, height * 0.55, pz + bdepth / 2 + 0.05);
             sign.material = signMat;
@@ -493,7 +538,7 @@ export default function CityScene3D({ buildings }: Props) {
           const cap = MeshBuilder.CreateBox(
             `cap_${b.username}`,
             { width: bw + 0.2, depth: bdepth + 0.2, height: 0.22 },
-            scene
+            scene,
           );
           cap.position.set(px, height + 0.11, pz);
           const capMat = new StandardMaterial(`capMat_${b.username}`, scene);
@@ -508,7 +553,7 @@ export default function CityScene3D({ buildings }: Props) {
               const ant = MeshBuilder.CreateCylinder(
                 `ant_${b.username}`,
                 { diameterTop: 0.04, diameterBottom: 0.09, height: antHeight, tessellation: 6 },
-                scene
+                scene,
               );
               ant.position.set(px + bw * 0.35, height + antHeight / 2, pz + bw * 0.3);
               const antMat = new StandardMaterial(`antMat_${b.username}`, scene);
@@ -520,12 +565,12 @@ export default function CityScene3D({ buildings }: Props) {
               const blink = MeshBuilder.CreateSphere(
                 `blink_${b.username}`,
                 { diameter: 0.22, segments: 4 },
-                scene
+                scene,
               );
               blink.position.set(
                 px + bw * 0.35,
                 height + antHeight + 0.12,
-                pz + bw * 0.3
+                pz + bw * 0.3,
               );
               const blinkMat = new StandardMaterial(`blinkMat_${b.username}`, scene);
               blinkMat.emissiveColor = new Color3(1, 0.1, 0.05);
@@ -535,7 +580,7 @@ export default function CityScene3D({ buildings }: Props) {
               const wt = MeshBuilder.CreateCylinder(
                 `wt_${b.username}`,
                 { diameter: bw * 0.4, height: 1.1, tessellation: 8 },
-                scene
+                scene,
               );
               wt.position.set(px - bw * 0.28, height + 0.55, pz - bw * 0.28);
               const wtMat = new StandardMaterial(`wtMat_${b.username}`, scene);
@@ -546,7 +591,7 @@ export default function CityScene3D({ buildings }: Props) {
               const wtLeg = MeshBuilder.CreateCylinder(
                 `wtleg_${b.username}`,
                 { diameter: 0.1, height: 0.6, tessellation: 4 },
-                scene
+                scene,
               );
               wtLeg.position.set(px - bw * 0.28, height + 0.3, pz - bw * 0.28);
               wtLeg.material = wtMat;
@@ -567,8 +612,8 @@ export default function CityScene3D({ buildings }: Props) {
                 scene.getTransformMatrix(),
                 camera.viewport.toGlobal(
                   engineInstance.getRenderWidth(),
-                  engineInstance.getRenderHeight()
-                )
+                  engineInstance.getRenderHeight(),
+                ),
               );
               tooltipRef.current = {
                 visible: true,
@@ -581,13 +626,14 @@ export default function CityScene3D({ buildings }: Props) {
                 username: building.username,
               };
               updateTooltipDOM(tooltipRef.current);
+
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (box.material as any).emissiveColor = new Color3(
                 cfg.color.r * 0.5,
                 cfg.color.g * 0.5,
-                cfg.color.b * 0.5
+                cfg.color.b * 0.5,
               );
-            })
+            }),
           );
 
           box.actionManager.registerAction(
@@ -598,15 +644,58 @@ export default function CityScene3D({ buildings }: Props) {
               (box.material as any).emissiveColor = new Color3(
                 cfg.emissive.r,
                 cfg.emissive.g,
-                cfg.emissive.b
+                cfg.emissive.b,
               );
-            })
+            }),
           );
 
           box.actionManager.registerAction(
             new ExecuteCodeAction(ActionManager.OnPickTrigger, () => {
-              router.push(`/studio/${b.username}`);
-            })
+              // Fly camera toward building then navigate
+              const flyTarget = box.position.clone();
+              flyTarget.y = Math.max(2, box.position.y * 0.6);
+
+              const ease = new QuadraticEase();
+              ease.setEasingMode(EasingFunction.EASINGMODE_EASEOUT);
+
+              const flyCam = new Animation(
+                "flyCam",
+                "target",
+                60,
+                Animation.ANIMATIONTYPE_VECTOR3,
+                Animation.ANIMATIONLOOPMODE_CONSTANT,
+              );
+              flyCam.setKeys([
+                { frame: 0, value: camera.target.clone() },
+                { frame: 60, value: flyTarget },
+              ]);
+              flyCam.setEasingFunction(ease);
+
+              const flyRadius = new Animation(
+                "flyRadius",
+                "radius",
+                60,
+                Animation.ANIMATIONTYPE_FLOAT,
+                Animation.ANIMATIONLOOPMODE_CONSTANT,
+              );
+              flyRadius.setKeys([
+                { frame: 0, value: camera.radius },
+                { frame: 60, value: Math.max(12, box.position.y * 2.5) },
+              ]);
+              flyRadius.setEasingFunction(ease);
+
+              scene.beginDirectAnimation(
+                camera,
+                [flyCam, flyRadius],
+                0,
+                60,
+                false,
+                1,
+                () => {
+                  router.push(`/studio/${b.username}`);
+                },
+              );
+            }),
           );
         });
       }
@@ -621,11 +710,11 @@ export default function CityScene3D({ buildings }: Props) {
       globeMat.diffuseColor = new Color3(0.75, 0.62, 0.3);
 
       const lampDefs: [number, number][] = [
-        [-9, -26], [9, -26], [-9, -14], [9, -14],         // around LABEL_ROW
-        [-31, 5], [-13, 5], [-31, 23], [-13, 23],          // around DOWNTOWN_PRIME
-        [13, 5], [31, 5], [13, 23], [31, 23],              // around INDIE_BLOCKS
-        [-44, -40], [-26, -40], [8, -40], [26, -40],       // outer edge row
-        [-44, 14], [44, 14], [-26, 32], [26, 32],          // mid city
+        [-9, -26], [9, -26], [-9, -14], [9, -14],        // around LABEL_ROW
+        [-31, 5], [-13, 5], [-31, 23], [-13, 23],         // around DOWNTOWN_PRIME
+        [13, 5], [31, 5], [13, 23], [31, 23],             // around INDIE_BLOCKS
+        [-44, -40], [-26, -40], [8, -40], [26, -40],      // outer edge row
+        [-44, 14], [44, 14], [-26, 32], [26, 32],         // mid city
       ];
 
       for (let li = 0; li < lampDefs.length; li++) {
@@ -635,7 +724,7 @@ export default function CityScene3D({ buildings }: Props) {
         const pole = MeshBuilder.CreateCylinder(
           `lp_${li}`,
           { diameter: 0.14, height: poleH, tessellation: 6 },
-          scene
+          scene,
         );
         pole.position.set(lx, poleH / 2, lz);
         pole.material = poleMat;
@@ -643,7 +732,7 @@ export default function CityScene3D({ buildings }: Props) {
         const arm = MeshBuilder.CreateBox(
           `la_${li}`,
           { width: 1.6, depth: 0.1, height: 0.1 },
-          scene
+          scene,
         );
         arm.position.set(lx + 0.8, poleH - 0.28, lz);
         arm.material = poleMat;
@@ -651,7 +740,7 @@ export default function CityScene3D({ buildings }: Props) {
         const globe = MeshBuilder.CreateSphere(
           `lg_${li}`,
           { diameter: 0.52, segments: 6 },
-          scene
+          scene,
         );
         globe.position.set(lx + 1.52, poleH - 0.44, lz);
         globe.material = globeMat;
@@ -661,7 +750,7 @@ export default function CityScene3D({ buildings }: Props) {
           const pl = new PointLight(
             `ll_${li}`,
             new Vector3(lx + 1.52, poleH - 0.6, lz),
-            scene
+            scene,
           );
           pl.diffuse = new Color3(1, 0.76, 0.36);
           pl.specular = new Color3(0.75, 0.55, 0.2);
@@ -691,18 +780,18 @@ export default function CityScene3D({ buildings }: Props) {
       }
 
       const CAR_DEFS: CarDef[] = [
-        { axis: "z", lane: -44,  startPos: -55, dir:  1, speed: 0.22 },
-        { axis: "z", lane: -42,  startPos:  18, dir: -1, speed: 0.17 },
-        { axis: "z", lane: -26,  startPos: -35, dir:  1, speed: 0.15 },
-        { axis: "z", lane: -24,  startPos:  32, dir: -1, speed: 0.25 },
-        { axis: "z", lane:  10,  startPos:  42, dir: -1, speed: 0.20 },
-        { axis: "z", lane:   8,  startPos: -12, dir:  1, speed: 0.18 },
-        { axis: "z", lane:  28,  startPos:   5, dir:  1, speed: 0.21 },
-        { axis: "x", lane: -40,  startPos: -52, dir:  1, speed: 0.19 },
-        { axis: "x", lane: -38,  startPos:  14, dir: -1, speed: 0.23 },
-        { axis: "x", lane:  -3,  startPos:  32, dir: -1, speed: 0.16 },
-        { axis: "x", lane:  -5,  startPos: -22, dir:  1, speed: 0.26 },
-        { axis: "x", lane:  15,  startPos:  22, dir:  1, speed: 0.18 },
+        { axis: "z", lane: -44, startPos: -55, dir:  1, speed: 0.22 },
+        { axis: "z", lane: -42, startPos:  18, dir: -1, speed: 0.17 },
+        { axis: "z", lane: -26, startPos: -35, dir:  1, speed: 0.15 },
+        { axis: "z", lane: -24, startPos:  32, dir: -1, speed: 0.25 },
+        { axis: "z", lane:  10, startPos:  42, dir: -1, speed: 0.20 },
+        { axis: "z", lane:   8, startPos: -12, dir:  1, speed: 0.18 },
+        { axis: "z", lane:  28, startPos:   5, dir:  1, speed: 0.21 },
+        { axis: "x", lane: -40, startPos: -52, dir:  1, speed: 0.19 },
+        { axis: "x", lane: -38, startPos:  14, dir: -1, speed: 0.23 },
+        { axis: "x", lane:  -3, startPos:  32, dir: -1, speed: 0.16 },
+        { axis: "x", lane:  -5, startPos: -22, dir:  1, speed: 0.26 },
+        { axis: "x", lane:  15, startPos:  22, dir:  1, speed: 0.18 },
       ];
 
       type CarState = {
@@ -720,7 +809,7 @@ export default function CityScene3D({ buildings }: Props) {
         const carBody = MeshBuilder.CreateBox(
           `carBody_${ci}`,
           { width: 1.3, depth: 2.5, height: 0.58 },
-          scene
+          scene,
         );
         carBody.material = carBodyMat;
 
@@ -728,7 +817,7 @@ export default function CityScene3D({ buildings }: Props) {
         const carTop = MeshBuilder.CreateBox(
           `carTop_${ci}`,
           { width: 1.05, depth: 1.2, height: 0.42 },
-          scene
+          scene,
         );
         carTop.parent = carBody;
         carTop.position.set(0, 0.5, 0.1);
@@ -738,7 +827,7 @@ export default function CityScene3D({ buildings }: Props) {
         const hl = MeshBuilder.CreateBox(
           `hl_${ci}`,
           { width: 0.62, depth: 0.06, height: 0.15 },
-          scene
+          scene,
         );
         hl.parent = carBody;
         hl.position.set(0, -0.05, 1.24);
@@ -748,7 +837,7 @@ export default function CityScene3D({ buildings }: Props) {
         const tl = MeshBuilder.CreateBox(
           `tl_${ci}`,
           { width: 0.62, depth: 0.06, height: 0.13 },
-          scene
+          scene,
         );
         tl.parent = carBody;
         tl.position.set(0, -0.05, -1.24);
@@ -770,7 +859,7 @@ export default function CityScene3D({ buildings }: Props) {
       const stars = new ParticleSystem("stars", 1000, scene);
       stars.particleTexture = new Texture(
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAH0lEQVQI12NkYGD4z8BQDwAEgAF/QualIQAAAABJRU5ErkJggg==",
-        scene
+        scene,
       );
       stars.emitter = new Vector3(0, 0, 0);
       stars.minEmitBox = new Vector3(-90, 35, -90);
@@ -813,7 +902,7 @@ export default function CityScene3D({ buildings }: Props) {
           orb.color.r * 0.38,
           orb.color.g * 0.38,
           orb.color.b * 0.38,
-          0.22
+          0.22,
         );
         orbPs.colorDead = new Color4(0, 0, 0, 0);
         orbPs.minSize = 0.22;
@@ -830,6 +919,75 @@ export default function CityScene3D({ buildings }: Props) {
         orbPs.updateSpeed = 0.014;
         orbPs.start();
       }
+
+      // ── Digital spark trails (GTA 2k vibe) ────────────────────────────────
+      const sparkTrails = new ParticleSystem("sparks", 300, scene);
+      sparkTrails.particleTexture = stars.particleTexture;
+      sparkTrails.emitter = new Vector3(0, 25, 0);
+      sparkTrails.minEmitBox = new Vector3(-60, 0, -60);
+      sparkTrails.maxEmitBox = new Vector3(60, 0, 60);
+      sparkTrails.color1 = new Color4(0.42, 0.36, 0.9, 1);
+      sparkTrails.color2 = new Color4(0, 0.96, 1, 1);
+      sparkTrails.colorDead = new Color4(0, 0, 0, 0);
+      sparkTrails.minSize = 0.05;
+      sparkTrails.maxSize = 0.15;
+      sparkTrails.minLifeTime = 1.5;
+      sparkTrails.maxLifeTime = 3;
+      sparkTrails.emitRate = 60;
+      sparkTrails.blendMode = ParticleSystem.BLENDMODE_ADD;
+      sparkTrails.gravity = new Vector3(0, -15, 0);
+      sparkTrails.direction1 = new Vector3(-0.5, -3, -0.5);
+      sparkTrails.direction2 = new Vector3(0.5, -5, 0.5);
+      sparkTrails.minEmitPower = 1;
+      sparkTrails.maxEmitPower = 3;
+      sparkTrails.updateSpeed = 0.02;
+      sparkTrails.start();
+
+      // ── District scan beams ───────────────────────────────────────────────
+      const scanBeam = new ParticleSystem("scanBeam", 100, scene);
+      scanBeam.particleTexture = stars.particleTexture;
+      scanBeam.emitter = new Vector3(0, 0, 0);
+      scanBeam.minEmitBox = new Vector3(-50, 0, -50);
+      scanBeam.maxEmitBox = new Vector3(50, 0, 50);
+      scanBeam.color1 = new Color4(0.42, 0.36, 0.9, 0.4);
+      scanBeam.color2 = new Color4(0, 0.96, 1, 0.3);
+      scanBeam.colorDead = new Color4(0, 0, 0, 0);
+      scanBeam.minSize = 2;
+      scanBeam.maxSize = 8;
+      scanBeam.minLifeTime = 2;
+      scanBeam.maxLifeTime = 4;
+      scanBeam.emitRate = 8;
+      scanBeam.blendMode = ParticleSystem.BLENDMODE_ADD;
+      scanBeam.gravity = new Vector3(0, 2, 0);
+      scanBeam.direction1 = new Vector3(0, 1, 0);
+      scanBeam.direction2 = new Vector3(0, 1, 0);
+      scanBeam.minEmitPower = 0.5;
+      scanBeam.maxEmitPower = 1.5;
+      scanBeam.updateSpeed = 0.01;
+      scanBeam.start();
+
+      // ── Ambient floating data particles ───────────────────────────────────
+      const dataParticles = new ParticleSystem("data", 200, scene);
+      dataParticles.particleTexture = stars.particleTexture;
+      dataParticles.emitter = new Vector3(0, 15, 0);
+      dataParticles.minEmitBox = new Vector3(-70, -5, -70);
+      dataParticles.maxEmitBox = new Vector3(70, 25, 70);
+      dataParticles.color1 = new Color4(1, 1, 1, 0.15);
+      dataParticles.color2 = new Color4(0.5, 0.5, 0.8, 0.1);
+      dataParticles.colorDead = new Color4(0, 0, 0, 0);
+      dataParticles.minSize = 0.02;
+      dataParticles.maxSize = 0.06;
+      dataParticles.minLifeTime = 6;
+      dataParticles.maxLifeTime = 10;
+      dataParticles.emitRate = 25;
+      dataParticles.blendMode = ParticleSystem.BLENDMODE_ADD;
+      dataParticles.gravity = new Vector3(0, 0.05, 0);
+      dataParticles.direction1 = new Vector3(-0.1, 0.1, -0.1);
+      dataParticles.direction2 = new Vector3(0.1, 0.2, 0.1);
+      dataParticles.minEmitPower = 0.02;
+      dataParticles.maxEmitPower = 0.08;
+      dataParticles.updateSpeed = 0.008;
+      dataParticles.start();
 
       // ── Render loop ───────────────────────────────────────────────────────
       const CAR_RANGE = 66;
@@ -856,14 +1014,22 @@ export default function CityScene3D({ buildings }: Props) {
       return () => {
         window.removeEventListener("resize", handleResize);
         stars.dispose();
+        sparkTrails.dispose();
+        scanBeam.dispose();
+        dataParticles.dispose();
         engineInstance.dispose();
       };
     }
 
     let cleanup: (() => void) | undefined;
-    initScene().then((fn) => {
-      cleanup = fn;
-    });
+    initScene()
+      .then((fn) => {
+        cleanup = fn;
+      })
+      .catch((err) => {
+        // Surface WebGL/Babylon init failures to the ErrorBoundary above
+        throw err;
+      });
 
     return () => {
       cleanup?.();

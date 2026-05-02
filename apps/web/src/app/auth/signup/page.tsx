@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
 import { Suspense } from "react";
 
 const ROLES = [
@@ -84,13 +83,7 @@ function SignUpContent() {
       return;
     }
 
-    await signIn("credentials", {
-      email: form.email,
-      password: form.password,
-      redirect: false,
-    });
-
-    router.push("/dashboard");
+    router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}`);
   }
 
   return (

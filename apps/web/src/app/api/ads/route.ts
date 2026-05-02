@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { z } from "zod";
+import { getSiteUrl } from "@/lib/site";
 
 const createAdSchema = z.object({
   location: z.enum([
@@ -59,9 +60,23 @@ export async function POST(req: NextRequest) {
   const dailyRate = AD_PRICES[location] ?? 99;
   const totalPrice = dailyRate * days;
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = getSiteUrl();
 
-  // Create Stripe checkout for ad purchase
+  // Create pending ad record first so we can pass its ID to Stripe metadata
+  const ad = await prisma.adPlacement.create({
+    data: {
+      location: location as Parameters<typeof prisma.adPlacement.create>[0]["data"]["location"],
+      title,
+      mediaUrl,
+      linkUrl,
+      ownerId: session.user.id,
+      price: totalPrice,
+      startDate: start,
+      endDate: end,
+      isActive: false, // activated after payment via webhook
+    },
+  });
+
   const stripeSession = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
@@ -80,31 +95,11 @@ export async function POST(req: NextRequest) {
     ],
     metadata: {
       type: "AD_PURCHASE",
+      adId: ad.id,
       userId: session.user.id,
-      location,
-      title,
-      mediaUrl,
-      linkUrl: linkUrl ?? "",
-      startDate,
-      endDate,
     },
     success_url: `${baseUrl}/ads?purchased=true`,
     cancel_url: `${baseUrl}/ads`,
-  });
-
-  // Create pending ad record
-  const ad = await prisma.adPlacement.create({
-    data: {
-      location: location as Parameters<typeof prisma.adPlacement.create>[0]["data"]["location"],
-      title,
-      mediaUrl,
-      linkUrl,
-      ownerId: session.user.id,
-      price: totalPrice,
-      startDate: start,
-      endDate: end,
-      isActive: false, // activated after payment
-    },
   });
 
   return NextResponse.json({ checkoutUrl: stripeSession.url, adId: ad.id }, { status: 201 });

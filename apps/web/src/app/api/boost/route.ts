@@ -5,12 +5,14 @@ import { stripe } from "@/lib/stripe";
 import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
+import { getSiteUrl } from "@/lib/site";
+import { getTierLimits } from "@/lib/tierLimits";
 
 // ─────────────────────────────────────────────────────────
 // Boost package definitions
 // ─────────────────────────────────────────────────────────
 
-export const BOOST_PACKAGES = {
+const BOOST_PACKAGES = {
   plays_1k: {
     id: "plays_1k",
     label: "1,000 Plays",
@@ -36,8 +38,6 @@ export const BOOST_PACKAGES = {
     durationDays: 7,
   },
 } as const;
-
-export type BoostPackageId = keyof typeof BOOST_PACKAGES;
 
 const boostSchema = z.object({
   songId: z.string().min(1, "songId is required"),
@@ -86,6 +86,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Enforce tier: only PRO and above can purchase boosts
+  const tier = session.user.subscriptionTier ?? "FREE";
+  if (!getTierLimits(tier).canBoost) {
+    return NextResponse.json(
+      { error: "Boost purchases require a Pro plan or higher. Upgrade at /pricing." },
+      { status: 403 },
+    );
+  }
+
   let rawBody: unknown;
   try {
     rawBody = await req.json();
@@ -116,7 +125,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = getSiteUrl();
 
   // Create Stripe checkout session for the boost
   const stripeSession = await stripe.checkout.sessions.create({
@@ -152,7 +161,7 @@ export async function POST(req: NextRequest) {
       userId: session.user.id,
       songId,
       amount: pkg.priceUsd,
-      type: "REVENUE_PAYOUT", // reusing enum; semantically a "platform spend"
+      type: "BOOST",
       status: "PENDING",
       stripeSessionId: stripeSession.id,
       metadata: { type: "boost", packageId, boostPoints: pkg.boostPoints },

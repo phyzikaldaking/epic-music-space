@@ -1,12 +1,15 @@
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { formatPrice } from "@ems/utils";
 import { BADGE_META } from "@/lib/badges";
+import { getSiteUrl } from "@/lib/site";
 
 export default async function DashboardPage() {
   const session = await auth();
-  if (!session) redirect("/auth/signin");
+  if (!session?.user?.id) redirect("/auth/signin");
+  const siteUrl = getSiteUrl();
 
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: session.user.id },
@@ -28,6 +31,23 @@ export default async function DashboardPage() {
       },
       studio: { select: { username: true } },
       badges: { orderBy: { awardedAt: "desc" } },
+      auctionsCreated: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: {
+          song: { select: { id: true, title: true } },
+          _count: { select: { bids: true } },
+        },
+      },
+      auctionBids: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: {
+          auction: {
+            include: { song: { select: { id: true, title: true } } },
+          },
+        },
+      },
     },
   });
 
@@ -86,8 +106,7 @@ export default async function DashboardPage() {
     {
       label: "Licenses held",
       value: user.licenses.length.toString(),
-      icon: "🎟️",
-      accent: "brand",
+      icon: "01",
       border: "border-brand-500/30",
       bg: "bg-brand-500/8",
       textColor: "text-brand-400",
@@ -95,8 +114,7 @@ export default async function DashboardPage() {
     {
       label: "Total invested",
       value: formatPrice(totalInvested),
-      icon: "💸",
-      accent: "gold",
+      icon: "02",
       border: "border-gold-500/30",
       bg: "bg-gold-500/6",
       textColor: "text-gold-400",
@@ -106,8 +124,7 @@ export default async function DashboardPage() {
           {
             label: "Songs uploaded",
             value: user.songs.length.toString(),
-            icon: "🎵",
-            accent: "cyan",
+            icon: "03",
             border: "border-accent-500/30",
             bg: "bg-accent-500/6",
             textColor: "text-accent-400",
@@ -115,8 +132,7 @@ export default async function DashboardPage() {
           {
             label: "Licenses sold",
             value: totalSongsSold.toString(),
-            icon: "📈",
-            accent: "gold",
+            icon: "04",
             border: "border-gold-500/30",
             bg: "bg-gold-500/6",
             textColor: "text-gold-400",
@@ -126,8 +142,7 @@ export default async function DashboardPage() {
           {
             label: "Account type",
             value: user.role,
-            icon: "👤",
-            accent: "brand",
+            icon: "03",
             border: "border-white/15",
             bg: "bg-white/4",
             textColor: "text-white/70",
@@ -136,59 +151,63 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a]">
-      {/* Ambient glow top */}
-      <div className="pointer-events-none fixed top-0 left-1/2 -translate-x-1/2 h-[400px] w-[800px] rounded-full bg-brand-500/10 blur-[120px]" />
-
-      <div className="relative mx-auto max-w-7xl px-4 py-12">
+    <div className="min-h-screen bg-[#050509]">
+      <div className="mx-auto max-w-7xl px-4 py-10">
         {/* ── Header ──────────────────────────────────── */}
-        <div className="mb-10 flex items-start justify-between">
+        <div className="mb-10 flex flex-col gap-6 border-b border-white/10 pb-8 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-sm text-white/40 mb-1">Welcome back</p>
-            <h1 className="text-3xl font-extrabold">
+            <p className="mb-3 border-l-2 border-accent-400 pl-3 text-xs font-black uppercase tracking-[0.24em] text-accent-300">
+              Workspace
+            </p>
+            <h1 className="text-4xl font-black tracking-tight md:text-5xl">
               {user.name ?? user.email}
-              <span className="ml-3 rounded-full bg-brand-500/15 border border-brand-500/30 px-3 py-0.5 text-sm font-semibold text-brand-400">
+            </h1>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/42">
+              <span className="rounded-md border border-white/12 px-2.5 py-1">
                 {user.role}
               </span>
-            </h1>
+              {user.studio && (
+                <span className="rounded-md border border-white/12 px-2.5 py-1">
+                  @{user.studio.username}
+                </span>
+              )}
+            </div>
           </div>
           {user.role !== "LISTENER" && (
-            <a
+            <Link
               href="/studio/new"
-              className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 glow-purple-sm"
+              className="inline-flex h-11 items-center justify-center rounded-md bg-white px-5 text-sm font-black text-[#050509] transition hover:bg-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
             >
-              + Upload Song
-            </a>
+              Upload song
+            </Link>
           )}
         </div>
 
         {/* ── Studio setup prompt (artists without a studio) ─────────────── */}
         {isArtist && !user.studio && (
-          <div className="mb-8 flex items-center gap-4 rounded-2xl border border-brand-500/40 bg-brand-500/8 px-6 py-5">
-            <span className="text-3xl flex-shrink-0">🏠</span>
+          <div className="mb-8 flex flex-col gap-4 rounded-lg border border-brand-500/30 bg-brand-500/8 px-5 py-5 sm:flex-row sm:items-center">
             <div className="flex-1">
               <p className="font-semibold text-brand-300">Set up your artist studio</p>
               <p className="text-sm text-white/45 mt-0.5">
                 Claim your studio username so fans can find and follow you.
               </p>
             </div>
-            <a
+            <Link
               href="/profile/edit"
-              className="flex-shrink-0 rounded-xl bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600 transition glow-purple-sm"
+              className="flex-shrink-0 rounded-md bg-white px-5 py-2 text-sm font-black text-[#050509] transition hover:bg-accent-300"
             >
-              Set up studio →
-            </a>
+              Set up studio
+            </Link>
           </div>
         )}
 
         {/* ── Stripe Connect payout setup prompt ──────── */}
         {isArtist && !connectStatus.onboardingComplete && (
-          <div className={`mb-8 flex items-center gap-4 rounded-2xl border px-6 py-5 ${
+          <div className={`mb-8 flex flex-col gap-4 rounded-lg border px-5 py-5 sm:flex-row sm:items-center ${
             connectStatus.connected
               ? "border-yellow-500/40 bg-yellow-500/6"
               : "border-gold-500/40 bg-gold-500/6"
           }`}>
-            <span className="text-3xl flex-shrink-0">💸</span>
             <div className="flex-1">
               <p className={`font-semibold ${connectStatus.connected ? "text-yellow-300" : "text-gold-300"}`}>
                 {connectStatus.connected ? "Complete payout setup" : "Set up payouts to get paid"}
@@ -199,44 +218,51 @@ export default async function DashboardPage() {
                   : "Connect Stripe to receive 90% of every license sale directly to your bank account."}
               </p>
             </div>
-            <a
-              href="/api/stripe-connect/onboarding"
-              className={`flex-shrink-0 rounded-xl px-5 py-2 text-sm font-bold text-white transition ${
+            <Link
+              href="/dashboard/payouts"
+              className={`flex-shrink-0 rounded-md px-5 py-2 text-sm font-black transition ${
                 connectStatus.connected
-                  ? "bg-yellow-600 hover:bg-yellow-700"
-                  : "bg-gold-500 hover:bg-gold-600"
+                  ? "bg-yellow-400 text-[#090a0f] hover:bg-yellow-300"
+                  : "bg-gold-400 text-[#090a0f] hover:bg-gold-300"
               }`}
             >
-              {connectStatus.connected ? "Continue setup →" : "Set up payouts →"}
-            </a>
+              {connectStatus.connected ? "Continue setup" : "Set up payouts"}
+            </Link>
           </div>
         )}
         {isArtist && connectStatus.onboardingComplete && (
-          <div className="mb-8 flex items-center gap-4 rounded-2xl border border-green-500/30 bg-green-500/6 px-6 py-5">
-            <span className="text-3xl flex-shrink-0">✅</span>
+          <div className="mb-8 flex flex-col gap-4 rounded-lg border border-green-500/30 bg-green-500/6 px-5 py-5 sm:flex-row sm:items-center">
             <div className="flex-1">
               <p className="font-semibold text-green-300">Payouts enabled</p>
               <p className="text-sm text-white/45 mt-0.5">
                 You receive 90% of every license sale automatically via Stripe.
               </p>
             </div>
+            <Link
+              href="/dashboard/payouts"
+              className="flex-shrink-0 rounded-md border border-green-500/30 bg-green-700/50 px-5 py-2 text-sm font-bold text-green-300 transition hover:bg-green-700/70"
+            >
+              Manage payouts
+            </Link>
           </div>
         )}
 
         {/* ── Stat cards ──────────────────────────────── */}
-        <div className="mb-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-12 grid gap-px overflow-hidden rounded-lg border border-white/10 bg-white/10 sm:grid-cols-2 lg:grid-cols-4">
           {STAT_CARDS.map((stat) => (
             <div
               key={stat.label}
-              className={`rounded-2xl border ${stat.border} ${stat.bg} p-5 transition card-hover-neon`}
+              className="bg-[#0a0b10] p-5"
             >
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/35">
                   {stat.label}
                 </p>
-                <span className="text-xl">{stat.icon}</span>
+                <span className="text-xs font-black text-white/24">{stat.icon}</span>
               </div>
-              <p className={`stat-number ${stat.textColor}`}>{stat.value}</p>
+              <p className={`text-3xl font-black leading-none ${stat.textColor}`}>
+                {stat.value}
+              </p>
             </div>
           ))}
         </div>
@@ -255,12 +281,12 @@ export default async function DashboardPage() {
             <div className="rounded-2xl border border-white/8 bg-[#141414] p-10 text-center">
               <p className="mb-2 text-4xl">🎟️</p>
               <p className="font-semibold text-white/50">No licenses yet.</p>
-              <a
+              <Link
                 href="/marketplace"
                 className="mt-3 inline-block rounded-xl bg-brand-500/15 border border-brand-500/30 px-5 py-2 text-sm font-semibold text-brand-400 hover:bg-brand-500/25 transition"
               >
                 Browse the marketplace →
-              </a>
+              </Link>
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
@@ -281,12 +307,12 @@ export default async function DashboardPage() {
                       className="border-b border-white/5 transition hover:bg-white/3"
                     >
                       <td className="px-5 py-3.5">
-                        <a
-                          href={`/studio/${l.song.id}`}
+                        <Link
+                          href={`/track/${l.song.id}`}
                           className="font-semibold text-brand-400 hover:underline"
                         >
                           {l.song.title}
-                        </a>
+                        </Link>
                         <div className="text-xs text-white/35">{l.song.artist}</div>
                       </td>
                       <td className="px-5 py-3.5 font-mono text-white/60">
@@ -322,12 +348,12 @@ export default async function DashboardPage() {
           <section className="mb-12">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-xl font-bold">My Songs</h2>
-              <a
+              <Link
                 href="/studio/new"
                 className="rounded-lg bg-brand-500/15 border border-brand-500/30 px-4 py-1.5 text-sm font-semibold text-brand-400 hover:bg-brand-500/25 transition"
               >
                 + Upload song
-              </a>
+              </Link>
             </div>
             {user.songs.length === 0 ? (
               <div className="rounded-2xl border border-white/8 bg-[#141414] p-10 text-center text-white/40">
@@ -355,12 +381,12 @@ export default async function DashboardPage() {
                         className="border-b border-white/5 transition hover:bg-white/3"
                       >
                         <td className="px-5 py-3.5">
-                          <a
-                            href={`/studio/${s.id}`}
+                          <Link
+                            href={`/track/${s.id}`}
                             className="font-semibold text-brand-400 hover:underline"
                           >
                             {s.title}
-                          </a>
+                          </Link>
                         </td>
                         <td className="px-5 py-3.5">
                           <span className={`font-bold ${s.aiScore >= 80 ? "text-gold-400" : s.aiScore >= 50 ? "text-brand-400" : "text-white/40"}`}>
@@ -389,6 +415,114 @@ export default async function DashboardPage() {
                 </table>
               </div>
             )}
+          </section>
+        )}
+
+        {/* ── Artist: My Auctions ─────────────────────── */}
+        {user.role !== "LISTENER" && user.auctionsCreated.length > 0 && (
+          <section className="mb-12">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-xl font-bold">🔨 My Auctions</h2>
+              <Link
+                href="/auctions"
+                className="text-sm text-brand-400 hover:underline"
+              >
+                Browse all →
+              </Link>
+            </div>
+            <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+              <table className="w-full text-sm">
+                <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
+                  <tr>
+                    <th className="px-5 py-3.5 text-left">Song</th>
+                    <th className="px-5 py-3.5 text-left">Status</th>
+                    <th className="px-5 py-3.5 text-left">Current Bid</th>
+                    <th className="px-5 py-3.5 text-left">Bids</th>
+                    <th className="px-5 py-3.5 text-left">Ends</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {user.auctionsCreated.map((a) => (
+                    <tr key={a.id} className="border-b border-white/5 hover:bg-white/3 transition">
+                      <td className="px-5 py-3.5">
+                        <Link href={`/auctions/${a.id}`} className="font-semibold text-brand-400 hover:underline">
+                          {a.song.title}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold border ${a.status === "ACTIVE" ? "bg-green-500/15 text-green-400 border-green-500/25" : a.status === "SETTLED" ? "bg-brand-500/15 text-brand-400 border-brand-500/25" : "bg-white/8 text-white/40 border-white/10"}`}>
+                          {a.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-gold-400 font-semibold">
+                        {a.currentBid != null ? formatPrice(a.currentBid) : formatPrice(a.startingBid)}
+                      </td>
+                      <td className="px-5 py-3.5 text-white/60">{a._count.bids}</td>
+                      <td className="px-5 py-3.5 text-white/40 text-xs">
+                        {new Date(a.endsAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* ── My Bids ──────────────────────────────────── */}
+        {user.auctionBids.length > 0 && (
+          <section className="mb-12">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-xl font-bold">🎯 My Bids</h2>
+              <Link href="/auctions" className="text-sm text-brand-400 hover:underline">
+                Browse all →
+              </Link>
+            </div>
+            <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+              <table className="w-full text-sm">
+                <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
+                  <tr>
+                    <th className="px-5 py-3.5 text-left">Auction</th>
+                    <th className="px-5 py-3.5 text-left">Your Bid</th>
+                    <th className="px-5 py-3.5 text-left">Current</th>
+                    <th className="px-5 py-3.5 text-left">Status</th>
+                    <th className="px-5 py-3.5 text-left">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {user.auctionBids.map((b) => {
+                    const isLeading = b.auction.currentBid != null && Number(b.amount) >= Number(b.auction.currentBid);
+                    return (
+                      <tr key={b.id} className="border-b border-white/5 hover:bg-white/3 transition">
+                        <td className="px-5 py-3.5">
+                          <Link href={`/auctions/${b.auction.id}`} className="font-semibold text-brand-400 hover:underline">
+                            {b.auction.song.title}
+                          </Link>
+                        </td>
+                        <td className="px-5 py-3.5 text-gold-400 font-semibold">{formatPrice(b.amount)}</td>
+                        <td className="px-5 py-3.5 text-white/60">
+                          {b.auction.currentBid != null ? formatPrice(b.auction.currentBid) : "—"}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {b.auction.status === "ACTIVE" ? (
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold border ${isLeading ? "bg-green-500/15 text-green-400 border-green-500/25" : "bg-red-500/15 text-red-400 border-red-500/25"}`}>
+                              {isLeading ? "Leading" : "Outbid"}
+                            </span>
+                          ) : (
+                            <span className="rounded-full px-2.5 py-0.5 text-xs font-bold bg-white/8 text-white/40 border border-white/10">
+                              {b.auction.status}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-white/40 text-xs">
+                          {new Date(b.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
 
@@ -426,9 +560,9 @@ export default async function DashboardPage() {
         <section className="mb-12">
           <div className="mb-5 flex items-center justify-between">
             <h2 className="text-xl font-bold">🔗 Invite Friends</h2>
-            <a href="/invite" className="text-sm text-brand-400 hover:underline">
+            <Link href="/invite" className="text-sm text-brand-400 hover:underline">
               View full invite page →
-            </a>
+            </Link>
           </div>
           {inviteData ? (
             <div className="rounded-2xl border border-white/8 bg-[#141414] p-6">
@@ -437,14 +571,14 @@ export default async function DashboardPage() {
               </p>
               <div className="flex items-center gap-3 mb-5">
                 <code className="flex-1 rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm font-mono text-brand-300">
-                  {`${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/auth/signup?invite=${inviteData.code}`}
+                  {`${siteUrl}/auth/signup?invite=${inviteData.code}`}
                 </code>
-                <a
+                <Link
                   href="/invite"
                   className="flex-shrink-0 rounded-xl bg-brand-500 px-4 py-3 text-sm font-bold text-white hover:bg-brand-600 transition"
                 >
                   Copy & Share
-                </a>
+                </Link>
               </div>
               <div>
                 <div className="mb-1 flex justify-between text-xs text-white/40">
@@ -503,9 +637,9 @@ export default async function DashboardPage() {
                     return (
                       <tr key={s.id} className="border-b border-white/5 transition hover:bg-white/3">
                         <td className="px-5 py-3.5">
-                          <a href={`/studio/${s.id}`} className="font-semibold text-brand-400 hover:underline">
+                          <Link href={`/track/${s.id}`} className="font-semibold text-brand-400 hover:underline">
                             {s.title}
-                          </a>
+                          </Link>
                         </td>
                         <td className="px-5 py-3.5 text-white/60">
                           {s.soldLicenses} / {s.totalLicenses}

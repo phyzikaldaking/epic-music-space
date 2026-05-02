@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe, STRIPE_WEBHOOK_SECRET } from "@/lib/stripe";
+import { stripe, getStripeWebhookSecret } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { enqueueNotification } from "@/lib/queues";
 import { awardBadge } from "@/lib/badges";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
+import { track } from "@/lib/analytics";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -11,15 +12,11 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const signature = req.headers.get("stripe-signature");
-
-  if (!signature) {
-    return NextResponse.json({ error: "Missing signature" }, { status: 400 });
-  }
+  if (!signature) return NextResponse.json({ error: "Missing signature" }, { status: 400 });
 
   let event: Stripe.Event;
-
   try {
-    event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
+    event = stripe.webhooks.constructEvent(body, signature, getStripeWebhookSecret());
   } catch (err) {
     console.error("[stripe-webhook] Invalid signature", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
@@ -30,43 +27,38 @@ export async function POST(req: NextRequest) {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.mode === "payment") {
         const sessionType = session.metadata?.type;
-        if (sessionType === "boost") {
-          await handleBoostCheckoutCompleted(session);
-        } else {
-          await handleLicenseCheckoutCompleted(session);
-        }
+        if (sessionType === "PLACEMENT_BID") await handlePlacementBidCompleted(session);
+        else if (sessionType === "boost") await handleBoostCheckoutCompleted(session);
+        else if (sessionType === "tip") await handleTipCheckoutCompleted(session);
+        else if (sessionType === "auction_win") await handleAuctionWinCheckoutCompleted(session);
+        else if (sessionType === "AD_PURCHASE") await handleAdPurchaseCompleted(session);
+        else await handleLicenseCheckoutCompleted(session);
       } else if (session.mode === "subscription") {
         await handleSubscriptionCheckoutCompleted(session);
       }
       break;
     }
-
     case "checkout.session.expired": {
       const session = event.data.object as Stripe.Checkout.Session;
       await handleCheckoutExpired(session);
       break;
     }
-
     case "payment_intent.payment_failed": {
       const pi = event.data.object as Stripe.PaymentIntent;
       await handlePaymentIntentFailed(pi);
       break;
     }
-
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
       const sub = event.data.object as Stripe.Subscription;
       await handleSubscriptionChange(sub, event.type);
       break;
     }
-
-    // Stripe Connect account updated — mark onboarding complete
     case "account.updated": {
       const account = event.data.object as Stripe.Account;
       await handleConnectAccountUpdated(account);
       break;
     }
-
     default:
       break;
   }
@@ -74,388 +66,153 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ received: true });
 }
 
-// ─────────────────────────────────────────────────────────
-// License purchase
-// ─────────────────────────────────────────────────────────
-
-async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) {
-  const { songId, userId } = session.metadata ?? {};
-  if (!songId || !userId) {
-    console.error("[stripe-webhook] Missing metadata", session.metadata);
+async function handlePlacementBidCompleted(session: Stripe.Checkout.Session) {
+  const { songId, userId, bidPower, amountUsd, placement } = session.metadata ?? {};
+  if (!songId || !userId || !bidPower || !amountUsd) {
+    console.error("[stripe-webhook] PLACEMENT_BID missing metadata", session.metadata);
     return;
   }
 
-  // Idempotency check
-  const existing = await prisma.transaction.findUnique({
-    where: { stripeSessionId: session.id },
-  });
+  const existing = await prisma.transaction.findUnique({ where: { stripeSessionId: session.id } });
   if (existing?.status === "SUCCEEDED") return;
 
-  // Atomic: increment soldLicenses and create license token
-  await prisma.$transaction(async (tx) => {
-    const song = await tx.song.findUniqueOrThrow({
+  const power = Number(bidPower);
+  if (!Number.isFinite(power) || power <= 0) {
+    console.error("[stripe-webhook] Invalid PLACEMENT_BID power", bidPower);
+    return;
+  }
+
+  const song = await prisma.$transaction(async (tx) => {
+    const updated = await tx.song.update({
       where: { id: songId },
-      include: { artist_: { select: { id: true, stripeConnectId: true } } },
+      data: { boostScore: { increment: power } },
+      select: { id: true, title: true, artist: true, artistId: true, aiScore: true, boostScore: true },
     });
 
-    if (song.soldLicenses >= song.totalLicenses) {
-      throw new Error("Song is sold out");
-    }
-
-    const tokenNumber = song.soldLicenses + 1;
-    const licensePrice = Number(song.licensePrice);
-
-    const [licenseToken] = await Promise.all([
-      tx.licenseToken.create({
-        data: {
-          songId,
-          holderId: userId,
-          tokenNumber,
-          price: song.licensePrice,
-          status: "ACTIVE",
-        },
-      }),
-      tx.song.update({
-        where: { id: songId },
-        data: { soldLicenses: { increment: 1 } },
-      }),
-    ]);
-
-    await tx.transaction.update({
-      where: { stripeSessionId: session.id },
+    await tx.transaction.updateMany({
+      where: { stripeSessionId: session.id, userId, songId },
       data: {
         status: "SUCCEEDED",
         stripePaymentIntentId: session.payment_intent as string | undefined,
-        licenseTokenId: licenseToken.id,
+        metadata: { type: "PLACEMENT_BID", placement, bidPower: power, amountUsd: Number(amountUsd) },
       },
     });
 
-    // Revenue split: artist gets 90%, platform keeps 10%
-    const artistShare = parseFloat((licensePrice * 0.9).toFixed(2));
-    const period = new Date().toISOString().slice(0, 7); // e.g. "2026-04"
-
-    // Create pending payout record for the artist
-    await tx.payout.create({
-      data: {
-        userId: song.artistId,
-        songId,
-        licenseTokenId: licenseToken.id,
-        amount: artistShare,
-        period,
-        status: "PENDING",
-      },
-    });
-
-    // If artist has Stripe Connect, attempt automatic transfer
-    const connectId = song.artist_.stripeConnectId;
-    if (connectId) {
-      try {
-        const amountCents = Math.round(artistShare * 100);
-        if (amountCents >= 100) {
-          await stripe.transfers.create({
-            amount: amountCents,
-            currency: "usd",
-            destination: connectId,
-            metadata: {
-              emsUserId: song.artistId,
-              songId,
-              licenseTokenId: licenseToken.id,
-            },
-          });
-          await tx.payout.updateMany({
-            where: { songId, userId: song.artistId, licenseTokenId: licenseToken.id },
-            data: { status: "PAID", paidAt: new Date() },
-          });
-        }
-      } catch (err) {
-        console.error("[stripe-webhook] Transfer failed (will retry via manual payout)", err);
-      }
-    }
-
-    // Notify buyer
-    await enqueueNotification({
-      userId,
-      type: "LICENSE_PURCHASED",
-      title: "License acquired! 🎵",
-      body: `You now hold license #${tokenNumber} for "${song.title}". You'll earn ${String(song.revenueSharePct)}% of every future sale.`,
-      metadata: { songId, tokenNumber },
-    });
-
-    // Notify artist
-    await enqueueNotification({
-      userId: song.artistId,
-      type: "LICENSE_SOLD",
-      title: "License sold! 💰",
-      body: `License #${tokenNumber} of "${song.title}" was purchased. $${artistShare.toFixed(2)} payout ${connectId ? "sent" : "pending Connect setup"}.`,
-      metadata: { songId, tokenNumber, buyerId: userId },
-    });
-  });
-
-  // Award badges outside the transaction (non-critical)
-  await Promise.allSettled([
-    awardBadge(userId, "LICENSE_HOLDER"),
-    // Check if this is the artist's first sale
-    (async () => {
-      const song = await prisma.song.findUnique({ where: { id: songId }, select: { artistId: true, soldLicenses: true } });
-      if (song && song.soldLicenses === 1) {
-        await awardBadge(song.artistId, "FIRST_LICENSE_SOLD");
-      }
-    })(),
-  ]);
-
-  // Broadcast license sold event to realtime listeners
-  const supabase = createServerSupabaseClient();
-  if (supabase) {
-    const song = await prisma.song.findUnique({
-      where: { id: songId },
-      select: { title: true, artist: true, coverUrl: true, soldLicenses: true },
-    });
-    if (song) {
-      const payload = {
-        songId,
-        title: song.title,
-        artist: song.artist,
-        coverUrl: song.coverUrl ?? null,
-        soldLicenses: song.soldLicenses,
-      };
-      await Promise.allSettled([
-        supabase.channel(CHANNELS.marketplace).send({
-          type: "broadcast",
-          event: "license_sold",
-          payload,
-        }),
-        supabase.channel(CHANNELS.leaderboard).send({
-          type: "broadcast",
-          event: "scores_updated",
-          payload: { songId },
-        }),
-      ]);
-    }
-  }
-
-  console.log(`[stripe-webhook] License granted: song=${songId} user=${userId}`);
-}
-
-// ─────────────────────────────────────────────────────────
-// Subscription purchase
-// ─────────────────────────────────────────────────────────
-
-async function handleSubscriptionCheckoutCompleted(
-  session: Stripe.Checkout.Session
-) {
-  const { userId, tier } = session.metadata ?? {};
-  if (!userId || !tier) {
-    console.error("[stripe-webhook] Missing subscription metadata", session.metadata);
-    return;
-  }
-
-  // Persist customer ID on the transaction record for the billing portal
-  await prisma.transaction.create({
-    data: {
-      userId,
-      amount: 0,
-      type: "REVENUE_PAYOUT", // reuse existing enum; extend later for SUBSCRIPTION
-      status: "SUCCEEDED",
-      stripeSessionId: session.id,
-      stripePaymentIntentId: session.subscription as string | null ?? undefined,
-      metadata: {
-        stripeCustomerId: session.customer as string,
-        tier,
-        subscriptionId: session.subscription,
-      },
-    },
+    return updated;
   });
 
   await enqueueNotification({
     userId,
-    type: "SUBSCRIPTION_ACTIVATED",
-    title: `${tier.charAt(0).toUpperCase() + tier.slice(1)} plan activated! 🚀`,
-    body: `Welcome to EMS ${tier.charAt(0).toUpperCase() + tier.slice(1)}. Your new features are live.`,
-    metadata: { tier },
+    type: "BOOST_ACTIVATED",
+    title: "Bid accepted — placement power added! ⚡",
+    body: `Your bid added ${power} placement power to "${song.title}". Current rank score: ${(song.aiScore + song.boostScore).toFixed(1)}.`,
+    metadata: { songId, bidPower: power, placement },
   });
 
-  console.log(`[stripe-webhook] Subscription activated: user=${userId} tier=${tier}`);
-}
-
-// ─────────────────────────────────────────────────────────
-// Subscription lifecycle
-// ─────────────────────────────────────────────────────────
-
-async function handleSubscriptionChange(
-  sub: Stripe.Subscription,
-  eventType: string
-) {
-  const customerId = sub.customer as string;
-
-  // Find user by stored customer ID
-  const tx = await prisma.transaction.findFirst({
-    where: {
-      metadata: {
-        path: ["stripeCustomerId"],
-        equals: customerId,
-      },
-    },
-    select: { userId: true },
-  });
-
-  if (!tx) {
-    console.warn(`[stripe-webhook] No user found for customer ${customerId}`);
-    return;
-  }
-
-  const isCancelled =
-    eventType === "customer.subscription.deleted" ||
-    sub.status === "canceled" ||
-    sub.status === "unpaid";
-
-  if (isCancelled) {
-    await enqueueNotification({
-      userId: tx.userId,
-      type: "SUBSCRIPTION_CANCELLED",
-      title: "Subscription cancelled",
-      body: "Your EMS subscription has ended. You can re-subscribe at any time from the pricing page.",
+  const supabase = createServerSupabaseClient();
+  if (supabase) {
+    await supabase.channel(CHANNELS.leaderboard).send({
+      type: "broadcast",
+      event: "bid_finalized",
+      payload: { songId, title: song.title, artist: song.artist, bidPower: power, rankScore: song.aiScore + song.boostScore },
     });
   }
 
-  console.log(`[stripe-webhook] Subscription ${eventType}: customer=${customerId}`);
+  track({ event: "placement_bid_paid", userId, properties: { songId, amount: Number(amountUsd), placement, bidPower: power } });
+  console.log(`[stripe-webhook] Placement bid finalized: song=${songId} user=${userId} power=${power}`);
 }
 
-// ─────────────────────────────────────────────────────────
-// Boost purchase
-// ─────────────────────────────────────────────────────────
+async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const { songId, userId } = session.metadata ?? {};
+  if (!songId || !userId) return;
+  const existing = await prisma.transaction.findUnique({ where: { stripeSessionId: session.id } });
+  if (existing?.status === "SUCCEEDED") return;
+  await prisma.transaction.updateMany({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
+}
 
+const TIER_MAP: Record<string, string> = { starter: "STARTER", pro: "PRO", prime: "PRIME", team: "TEAM", label: "LABEL_TIER" };
+const PRICE_TO_TIER: Record<string, string> = {
+  ...(process.env.STRIPE_PRICE_ID_STARTER ? { [process.env.STRIPE_PRICE_ID_STARTER]: "STARTER" } : {}),
+  ...(process.env.STRIPE_PRICE_ID_PRO ? { [process.env.STRIPE_PRICE_ID_PRO]: "PRO" } : {}),
+  ...(process.env.STRIPE_PRICE_ID_PRIME ? { [process.env.STRIPE_PRICE_ID_PRIME]: "PRIME" } : {}),
+  ...(process.env.STRIPE_PRICE_ID_TEAM ? { [process.env.STRIPE_PRICE_ID_TEAM]: "TEAM" } : {}),
+  ...(process.env.STRIPE_PRICE_ID_LABEL ? { [process.env.STRIPE_PRICE_ID_LABEL]: "LABEL_TIER" } : {}),
+};
+function getTierFromSubscription(sub: Stripe.Subscription) {
+  for (const item of sub.items.data) {
+    const tier = PRICE_TO_TIER[item.price.id];
+    if (tier) return tier;
+  }
+  return null;
+}
+async function handleSubscriptionCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const { userId, tier } = session.metadata ?? {};
+  if (!userId || !tier) return;
+  const subscriptionId = typeof session.subscription === "string" ? session.subscription : (session.subscription?.id ?? null);
+  const customerId = typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null);
+  await prisma.user.update({ where: { id: userId }, data: { subscriptionTier: (TIER_MAP[tier] ?? "STARTER") as never, ...(customerId ? { stripeCustomerId: customerId } : {}) } });
+  await prisma.transaction.create({ data: { userId, amount: 0, type: "SUBSCRIPTION", status: "SUCCEEDED", stripeSessionId: session.id, stripePaymentIntentId: subscriptionId ?? undefined, metadata: { stripeCustomerId: customerId, tier, subscriptionId } } });
+}
+async function handleSubscriptionChange(sub: Stripe.Subscription, eventType: string) {
+  const customerId = sub.customer as string;
+  const user = await prisma.user.findUnique({ where: { stripeCustomerId: customerId }, select: { id: true } });
+  if (!user?.id) return;
+  if (eventType === "customer.subscription.deleted" || sub.status === "canceled" || sub.status === "unpaid") {
+    await prisma.user.update({ where: { id: user.id }, data: { subscriptionTier: "FREE" as never } });
+    return;
+  }
+  const tier = getTierFromSubscription(sub);
+  if (tier && ["active", "trialing"].includes(sub.status)) await prisma.user.update({ where: { id: user.id }, data: { subscriptionTier: tier as never } });
+}
 async function handleBoostCheckoutCompleted(session: Stripe.Checkout.Session) {
   const { songId, userId, boostPoints } = session.metadata ?? {};
-  if (!songId || !userId || !boostPoints) {
-    console.error("[stripe-webhook] Missing boost metadata", session.metadata);
-    return;
-  }
-
-  // Idempotency check
-  const existing = await prisma.transaction.findUnique({
-    where: { stripeSessionId: session.id },
-  });
+  if (!songId || !userId || !boostPoints) return;
+  const existing = await prisma.transaction.findUnique({ where: { stripeSessionId: session.id } });
   if (existing?.status === "SUCCEEDED") return;
-
   const points = Number(boostPoints);
-  if (isNaN(points) || points <= 0) {
-    console.error("[stripe-webhook] Invalid boostPoints", boostPoints);
+  await prisma.$transaction(async (tx) => {
+    await tx.song.update({ where: { id: songId }, data: { boostScore: { increment: points } } });
+    await tx.transaction.update({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
+  });
+}
+async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
+  await prisma.transaction.updateMany({ where: { stripeSessionId: session.id, status: "PENDING" }, data: { status: "FAILED" } });
+}
+async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
+  await prisma.transaction.updateMany({ where: { stripePaymentIntentId: pi.id }, data: { status: "FAILED" } });
+}
+async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
+  await prisma.transaction.updateMany({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
+}
+async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Session) {
+  await prisma.transaction.updateMany({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
+}
+async function handleAdPurchaseCompleted(session: Stripe.Checkout.Session) {
+  const { adId, userId } = session.metadata ?? {};
+  if (!adId || !userId) {
+    console.error("[stripe-webhook] AD_PURCHASE missing metadata", session.metadata);
     return;
   }
 
-  await prisma.$transaction(async (tx) => {
-    // Increment song's boostScore (cap at 100)
-    const song = await tx.song.findUniqueOrThrow({ where: { id: songId } });
-    const newBoostScore = Math.min(100, song.boostScore + points);
-
-    await tx.song.update({
-      where: { id: songId },
-      data: { boostScore: newBoostScore },
+  try {
+    const result = await prisma.adPlacement.updateMany({
+      where: { id: adId, ownerId: userId },
+      data: { isActive: true },
     });
 
-    await tx.transaction.update({
-      where: { stripeSessionId: session.id },
-      data: {
-        status: "SUCCEEDED",
-        stripePaymentIntentId: session.payment_intent as string | undefined,
-      },
-    });
+    if (result.count === 0) {
+      console.warn(`[stripe-webhook] AD_PURCHASE: no matching ad found adId=${adId} userId=${userId}`);
+      return;
+    }
 
-    await enqueueNotification({
-      userId,
-      type: "BOOST_ACTIVATED",
-      title: "Boost activated! 🚀",
-      body: `Your track "${song.title}" has been boosted. It will receive increased visibility immediately.`,
-      metadata: { songId, boostPoints: points },
-    });
-  });
-
-  console.log(`[stripe-webhook] Boost granted: song=${songId} user=${userId} points=${boostPoints}`);
+    console.log(`[stripe-webhook] AD_PURCHASE: activated ad ${adId} for user ${userId}`);
+  } catch (err) {
+    console.error("[stripe-webhook] AD_PURCHASE: failed to activate ad", err);
+    throw err;
+  }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Checkout expired (abandoned) — mark PENDING → FAILED
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
-  const tx = await prisma.transaction.findUnique({
-    where: { stripeSessionId: session.id },
-    select: { id: true, status: true, userId: true },
-  });
-
-  if (!tx || tx.status !== "PENDING") return;
-
-  await prisma.transaction.update({
-    where: { id: tx.id },
-    data: { status: "FAILED" },
-  });
-
-  await enqueueNotification({
-    userId: tx.userId,
-    type: "PAYMENT_FAILED",
-    title: "Checkout expired",
-    body: "Your checkout session expired before payment was completed. Your card was not charged. Visit the Marketplace to try again.",
-    metadata: { stripeSessionId: session.id },
-  });
-
-  console.log(`[stripe-webhook] Checkout expired: session=${session.id} tx=${tx.id}`);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Payment intent failed — card declined, insufficient funds, etc.
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
-  const tx = await prisma.transaction.findUnique({
-    where: { stripePaymentIntentId: pi.id },
-    select: { id: true, status: true, userId: true },
-  });
-
-  if (!tx || tx.status === "SUCCEEDED") return;
-
-  await prisma.transaction.update({
-    where: { id: tx.id },
-    data: { status: "FAILED" },
-  });
-
-  const failureMsg =
-    pi.last_payment_error?.message ?? "Your payment could not be processed.";
-
-  await enqueueNotification({
-    userId: tx.userId,
-    type: "PAYMENT_FAILED",
-    title: "Payment failed",
-    body: `${failureMsg} Your card was not charged. Please try again with a different card.`,
-    metadata: { paymentIntentId: pi.id, failureCode: pi.last_payment_error?.code },
-  });
-
-  console.log(`[stripe-webhook] Payment failed: pi=${pi.id} tx=${tx.id}`);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Stripe Connect account updated
-// ─────────────────────────────────────────────────────────────────────────────
-
 async function handleConnectAccountUpdated(account: Stripe.Account) {
   const emsUserId = account.metadata?.emsUserId;
-  if (!emsUserId) {
-    console.warn("[stripe-webhook] account.updated missing emsUserId", account.id);
-    return;
-  }
-
-  // Persist the Connect account ID in case it was not stored yet
-  await prisma.user.updateMany({
-    where: { id: emsUserId },
-    data: { stripeConnectId: account.id },
-  });
-
-  if (account.charges_enabled && account.payouts_enabled && account.details_submitted) {
-    await enqueueNotification({
-      userId: emsUserId,
-      type: "CONNECT_ONBOARDING_COMPLETE",
-      title: "Payouts enabled! 💸",
-      body: "Your Stripe account is verified. You will now receive automatic payouts when licenses sell.",
-    });
-    console.log(`[stripe-webhook] Connect onboarding complete: user=${emsUserId} account=${account.id}`);
-  }
+  if (!emsUserId) return;
+  await prisma.user.updateMany({ where: { id: emsUserId }, data: { stripeConnectId: account.id } });
 }

@@ -1,14 +1,17 @@
 import { Queue } from "bullmq";
 import { getRedis } from "./redis";
+import { QUEUE_NAMES } from "./queueNames";
+import { prisma } from "./prisma";
+import type { Prisma } from "@ems/db";
 
 const connection = getRedis();
 
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 // Queue definitions
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 
 /** Only instantiate queues when Redis is available */
-function makeQueue<T extends Record<string, unknown>>(name: string) {
+function makeQueue<T>(name: string) {
   if (!connection) return null;
   return new Queue<T>(name, {
     connection,
@@ -44,13 +47,19 @@ export interface AnalyticsJobData {
   timestamp: string;
 }
 
-export const aiScoringQueue = makeQueue<AiScoringJobData>("ems:ai-scoring");
-export const notificationQueue = makeQueue<NotificationJobData>("ems:notifications");
-export const analyticsQueue = makeQueue<AnalyticsJobData>("ems:analytics");
+export const aiScoringQueue = makeQueue<AiScoringJobData>(
+  QUEUE_NAMES.aiScoring,
+);
+export const notificationQueue = makeQueue<NotificationJobData>(
+  QUEUE_NAMES.notifications,
+);
+export const analyticsQueue = makeQueue<AnalyticsJobData>(
+  QUEUE_NAMES.analytics,
+);
 
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 // Typed job enqueue helpers
-// ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------
 
 export async function enqueueAiScoring(songId: string) {
   if (!aiScoringQueue) return;
@@ -58,11 +67,31 @@ export async function enqueueAiScoring(songId: string) {
 }
 
 export async function enqueueNotification(data: NotificationJobData) {
-  if (!notificationQueue) return;
-  await notificationQueue.add("send-notification", data);
+  if (notificationQueue) {
+    await notificationQueue.add("send-notification", data);
+    return;
+  }
+  // No Redis — write directly to DB so notifications are never silently dropped
+  try {
+    await prisma.notification.create({
+      data: {
+        userId: data.userId,
+        type: data.type,
+        title: data.title,
+        body: data.body,
+        metadata: (data.metadata ?? {}) as Prisma.InputJsonValue,
+      },
+    });
+  } catch (err) {
+    console.error("[enqueueNotification] Direct DB write failed", err);
+  }
 }
 
 export async function enqueueAnalytics(data: AnalyticsJobData) {
-  if (!analyticsQueue) return;
-  await analyticsQueue.add("track", data);
+  if (analyticsQueue) {
+    await analyticsQueue.add("track", data);
+    return;
+  }
+  // No Redis — log so analytics events are not silently dropped
+  console.info("[analytics]", JSON.stringify({ ...data, queued: false }));
 }
