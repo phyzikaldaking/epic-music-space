@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import Link from "next/link";
 import AudioPlayer from "@/components/AudioPlayer";
@@ -99,10 +100,10 @@ export default function VersusResultCard({ match }: { match: Match }) {
       {(match.songA.audioUrl || match.songB.audioUrl) && (
         <div className="mb-8 grid gap-4 sm:grid-cols-2">
           {match.songA.audioUrl && (
-            <AudioPlayer audioUrl={match.songA.audioUrl} title={match.songA.title} />
+            <AudioPlayer audioUrl={match.songA.audioUrl} title={match.songA.title} songId={match.songA.id} />
           )}
           {match.songB.audioUrl && (
-            <AudioPlayer audioUrl={match.songB.audioUrl} title={match.songB.title} />
+            <AudioPlayer audioUrl={match.songB.audioUrl} title={match.songB.title} songId={match.songB.id} />
           )}
         </div>
       )}
@@ -179,8 +180,7 @@ function SongResultCard({
       {/* Cover */}
       <div className="relative h-36 w-36 overflow-hidden rounded-xl bg-gradient-to-br from-brand-900 to-accent-600 flex-shrink-0">
         {song.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={song.coverUrl} alt={song.title} className="h-full w-full object-cover" />
+          <Image src={song.coverUrl} alt={song.title} fill className="object-cover" unoptimized />
         ) : (
           <span className="flex h-full w-full items-center justify-center text-4xl">🎵</span>
         )}

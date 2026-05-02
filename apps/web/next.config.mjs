@@ -27,6 +27,9 @@ const securityHeaders = [
       "media-src 'self' blob: https://*.amazonaws.com https://*.supabase.co",
       "connect-src 'self' https://*.supabase.co https://api.openai.com https://api.stripe.com https://checkout.stripe.com",
       "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "object-src 'none'",
       "font-src 'self'",
     ].join("; "),
   },
@@ -34,10 +37,11 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
   compress: true,
   outputFileTracingRoot: path.resolve(__dirname, "../.."),
+  outputFileTracingIncludes: {
+    "/**": ["packages/db/generated/client/*.node"],
+  },
   poweredByHeader: false,
   transpilePackages: ["@ems/utils"],
   images: {

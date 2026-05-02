@@ -12,6 +12,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: [
           "/dashboard",
           "/analytics",
+          "/notifications",
           "/profile/",
           "/api/",
           "/auth/",

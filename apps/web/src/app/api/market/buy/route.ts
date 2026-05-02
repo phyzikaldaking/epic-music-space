@@ -6,6 +6,7 @@ import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
 import { getSiteUrl } from "@/lib/site";
+import { getTierLimits } from "@/lib/tierLimits";
 
 const buySchema = z.object({
   songId: z.string().min(1, "songId is required"),
@@ -57,6 +58,24 @@ export async function POST(req: NextRequest) {
   }
 
   const { songId, quantity } = parsed.data;
+
+  // ── Tier license limit check ───────────────────────────────────────────────
+  const buyer = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { subscriptionTier: true },
+  });
+  if (buyer) {
+    const limits = getTierLimits(buyer.subscriptionTier);
+    const held = await prisma.licenseToken.count({
+      where: { holderId: session.user.id, status: "ACTIVE" },
+    });
+    if (held + quantity > limits.maxLicenses) {
+      return NextResponse.json(
+        { error: `Your ${buyer.subscriptionTier} plan allows ${limits.maxLicenses} active license(s). Upgrade to buy more.` },
+        { status: 403 }
+      );
+    }
+  }
 
   // ── Fetch song ─────────────────────────────────────────────────────────────
   const song = await prisma.song.findUnique({ where: { id: songId } });

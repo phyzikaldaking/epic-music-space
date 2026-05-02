@@ -1,15 +1,5 @@
-/**
- * Analytics Worker
- *
- * Consumes jobs from the analytics BullMQ queue.
- * Currently logs events to stdout; replace with your analytics sink
- * (Mixpanel, PostHog, BigQuery, etc.) without touching queue producers.
- *
- * Run as a standalone Node.js process:
- *   `npx tsx src/workers/analytics.ts`
- */
-
 import { Worker } from "bullmq";
+import { PostHog } from "posthog-node";
 import { getRedis } from "../lib/redis";
 import { QUEUE_NAMES } from "../lib/queueNames";
 import type { AnalyticsJobData } from "../lib/queues";
@@ -17,10 +7,20 @@ import type { AnalyticsJobData } from "../lib/queues";
 const connection = getRedis();
 
 if (!connection) {
-  console.error(
-    "[analytics-worker] REDIS_URL is not set — worker cannot start",
-  );
+  console.error("[analytics-worker] REDIS_URL is not set — worker cannot start");
   process.exit(1);
+}
+
+let posthog: PostHog | null = null;
+if (process.env.POSTHOG_API_KEY) {
+  posthog = new PostHog(process.env.POSTHOG_API_KEY, {
+    host: process.env.POSTHOG_HOST ?? "https://us.i.posthog.com",
+    flushAt: 20,
+    flushInterval: 10_000,
+  });
+  console.info("[analytics-worker] PostHog sink active");
+} else {
+  console.warn("[analytics-worker] POSTHOG_API_KEY not set — logging to stdout only");
 }
 
 const worker = new Worker<AnalyticsJobData>(
@@ -28,23 +28,27 @@ const worker = new Worker<AnalyticsJobData>(
   async (job) => {
     const { event, userId, songId, metadata, timestamp } = job.data;
 
-    // Structured log for observability pipelines.
-    console.info(
-      JSON.stringify({ event, userId, songId, metadata, timestamp }),
-    );
-
-    // TODO: forward to PostHog / Mixpanel / BigQuery here
+    if (posthog && userId) {
+      posthog.capture({
+        distinctId: userId,
+        event,
+        properties: { songId, ...metadata, timestamp },
+      });
+    } else {
+      console.info(JSON.stringify({ event, userId, songId, metadata, timestamp }));
+    }
   },
-  {
-    connection,
-    concurrency: 50,
-  },
+  { connection, concurrency: 50 },
 );
 
 worker.on("failed", (job, err) => {
   console.error(`[analytics-worker] Job failed: ${job?.id}`, err.message);
 });
 
-console.info(
-  `[analytics-worker] Started listening for jobs on ${QUEUE_NAMES.analytics}`,
-);
+process.on("SIGTERM", async () => {
+  await posthog?.shutdown();
+  await worker.close();
+  process.exit(0);
+});
+
+console.info(`[analytics-worker] Started listening on ${QUEUE_NAMES.analytics}`);

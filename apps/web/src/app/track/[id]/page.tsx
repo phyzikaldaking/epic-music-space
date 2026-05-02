@@ -167,7 +167,7 @@ export default async function StudioPage({ params, searchParams }: Props) {
 
           {/* Audio preview player */}
           {song.audioUrl && (
-            <AudioPlayer audioUrl={song.audioUrl} title={song.title} />
+            <AudioPlayer audioUrl={song.audioUrl} title={song.title} songId={song.id} />
           )}
 
           {/* Licensing economics */}
