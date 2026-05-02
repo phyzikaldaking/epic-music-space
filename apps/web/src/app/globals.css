@@ -37,6 +37,64 @@
   font-family: Inter, system-ui, sans-serif;
   overflow-x: hidden;
 }
+
+.vc-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 28px;
+  background: rgba(5, 0, 9, 0.5);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid rgba(255, 45, 146, 0.22);
+}
+.vc-logo {
+  font-family: 'Audiowide', cursive;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  background: linear-gradient(180deg, #fff 0%, #ffd6ec 35%, var(--vc-hot-pink) 65%, var(--vc-purple) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-decoration: none;
+  text-shadow: 0 0 24px rgba(255, 45, 146, 0.45);
+}
+.vc-logo-mark {
+  color: var(--vc-cyan);
+  -webkit-text-fill-color: var(--vc-cyan);
+  margin-left: 4px;
+}
+.vc-nav-links {
+  display: flex;
+  gap: 24px;
+}
+.vc-nav-links a {
+  color: rgba(255, 255, 255, 0.82);
+  text-decoration: none;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.vc-nav-links a:hover {
+  color: var(--vc-cyan);
+  text-shadow: 0 0 12px var(--vc-cyan);
+}
+.vc-nav-cta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.vc-btn-nav {
+  padding: 10px 18px;
+  font-size: 10px;
+}
 .vc-page *::selection { background: var(--vc-hot-pink); color: #fff; }
 
 /* Body scanline overlay */
@@ -54,6 +112,7 @@
 .vc-hero {
   position: relative;
   min-height: calc(100vh - 65px);
+  padding-top: 65px;
   overflow: hidden;
   background: #050009;
 }
@@ -64,21 +123,21 @@
   height: 100%;
   object-fit: cover;
   z-index: 1;
-  opacity: 0.95;
-  filter: brightness(0.62) contrast(1.15) saturate(1.5) hue-rotate(-8deg);
+  opacity: 1;
+  filter: brightness(0.78) contrast(1.1) saturate(1.25) hue-rotate(-6deg);
   animation: vc-photo-breathe 9s ease-in-out infinite alternate;
   pointer-events: none;
 }
 @keyframes vc-photo-breathe {
-  0%   { filter: brightness(0.58) contrast(1.15) saturate(1.5) hue-rotate(-8deg); }
-  100% { filter: brightness(0.7)  contrast(1.18) saturate(1.6) hue-rotate(-5deg); }
+  0%   { filter: brightness(0.74) contrast(1.08) saturate(1.22) hue-rotate(-7deg); }
+  100% { filter: brightness(0.84) contrast(1.12) saturate(1.3) hue-rotate(-4deg); }
 }
 .vc-studio-tint {
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  background: linear-gradient(135deg, rgba(255,45,146,0.28) 0%, rgba(34,211,238,0.22) 100%);
+  background: linear-gradient(135deg, rgba(255,45,146,0.2) 0%, rgba(34,211,238,0.14) 100%);
   mix-blend-mode: color;
 }
 .vc-studio-overlay {
@@ -87,10 +146,10 @@
   z-index: 2;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 55% at 50% 100%, rgba(255,45,146,0.45) 0%, transparent 65%),
-    radial-gradient(ellipse 55% 40% at 18% 8%, rgba(34,211,238,0.28) 0%, transparent 55%),
-    radial-gradient(ellipse 55% 40% at 82% 8%, rgba(168,85,247,0.28) 0%, transparent 55%),
-    linear-gradient(180deg, rgba(10,4,32,0.4) 0%, rgba(10,4,32,0) 22%, rgba(10,4,32,0) 65%, rgba(255,122,0,0.18) 78%, rgba(26,5,48,0.85) 95%, rgba(5,0,9,1) 100%);
+    radial-gradient(ellipse 80% 55% at 50% 100%, rgba(255,45,146,0.28) 0%, transparent 65%),
+    radial-gradient(ellipse 55% 40% at 18% 8%, rgba(34,211,238,0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 40% at 82% 8%, rgba(168,85,247,0.16) 0%, transparent 55%),
+    linear-gradient(180deg, rgba(10,4,32,0.22) 0%, rgba(10,4,32,0.02) 22%, rgba(10,4,32,0.08) 65%, rgba(255,122,0,0.14) 78%, rgba(26,5,48,0.62) 95%, rgba(5,0,9,0.92) 100%);
 }
 .vc-studio-scan {
   position: absolute;
@@ -131,8 +190,8 @@
   background-size: 80px 80px;
   z-index: 3;
   animation: vc-gridScroll 4s linear infinite;
-  mask: linear-gradient(180deg, transparent 0%, #000 30%, #000 100%);
   -webkit-mask: linear-gradient(180deg, transparent 0%, #000 30%, #000 100%);
+  mask: linear-gradient(180deg, transparent 0%, #000 30%, #000 100%);
 }
 @keyframes vc-gridScroll {
   0% { background-position: 0 0; }
@@ -341,6 +400,7 @@
   width: 56px; height: 56px; border-radius: 50%;
   background: rgba(255,255,255,0.14);
   border: 1.5px solid rgba(255,255,255,0.6);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   display: flex; align-items: center; justify-content: center;
   transition: all 0.2s;
@@ -525,6 +585,16 @@
   .vc-lb-grid, .vc-split-grid, .vc-feat-grid { grid-template-columns: 1fr; gap: 32px; }
   .vc-section { padding: 80px 24px; }
   .vc-palm-left, .vc-palm-right { height: 45vh; bottom: 30vh; }
+  .vc-nav {
+    padding: 12px 16px;
+  }
+  .vc-nav-links {
+    display: none;
+  }
+  .vc-btn-nav {
+    padding: 8px 12px;
+    letter-spacing: 0.12em;
+  }
 }
 
 body {
@@ -537,12 +607,13 @@ body {
 /* ─── Glassmorphism ─────────────────────────────────────────── */
 @layer utilities {
   .text-balance {
-    text-wrap: balance;
+    overflow-wrap: anywhere;
   }
 
   /* Base glass panel */
   .glass {
     background: rgba(255, 255, 255, 0.04);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
     backdrop-filter: blur(16px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
@@ -550,6 +621,7 @@ body {
   /* Elevated glass for cards */
   .glass-card {
     background: rgba(20, 20, 20, 0.8);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
     backdrop-filter: blur(20px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
@@ -557,6 +629,7 @@ body {
   /* Purple-tinted glass */
   .glass-purple {
     background: rgba(108, 92, 231, 0.08);
+    -webkit-backdrop-filter: blur(16px);
     backdrop-filter: blur(16px);
     border: 1px solid rgba(108, 92, 231, 0.25);
   }
@@ -564,6 +637,7 @@ body {
   /* Gold-tinted glass */
   .glass-gold {
     background: rgba(255, 215, 0, 0.06);
+    -webkit-backdrop-filter: blur(16px);
     backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 215, 0, 0.25);
   }
@@ -571,6 +645,7 @@ body {
   /* Cyan-tinted glass */
   .glass-cyan {
     background: rgba(0, 245, 255, 0.06);
+    -webkit-backdrop-filter: blur(16px);
     backdrop-filter: blur(16px);
     border: 1px solid rgba(0, 245, 255, 0.2);
   }
@@ -691,6 +766,7 @@ body {
       linear-gradient(rgba(102, 250, 255, 0.34) 1px, transparent 1px),
       linear-gradient(90deg, rgba(102, 250, 255, 0.24) 1px, transparent 1px);
     background-size: 42px 42px;
+    -webkit-mask-image: linear-gradient(to top, black 10%, transparent 96%);
     mask-image: linear-gradient(to top, black 10%, transparent 96%);
     animation: city-grid-drive 4.8s linear infinite;
   }

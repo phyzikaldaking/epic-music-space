@@ -9,12 +9,22 @@ const FROM = process.env.EMAIL_FROM ?? "Epic Music Space <noreply@epicmusicspace
 
 export async function sendVerificationEmail(email: string, token: string) {
   const base = getSiteUrl();
-  const url = `${base}/auth/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  const url = `${base}/api/auth/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 
   if (!resend) {
+    const missingProviderError = {
+      code: "EMAIL_PROVIDER_NOT_CONFIGURED",
+      message: "RESEND_API_KEY is not configured.",
+    };
+
+    if (process.env.NODE_ENV === "production") {
+      console.error("[email] Verification email blocked in production", missingProviderError);
+      return { ok: false, error: missingProviderError };
+    }
+
     console.warn("[email] RESEND_API_KEY not set — skipping verification email");
     console.info(`[email] Verification URL: ${url}`);
-    return { ok: true, dev: true };
+    return { ok: true, dev: true, url };
   }
 
   const { error } = await resend.emails.send({

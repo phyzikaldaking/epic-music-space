@@ -49,7 +49,17 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  await sendVerificationEmail(email, token);
+  const sent = await sendVerificationEmail(email, token);
+
+  if (!sent.ok) {
+    return NextResponse.json(
+      {
+        error:
+          "Verification email could not be sent right now. Please try again shortly.",
+      },
+      { status: 503 },
+    );
+  }
 
   return NextResponse.json({ ok: true });
 }

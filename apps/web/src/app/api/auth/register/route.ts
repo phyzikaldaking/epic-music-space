@@ -46,8 +46,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { name, email, password, role, inviteCode } = parsed.data;
+    const normalizedEmail = email.trim().toLowerCase();
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
       return NextResponse.json(
         { error: "An account with this email already exists." },
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
     const passwordHash = await bcrypt.hash(password, 12);
 
     const user = await prisma.user.create({
-      data: { name, email, passwordHash, role },
+      data: { name, email: normalizedEmail, passwordHash, role },
       select: { id: true, email: true, name: true, role: true },
     });
 
@@ -92,14 +93,30 @@ export async function POST(req: NextRequest) {
     const verifyToken = randomBytes(32).toString("hex");
     await prisma.verificationToken.create({
       data: {
-        identifier: email,
+        identifier: normalizedEmail,
         token: verifyToken,
         expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
     });
-    await sendVerificationEmail(email, verifyToken);
+    const verificationEmail = await sendVerificationEmail(normalizedEmail, verifyToken);
 
-    return NextResponse.json({ user, requiresVerification: true }, { status: 201 });
+    if (!verificationEmail.ok) {
+      return NextResponse.json(
+        {
+          user,
+          requiresVerification: true,
+          verificationEmailSent: false,
+          error:
+            "We could not send your verification email right now. Please use resend verification in a moment.",
+        },
+        { status: 201 },
+      );
+    }
+
+    return NextResponse.json(
+      { user, requiresVerification: true, verificationEmailSent: true },
+      { status: 201 },
+    );
   } catch (err) {
     console.error("[register]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

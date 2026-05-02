@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -8,23 +9,56 @@ function VerifyEmailContent() {
   const params = useSearchParams();
   const error = params.get("error");
   const email = params.get("email") ?? "";
+  const token = params.get("token") ?? "";
   const [resent, setResent] = useState(false);
   const [resending, setResending] = useState(false);
+  const [resendError, setResendError] = useState("");
   const [resendEmail, setResendEmail] = useState(email);
+
+  useEffect(() => {
+    if (!token || !email) return;
+    const verifyUrl = `/api/auth/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+    window.location.replace(verifyUrl);
+  }, [token, email]);
 
   async function handleResend() {
     if (!resendEmail || resending) return;
     setResending(true);
+    setResendError("");
     try {
-      await fetch("/api/auth/resend-verification", {
+      const res = await fetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: resendEmail }),
       });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setResendError(
+          data.error ?? "Could not resend verification email. Please try again.",
+        );
+        return;
+      }
+
       setResent(true);
     } finally {
       setResending(false);
     }
+  }
+
+  if (token && email) {
+    return (
+      <Card
+        icon="🔐"
+        title="Verifying your email"
+        body="Please wait while we securely verify your account..."
+        cta={
+          <p className="text-sm text-white/45">
+            If this takes too long, click this direct link: <a className="text-brand-400 hover:underline" href={`/api/auth/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`}>verify now</a>
+          </p>
+        }
+      />
+    );
   }
 
   if (error === "invalid") {
@@ -34,6 +68,7 @@ function VerifyEmailContent() {
         title="Invalid link"
         body="This verification link is invalid or has already been used."
         cta={<ResendForm email={resendEmail} setEmail={setResendEmail} onResend={handleResend} resending={resending} resent={resent} />}
+        footerError={resendError}
       />
     );
   }
@@ -45,6 +80,7 @@ function VerifyEmailContent() {
         title="Link expired"
         body="This verification link has expired. Request a new one below."
         cta={<ResendForm email={resendEmail} setEmail={setResendEmail} onResend={handleResend} resending={resending} resent={resent} />}
+        footerError={resendError}
       />
     );
   }
@@ -65,6 +101,7 @@ function VerifyEmailContent() {
           </p>
         </div>
       }
+      footerError={resendError}
     />
   );
 }
@@ -74,11 +111,13 @@ function Card({
   title,
   body,
   cta,
+  footerError,
 }: {
   icon: string;
   title: string;
   body: string;
   cta: React.ReactNode;
+  footerError?: string;
 }) {
   return (
     <div className="flex min-h-[88vh] items-center justify-center px-4">
@@ -89,6 +128,11 @@ function Card({
           <h1 className="text-2xl font-extrabold">{title}</h1>
           <p className="mt-3 text-sm text-white/45 leading-relaxed">{body}</p>
           <div className="mt-8">{cta}</div>
+          {footerError ? (
+            <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              {footerError}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

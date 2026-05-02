@@ -83,6 +83,13 @@ function SignUpContent() {
       return;
     }
 
+    if (data.verificationEmailSent === false) {
+      setError(
+        data.error ??
+          "Account created, but verification email could not be sent yet. Please use resend verification.",
+      );
+    }
+
     router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}`);
   }
 

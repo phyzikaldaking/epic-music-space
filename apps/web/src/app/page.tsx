@@ -226,6 +226,26 @@ export default async function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
       />
 
+      <nav className="vc-nav" aria-label="Primary">
+        <Link href="/" className="vc-logo" aria-label="Epic Music Space Home">
+          EPIC.MUSIC.SPACE <span className="vc-logo-mark">VI</span>
+        </Link>
+        <div className="vc-nav-links">
+          <Link href="/marketplace">Marketplace</Link>
+          <Link href="/leaderboard">Charts</Link>
+          <Link href="/versus">Versus</Link>
+          <Link href="/pricing">Pricing</Link>
+        </div>
+        <div className="vc-nav-cta">
+          <Link href="/auth/signin" className="vc-btn vc-btn-ghost vc-btn-nav">
+            Sign In
+          </Link>
+          <Link href="/auth/signup" className="vc-btn vc-btn-pink vc-btn-nav">
+            Get Started
+          </Link>
+        </div>
+      </nav>
+
       {/* Hero */}
       <section className="vc-hero">
         <div className="vc-stars" aria-hidden="true" />

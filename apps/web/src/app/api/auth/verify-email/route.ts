@@ -8,9 +8,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const token = searchParams.get("token");
   const email = searchParams.get("email");
+  const normalizedEmail = email?.trim().toLowerCase();
   const base = getSiteUrl();
 
-  if (!token || !email) {
+  if (!token || !normalizedEmail) {
     return NextResponse.redirect(`${base}/auth/verify-email?error=invalid`);
   }
 
@@ -18,18 +19,18 @@ export async function GET(req: NextRequest) {
     where: { token },
   });
 
-  if (!record || record.identifier !== email) {
+  if (!record || record.identifier.toLowerCase() !== normalizedEmail) {
     return NextResponse.redirect(`${base}/auth/verify-email?error=invalid`);
   }
 
   if (record.expires < new Date()) {
     await prisma.verificationToken.delete({ where: { token } }).catch(() => {});
-    return NextResponse.redirect(`${base}/auth/verify-email?error=expired&email=${encodeURIComponent(email)}`);
+    return NextResponse.redirect(`${base}/auth/verify-email?error=expired&email=${encodeURIComponent(normalizedEmail)}`);
   }
 
   await prisma.$transaction([
     prisma.user.updateMany({
-      where: { email, emailVerified: null },
+      where: { email: normalizedEmail, emailVerified: null },
       data: { emailVerified: new Date() },
     }),
     prisma.verificationToken.delete({ where: { token } }),
