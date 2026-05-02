@@ -6,6 +6,7 @@ import { maybeAwardEarlyAdopter } from "@/lib/badges";
 import { sendVerificationEmail } from "@/lib/email";
 import { randomBytes } from "crypto";
 import { strictLimiter } from "@/lib/rateLimit";
+import { emitAuthEvent } from "@/lib/authObservability";
 
 function generateCode(): string {
   return randomBytes(5).toString("hex").toUpperCase(); // 10-char hex code
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
   try {
     await strictLimiter.consume(`register:${ip}`);
   } catch {
+    await emitAuthEvent("register_rate_limited", { ip, retryAfterSeconds: 60 });
     return NextResponse.json(
       { error: "Too many registration attempts. Please try again later." },
       { status: 429, headers: { "Retry-After": "60" } }
@@ -39,6 +41,10 @@ export async function POST(req: NextRequest) {
     const parsed = registerSchema.safeParse(body);
 
     if (!parsed.success) {
+      await emitAuthEvent("register_invalid_input", {
+        ip,
+        reason: parsed.error.issues[0]?.message ?? "invalid_input",
+      });
       return NextResponse.json(
         { error: parsed.error.issues[0]?.message ?? "Invalid input" },
         { status: 400 }
@@ -50,6 +56,10 @@ export async function POST(req: NextRequest) {
 
     const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
+      await emitAuthEvent("register_existing_email", {
+        ip,
+        email: normalizedEmail,
+      });
       return NextResponse.json(
         { error: "An account with this email already exists." },
         { status: 409 }
@@ -61,6 +71,13 @@ export async function POST(req: NextRequest) {
     const user = await prisma.user.create({
       data: { name, email: normalizedEmail, passwordHash, role },
       select: { id: true, email: true, name: true, role: true },
+    });
+
+    await emitAuthEvent("register_created", {
+      ip,
+      email: normalizedEmail,
+      userId: user.id,
+      role: user.role,
     });
 
     // Create a personal invite code for the new user
@@ -101,17 +118,35 @@ export async function POST(req: NextRequest) {
     const verificationEmail = await sendVerificationEmail(normalizedEmail, verifyToken);
 
     if (!verificationEmail.ok) {
+      await emitAuthEvent("verification_email_send_failed", {
+        ip,
+        email: normalizedEmail,
+        userId: user.id,
+        role: user.role,
+        providerError:
+          typeof verificationEmail.error === "object" && verificationEmail.error !== null
+            ? JSON.stringify(verificationEmail.error)
+            : String(verificationEmail.error ?? "unknown"),
+      });
+
       return NextResponse.json(
         {
           user,
           requiresVerification: true,
           verificationEmailSent: false,
           error:
-            "We could not send your verification email right now. Please use resend verification in a moment.",
+            "We could not send your verification email right now. Please use resend verification in a moment and check your spam folder.",
         },
         { status: 201 },
       );
     }
+
+    await emitAuthEvent("verification_email_sent", {
+      ip,
+      email: normalizedEmail,
+      userId: user.id,
+      role: user.role,
+    });
 
     return NextResponse.json(
       { user, requiresVerification: true, verificationEmailSent: true },

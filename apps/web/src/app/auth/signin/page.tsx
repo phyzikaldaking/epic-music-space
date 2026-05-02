@@ -58,12 +58,15 @@ function SignInContent() {
             <div className="mb-4 rounded-lg bg-red-500/20 px-4 py-3 text-sm text-red-400">
               {error}
               {error.includes("verify your email") && (
-                <Link
-                  href={`/auth/verify-email?email=${encodeURIComponent(email)}`}
-                  className="ml-2 underline hover:text-red-300"
-                >
-                  Resend link
-                </Link>
+                <div className="mt-2">
+                  <Link
+                    href={`/auth/verify-email?email=${encodeURIComponent(email)}`}
+                    className="underline hover:text-red-300"
+                  >
+                    Resend link
+                  </Link>
+                  <span className="ml-2 text-red-300/80">and check spam/promotions folder.</span>
+                </div>
               )}
             </div>
           )}
@@ -130,6 +133,12 @@ function SignInContent() {
               Sign up
             </Link>
           </p>
+
+          <div className="mt-5 grid grid-cols-1 gap-2 text-xs text-white/60 sm:grid-cols-3">
+            <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">Secure checkout</div>
+            <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">Clear licensing terms</div>
+            <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">Weekly payout schedule</div>
+          </div>
         </div>
       </div>
     </div>

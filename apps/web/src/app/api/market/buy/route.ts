@@ -7,6 +7,7 @@ import { strictLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
 import { getSiteUrl } from "@/lib/site";
 import { getTierLimits } from "@/lib/tierLimits";
+import { track } from "@/lib/analytics";
 
 const buySchema = z.object({
   songId: z.string().min(1, "songId is required"),
@@ -76,6 +77,10 @@ export async function POST(req: NextRequest) {
       );
     }
   }
+
+  const activeLicensesCount = await prisma.licenseToken.count({
+    where: { holderId: session.user.id, status: "ACTIVE" },
+  });
 
   // ── Fetch song ─────────────────────────────────────────────────────────────
   const song = await prisma.song.findUnique({ where: { id: songId } });
@@ -154,6 +159,17 @@ export async function POST(req: NextRequest) {
     metadata: { quantity },
     timestamp: new Date().toISOString(),
   });
+
+  if (activeLicensesCount === 0) {
+    track({
+      event: "funnel_buyer_visit_to_first_license_purchase",
+      userId: session.user.id,
+      properties: {
+        songId,
+        quantity,
+      },
+    });
+  }
 
   return NextResponse.json({ checkoutUrl: stripeSession.url }, { status: 201 });
 }

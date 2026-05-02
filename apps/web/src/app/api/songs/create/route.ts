@@ -6,6 +6,7 @@ import { strictLimiter } from "@/lib/rateLimit";
 import { cacheDel, CACHE_KEYS } from "@/lib/redis";
 import { enqueueAiScoring, enqueueAnalytics } from "@/lib/queues";
 import { getTierLimits } from "@/lib/tierLimits";
+import { track } from "@/lib/analytics";
 
 const createSongSchema = z.object({
   title: z.string().min(1).max(200),
@@ -75,9 +76,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const existingSongCount = await prisma.song.count({ where: { artistId: user.id } });
+
   if (limits.maxSongs < 999_999) {
-    const songCount = await prisma.song.count({ where: { artistId: user.id } });
-    if (songCount >= limits.maxSongs) {
+    if (existingSongCount >= limits.maxSongs) {
       return NextResponse.json(
         { error: `You've reached your ${limits.maxSongs}-song limit. Upgrade your plan at /pricing.` },
         { status: 403 }
@@ -118,6 +120,17 @@ export async function POST(req: NextRequest) {
     songId: song.id,
     timestamp: new Date().toISOString(),
   });
+
+  if (existingSongCount === 0) {
+    track({
+      event: "funnel_artist_signup_to_first_upload",
+      userId: session.user.id,
+      properties: {
+        songId: song.id,
+        role: user.role,
+      },
+    });
+  }
 
   return NextResponse.json(
     {

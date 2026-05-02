@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { Role, SubscriptionTier } from "@ems/db";
+import { emitAuthEvent } from "@/lib/authObservability";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -48,16 +49,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { email: normalizedEmail },
         });
 
-        if (!user || !user.passwordHash) return null;
+        if (!user || !user.passwordHash) {
+          await emitAuthEvent("signin_invalid_credentials", {
+            email: normalizedEmail,
+            reason: "user_not_found_or_no_password",
+          });
+          return null;
+        }
 
         const valid = await bcrypt.compare(
           parsed.data.password,
           user.passwordHash,
         );
-        if (!valid) return null;
+        if (!valid) {
+          await emitAuthEvent("signin_invalid_credentials", {
+            email: normalizedEmail,
+            userId: user.id,
+            reason: "password_mismatch",
+          });
+          return null;
+        }
 
         // Block unverified credential accounts (OAuth sets emailVerified automatically)
         if (!user.emailVerified) {
+          await emitAuthEvent("signin_email_unverified", {
+            email: normalizedEmail,
+            userId: user.id,
+          });
           throw new Error("EMAIL_NOT_VERIFIED");
         }
 
