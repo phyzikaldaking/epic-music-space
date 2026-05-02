@@ -48,6 +48,7 @@ export const optionalRequirements = {
     "DOPPLER_CONFIG_PROD",
   ],
   StripeWebhookForward: ["STRIPE_WEBHOOK_FORWARD_URL"],
+  VercelApi: ["VERCEL_TOKEN"],
 };
 
 export const sharedAppKeys = unique([

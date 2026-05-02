@@ -30,6 +30,14 @@ npm run stripe:listen
 npm run supabase:link
 ```
 
+```bash
+npm run vercel:project -- --root-dir apps/web
+npm run vercel:project -- --clear-overrides
+npm run vercel:redeploy
+npm run vercel:redeploy -- --prod
+npm run github:commit -- --message "feat: update config" --push
+```
+
 ## What each command does
 
 - `npm run agent:setup`
@@ -48,6 +56,12 @@ npm run supabase:link
   Forwards Stripe events to `http://localhost:3000/api/webhooks/stripe` by default. Override with `STRIPE_WEBHOOK_FORWARD_URL`.
 - `npm run supabase:link`
   Links the local repo to the Supabase project using `SUPABASE_PROJECT_REF` or the project ref derived from `NEXT_PUBLIC_SUPABASE_URL`.
+- `npm run vercel:project -- [options]`
+  Updates Vercel project settings via the Vercel REST API using `VERCEL_TOKEN`. Pass `--root-dir <path>` to set the root directory, `--build-command`, `--install-command`, or `--output-dir` to set build overrides, and `--clear-overrides` to clear all three build/install/output overrides at once. Requires `VERCEL_TOKEN`, `VERCEL_PROJECT_ID`, and `VERCEL_ORG_ID`.
+- `npm run vercel:redeploy -- [--prod] [--deployment <url|id>]`
+  Triggers a Vercel redeploy. Without `--deployment`, it looks up the latest deployment for the project via the Vercel API and passes it to `vercel redeploy`. Add `--prod` to promote the redeployment to production. Requires `VERCEL_TOKEN`, `VERCEL_PROJECT_ID`, and `VERCEL_ORG_ID`.
+- `npm run github:commit -- --message <msg> [--push] [--branch <name>] [-- <paths...>]`
+  Stages and commits changes. Without explicit paths (after `--`), stages everything with `git add -A`. Pass `--push` to push the branch to origin immediately after committing. If the remote branch does not yet exist, `--set-upstream` is added automatically.
 
 ## Low-friction local usage
 
@@ -78,6 +92,7 @@ Make sure the Doppler configs include these control-plane keys:
 - `GITHUB_REPOSITORY`
 - `VERCEL_ORG_ID`
 - `VERCEL_PROJECT_ID`
+- `VERCEL_TOKEN`
 - `DOPPLER_PROJECT`
 - `DOPPLER_CONFIG_DEV`
 - `DOPPLER_CONFIG_PREVIEW`

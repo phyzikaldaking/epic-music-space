@@ -32,7 +32,10 @@
     "db:studio": "cd packages/db && npx prisma studio",
     "stripe:listen": "node scripts/ops/stripe-listen.mjs",
     "supabase:link": "node scripts/ops/supabase-link.mjs",
-    "vercel:build": "npm run clean:web && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma generate --schema packages/db/prisma/schema.prisma && mkdir -p apps/web/packages/db/generated/client && find packages/db/generated/client -name '*.node' -exec cp {} apps/web/packages/db/generated/client/ \\; && npm --workspace apps/web run build"
+    "vercel:build": "npm run clean:web && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma generate --schema packages/db/prisma/schema.prisma && mkdir -p apps/web/packages/db/generated/client && find packages/db/generated/client -name '*.node' -exec cp {} apps/web/packages/db/generated/client/ \\; && npm --workspace apps/web run build",
+    "vercel:project": "node scripts/ops/vercel-project.mjs",
+    "vercel:redeploy": "node scripts/ops/vercel-redeploy.mjs",
+    "github:commit": "node scripts/ops/github-commit.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
