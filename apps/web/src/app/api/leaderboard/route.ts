@@ -3,6 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 import { lenientLimiter } from "@/lib/rateLimit";
 
+const EDGE_CACHE_LEADERBOARD = "public, s-maxage=60, stale-while-revalidate=120";
+
+function leaderboardCacheHeaders() {
+  return {
+    "Cache-Control": EDGE_CACHE_LEADERBOARD,
+    "CDN-Cache-Control": EDGE_CACHE_LEADERBOARD,
+    "Vercel-CDN-Cache-Control": EDGE_CACHE_LEADERBOARD,
+  };
+}
+
 export async function GET(req: NextRequest) {
   // Rate limit reads
   const ip =
@@ -28,9 +38,7 @@ export async function GET(req: NextRequest) {
     const cached = await cacheGet<unknown[]>(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
-        headers: {
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
-        },
+        headers: leaderboardCacheHeaders(),
       });
     }
 
@@ -72,9 +80,7 @@ export async function GET(req: NextRequest) {
 
     await cacheSet(cacheKey, ranked, CACHE_TTL.leaderboard);
     return NextResponse.json(ranked, {
-      headers: {
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
-      },
+      headers: leaderboardCacheHeaders(),
     });
   }
 
@@ -83,9 +89,7 @@ export async function GET(req: NextRequest) {
   const cached = await cacheGet<unknown[]>(cacheKey);
   if (cached) {
     return NextResponse.json(cached, {
-      headers: {
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
-      },
+      headers: leaderboardCacheHeaders(),
     });
   }
 
@@ -111,9 +115,7 @@ export async function GET(req: NextRequest) {
 
   await cacheSet(cacheKey, songs, CACHE_TTL.leaderboard);
   return NextResponse.json(songs, {
-    headers: {
-      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
-    },
+    headers: leaderboardCacheHeaders(),
   });
 }
 

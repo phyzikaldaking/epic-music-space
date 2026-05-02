@@ -3,6 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { lenientLimiter } from "@/lib/rateLimit";
 import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 
+const EDGE_CACHE_LISTINGS = "public, s-maxage=15, stale-while-revalidate=60";
+
+function listingsCacheHeaders() {
+  return {
+    "Cache-Control": EDGE_CACHE_LISTINGS,
+    "CDN-Cache-Control": EDGE_CACHE_LISTINGS,
+    "Vercel-CDN-Cache-Control": EDGE_CACHE_LISTINGS,
+  };
+}
+
 /**
  * GET /api/market/listings
  *
@@ -28,9 +38,7 @@ export async function GET(req: NextRequest) {
   const cached = await cacheGet<unknown[]>(CACHE_KEYS.listings);
   if (cached) {
     return NextResponse.json(cached, {
-      headers: {
-        "Cache-Control": "public, s-maxage=15, stale-while-revalidate=60",
-      },
+      headers: listingsCacheHeaders(),
     });
   }
 
@@ -67,8 +75,6 @@ export async function GET(req: NextRequest) {
 
   await cacheSet(CACHE_KEYS.listings, result, CACHE_TTL.listings);
   return NextResponse.json(result, {
-    headers: {
-      "Cache-Control": "public, s-maxage=15, stale-while-revalidate=60",
-    },
+    headers: listingsCacheHeaders(),
   });
 }
