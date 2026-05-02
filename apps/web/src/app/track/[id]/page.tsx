@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { formatPrice } from "@ems/utils";
@@ -171,9 +172,9 @@ export default async function TrackPage({ params, searchParams }: Props) {
             <p className="font-semibold">Payment successful!</p>
             <p className="text-green-400/70">
               Your license is confirmed. Check{" "}
-              <a href="/dashboard" className="underline hover:text-green-300">
+              <Link href="/dashboard" className="underline hover:text-green-300">
                 your dashboard
-              </a>{" "}
+              </Link>{" "}
               for details.
             </p>
           </div>
@@ -319,9 +320,9 @@ export default async function TrackPage({ params, searchParams }: Props) {
               ÷ {song.totalLicenses} licenses of this song&apos;s streaming
               revenue, paid quarterly. This is a digital content license, not a
               security. See our{" "}
-              <a href="/legal/licensing" className="underline hover:text-white/60">
+              <Link href="/legal/licensing" className="underline hover:text-white/60">
                 Licensing Agreement
-              </a>
+              </Link>
               .
             </p>
           )}

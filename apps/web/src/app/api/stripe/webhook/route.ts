@@ -198,7 +198,9 @@ export async function POST(req: Request) {
           data: { status: "PAID", paidAt: new Date() },
         });
       }
-    } catch {}
+    } catch (err) {
+      console.error("[stripe/webhook] artist payout transfer failed", err);
+    }
   }
 
   return NextResponse.json({ received: true });

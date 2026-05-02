@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Suspense } from "react";
 
 const TIERS = [
@@ -270,9 +271,9 @@ function PricingContent() {
           Payments are processed securely by Stripe. EMS subscription fees do
           not constitute investment products. Revenue participation is governed
           by the{" "}
-          <a href="/legal/licensing" className="underline hover:text-white/50">
+          <Link href="/legal/licensing" className="underline hover:text-white/50">
             Digital Music Licensing Agreement
-          </a>
+          </Link>
           .
         </p>
       </div>

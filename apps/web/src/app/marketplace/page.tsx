@@ -5,6 +5,7 @@ import MarketplaceWorld3D from "@/components/MarketplaceWorld3D";
 import MarketplacePresence from "@/components/MarketplacePresence";
 import MarketplaceConfidencePanel from "@/components/MarketplaceConfidencePanel";
 import MarketplaceRetentionTools from "@/components/MarketplaceRetentionTools";
+import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import type { Song } from "@ems/db";
@@ -78,7 +79,7 @@ export default async function MarketplacePage() {
               <p className="mt-6 max-w-2xl text-base leading-8 text-white/66 md:text-lg">Discover ranked tracks, studio drops, and creator-ready music with clear licensing terms, supply visibility, and marketplace momentum built into every release.</p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a href="#marketplace-catalog" className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-black uppercase tracking-[0.12em] text-black shadow-2xl shadow-white/10 transition hover:-translate-y-0.5 hover:bg-cyan-200">Explore Catalog</a>
-                <a href="/auth/signup" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/15 bg-white/[0.05] px-6 text-sm font-black uppercase tracking-[0.12em] text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-gold-200/40 hover:bg-gold-200/10">Sell Your Music</a>
+                <Link href="/auth/signup" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/15 bg-white/[0.05] px-6 text-sm font-black uppercase tracking-[0.12em] text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-gold-200/40 hover:bg-gold-200/10">Sell Your Music</Link>
               </div>
             </div>
             <div className="rounded-[1.75rem] border border-white/10 bg-black/30 p-5 shadow-2xl shadow-black/40 backdrop-blur-xl">

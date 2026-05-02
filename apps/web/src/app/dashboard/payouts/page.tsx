@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
@@ -76,9 +77,9 @@ export default async function PayoutsPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
       <div className="mb-10">
-        <a href="/dashboard" className="text-sm text-white/40 hover:text-white/70 transition mb-4 inline-block">
+        <Link href="/dashboard" className="text-sm text-white/40 hover:text-white/70 transition mb-4 inline-block">
           ← Dashboard
-        </a>
+        </Link>
         <h1 className="text-4xl font-extrabold text-gradient-ems">Payouts</h1>
         <p className="mt-2 text-white/50">90% of every license sale, paid directly to you.</p>
       </div>

@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type UploadState = "idle" | "uploading" | "done" | "error";
 
@@ -413,9 +414,9 @@ export default function StudioNewPage() {
 
         <p className="text-center text-xs text-white/20">
           By publishing, you agree to the{" "}
-          <a href="/legal/licensing" className="underline hover:text-white/50">
+          <Link href="/legal/licensing" className="underline hover:text-white/50">
             EMS Licensing Agreement
-          </a>
+          </Link>
           .
         </p>
       </form>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 interface InviteData {
   code: string;
@@ -79,7 +80,7 @@ export default function InvitePage() {
     return (
       <div className="mx-auto max-w-xl px-4 py-24 text-center text-white/40">
         <p>Sign in to get your invite link.</p>
-        <a href="/auth/signin" className="mt-4 inline-block text-brand-400 underline">Sign in →</a>
+        <Link href="/auth/signin" className="mt-4 inline-block text-brand-400 underline">Sign in →</Link>
       </div>
     );
   }
