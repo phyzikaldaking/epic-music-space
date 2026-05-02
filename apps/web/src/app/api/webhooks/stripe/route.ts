@@ -189,8 +189,27 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
 }
 async function handleAdPurchaseCompleted(session: Stripe.Checkout.Session) {
   const { adId, userId } = session.metadata ?? {};
-  if (!adId || !userId) return;
-  await prisma.adPlacement.updateMany({ where: { id: adId, ownerId: userId }, data: { isActive: true } });
+  if (!adId || !userId) {
+    console.error("[stripe-webhook] AD_PURCHASE missing metadata", session.metadata);
+    return;
+  }
+
+  try {
+    const result = await prisma.adPlacement.updateMany({
+      where: { id: adId, ownerId: userId },
+      data: { isActive: true },
+    });
+
+    if (result.count === 0) {
+      console.warn(`[stripe-webhook] AD_PURCHASE: no matching ad found adId=${adId} userId=${userId}`);
+      return;
+    }
+
+    console.log(`[stripe-webhook] AD_PURCHASE: activated ad ${adId} for user ${userId}`);
+  } catch (err) {
+    console.error("[stripe-webhook] AD_PURCHASE: failed to activate ad", err);
+    throw err;
+  }
 }
 async function handleConnectAccountUpdated(account: Stripe.Account) {
   const emsUserId = account.metadata?.emsUserId;

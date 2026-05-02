@@ -5,7 +5,7 @@ import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import type { Role } from "@ems/db";
+import type { Role, SubscriptionTier } from "@ems/db";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -64,6 +64,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           name: user.name,
           role: user.role,
+          subscriptionTier: user.subscriptionTier,
         };
       },
     }),
@@ -73,6 +74,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id;
         token.role = user.role;
+        token.subscriptionTier = user.subscriptionTier;
       }
       return token;
     },
@@ -80,6 +82,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token) {
         session.user.id = token.id as string;
         session.user.role = token.role as Role;
+        session.user.subscriptionTier = token.subscriptionTier as SubscriptionTier | undefined;
       }
       return session;
     },
