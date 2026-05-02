@@ -8,9 +8,9 @@ import { prisma } from "@/lib/prisma";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Epic Music Space - License Cinematic Tracks",
+  title: "Epic Music Space - Premium Music Licensing Platform",
   description:
-    "Preview, license, and release cinematic space, sci-fi, and game music with clear terms, capped license drops, and revenue participation.",
+    "License premium music, launch curated drops, and release tracks with clear terms, capped supply, and artist revenue participation.",
   alternates: { canonical: "/" },
 };
 
@@ -63,23 +63,273 @@ const emptyHomeData: HomeData = {
 };
 
 const marqueeItems = [
-  "Marketplace Drops",
-  "Versus Battles",
-  "District Placement",
+  "Premium Licensing",
+  "Studio Drops",
+  "Verified Demand",
   "Capped Licenses",
   "Artist Revenue Share",
+  "Creator Catalog",
   "AI Discovery",
-  "Music City",
-  "Marketplace Drops",
-  "Versus Battles",
-  "District Placement",
+  "Premium Licensing",
+  "Studio Drops",
+  "Verified Demand",
   "Capped Licenses",
   "Artist Revenue Share",
+  "Creator Catalog",
   "AI Discovery",
-  "Music City",
 ];
 
 const trackArtClasses = ["vc-track-art-1", "vc-track-art-2", "vc-track-art-3"];
+
+const premiumHomeCss = `
+.vc-page {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(34, 211, 238, 0.12), transparent 30%),
+    radial-gradient(circle at 80% 0%, rgba(253, 224, 71, 0.10), transparent 28%),
+    #050507;
+  color: #f7f7fb;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.vc-page::before { display: none; }
+.vc-nav {
+  background: rgba(5, 5, 8, 0.72);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+}
+.vc-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  background: none;
+  text-shadow: none;
+}
+.vc-logo-mark {
+  margin-left: 0;
+  border: 1px solid rgba(253,224,71,0.45);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #fde68a;
+  -webkit-text-fill-color: #fde68a;
+  background: rgba(253,224,71,0.10);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.vc-nav-links a,
+.vc-btn,
+.vc-btn-ghost-cyan,
+.vc-eyebrow,
+.vc-section-eyebrow,
+.vc-feat-tag,
+.vc-feat-link,
+.vc-track-genre,
+.vc-track-bpm,
+.vc-track-price,
+.vc-track-license,
+.vc-stat .label,
+.vc-lb-header span,
+.vc-lb-rank,
+.vc-lb-streams {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.vc-nav-links a { letter-spacing: 0.12em; color: rgba(255,255,255,0.66); }
+.vc-nav-links a:hover { color: #fff; text-shadow: none; }
+.vc-btn {
+  border-radius: 999px;
+  letter-spacing: 0.11em;
+  box-shadow: none;
+}
+.vc-btn-pink {
+  background: linear-gradient(135deg, #f7f7fb 0%, #c9cad4 52%, #f6d36f 100%);
+  color: #07070b;
+  box-shadow: 0 18px 48px rgba(253,224,71,0.18);
+}
+.vc-btn-pink:hover { box-shadow: 0 22px 70px rgba(253,224,71,0.28); }
+.vc-btn-ghost,
+.vc-btn-ghost-cyan {
+  color: #d7faff;
+  border-color: rgba(34,211,238,0.34);
+  background: rgba(255,255,255,0.045);
+}
+.vc-btn-ghost:hover,
+.vc-btn-ghost-cyan:hover {
+  background: rgba(34,211,238,0.12);
+  box-shadow: 0 18px 42px rgba(34,211,238,0.16);
+}
+.vc-hero { min-height: 100vh; background: #050507; }
+.vc-studio-photo {
+  filter: brightness(0.58) contrast(1.12) saturate(0.95);
+  transform: scale(1.02);
+  animation: vc-photo-breathe 14s ease-in-out infinite alternate;
+}
+@keyframes vc-photo-breathe {
+  0% { filter: brightness(0.54) contrast(1.10) saturate(0.92); transform: scale(1.02); }
+  100% { filter: brightness(0.66) contrast(1.14) saturate(1.02); transform: scale(1.06); }
+}
+.vc-studio-tint {
+  background: linear-gradient(135deg, rgba(5,5,8,0.36), rgba(11,26,31,0.26), rgba(93,72,20,0.20));
+  mix-blend-mode: normal;
+}
+.vc-studio-overlay {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 82%, rgba(253,224,71,0.14), transparent 64%),
+    radial-gradient(ellipse 48% 36% at 18% 16%, rgba(34,211,238,0.18), transparent 58%),
+    linear-gradient(180deg, rgba(5,5,8,0.10) 0%, rgba(5,5,8,0.28) 50%, rgba(5,5,8,0.92) 100%);
+}
+.vc-studio-scan { opacity: 0.12; }
+.vc-stars { opacity: 0.28; }
+.vc-grid-floor {
+  opacity: 0.20;
+  background-size: 110px 110px;
+  background-image:
+    linear-gradient(to right, rgba(34,211,238,0.36) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(253,224,71,0.24) 1px, transparent 1px);
+}
+.vc-horizon {
+  background: linear-gradient(90deg, transparent, rgba(34,211,238,0.55), rgba(253,224,71,0.70), rgba(34,211,238,0.55), transparent);
+  box-shadow: 0 0 42px rgba(34,211,238,0.28);
+}
+.vc-palm { display: none !important; }
+.vc-eyebrow {
+  color: #d7faff;
+  letter-spacing: 0.26em;
+  text-shadow: none;
+  animation: none;
+}
+.vc-hero-h1,
+.vc-section-title,
+.vc-track-name,
+.vc-lb-track-name,
+.vc-split-card h3,
+.vc-feat-card h3,
+.vc-stat .num {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.055em;
+  text-transform: none;
+}
+.vc-hero-h1 {
+  max-width: 960px;
+  font-weight: 950;
+  font-size: clamp(4.2rem, 11vw, 10rem);
+  line-height: 0.9;
+  background: linear-gradient(180deg, #fff 0%, #f5f5f7 38%, #d7faff 70%, #f6d36f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 32px 90px rgba(0,0,0,0.7);
+}
+.vc-hero-tagline {
+  max-width: 760px;
+  color: rgba(255,255,255,0.78);
+  line-height: 1.75;
+}
+.vc-hero-tagline .accent { color: #f6d36f; text-shadow: none; }
+.vc-marquee {
+  background: rgba(255,255,255,0.03);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.vc-marquee-track span {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  color: rgba(255,255,255,0.64);
+  text-transform: uppercase;
+}
+.vc-marquee-track .dot { color: #f6d36f; text-shadow: none; }
+.vc-section { padding: 112px 40px; }
+.vc-section-eyebrow { color: #f6d36f; letter-spacing: 0.22em; text-shadow: none; }
+.vc-section-title {
+  font-size: clamp(2.4rem, 5.2vw, 4.9rem);
+  font-weight: 920;
+  line-height: 0.98;
+}
+.vc-section-title .glow,
+.vc-section-title .pink { color: #d7faff; text-shadow: none; }
+.vc-platform-section {
+  background:
+    radial-gradient(circle at 12% 10%, rgba(34,211,238,0.10), transparent 32%),
+    linear-gradient(180deg, #050507 0%, #090910 100%);
+}
+.vc-platform-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 48px;
+}
+.vc-platform-card,
+.vc-track-card,
+.vc-lb-table,
+.vc-split-card,
+.vc-feat-card {
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.035));
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 28px 90px rgba(0,0,0,0.30);
+}
+.vc-platform-card {
+  min-height: 260px;
+  padding: 34px;
+  position: relative;
+  overflow: hidden;
+}
+.vc-platform-card::after {
+  content: '';
+  position: absolute;
+  inset: auto -18% -32% 30%;
+  height: 160px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(34,211,238,0.20), transparent 70%);
+}
+.vc-platform-num {
+  color: #f6d36f;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+.vc-platform-card h3 {
+  margin-top: 28px;
+  font-size: 28px;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  font-weight: 900;
+}
+.vc-platform-card p {
+  margin-top: 18px;
+  color: rgba(255,255,255,0.60);
+  line-height: 1.65;
+}
+.vc-tracks-section,
+.vc-leaderboard-section,
+.vc-split-section,
+.vc-feat-section {
+  background:
+    radial-gradient(circle at 70% 20%, rgba(34,211,238,0.08), transparent 34%),
+    #050507;
+}
+.vc-track-card { padding: 22px; border-radius: 26px; }
+.vc-track-card:hover { box-shadow: 0 32px 90px rgba(34,211,238,0.16); border-color: rgba(253,224,71,0.28); }
+.vc-track-art { border-radius: 18px; }
+.vc-track-name { font-weight: 900; letter-spacing: -0.04em; }
+.vc-lb-row { color: inherit; text-decoration: none; }
+.vc-lb-track-name { font-weight: 850; font-size: 18px; }
+.vc-lb-rank, .vc-lb-row.top1 .vc-lb-rank, .vc-lb-row.top2 .vc-lb-rank, .vc-lb-row.top3 .vc-lb-rank { color: #f6d36f; text-shadow: none; }
+.vc-split-card h3 { font-size: clamp(2.3rem, 4vw, 3.7rem); font-weight: 930; }
+.vc-feat-card h3 { font-size: 34px; font-weight: 900; }
+.vc-feat-tag { color: #f6d36f; background: rgba(253,224,71,0.10); border-color: rgba(253,224,71,0.24); }
+.vc-feat-card.versus .vc-feat-tag { color: #d7faff; background: rgba(34,211,238,0.10); border-color: rgba(34,211,238,0.24); }
+@media (max-width: 900px) {
+  .vc-platform-grid { grid-template-columns: 1fr; }
+  .vc-section { padding: 84px 22px; }
+}
+`;
 
 const getHomeData = unstable_cache(
   async (): Promise<HomeData> => {
@@ -133,7 +383,7 @@ const getHomeData = unstable_cache(
       return emptyHomeData;
     }
   },
-  ["homepage-vc-v1"],
+  ["homepage-premium-studio-v1"],
   { revalidate: 3600 },
 );
 
@@ -185,7 +435,7 @@ export default async function HomePage() {
       num: totalRevenue > 0 ? formatRevenue(totalRevenue) : "90%",
       label: totalRevenue > 0 ? "Paid to Artists" : "Artist Share",
     },
-    { num: "3", label: "City Districts" },
+    { num: "Live", label: "Studio Tools" },
   ];
 
   const faqStructuredData = {
@@ -221,6 +471,7 @@ export default async function HomePage() {
 
   return (
     <div className="vc-page">
+      <style dangerouslySetInnerHTML={{ __html: premiumHomeCss }} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
@@ -228,7 +479,7 @@ export default async function HomePage() {
 
       <nav className="vc-nav" aria-label="Primary">
         <Link href="/" className="vc-logo" aria-label="Epic Music Space Home">
-          EPIC.MUSIC.SPACE <span className="vc-logo-mark">VI</span>
+          EPIC MUSIC SPACE <span className="vc-logo-mark">EMS</span>
         </Link>
         <div className="vc-nav-links">
           <Link href="/marketplace">Marketplace</Link>
@@ -246,7 +497,6 @@ export default async function HomePage() {
         </div>
       </nav>
 
-      {/* Hero */}
       <section className="vc-hero">
         <div className="vc-stars" aria-hidden="true" />
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -262,37 +512,8 @@ export default async function HomePage() {
         <div className="vc-grid-floor" aria-hidden="true" />
         <div className="vc-horizon" aria-hidden="true" />
 
-        <svg
-          className="vc-palm vc-palm-left"
-          viewBox="0 0 200 600"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
-        >
-          <path d="M100 600 C100 480 95 380 92 260" stroke="#0a0420" strokeWidth="14" strokeLinecap="round" />
-          <path d="M92 260 C60 200 20 160 -20 150 C10 140 60 165 92 220" fill="#0a0420" />
-          <path d="M92 260 C80 180 90 120 110 60 C105 130 110 200 92 260" fill="#0a0420" />
-          <path d="M92 260 C130 200 170 170 210 165 C175 155 130 175 92 220" fill="#0a0420" />
-          <path d="M92 260 C50 230 10 250 -30 270 C5 255 60 245 92 265" fill="#0a0420" />
-          <path d="M92 260 C140 230 170 260 200 290 C170 270 130 255 92 265" fill="#0a0420" />
-        </svg>
-        <svg
-          className="vc-palm vc-palm-right"
-          viewBox="0 0 200 600"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
-        >
-          <path d="M100 600 C100 480 95 380 92 260" stroke="#0a0420" strokeWidth="14" strokeLinecap="round" />
-          <path d="M92 260 C60 200 20 160 -20 150 C10 140 60 165 92 220" fill="#0a0420" />
-          <path d="M92 260 C80 180 90 120 110 60 C105 130 110 200 92 260" fill="#0a0420" />
-          <path d="M92 260 C130 200 170 170 210 165 C175 155 130 175 92 220" fill="#0a0420" />
-          <path d="M92 260 C50 230 10 250 -30 270 C5 255 60 245 92 265" fill="#0a0420" />
-          <path d="M92 260 C140 230 170 260 200 290 C170 270 130 255 92 265" fill="#0a0420" />
-        </svg>
-
         <div className="vc-hero-content">
-          <p className="vc-eyebrow">The city where music earns its place</p>
+          <p className="vc-eyebrow">Premium music licensing for creators and artists</p>
           <h1 className="vc-hero-h1">
             Epic
             <br />
@@ -301,22 +522,21 @@ export default async function HomePage() {
             Space
           </h1>
           <p className="vc-hero-tagline">
-            License <span className="accent">cinematic tracks</span>, back
-            artists, and watch releases climb through genre districts with real
+            License <span className="accent">premium tracks</span>, back artists,
+            and watch releases rise through charts, curated drops, and verified
             demand.
           </p>
           <div className="vc-hero-ctas">
             <Link href="/marketplace" className="vc-btn vc-btn-pink">
-              Browse Drops
+              Browse Catalog
             </Link>
             <Link href="/auth/signup" className="vc-btn vc-btn-ghost">
-              Join the City
+              Open Your Studio
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Marquee */}
       <div className="vc-marquee" aria-hidden="true">
         <div className="vc-marquee-track">
           {marqueeItems.map((item, i) => (
@@ -328,17 +548,227 @@ export default async function HomePage() {
         </div>
       </div>
 
-      {/* Track Cards */}
+      <section className="vc-section vc-platform-section">
+        <div className="vc-container">
+          <p className="vc-section-eyebrow">The Platform</p>
+          <h2 className="vc-section-title">
+            A premium studio layer for music licensing, release strategy, and
+            artist monetization.
+          </h2>
+          <p className="vc-section-sub">
+            Epic Music Space opens as a serious music-tech platform first. The
+            immersive world can return later after the product, catalog, and
+            creator economy are fully connected.
+          </p>
+          <div className="vc-platform-grid">
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">01 / License</span>
+              <h3>Clear rights before checkout.</h3>
+              <p>
+                Creators preview tracks, review price, supply, and usage terms,
+                then license music with confidence instead of guessing.
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">02 / Release</span>
+              <h3>Artists control the drop.</h3>
+              <p>
+                Artists set pricing, supply, and release strategy while tracking
+                demand, sales, and marketplace momentum from their studio.
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">03 / Grow</span>
+              <h3>Visibility follows demand.</h3>
+              <p>
+                Charts, battles, scores, and placements turn attention into a
+                measurable system artists can build around.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section className="vc-section vc-leaderboard-section">
+        <div className="vc-container">
+          <div className="vc-lb-grid">
+            <div>
+              <p className="vc-section-eyebrow">Top Charts</p>
+              <h2 className="vc-section-title">
+                The <span className="pink">hottest</span> tracks on the platform
+              </h2>
+              <p className="vc-section-sub">
+                Rankings move with plays, licenses, battle wins, and marketplace
+                momentum. Real demand drives real placement.
+              </p>
+              <Link href="/versus" className="vc-btn vc-btn-pink">
+                Enter Versus Battles
+              </Link>
+            </div>
+            <div className="vc-lb-table">
+              <div className="vc-lb-header">
+                <span>Rank</span>
+                <span>Track</span>
+                <span>Score</span>
+              </div>
+              {sampleSongs.map((song, i) => (
+                <Link
+                  key={song.id}
+                  href={`/track/${song.id}`}
+                  className={`vc-lb-row top${i + 1}`}
+                >
+                  <div className="vc-lb-rank">0{i + 1}</div>
+                  <div>
+                    <div className="vc-lb-track-name">{song.title}</div>
+                    <div className="vc-lb-track-artist">{song.artist}</div>
+                  </div>
+                  <div className="vc-lb-streams">{song.aiScore.toFixed(1)}</div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="vc-section vc-split-section">
+        <div className="vc-container">
+          <div className="vc-split-grid">
+            <div className="vc-split-card creators">
+              <div>
+                <p className="vc-section-eyebrow vc-eyebrow-pink">
+                  For Creators
+                </p>
+                <h3>
+                  License <span className="high">premium</span>
+                  <br />
+                  music fast
+                </h3>
+                <p>
+                  Find music that explains its price, rights, supply, and
+                  revenue split before you buy. No hidden terms.
+                </p>
+                <div className="vc-split-stats">
+                  {displayStats.slice(0, 2).map((stat) => (
+                    <div key={stat.label} className="vc-stat">
+                      <div className="num">{stat.num}</div>
+                      <div className="label">{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <Link
+                href="/marketplace"
+                className="vc-btn vc-btn-pink vc-split-cta"
+              >
+                Browse the Catalog
+              </Link>
+            </div>
+
+            <div className="vc-split-card artists">
+              <div>
+                <p className="vc-section-eyebrow vc-eyebrow-cyan">
+                  For Artists
+                </p>
+                <h3>
+                  Release and <span className="high">earn</span>
+                  <br />
+                  on your terms
+                </h3>
+                <p>
+                  Set price and supply, keep 90% of sales, and let verified
+                  demand push your release through the platform.
+                </p>
+                <div className="vc-split-stats">
+                  <div className="vc-stat">
+                    <div className="num">90%</div>
+                    <div className="label">Artist Share</div>
+                  </div>
+                  <div className="vc-stat">
+                    <div className="num">Live</div>
+                    <div className="label">Studio Tools</div>
+                  </div>
+                </div>
+              </div>
+              <Link
+                href="/auth/signup"
+                className="vc-btn vc-btn-ghost-cyan vc-split-cta"
+              >
+                Open Your Studio
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="vc-section vc-feat-section">
+        <div className="vc-container">
+          <p className="vc-section-eyebrow">Platform Features</p>
+          <h2 className="vc-section-title">
+            Built for the <span className="glow">next wave</span> of music
+          </h2>
+          <div className="vc-feat-grid vc-feat-grid-top">
+            <div className="vc-feat-card">
+              <span className="vc-feat-tag">Marketplace</span>
+              <h3>Browse by genre, BPM &amp; score</h3>
+              <p>
+                Filter by genre, BPM, key, EMS score, price range, and
+                remaining license supply. Hear before you buy — every time.
+              </p>
+              <Link href="/marketplace" className="vc-feat-link">
+                Open Marketplace →
+              </Link>
+            </div>
+            <div className="vc-feat-card versus">
+              <span className="vc-feat-tag">Versus Battles</span>
+              <h3>Put tracks head-to-head</h3>
+              <p>
+                Artists submit tracks for head-to-head battles. Community votes
+                push winners up the discovery ladder and into top placements.
+              </p>
+              <Link href="/versus" className="vc-feat-link vc-feat-link-pink">
+                Enter Battles →
+              </Link>
+            </div>
+            <div className="vc-feat-card">
+              <span className="vc-feat-tag">Studio Network</span>
+              <h3>Build your release hub</h3>
+              <p>
+                Studio dashboards, rankings, and release momentum appear as
+                premium platform surfaces now. The immersive world returns when
+                the VR layer is ready.
+              </p>
+              <Link href="/auth/signup" className="vc-feat-link">
+                Open Studio →
+              </Link>
+            </div>
+            <div className="vc-feat-card versus">
+              <span className="vc-feat-tag">AI Discovery</span>
+              <h3>EMS score informs placement</h3>
+              <p>
+                Every track gets an AI-driven EMS score based on composition,
+                production quality, and market fit. Scores inform marketplace
+                placement.
+              </p>
+              <Link
+                href="/marketplace"
+                className="vc-feat-link vc-feat-link-pink"
+              >
+                View Top Scores →
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="vc-section vc-tracks-section">
         <div className="vc-container">
-          <p className="vc-section-eyebrow">Featured Drops</p>
+          <p className="vc-section-eyebrow">Featured Studio Drops</p>
           <h2 className="vc-section-title">
-            Hear the cue.{" "}
-            <span className="glow">See the terms.</span>
+            Hear the cue. <span className="glow">See the terms.</span>
           </h2>
           <p className="vc-section-sub">
             Preview every track before you license it. Price, supply, and
-            revenue share — all upfront.
+            revenue share are shown upfront.
           </p>
           <div className="vc-tracks-grid">
             {sampleSongs.map((song, i) => (
@@ -412,182 +842,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Leaderboard */}
-      <section className="vc-section vc-leaderboard-section">
-        <div className="vc-container">
-          <div className="vc-lb-grid">
-            <div>
-              <p className="vc-section-eyebrow">Top Charts</p>
-              <h2 className="vc-section-title">
-                The <span className="pink">hottest</span> tracks in the city
-              </h2>
-              <p className="vc-section-sub">
-                Rankings move with plays, licenses, battle wins, and district
-                momentum. Real demand drives real placement.
-              </p>
-              <Link href="/versus" className="vc-btn vc-btn-pink">
-                Enter Versus Battles
-              </Link>
-            </div>
-            <div className="vc-lb-table">
-              <div className="vc-lb-header">
-                <span>Rank</span>
-                <span>Track</span>
-                <span>Score</span>
-              </div>
-              {sampleSongs.map((song, i) => (
-                <Link
-                  key={song.id}
-                  href={`/track/${song.id}`}
-                  className={`vc-lb-row top${i + 1}`}
-                >
-                  <div className="vc-lb-rank">0{i + 1}</div>
-                  <div>
-                    <div className="vc-lb-track-name">{song.title}</div>
-                    <div className="vc-lb-track-artist">{song.artist}</div>
-                  </div>
-                  <div className="vc-lb-streams">{song.aiScore.toFixed(1)}</div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Split CTA */}
-      <section className="vc-section vc-split-section">
-        <div className="vc-container">
-          <div className="vc-split-grid">
-            <div className="vc-split-card creators">
-              <div>
-                <p className="vc-section-eyebrow vc-eyebrow-pink">
-                  For Creators
-                </p>
-                <h3>
-                  License <span className="high">cinematic</span>
-                  <br />
-                  music fast
-                </h3>
-                <p>
-                  Find music that explains its price, rights, supply, and
-                  revenue split before you buy. No hidden terms.
-                </p>
-                <div className="vc-split-stats">
-                  {displayStats.slice(0, 2).map((stat) => (
-                    <div key={stat.label} className="vc-stat">
-                      <div className="num">{stat.num}</div>
-                      <div className="label">{stat.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <Link
-                href="/marketplace"
-                className="vc-btn vc-btn-pink vc-split-cta"
-              >
-                Browse the Catalog
-              </Link>
-            </div>
-
-            <div className="vc-split-card artists">
-              <div>
-                <p className="vc-section-eyebrow vc-eyebrow-cyan">
-                  For Artists
-                </p>
-                <h3>
-                  Release and <span className="high">earn</span>
-                  <br />
-                  on your terms
-                </h3>
-                <p>
-                  Set price and supply, keep 90% of sales, and let real demand
-                  push your release through the city.
-                </p>
-                <div className="vc-split-stats">
-                  <div className="vc-stat">
-                    <div className="num">90%</div>
-                    <div className="label">Artist Share</div>
-                  </div>
-                  <div className="vc-stat">
-                    <div className="num">3</div>
-                    <div className="label">City Districts</div>
-                  </div>
-                </div>
-              </div>
-              <Link
-                href="/auth/signup"
-                className="vc-btn vc-btn-ghost-cyan vc-split-cta"
-              >
-                Open Your Studio
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Feature Cards */}
-      <section className="vc-section vc-feat-section">
-        <div className="vc-container">
-          <p className="vc-section-eyebrow">Platform Features</p>
-          <h2 className="vc-section-title">
-            Built for the <span className="glow">next wave</span> of music
-          </h2>
-          <div className="vc-feat-grid vc-feat-grid-top">
-            <div className="vc-feat-card">
-              <span className="vc-feat-tag">Marketplace</span>
-              <h3>Browse by genre, BPM &amp; score</h3>
-              <p>
-                Filter by genre, BPM, key, EMS score, price range, and
-                remaining license supply. Hear before you buy — every time.
-              </p>
-              <Link href="/marketplace" className="vc-feat-link">
-                Open Marketplace →
-              </Link>
-            </div>
-            <div className="vc-feat-card versus">
-              <span className="vc-feat-tag">Versus Battles</span>
-              <h3>Put tracks head-to-head</h3>
-              <p>
-                Artists submit tracks for head-to-head battles. Community votes
-                push winners up the discovery ladder and into top city
-                districts.
-              </p>
-              <Link href="/versus" className="vc-feat-link vc-feat-link-pink">
-                Enter Battles →
-              </Link>
-            </div>
-            <div className="vc-feat-card">
-              <span className="vc-feat-tag">Music City</span>
-              <h3>See the city in 3D</h3>
-              <p>
-                Studios, district status, and release momentum visualized as a
-                live 3D city. Watch your track climb floors as it gains
-                traction.
-              </p>
-              <Link href="/city" className="vc-feat-link">
-                Enter the City →
-              </Link>
-            </div>
-            <div className="vc-feat-card versus">
-              <span className="vc-feat-tag">AI Discovery</span>
-              <h3>EMS score drives placement</h3>
-              <p>
-                Every track gets an AI-driven EMS score based on composition,
-                production quality, and market fit. Scores determine district
-                placement.
-              </p>
-              <Link
-                href="/marketplace"
-                className="vc-feat-link vc-feat-link-pink"
-              >
-                View Top Scores →
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Closing CTA */}
       <section className="vc-section vc-closing-section">
         <div className="vc-container vc-closing-inner">
           <p className="vc-eyebrow">Ready to move?</p>
