@@ -5,6 +5,8 @@ import { formatPrice } from "@ems/utils";
 import { notFound } from "next/navigation";
 import AudioPlayer from "@/components/AudioPlayer";
 import SongCard from "@/components/SongCard";
+import LicenseButton from "@/components/LicenseButton";
+import TrackActions from "@/components/TrackActions";
 import type { Metadata } from "next";
 import { demoTracks } from "@/lib/demoTracks";
 
@@ -256,6 +258,19 @@ export default async function TrackPage({ params, searchParams }: Props) {
             <AudioPlayer audioUrl={song.audioUrl} title={song.title} songId={song.id} />
           )}
 
+          {/* Play in global player + Share */}
+          {song.audioUrl && (
+            <TrackActions
+              song={{
+                id: song.id,
+                title: song.title,
+                artist: song.artist_?.name ?? song.artist,
+                audioUrl: song.audioUrl,
+                coverUrl: song.coverUrl,
+              }}
+            />
+          )}
+
           {/* Licensing economics */}
           <div className="glass rounded-2xl p-5">
             <div className="mb-4 flex items-center justify-between">
@@ -276,6 +291,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
                 <span>{soldOutPct}% sold</span>
               </div>
               <div className="h-2 w-full rounded-full bg-white/10">
+                {/* eslint-disable-next-line react/forbid-dom-props */}
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-500 transition-all"
                   style={{ width: `${soldOutPct}%` }}
@@ -307,18 +323,13 @@ export default async function TrackPage({ params, searchParams }: Props) {
                 Sold out
               </div>
             ) : session ? (
-              <form action="/api/checkout" method="POST">
-                <input type="hidden" name="songId" value={song.id} />
-                <button
-                  type="submit"
-                  className="w-full rounded-xl bg-brand-500 py-3 font-semibold text-white hover:bg-brand-600 transition"
-                >
-                  License this song for {formatPrice(song.licensePrice)}
-                </button>
-              </form>
+              <LicenseButton
+                songId={song.id}
+                licensePrice={song.licensePrice.toString()}
+              />
             ) : (
               <a
-                href="/auth/signin"
+                href={`/auth/signin?callbackUrl=/track/${song.id}`}
                 className="block w-full rounded-xl bg-brand-500 py-3 text-center font-semibold text-white hover:bg-brand-600 transition"
               >
                 Sign in to license

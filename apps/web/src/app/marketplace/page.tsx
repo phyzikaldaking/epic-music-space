@@ -5,6 +5,7 @@ import MarketplaceWorld3D from "@/components/MarketplaceWorld3D";
 import MarketplacePresence from "@/components/MarketplacePresence";
 import MarketplaceConfidencePanel from "@/components/MarketplaceConfidencePanel";
 import MarketplaceRetentionTools from "@/components/MarketplaceRetentionTools";
+import MarketplaceSearch from "@/components/MarketplaceSearch";
 import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
@@ -42,7 +43,12 @@ function getCompetitorGap(song: MarketplaceSong, previous?: MarketplaceSong) {
   return Math.max(0, Number(previous.rankScore ?? 0) - Number(song.rankScore ?? 0));
 }
 
-export default async function MarketplacePage() {
+export default async function MarketplacePage(props: {
+  searchParams: Promise<Record<string, string>>;
+}) {
+  const searchParams = await props.searchParams;
+  const searchQuery = (searchParams.q ?? "").toLowerCase().trim();
+
   let allSongs: MarketplaceSong[] = [];
 
   try {
@@ -54,6 +60,15 @@ export default async function MarketplacePage() {
   const rankedSongs = allSongs
     .map((song) => ({ ...song, rankScore: Number(song.aiScore ?? 0) + Number(song.boostScore ?? 0) }))
     .sort((a, b) => Number(b.rankScore ?? 0) - Number(a.rankScore ?? 0));
+
+  const displaySongs = searchQuery
+    ? rankedSongs.filter(
+        (s) =>
+          s.title.toLowerCase().includes(searchQuery) ||
+          s.artist.toLowerCase().includes(searchQuery) ||
+          (s.genre ?? "").toLowerCase().includes(searchQuery),
+      )
+    : rankedSongs;
 
   const topSong = rankedSongs[0];
   const dominanceStrip = rankedSongs.slice(0, 5);
@@ -98,7 +113,17 @@ export default async function MarketplacePage() {
         </section>
 
         <section className="mt-8">
-          <div className="flex gap-3 overflow-x-auto pb-2">{categories.map((category, index) => (<a key={category} href={index === 0 ? "/marketplace" : `/marketplace?genre=${encodeURIComponent(category)}`} className={`whitespace-nowrap rounded-full border px-5 py-2.5 text-sm font-black uppercase tracking-[0.12em] transition ${index === 0 ? "border-cyan-200/35 bg-cyan-200/12 text-cyan-100 shadow-lg shadow-cyan-500/10" : "border-white/10 bg-white/[0.045] text-white/52 hover:border-cyan-200/35 hover:bg-cyan-200/10 hover:text-cyan-100"}`}>{category}</a>))}</div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex flex-1 gap-3 overflow-x-auto pb-2 sm:pb-0">{categories.map((category, index) => (<a key={category} href={index === 0 ? "/marketplace" : `/marketplace?genre=${encodeURIComponent(category)}`} className={`whitespace-nowrap rounded-full border px-5 py-2.5 text-sm font-black uppercase tracking-[0.12em] transition ${index === 0 ? "border-cyan-200/35 bg-cyan-200/12 text-cyan-100 shadow-lg shadow-cyan-500/10" : "border-white/10 bg-white/[0.045] text-white/52 hover:border-cyan-200/35 hover:bg-cyan-200/10 hover:text-cyan-100"}`}>{category}</a>))}</div>
+            <Suspense><MarketplaceSearch initialQuery={searchParams.q ?? ""} /></Suspense>
+          </div>
+          {searchQuery && (
+            <p className="mt-3 text-sm text-white/45">
+              {displaySongs.length === 0
+                ? `No tracks found for "${searchParams.q}"`
+                : `${displaySongs.length} track${displaySongs.length !== 1 ? "s" : ""} matching "${searchParams.q}"`}
+            </p>
+          )}
         </section>
 
         {dominanceStrip.length > 0 && (
@@ -129,11 +154,11 @@ export default async function MarketplacePage() {
             <div className="rounded-[1.75rem] border border-white/10 bg-black/30 p-5 shadow-2xl shadow-black/35 backdrop-blur-2xl"><div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">Live Presence</p><p className="mt-1 text-sm text-white/55">See who is active around the catalog.</p></div><MarketplacePresence compact /></div></div>
           </aside>
           <div id="marketplace-catalog" className="space-y-8">
-            <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/35 backdrop-blur-2xl"><div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-200/75">Ranked Catalog</p><h2 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white md:text-5xl">Studio monitor listings</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/50">Every screen represents a track competing for attention, licensing, and placement. Stronger score means stronger visibility.</p></div><div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/48">{rankedSongs.length} active listings</div></div></div>
-            <MarketplaceConfidencePanel tracks={rankedSongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore }))} />
-            <MarketplaceRetentionTools tracks={rankedSongs.map((song) => ({ id: song.id, title: song.title }))} />
+            <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/35 backdrop-blur-2xl"><div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-200/75">Ranked Catalog</p><h2 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white md:text-5xl">Studio monitor listings</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/50">Every screen represents a track competing for attention, licensing, and placement. Stronger score means stronger visibility.</p></div><div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/48">{displaySongs.length} {searchQuery ? "results" : "active listings"}</div></div></div>
+            <MarketplaceConfidencePanel tracks={displaySongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore }))} />
+            <MarketplaceRetentionTools tracks={displaySongs.map((song) => ({ id: song.id, title: song.title }))} />
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {rankedSongs.map((song, index) => (
+              {displaySongs.map((song, index) => (
                 <SongCard
                   key={song.id}
                   id={song.id}

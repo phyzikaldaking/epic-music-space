@@ -3,6 +3,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
+import GlobalAudioPlayer from "@/components/GlobalAudioPlayer";
 import { getSiteUrl } from "@/lib/site";
 
 const siteUrl = getSiteUrl();
@@ -122,8 +123,9 @@ export default function RootLayout({
         />
         <Providers>
           <Navbar />
-          <main id="main-content">{children}</main>
+          <main id="main-content" className="pb-20">{children}</main>
           <Footer />
+          <GlobalAudioPlayer />
         </Providers>
       </body>
     </html>
