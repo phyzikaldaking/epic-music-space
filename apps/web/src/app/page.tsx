@@ -744,7 +744,7 @@ export default async function HomePage() {
                 premium platform surfaces now. The immersive world returns when
                 the VR layer is ready.
               </p>
-              <Link href="/auth/signup" className="vc-feat-link">
+              <Link href="/studio" className="vc-feat-link">
                 Open Studio →
               </Link>
             </div>
