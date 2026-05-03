@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CHANNELS, createBrowserSupabaseClient } from "@/lib/supabase";
 
 type FinalistTrack = {
@@ -19,7 +19,15 @@ type FinalsEvent = {
   message?: string;
   leaderId?: string;
   crowdEnergy?: number;
-  eventType?: "vote" | "boost" | "crowd" | "leader_change" | "finale";
+  eventType?: "vote" | "boost" | "crowd" | "leader_change" | "finale" | "tip";
+};
+
+type ChatMessage = {
+  id: string;
+  name: string;
+  message: string;
+  type?: "chat" | "reaction" | "tip";
+  amount?: number;
 };
 
 interface SpectatorFinalsExperienceProps {
@@ -41,11 +49,19 @@ const crowdMessages = [
   "A leader change could happen any second.",
 ];
 
+const defaultChat: ChatMessage[] = [
+  { id: "seed-1", name: "EMS", message: "Finals room is live. React, tip, and watch the crown move." },
+  { id: "seed-2", name: "Crowd", message: "Crown energy building..." },
+];
+
 export default function SpectatorFinalsExperience({ finalists = fallbackFinalists, eventName = "Epic Music Space Finals" }: SpectatorFinalsExperienceProps) {
   const [event, setEvent] = useState<FinalsEvent>({ status: "LIVE", title: eventName, message: crowdMessages[0], crowdEnergy: 62 });
   const [cycle, setCycle] = useState(0);
   const [reaction, setReaction] = useState<"fire" | "crown" | "shock" | "energy" | null>(null);
   const [connected, setConnected] = useState(false);
+  const [chat, setChat] = useState<ChatMessage[]>(defaultChat);
+  const [chatInput, setChatInput] = useState("");
+  const [displayName, setDisplayName] = useState("Spectator");
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
 
   const ranked = useMemo(() => {
@@ -54,6 +70,10 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
 
   const leader = ranked[0];
   const crowdEnergy = Math.max(10, Math.min(100, event.crowdEnergy ?? 62));
+
+  function addChatMessage(message: ChatMessage) {
+    setChat((current) => [message, ...current].slice(0, 30));
+  }
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -74,8 +94,11 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
       .on("broadcast", { event: "finals_event" }, ({ payload }) => {
         const nextEvent = payload as FinalsEvent;
         setEvent((current) => ({ ...current, ...nextEvent }));
-        setReaction(nextEvent.eventType === "leader_change" ? "crown" : nextEvent.eventType === "boost" ? "fire" : "energy");
+        setReaction(nextEvent.eventType === "leader_change" ? "crown" : nextEvent.eventType === "boost" ? "fire" : nextEvent.eventType === "tip" ? "energy" : "energy");
         window.setTimeout(() => setReaction(null), 2200);
+      })
+      .on("broadcast", { event: "finals_chat" }, ({ payload }) => {
+        addChatMessage(payload as ChatMessage);
       })
       .subscribe((status) => setConnected(status === "SUBSCRIBED"));
 
@@ -86,8 +109,62 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
 
   function triggerLocalReaction(nextReaction: "fire" | "crown" | "shock" | "energy") {
     setReaction(nextReaction);
+    const nextMessage: ChatMessage = {
+      id: `reaction-${Date.now()}`,
+      name: displayName || "Spectator",
+      message: nextReaction === "fire" ? "🔥 FIRE" : nextReaction === "crown" ? "👑 CROWN SHIFT" : nextReaction === "shock" ? "😱 ROOM SHOCK" : "⚡ ENERGY UP",
+      type: "reaction",
+    };
+    addChatMessage(nextMessage);
     setEvent((current) => ({ ...current, crowdEnergy: Math.min(100, (current.crowdEnergy ?? 62) + 9), message: "The crowd just reacted live." }));
+    if (supabase) {
+      void supabase.channel(CHANNELS.marketplace).send({ type: "broadcast", event: "finals_chat", payload: nextMessage });
+      void supabase.channel(CHANNELS.marketplace).send({ type: "broadcast", event: "finals_event", payload: { eventType: "crowd", crowdEnergy: Math.min(100, crowdEnergy + 9), message: "Crowd reaction surged." } });
+    }
     window.setTimeout(() => setReaction(null), 1600);
+  }
+
+  async function submitChat(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const message = chatInput.trim();
+    if (!message) return;
+    const nextMessage: ChatMessage = { id: `chat-${Date.now()}`, name: displayName || "Spectator", message, type: "chat" };
+    addChatMessage(nextMessage);
+    setChatInput("");
+    if (supabase) {
+      void supabase.channel(CHANNELS.marketplace).send({ type: "broadcast", event: "finals_chat", payload: nextMessage });
+    }
+  }
+
+  async function sendTip(track: FinalistTrack, amount: number) {
+    const tipMessage: ChatMessage = {
+      id: `tip-${Date.now()}`,
+      name: displayName || "Spectator",
+      message: `tipped $${amount} to ${track.artist}`,
+      type: "tip",
+      amount,
+    };
+    addChatMessage(tipMessage);
+    setReaction("energy");
+    setEvent((current) => ({ ...current, crowdEnergy: Math.min(100, (current.crowdEnergy ?? 62) + amount), message: `${track.artist} just received a live tip.` }));
+    if (supabase) {
+      void supabase.channel(CHANNELS.marketplace).send({ type: "broadcast", event: "finals_chat", payload: tipMessage });
+      void supabase.channel(CHANNELS.marketplace).send({ type: "broadcast", event: "finals_event", payload: { eventType: "tip", message: `${track.artist} just received a live tip.`, crowdEnergy: Math.min(100, crowdEnergy + amount) } });
+    }
+    window.setTimeout(() => setReaction(null), 1600);
+
+    // Stripe tip checkout hook. Backend route can be added as /api/stripe/tip.
+    try {
+      const res = await fetch("/api/stripe/tip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ songId: track.id, amount }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.url) window.location.href = data.url;
+      }
+    } catch {}
   }
 
   return (
@@ -117,37 +194,23 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
                 <span className="rounded-full border border-red-300/25 bg-red-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-red-100">{event.status ?? "LIVE"}</span>
               </div>
 
-              <h1 className="mt-5 max-w-4xl text-5xl font-black leading-[0.88] tracking-[-0.08em] text-white md:text-8xl">
-                Live finals event stream.
-              </h1>
-              <p className="mt-6 max-w-2xl text-base leading-8 text-white/62 md:text-lg">
-                Watch artists fight for the crown in real time. Crowd reactions, leader changes, boosts, and final-season energy all move on one screen.
-              </p>
+              <h1 className="mt-5 max-w-4xl text-5xl font-black leading-[0.88] tracking-[-0.08em] text-white md:text-8xl">Live finals event stream.</h1>
+              <p className="mt-6 max-w-2xl text-base leading-8 text-white/62 md:text-lg">Watch artists fight for the crown in real time. Chat, react, tip, and push the crowd energy while the finals board moves.</p>
             </div>
 
             <div className="rounded-[2rem] border border-white/10 bg-black/40 p-5 shadow-2xl shadow-black/45 backdrop-blur-2xl">
               <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">Current Leader</p>
               <h2 className="mt-2 line-clamp-1 text-4xl font-black tracking-[-0.065em] text-white">{leader?.title ?? "Leader Pending"}</h2>
               <p className="mt-1 line-clamp-1 text-sm text-white/45">{leader?.artist ?? "Finalist"}</p>
-              <div className="mt-5 rounded-2xl border border-gold-200/15 bg-gold-200/10 p-4">
-                <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-white/40"><span>Crowd Energy</span><span>{crowdEnergy}%</span></div>
-                <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-gold-300 via-white to-cyan-300" style={{ width: `${crowdEnergy}%` }} /></div>
-              </div>
+              <div className="mt-5 rounded-2xl border border-gold-200/15 bg-gold-200/10 p-4"><div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-white/40"><span>Crowd Energy</span><span>{crowdEnergy}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-gold-300 via-white to-cyan-300" style={{ width: `${crowdEnergy}%` }} /></div></div>
               <p className="mt-4 text-sm leading-6 text-white/55">{event.message}</p>
             </div>
           </div>
         </section>
 
-        <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
+        <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_390px]">
           <div className="rounded-[2rem] border border-white/10 bg-black/35 p-5 shadow-2xl shadow-black/45 backdrop-blur-2xl">
-            <div className="mb-5 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.26em] text-gold-100/75">Finalists</p>
-                <h2 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white">Live battle board</h2>
-              </div>
-              <span className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/45">{ranked.length} finalists</span>
-            </div>
-
+            <div className="mb-5 flex items-center justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.26em] text-gold-100/75">Finalists</p><h2 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white">Live battle board</h2></div><span className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/45">{ranked.length} finalists</span></div>
             <div className="grid gap-4 md:grid-cols-3">
               {ranked.map((track, index) => {
                 const score = Number(track.power ?? 0) + Number(track.votes ?? 0) / 10;
@@ -157,10 +220,10 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
                     <div className="relative">
                       <div className="flex items-center justify-between"><span className="text-4xl font-black tracking-[-0.08em] text-white">#{index + 1}</span><span className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/50">{index === 0 ? "Leader" : "Finalist"}</span></div>
                       <div className="mt-5 aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black/50">{track.coverUrl ? <img src={track.coverUrl} alt="" className="h-full w-full object-cover opacity-80" /> : <div className="grid h-full place-items-center text-xs font-black uppercase tracking-[0.18em] text-white/35">Live Screen</div>}</div>
-                      <h3 className="mt-4 line-clamp-1 text-xl font-black tracking-[-0.04em] text-white">{track.title}</h3>
-                      <p className="mt-1 line-clamp-1 text-sm text-white/45">{track.artist}</p>
+                      <h3 className="mt-4 line-clamp-1 text-xl font-black tracking-[-0.04em] text-white">{track.title}</h3><p className="mt-1 line-clamp-1 text-sm text-white/45">{track.artist}</p>
                       <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-gold-300 via-white to-cyan-300" style={{ width: `${Math.max(8, Math.min(100, score / 12))}%` }} /></div>
                       <div className="mt-3 flex justify-between text-[11px] font-bold uppercase tracking-[0.14em] text-white/40"><span>Power</span><span>{score.toFixed(1)}</span></div>
+                      <div className="mt-4 grid grid-cols-3 gap-2">{[5, 10, 25].map((amount) => <button key={amount} type="button" onClick={() => sendTip(track, amount)} className="rounded-xl border border-gold-200/20 bg-gold-200/10 px-2 py-2 text-xs font-black text-gold-100 transition hover:bg-gold-200/20">Tip ${amount}</button>)}</div>
                     </div>
                   </article>
                 );
@@ -169,23 +232,8 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
           </div>
 
           <aside className="space-y-5">
-            <div className="rounded-[2rem] border border-white/10 bg-white/[0.045] p-5 shadow-2xl shadow-black/40 backdrop-blur-2xl">
-              <p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-100/75">Crowd Controls</p>
-              <div className="mt-5 grid gap-2">
-                <button onClick={() => triggerLocalReaction("fire")} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-gold-200/10">Fire Reaction</button>
-                <button onClick={() => triggerLocalReaction("crown")} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-cyan-200/10">Crown Shift</button>
-                <button onClick={() => triggerLocalReaction("shock")} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-red-300/10">Room Shock</button>
-              </div>
-            </div>
-
-            <div className="rounded-[2rem] border border-white/10 bg-black/35 p-5 shadow-2xl shadow-black/40 backdrop-blur-2xl">
-              <p className="text-xs font-black uppercase tracking-[0.26em] text-white/35">Live Feed</p>
-              <div className="mt-4 space-y-3 text-sm text-white/55">
-                <p>• {leader?.title ?? "A finalist"} controls the floor.</p>
-                <p>• Crowd energy is at {crowdEnergy}%.</p>
-                <p>• Boosts and leader changes can trigger full-screen events.</p>
-              </div>
-            </div>
+            <div className="rounded-[2rem] border border-white/10 bg-white/[0.045] p-5 shadow-2xl shadow-black/40 backdrop-blur-2xl"><p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-100/75">Crowd Controls</p><div className="mt-5 grid gap-2"><button onClick={() => triggerLocalReaction("fire")} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-gold-200/10">Fire Reaction</button><button onClick={() => triggerLocalReaction("crown")} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-cyan-200/10">Crown Shift</button><button onClick={() => triggerLocalReaction("shock")} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-red-300/10">Room Shock</button></div></div>
+            <div className="rounded-[2rem] border border-white/10 bg-black/35 p-5 shadow-2xl shadow-black/40 backdrop-blur-2xl"><p className="text-xs font-black uppercase tracking-[0.26em] text-white/35">Live Chat</p><div className="mt-4 grid grid-cols-[1fr_1.2fr] gap-2"><input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none placeholder:text-white/25" placeholder="Name" /><form onSubmit={submitChat} className="flex gap-2"><input value={chatInput} onChange={(e) => setChatInput(e.target.value)} className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none placeholder:text-white/25" placeholder="Say something" /><button className="rounded-xl bg-white px-3 py-2 text-xs font-black text-black">Send</button></form></div><div className="mt-4 max-h-[340px] space-y-2 overflow-y-auto pr-1">{chat.map((item) => <div key={item.id} className={`rounded-2xl border p-3 ${item.type === "tip" ? "border-gold-200/25 bg-gold-200/10" : item.type === "reaction" ? "border-cyan-200/20 bg-cyan-200/10" : "border-white/10 bg-white/[0.045]"}`}><div className="flex items-center justify-between gap-2"><p className="text-xs font-black uppercase tracking-[0.14em] text-white/45">{item.name}</p>{item.amount && <span className="text-xs font-black text-gold-100">${item.amount}</span>}</div><p className="mt-1 text-sm leading-5 text-white/68">{item.message}</p></div>)}</div></div>
           </aside>
         </section>
       </div>
