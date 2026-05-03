@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe, getStripeWebhookSecret } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
+import { TaxFormStatus } from "@ems/db";
 import { enqueueNotification } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { track } from "@/lib/analytics";
@@ -312,8 +313,8 @@ async function handleConnectAccountUpdated(account: Stripe.Account) {
  *  - Non-profits or manually marked exempt entities → EXEMPT
  *  - Default → NOT_COLLECTED
  */
-function resolveTaxFormStatus(account: Stripe.Account): string {
-  if (!account.details_submitted) return "NOT_COLLECTED";
+function resolveTaxFormStatus(account: Stripe.Account): TaxFormStatus {
+  if (!account.details_submitted) return TaxFormStatus.NOT_COLLECTED;
 
   const req = account.requirements;
   const hasPendingTaxFields =
@@ -321,10 +322,10 @@ function resolveTaxFormStatus(account: Stripe.Account): string {
       (f) => f.includes("tax") || f.includes("ssn") || f.includes("id_number")
     ) ?? false;
 
-  if (hasPendingTaxFields) return "PENDING";
+  if (hasPendingTaxFields) return TaxFormStatus.PENDING;
 
   // Fully verified with no blocking requirements
-  if (account.charges_enabled && account.payouts_enabled) return "COLLECTED";
+  if (account.charges_enabled && account.payouts_enabled) return TaxFormStatus.COLLECTED;
 
-  return "PENDING";
+  return TaxFormStatus.PENDING;
 }
