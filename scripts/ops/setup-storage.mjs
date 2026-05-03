@@ -14,16 +14,33 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import { config } from "dotenv";
+import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load env from apps/web/.env.local if vars not already set
+// Manually parse .env.local if vars not already set
+function loadEnvFile(filePath) {
+  try {
+    const content = readFileSync(filePath, "utf8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+      if (!process.env[key]) process.env[key] = val;
+    }
+  } catch {
+    // file not found — ignore
+  }
+}
+
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-  config({ path: resolve(__dirname, "../../apps/web/.env.local") });
+  loadEnvFile(resolve(__dirname, "../../apps/web/.env.local"));
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
