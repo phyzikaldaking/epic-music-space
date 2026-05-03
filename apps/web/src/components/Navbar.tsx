@@ -27,7 +27,7 @@ export default async function Navbar() {
         { href: "/auctions", label: "Auctions" },
         { href: "/versus", label: "Battles" },
         { href: "/leaderboard", label: "Charts" },
-        { href: "/city", label: "City" },
+        { href: "/studio/live", label: "Studio" },
         { href: "/dashboard", label: "Dashboard" },
         { href: "/invite", label: "Invite" },
         { href: "/boost", label: "Boost" },

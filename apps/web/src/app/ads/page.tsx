@@ -18,7 +18,7 @@ const LOCATIONS = [
   },
   {
     key: "CITY_BILLBOARD",
-    label: "City Billboard",
+    label: "Studio Billboard",
     description: "Premium billboard shown on the City district page.",
     dailyRate: 199,
     icon: "🏙️",

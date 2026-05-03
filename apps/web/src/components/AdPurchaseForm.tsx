@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 const LOCATIONS = [
   { key: "MARKETPLACE_BANNER", label: "Marketplace Banner", dailyRate: 99 },
   { key: "STUDIO_SIDEBAR", label: "Studio Sidebar", dailyRate: 49 },
-  { key: "CITY_BILLBOARD", label: "City Billboard", dailyRate: 199 },
+  { key: "STUDIO_BILLBOARD", label: "Studio Billboard", dailyRate: 199 },
   { key: "VERSUS_BANNER", label: "Versus Banner", dailyRate: 79 },
 ];
 

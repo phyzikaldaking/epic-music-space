@@ -98,7 +98,7 @@ export async function checkInviteMilestones(inviterId: string) {
           userId: inviterId,
           type: "MILESTONE_REWARD",
           title: "5-invite milestone reached! 🎉",
-          body: "You've unlocked a free City Billboard ad slot. Visit /ads to claim your credit.",
+          body: "You've unlocked a free Studio Billboard ad slot. Visit /ads to claim your credit.",
           metadata: { milestone: "INVITE_5", reward: "billboard_credit" },
         },
       });

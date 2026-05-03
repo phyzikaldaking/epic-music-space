@@ -95,7 +95,7 @@ const TIERS = [
       "Create & manage a label",
       "Sign up to 20 artists",
       "Platinum Heights access",
-      "City billboard ad slots",
+      "Studio billboard ad slots",
       "Stripe Connect payout dashboard",
       "Priority support",
     ],
