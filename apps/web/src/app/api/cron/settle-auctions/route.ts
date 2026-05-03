@@ -134,3 +134,6 @@ export async function GET(req: NextRequest) {
   );
   return NextResponse.json({ settled, expired: expired_count, total: expired.length });
 }
+
+// Ownership transfer for auction wins happens via Stripe webhook fulfilment.
+// We keep settlement cron responsible for ending auctions + creating checkout.

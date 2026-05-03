@@ -241,6 +241,86 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     }
 
+    // ─────────────────────────────────────────────────────────
+    // Auction win fulfilment (license transfer)
+    // ─────────────────────────────────────────────────────────
+
+    if (metadataType === "auction_win") {
+      const auctionId = session.metadata?.auctionId;
+      const buyerId = session.metadata?.userId;
+
+      if (!auctionId || !buyerId) {
+        return NextResponse.json({ received: true });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const auction = await tx.auction.findUnique({
+          where: { id: auctionId },
+          include: { song: { select: { id: true, artistId: true, revenueSharePct: true } } },
+        });
+
+        if (!auction) return;
+        if (auction.status !== "ENDED") return;
+        if (auction.winnerId !== buyerId) return;
+
+        const txRow = await tx.transaction.findFirst({
+          where: { stripeSessionId: session.id, userId: buyerId, type: "AUCTION_WIN" },
+          select: { id: true, status: true, amount: true },
+        });
+
+        if (!txRow) return;
+        if (txRow.status === "SUCCEEDED") return;
+
+        // Allocate a new license token for the winner
+        const song = await tx.song.findUnique({ where: { id: auction.songId } });
+        if (!song || !song.isActive) return;
+        if (song.soldLicenses >= song.totalLicenses) return;
+
+        const nextTokenNumber = song.soldLicenses + 1;
+        const license = await tx.licenseToken.create({
+          data: {
+            tokenNumber: nextTokenNumber,
+            price: txRow.amount,
+            songId: song.id,
+            holderId: buyerId,
+          },
+        });
+
+        await tx.song.update({
+          where: { id: song.id },
+          data: { soldLicenses: { increment: 1 } },
+        });
+
+        await tx.transaction.update({
+          where: { id: txRow.id },
+          data: { status: "SUCCEEDED", licenseTokenId: license.id },
+        });
+
+        await tx.auction.update({
+          where: { id: auction.id },
+          data: { status: "SETTLED" },
+        });
+
+        // Artist payout (same pattern as license purchase)
+        const revenueShare = Number(song.revenueSharePct) / 100;
+        const amount = Number(txRow.amount);
+        const payoutAmount = amount * revenueShare;
+        if (payoutAmount > 0) {
+          await tx.payout.create({
+            data: {
+              amount: payoutAmount,
+              userId: song.artistId,
+              songId: song.id,
+              licenseTokenId: license.id,
+              period: "auction",
+            },
+          });
+        }
+      });
+
+      return NextResponse.json({ received: true });
+    }
+
     const transactionId = session.metadata?.transactionId;
     if (!transactionId) {
       return NextResponse.json({ received: true });
