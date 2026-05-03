@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import LeaderboardTable from "@/components/LeaderboardTable";
 import LiveLeaderboard from "@/components/LiveLeaderboard";
 
 export const dynamic = "force-dynamic";
@@ -119,7 +118,6 @@ export default async function LeaderboardPage({
       <LiveLeaderboard
         initialEntries={initialEntries}
         type={type}
-        LeaderboardTableComponent={LeaderboardTable}
       />
     </div>
   );

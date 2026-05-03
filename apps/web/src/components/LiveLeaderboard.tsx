@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
+import LeaderboardTable from "@/components/LeaderboardTable";
 
 interface LeaderboardEntry {
   id: string;
@@ -21,7 +22,6 @@ interface LeaderboardEntry {
 interface LiveLeaderboardProps {
   initialEntries: LeaderboardEntry[];
   type: "songs" | "artists";
-  LeaderboardTableComponent: React.ComponentType<{ entries: LeaderboardEntry[]; type: "songs" | "artists" }>;
 }
 
 /**
@@ -32,7 +32,7 @@ interface LiveLeaderboardProps {
  * it re-fetches the leaderboard via the /api/leaderboard endpoint and
  * updates the displayed entries.
  */
-export default function LiveLeaderboard({ initialEntries, type, LeaderboardTableComponent }: LiveLeaderboardProps) {
+export default function LiveLeaderboard({ initialEntries, type }: LiveLeaderboardProps) {
   const [entries, setEntries] = useState<LeaderboardEntry[]>(initialEntries);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -92,7 +92,7 @@ export default function LiveLeaderboard({ initialEntries, type, LeaderboardTable
           <span className="text-brand-400/70">Refreshing…</span>
         )}
       </div>
-      <LeaderboardTableComponent entries={entries} type={type} />
+      <LeaderboardTable entries={entries} type={type} />
     </div>
   );
 }

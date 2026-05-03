@@ -27,7 +27,6 @@ const footerNav = [
     links: [
       { label: "Pricing", href: "/pricing" },
       { label: "Versus Battles", href: "/versus" },
-      { label: "City View", href: "/city" },
       { label: "AI Score Info", href: "/legal/licensing#ai-score" },
     ],
   },
