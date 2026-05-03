@@ -51,6 +51,8 @@ model User {
   adPlacements     AdPlacement[]
   notifications    Notification[]
   versusVotes      VersusVote[]
+  battlesCreated   BattleRoyale[]     @relation("BattleRoyaleCreator")
+  royaleVotes      BattleRoyaleVote[] @relation("BattleRoyaleVotes")
   following        UserFollow[]   @relation("Follower")
   followers        UserFollow[]   @relation("Following")
 
@@ -164,8 +166,9 @@ model Song {
   licenses       LicenseToken[]
   transactions   Transaction[]
   payouts        Payout[]
-  versusMatchesA VersusMatch[]  @relation("VersusA")
-  versusMatchesB VersusMatch[]  @relation("VersusB")
+  versusMatchesA VersusMatch[]       @relation("VersusA")
+  versusMatchesB VersusMatch[]       @relation("VersusB")
+  royaleEntries  BattleRoyaleEntry[] @relation("BattleRoyaleEntries")
   auctions       Auction[]
 
   @@index([artistId])
@@ -548,4 +551,45 @@ model AuctionBid {
 
   @@index([auctionId, amount(sort: Desc)])
   @@index([bidderId])
+}
+
+// ─────────────────────────────────────────
+// BATTLE ROYALE (multi-song poll battles)
+// ─────────────────────────────────────────
+
+model BattleRoyale {
+  id        String              @id @default(cuid())
+  creatorId String
+  creator   User                @relation("BattleRoyaleCreator", fields: [creatorId], references: [id])
+  status    VersusStatus        @default(ACTIVE)
+  endsAt    DateTime
+  createdAt DateTime            @default(now())
+  entries   BattleRoyaleEntry[]
+  votes     BattleRoyaleVote[]
+
+  @@index([status])
+  @@index([endsAt])
+}
+
+model BattleRoyaleEntry {
+  id       String       @id @default(cuid())
+  battleId String
+  battle   BattleRoyale @relation(fields: [battleId], references: [id], onDelete: Cascade)
+  songId   String
+  song     Song         @relation("BattleRoyaleEntries", fields: [songId], references: [id], onDelete: Cascade)
+  votes    Int          @default(0)
+  position Int
+}
+
+model BattleRoyaleVote {
+  id        String       @id @default(cuid())
+  battleId  String
+  battle    BattleRoyale @relation(fields: [battleId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation("BattleRoyaleVotes", fields: [userId], references: [id], onDelete: Cascade)
+  songId    String
+  createdAt DateTime     @default(now())
+
+  @@unique([battleId, userId])
+  @@index([battleId])
 }

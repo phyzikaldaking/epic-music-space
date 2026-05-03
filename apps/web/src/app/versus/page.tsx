@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import VersusCard from "@/components/VersusCard";
+import BattleRoyaleCard from "@/components/BattleRoyaleCard";
 import CreateBattleForm from "@/components/CreateBattleForm";
 
 export const dynamic = "force-dynamic";
@@ -11,29 +12,39 @@ export default async function VersusPage() {
   const isArtist =
     Boolean(session?.user?.id) && session!.user.role !== "LISTENER";
 
-  const [matches, artistSongs] = await Promise.all([
+  const [matches, royales, artistSongs] = await Promise.all([
     prisma.versusMatch.findMany({
       where: { status: "ACTIVE" },
       include: {
         songA: {
           select: {
-            id: true,
-            title: true,
-            artist: true,
-            coverUrl: true,
-            audioUrl: true,
-            aiScore: true,
+            id: true, title: true, artist: true,
+            coverUrl: true, audioUrl: true, aiScore: true,
           },
         },
         songB: {
           select: {
-            id: true,
-            title: true,
-            artist: true,
-            coverUrl: true,
-            audioUrl: true,
-            aiScore: true,
+            id: true, title: true, artist: true,
+            coverUrl: true, audioUrl: true, aiScore: true,
           },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+    prisma.battleRoyale.findMany({
+      where: { status: "ACTIVE" },
+      include: {
+        entries: {
+          include: {
+            song: {
+              select: {
+                id: true, title: true, artist: true,
+                coverUrl: true, audioUrl: true, aiScore: true,
+              },
+            },
+          },
+          orderBy: { position: "asc" },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -42,26 +53,46 @@ export default async function VersusPage() {
     isArtist
       ? prisma.song.findMany({
           where: { artistId: session?.user?.id ?? "", isActive: true },
-          select: { id: true, title: true, artist: true },
+          select: { id: true, title: true, artist: true, coverUrl: true },
           orderBy: { createdAt: "desc" },
           take: 50,
         })
       : Promise.resolve([]),
   ]);
 
-  // Get current user's votes
+  // Get user votes for 1v1 and royale
   let userVotes: Record<string, string> = {};
+  let userRoyaleVotes: Record<string, string> = {};
   if (session?.user?.id) {
-    const votes = await prisma.versusVote.findMany({
-      where: {
-        userId: session.user.id,
-        matchId: { in: matches.map((m) => m.id) },
-      },
-    });
-    userVotes = Object.fromEntries(
-      votes.map((v) => [v.matchId, v.votedSongId]),
-    );
+    const [votes, royaleVotes] = await Promise.all([
+      prisma.versusVote.findMany({
+        where: {
+          userId: session.user.id,
+          matchId: { in: matches.map((m) => m.id) },
+        },
+      }),
+      prisma.battleRoyaleVote.findMany({
+        where: {
+          userId: session.user.id,
+          battleId: { in: royales.map((r) => r.id) },
+        },
+      }),
+    ]);
+    userVotes = Object.fromEntries(votes.map((v) => [v.matchId, v.votedSongId]));
+    userRoyaleVotes = Object.fromEntries(royaleVotes.map((v) => [v.battleId, v.songId]));
   }
+
+  // Merge and sort all battles by createdAt
+  type BattleItem =
+    | { type: "1v1"; createdAt: Date; data: (typeof matches)[0] }
+    | { type: "royale"; createdAt: Date; data: (typeof royales)[0] };
+
+  const all: BattleItem[] = [
+    ...matches.map((m) => ({ type: "1v1" as const, createdAt: m.createdAt, data: m })),
+    ...royales.map((r) => ({ type: "royale" as const, createdAt: r.createdAt, data: r })),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  const isEmpty = all.length === 0;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
@@ -85,14 +116,13 @@ export default async function VersusPage() {
             Versus
           </h1>
           <p className="mt-2 text-white/50">
-            Vote for your favorite tracks. Winners rise in the discovery
-            algorithm.
+            Vote for your favorites. Winners rise in the discovery algorithm.
           </p>
         </div>
         {isArtist && <CreateBattleForm songs={artistSongs} />}
       </div>
 
-      {matches.length === 0 ? (
+      {isEmpty ? (
         <div className="py-24 text-center text-white/30">
           <p className="text-xl font-semibold">No active battles right now.</p>
           <p className="mt-2 text-sm">
@@ -103,18 +133,28 @@ export default async function VersusPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          {matches.map((m) => (
-            <VersusCard
-              key={m.id}
-              matchId={m.id}
-              songA={m.songA}
-              songB={m.songB}
-              votesA={m.votesA}
-              votesB={m.votesB}
-              endsAt={m.endsAt.toISOString()}
-              userVotedSongId={userVotes[m.id] ?? null}
-            />
-          ))}
+          {all.map((item) =>
+            item.type === "1v1" ? (
+              <VersusCard
+                key={item.data.id}
+                matchId={item.data.id}
+                songA={item.data.songA}
+                songB={item.data.songB}
+                votesA={item.data.votesA}
+                votesB={item.data.votesB}
+                endsAt={item.data.endsAt.toISOString()}
+                userVotedSongId={userVotes[item.data.id] ?? null}
+              />
+            ) : (
+              <BattleRoyaleCard
+                key={item.data.id}
+                battleId={item.data.id}
+                entries={item.data.entries}
+                endsAt={item.data.endsAt.toISOString()}
+                userVotedSongId={userRoyaleVotes[item.data.id] ?? null}
+              />
+            ),
+          )}
         </div>
       )}
     </div>
