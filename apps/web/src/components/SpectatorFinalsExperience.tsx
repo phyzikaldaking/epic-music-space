@@ -1,0 +1,194 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { CHANNELS, createBrowserSupabaseClient } from "@/lib/supabase";
+
+type FinalistTrack = {
+  id: string;
+  title: string;
+  artist: string;
+  power?: number | null;
+  votes?: number | null;
+  audioUrl?: string | null;
+  coverUrl?: string | null;
+};
+
+type FinalsEvent = {
+  title?: string;
+  status?: "SCHEDULED" | "LIVE" | "ENDED";
+  message?: string;
+  leaderId?: string;
+  crowdEnergy?: number;
+  eventType?: "vote" | "boost" | "crowd" | "leader_change" | "finale";
+};
+
+interface SpectatorFinalsExperienceProps {
+  finalists?: FinalistTrack[];
+  eventName?: string;
+}
+
+const fallbackFinalists: FinalistTrack[] = [
+  { id: "finalist-1", title: "Crown Control", artist: "Finalist One", power: 860, votes: 1280 },
+  { id: "finalist-2", title: "Gold Pressure", artist: "Finalist Two", power: 820, votes: 1190 },
+  { id: "finalist-3", title: "Diamond Run", artist: "Finalist Three", power: 790, votes: 1020 },
+];
+
+const crowdMessages = [
+  "Crowd energy is rising.",
+  "A finalist just gained momentum.",
+  "The finals floor is heating up.",
+  "Spectators are pushing the room louder.",
+  "A leader change could happen any second.",
+];
+
+export default function SpectatorFinalsExperience({ finalists = fallbackFinalists, eventName = "Epic Music Space Finals" }: SpectatorFinalsExperienceProps) {
+  const [event, setEvent] = useState<FinalsEvent>({ status: "LIVE", title: eventName, message: crowdMessages[0], crowdEnergy: 62 });
+  const [cycle, setCycle] = useState(0);
+  const [reaction, setReaction] = useState<"fire" | "crown" | "shock" | "energy" | null>(null);
+  const [connected, setConnected] = useState(false);
+  const supabase = useMemo(() => createBrowserSupabaseClient(), []);
+
+  const ranked = useMemo(() => {
+    return [...finalists].sort((a, b) => Number(b.power ?? 0) + Number(b.votes ?? 0) / 10 - (Number(a.power ?? 0) + Number(a.votes ?? 0) / 10));
+  }, [finalists]);
+
+  const leader = ranked[0];
+  const crowdEnergy = Math.max(10, Math.min(100, event.crowdEnergy ?? 62));
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setCycle((value) => value + 1);
+      setEvent((current) => ({
+        ...current,
+        message: crowdMessages[(cycle + 1) % crowdMessages.length],
+        crowdEnergy: Math.min(100, Math.max(30, (current.crowdEnergy ?? 62) + (cycle % 2 === 0 ? 7 : -4))),
+      }));
+    }, 6500);
+    return () => window.clearInterval(interval);
+  }, [cycle]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel(CHANNELS.marketplace)
+      .on("broadcast", { event: "finals_event" }, ({ payload }) => {
+        const nextEvent = payload as FinalsEvent;
+        setEvent((current) => ({ ...current, ...nextEvent }));
+        setReaction(nextEvent.eventType === "leader_change" ? "crown" : nextEvent.eventType === "boost" ? "fire" : "energy");
+        window.setTimeout(() => setReaction(null), 2200);
+      })
+      .subscribe((status) => setConnected(status === "SUBSCRIBED"));
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
+  function triggerLocalReaction(nextReaction: "fire" | "crown" | "shock" | "energy") {
+    setReaction(nextReaction);
+    setEvent((current) => ({ ...current, crowdEnergy: Math.min(100, (current.crowdEnergy ?? 62) + 9), message: "The crowd just reacted live." }));
+    window.setTimeout(() => setReaction(null), 1600);
+  }
+
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#050507] px-4 py-8 text-white md:px-8">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(253,224,71,0.18),transparent_32%),radial-gradient(circle_at_14%_22%,rgba(34,211,238,0.18),transparent_30%),radial-gradient(circle_at_88%_65%,rgba(168,85,247,0.16),transparent_34%),linear-gradient(180deg,#050507,#08080d_48%,#050507)]" />
+      <div className="pointer-events-none fixed inset-0 opacity-[0.16] [background-image:linear-gradient(to_right,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,.06)_1px,transparent_1px)] [background-size:86px_86px]" />
+
+      {reaction && (
+        <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-black/25 backdrop-blur-[1px]">
+          <div className="rounded-[2.5rem] border border-gold-200/35 bg-black/70 px-10 py-8 text-center shadow-2xl shadow-gold-500/20">
+            <p className="text-xs font-black uppercase tracking-[0.34em] text-gold-100/80">Crowd Reaction</p>
+            <h2 className="mt-3 text-6xl font-black tracking-[-0.08em] text-white md:text-8xl">
+              {reaction === "crown" ? "CROWN SHIFT" : reaction === "fire" ? "BOOST SURGE" : reaction === "shock" ? "ROOM SHOCK" : "ENERGY UP"}
+            </h2>
+          </div>
+        </div>
+      )}
+
+      <div className="relative mx-auto max-w-7xl">
+        <section className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-white/[0.045] p-6 shadow-2xl shadow-black/60 backdrop-blur-2xl md:p-10">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(253,224,71,0.20),transparent_34%),radial-gradient(circle_at_85%_16%,rgba(34,211,238,0.18),transparent_30%)]" />
+          <div className="relative grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={`h-3 w-3 rounded-full ${connected ? "bg-green-300 shadow-lg shadow-green-300/60" : "bg-gold-300 shadow-lg shadow-gold-300/55"}`} />
+                <p className="text-xs font-black uppercase tracking-[0.34em] text-cyan-100/80">Spectator Mode</p>
+                <span className="rounded-full border border-red-300/25 bg-red-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-red-100">{event.status ?? "LIVE"}</span>
+              </div>
+
+              <h1 className="mt-5 max-w-4xl text-5xl font-black leading-[0.88] tracking-[-0.08em] text-white md:text-8xl">
+                Live finals event stream.
+              </h1>
+              <p className="mt-6 max-w-2xl text-base leading-8 text-white/62 md:text-lg">
+                Watch artists fight for the crown in real time. Crowd reactions, leader changes, boosts, and final-season energy all move on one screen.
+              </p>
+            </div>
+
+            <div className="rounded-[2rem] border border-white/10 bg-black/40 p-5 shadow-2xl shadow-black/45 backdrop-blur-2xl">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">Current Leader</p>
+              <h2 className="mt-2 line-clamp-1 text-4xl font-black tracking-[-0.065em] text-white">{leader?.title ?? "Leader Pending"}</h2>
+              <p className="mt-1 line-clamp-1 text-sm text-white/45">{leader?.artist ?? "Finalist"}</p>
+              <div className="mt-5 rounded-2xl border border-gold-200/15 bg-gold-200/10 p-4">
+                <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-white/40"><span>Crowd Energy</span><span>{crowdEnergy}%</span></div>
+                <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-gold-300 via-white to-cyan-300" style={{ width: `${crowdEnergy}%` }} /></div>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-white/55">{event.message}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
+          <div className="rounded-[2rem] border border-white/10 bg-black/35 p-5 shadow-2xl shadow-black/45 backdrop-blur-2xl">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.26em] text-gold-100/75">Finalists</p>
+                <h2 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white">Live battle board</h2>
+              </div>
+              <span className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/45">{ranked.length} finalists</span>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              {ranked.map((track, index) => {
+                const score = Number(track.power ?? 0) + Number(track.votes ?? 0) / 10;
+                return (
+                  <article key={track.id} className={`relative overflow-hidden rounded-[1.65rem] border p-4 shadow-2xl transition hover:-translate-y-1 ${index === 0 ? "border-gold-200/45 bg-gold-200/10 shadow-gold-500/15" : "border-white/10 bg-white/[0.045] shadow-black/30"}`}>
+                    <div className="absolute inset-0 bg-[linear-gradient(130deg,rgba(255,255,255,0.14),transparent_28%,transparent_72%,rgba(34,211,238,0.08))]" />
+                    <div className="relative">
+                      <div className="flex items-center justify-between"><span className="text-4xl font-black tracking-[-0.08em] text-white">#{index + 1}</span><span className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/50">{index === 0 ? "Leader" : "Finalist"}</span></div>
+                      <div className="mt-5 aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black/50">{track.coverUrl ? <img src={track.coverUrl} alt="" className="h-full w-full object-cover opacity-80" /> : <div className="grid h-full place-items-center text-xs font-black uppercase tracking-[0.18em] text-white/35">Live Screen</div>}</div>
+                      <h3 className="mt-4 line-clamp-1 text-xl font-black tracking-[-0.04em] text-white">{track.title}</h3>
+                      <p className="mt-1 line-clamp-1 text-sm text-white/45">{track.artist}</p>
+                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-gold-300 via-white to-cyan-300" style={{ width: `${Math.max(8, Math.min(100, score / 12))}%` }} /></div>
+                      <div className="mt-3 flex justify-between text-[11px] font-bold uppercase tracking-[0.14em] text-white/40"><span>Power</span><span>{score.toFixed(1)}</span></div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+
+          <aside className="space-y-5">
+            <div className="rounded-[2rem] border border-white/10 bg-white/[0.045] p-5 shadow-2xl shadow-black/40 backdrop-blur-2xl">
+              <p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-100/75">Crowd Controls</p>
+              <div className="mt-5 grid gap-2">
+                <button onClick={() => triggerLocalReaction("fire")} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-gold-200/10">Fire Reaction</button>
+                <button onClick={() => triggerLocalReaction("crown")} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-cyan-200/10">Crown Shift</button>
+                <button onClick={() => triggerLocalReaction("shock")} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-red-300/10">Room Shock</button>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-white/10 bg-black/35 p-5 shadow-2xl shadow-black/40 backdrop-blur-2xl">
+              <p className="text-xs font-black uppercase tracking-[0.26em] text-white/35">Live Feed</p>
+              <div className="mt-4 space-y-3 text-sm text-white/55">
+                <p>• {leader?.title ?? "A finalist"} controls the floor.</p>
+                <p>• Crowd energy is at {crowdEnergy}%.</p>
+                <p>• Boosts and leader changes can trigger full-screen events.</p>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </div>
+    </main>
+  );
+}
