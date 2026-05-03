@@ -111,7 +111,7 @@ export default function StudioNewPage() {
     e.preventDefault();
     setError(null);
 
-    const finalAudioUrl = audioUrl.trim() || (audioRef.current?.value ?? "");
+    const finalAudioUrl = audioUrl.trim();
     const finalCoverUrl = coverUrl.trim() || "";
 
     if (!finalAudioUrl) {

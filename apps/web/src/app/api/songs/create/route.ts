@@ -5,7 +5,7 @@ import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 import { cacheDel, CACHE_KEYS } from "@/lib/redis";
 import { enqueueAiScoring, enqueueAnalytics } from "@/lib/queues";
-import { getTierLimits } from "@/lib/tierLimits";
+import { getActiveLimits } from "@/lib/tierLimits";
 import { track } from "@/lib/analytics";
 
 const createSongSchema = z.object({
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const limits = getTierLimits(user.subscriptionTier);
+  const limits = getActiveLimits(user);
   if (limits.maxSongs === 0) {
     return NextResponse.json(
       { error: "Song uploads require a Pro plan or higher. Upgrade at /pricing." },

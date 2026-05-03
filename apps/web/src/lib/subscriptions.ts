@@ -1,6 +1,6 @@
 import type { SubscriptionTier } from "@ems/db";
 
-export const subscriptionPriceEnv: Record<Exclude<SubscriptionTier, "FREE">, string> = {
+export const subscriptionPriceEnv: Record<Exclude<SubscriptionTier, "FREE" | "TRIAL">, string> = {
   STARTER: "STRIPE_PRICE_STARTER",
   PRO: "STRIPE_PRICE_PRO",
   PRIME: "STRIPE_PRICE_PRIME",
@@ -62,7 +62,7 @@ export const subscriptionTiers: Array<{
 ];
 
 export function getStripePriceIdForTier(tier: SubscriptionTier) {
-  if (tier === "FREE") return null;
+  if (tier === "FREE" || tier === "TRIAL") return null;
   const envName = subscriptionPriceEnv[tier];
   return process.env[envName] ?? null;
 }

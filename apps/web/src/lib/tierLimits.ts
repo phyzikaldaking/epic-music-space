@@ -22,6 +22,16 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     canAccessAnalytics: false,
     canAccessCity: false,
   },
+  TRIAL: {
+    // Same as PRO — full access during 7-day trial
+    maxLicenses: 25,
+    maxSongs: 10,
+    canCreateVersus: true,
+    canCreateLabel: false,
+    canBoost: true,
+    canAccessAnalytics: true,
+    canAccessCity: true,
+  },
   STARTER: {
     maxLicenses: 5,
     maxSongs: 0,
@@ -71,4 +81,27 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
 
 export function getTierLimits(tier: SubscriptionTier): TierLimits {
   return TIER_LIMITS[tier];
+}
+
+/** Returns the effective tier, treating an expired TRIAL as FREE. */
+export function getActiveTier(user: {
+  subscriptionTier: SubscriptionTier;
+  trialExpiresAt?: Date | null;
+}): SubscriptionTier {
+  if (
+    user.subscriptionTier === "TRIAL" &&
+    user.trialExpiresAt &&
+    user.trialExpiresAt < new Date()
+  ) {
+    return "FREE";
+  }
+  return user.subscriptionTier;
+}
+
+/** Returns tier limits respecting trial expiry. */
+export function getActiveLimits(user: {
+  subscriptionTier: SubscriptionTier;
+  trialExpiresAt?: Date | null;
+}): TierLimits {
+  return TIER_LIMITS[getActiveTier(user)];
 }

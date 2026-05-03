@@ -31,6 +31,9 @@ model User {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
+  // Free trial
+  trialExpiresAt DateTime?
+
   // Stripe Connect for artist payouts
   stripeConnectId String? @unique
 
@@ -78,6 +81,7 @@ enum Role {
 
 enum SubscriptionTier {
   FREE // no paid subscription
+  TRIAL // 7-day free Pro trial (no card required)
   STARTER // $9/mo — 5 licenses
   PRO // $29/mo — 25 licenses, 10 songs
   PRIME // $49/mo — unlimited

@@ -36,6 +36,7 @@ const TIERS = [
       "Song upload (up to 10 songs)",
       "AI score insights",
       "Studio profile + district badge",
+      "Versus battle creation",
     ],
     highlight: false,
     ctaClass:
@@ -105,12 +106,47 @@ const TIERS = [
   },
 ] as const;
 
+const TRIAL_FEATURES = [
+  "Upload up to 10 songs",
+  "Up to 25 active licenses",
+  "AI score insights",
+  "Versus battle creation",
+  "Studio profile + district badge",
+  "Full analytics dashboard",
+];
+
 function PricingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const justSubscribed = searchParams.get("subscribed");
+  const trialStarted = searchParams.get("trial");
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [trialSuccess, setTrialSuccess] = useState(false);
+
+  async function startTrial() {
+    setError("");
+    setLoading("trial");
+    try {
+      const res = await fetch("/api/trial/start", { method: "POST" });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push("/auth/signin?callbackUrl=/pricing?trial=1");
+          return;
+        }
+        setError(data.error ?? "Could not start trial.");
+        return;
+      }
+      setTrialSuccess(true);
+      // Redirect to dashboard after a short delay so users see the success
+      setTimeout(() => router.push("/dashboard?trial=started"), 1500);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(null);
+    }
+  }
 
   async function subscribe(tier: string) {
     setError("");
@@ -121,7 +157,7 @@ function PricingContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tier }),
       });
-      const data = await res.json();
+      const data = await res.json() as { checkoutUrl?: string; error?: string };
       if (!res.ok) {
         if (res.status === 401) {
           router.push("/auth/signin?callbackUrl=/pricing");
@@ -147,7 +183,7 @@ function PricingContent() {
 
       <div className="relative mx-auto max-w-7xl px-4 py-20">
         {/* ── Header ────────────────────────────────────── */}
-        <div className="mb-16 text-center">
+        <div className="mb-12 text-center">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/8 px-4 py-1.5 text-xs font-semibold text-brand-400 uppercase tracking-widest">
             🏆 Upgrade your EMS experience
           </div>
@@ -159,12 +195,69 @@ function PricingContent() {
           </p>
         </div>
 
-        {/* Success banner */}
+        {/* ── Free Trial Hero ────────────────────────────── */}
+        {!trialSuccess ? (
+          <div className="mb-14 overflow-hidden rounded-3xl border border-brand-500/40 bg-gradient-to-br from-brand-500/15 via-[#141414] to-accent-500/10">
+            <div className="flex flex-col items-center gap-8 p-8 md:flex-row md:p-10">
+              <div className="flex-1">
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-bold text-green-400 uppercase tracking-widest">
+                  ✦ No credit card required
+                </div>
+                <h2 className="text-3xl font-extrabold md:text-4xl">
+                  Try Pro <span className="text-gradient-ems">free for 7 days</span>
+                </h2>
+                <p className="mt-2 text-white/55">
+                  Get full Pro access — upload beats, set licenses, battle on Versus.
+                  No card. No catch. Cancel or upgrade anytime.
+                </p>
+                <ul className="mt-5 grid grid-cols-2 gap-x-6 gap-y-2">
+                  {TRIAL_FEATURES.map((f) => (
+                    <li key={f} className="flex items-center gap-2 text-sm text-white/70">
+                      <span className="text-brand-400 font-bold">✓</span> {f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="flex flex-col items-center gap-3 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void startTrial()}
+                  disabled={loading === "trial"}
+                  className="rounded-2xl bg-brand-500 px-8 py-4 text-base font-extrabold text-white transition hover:bg-brand-600 disabled:opacity-50 glow-purple min-w-[220px]"
+                >
+                  {loading === "trial" ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      Starting…
+                    </span>
+                  ) : (
+                    "Start Free Trial →"
+                  )}
+                </button>
+                <p className="text-xs text-white/30">
+                  7 days free · then $29/mo · cancel anytime
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-14 rounded-3xl border border-green-500/30 bg-green-500/10 p-8 text-center">
+            <p className="text-2xl font-extrabold text-green-400">🎉 Trial activated!</p>
+            <p className="mt-2 text-white/60">Redirecting you to your dashboard…</p>
+          </div>
+        )}
+
+        {/* Success banners */}
         {justSubscribed && (
           <div className="mb-10 rounded-2xl border border-green-500/25 bg-green-500/10 px-5 py-4 text-center text-green-400">
             🎉 You&apos;re now on the{" "}
             <strong className="capitalize">{justSubscribed}</strong> plan! Check
             your dashboard for new features.
+          </div>
+        )}
+        {trialStarted && (
+          <div className="mb-10 rounded-2xl border border-brand-500/25 bg-brand-500/10 px-5 py-4 text-center text-brand-300">
+            ⚡ Your 7-day Pro trial is active! Explore all features from your dashboard.
           </div>
         )}
 
@@ -256,7 +349,8 @@ function PricingContent() {
               </ul>
 
               <button
-                onClick={() => subscribe(tier.key)}
+                type="button"
+                onClick={() => void subscribe(tier.key)}
                 disabled={loading === tier.key}
                 className={`w-full rounded-xl py-3 text-sm font-bold transition disabled:opacity-50 ${tier.ctaClass}`}
               >

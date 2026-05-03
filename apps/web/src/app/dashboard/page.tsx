@@ -150,9 +150,42 @@ export default async function DashboardPage() {
         ]),
   ];
 
+  const trialDaysLeft =
+    user.subscriptionTier === "TRIAL" && user.trialExpiresAt
+      ? Math.max(0, Math.ceil((user.trialExpiresAt.getTime() - Date.now()) / 86_400_000))
+      : null;
+
   return (
     <div className="min-h-screen bg-[#050509]">
       <div className="mx-auto max-w-7xl px-4 py-10">
+        {/* ── Trial expiry banner ──────────────────────── */}
+        {trialDaysLeft !== null && trialDaysLeft > 0 && (
+          <div className="mb-6 flex items-center justify-between rounded-2xl border border-brand-500/30 bg-brand-500/10 px-5 py-3.5">
+            <p className="text-sm font-semibold text-brand-300">
+              ⚡ Your free trial ends in{" "}
+              <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""}</strong> — upgrade to keep full access.
+            </p>
+            <Link
+              href="/pricing"
+              className="ml-4 flex-shrink-0 rounded-lg bg-brand-500 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-brand-600"
+            >
+              Upgrade →
+            </Link>
+          </div>
+        )}
+        {trialDaysLeft === 0 && (
+          <div className="mb-6 flex items-center justify-between rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3.5">
+            <p className="text-sm font-semibold text-red-300">
+              Your free trial has expired. Upgrade to restore Pro features.
+            </p>
+            <Link
+              href="/pricing"
+              className="ml-4 flex-shrink-0 rounded-lg bg-red-500 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-red-600"
+            >
+              Upgrade →
+            </Link>
+          </div>
+        )}
         {/* ── Header ──────────────────────────────────── */}
         <div className="mb-10 flex flex-col gap-6 border-b border-white/10 pb-8 md:flex-row md:items-end md:justify-between">
           <div>
