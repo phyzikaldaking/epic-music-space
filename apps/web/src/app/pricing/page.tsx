@@ -46,7 +46,7 @@ const TIERS = [
   {
     key: "prime",
     name: "Prime",
-    monthlyUsd: 49,
+    monthlyUsd: 79,
     badge: "Best value",
     icon: "🏆",
     description: "For professional artists building their brand.",

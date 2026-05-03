@@ -41,7 +41,7 @@ export const subscriptionTiers: Array<{
   {
     tier: "PRIME",
     name: "Prime",
-    price: "$49/mo",
+    price: "$79/mo",
     description: "For serious creators who want unlimited release leverage.",
     features: ["Unlimited creator access", "Premium analytics", "Advanced promotion tools"],
   },
