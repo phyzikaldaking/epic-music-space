@@ -3,8 +3,12 @@
 import { useState } from "react";
 
 export default function ClipUploadCoach() {
-  const [input, setInput] = useState<any>({ durationSeconds: 15, energyLevel: 60 });
-  const [result, setResult] = useState<any>(null);
+  const [input, setInput] = useState<Record<string, unknown>>({ durationSeconds: 15, energyLevel: 60 });
+  const [result, setResult] = useState<{
+    score: number;
+    suggestions: { type: string; title: string; body: string }[];
+    optimizedCaption: string;
+  } | null>(null);
 
   async function analyze() {
     const res = await fetch("/api/clip/coach", {
@@ -33,7 +37,7 @@ export default function ClipUploadCoach() {
           <p className="text-xl font-bold">🔥 Score: {result.score}</p>
 
           <div className="mt-3 space-y-2">
-            {result.suggestions.map((s: any, i: number) => (
+            {result.suggestions.map((s, i) => (
               <div key={i} className="bg-white/5 p-3 rounded border border-white/10">
                 <p className="text-xs uppercase text-white/40">{s.type}</p>
                 <p className="font-bold">{s.title}</p>

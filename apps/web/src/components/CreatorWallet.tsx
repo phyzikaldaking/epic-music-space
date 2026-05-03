@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 
 export default function CreatorWallet({ userId }: { userId: string }) {
-  const [wallet, setWallet] = useState<any>(null);
+  const [wallet, setWallet] = useState<{
+    availableBalance: number;
+    pendingBalance: number;
+    paidOutTotal: number;
+    grossEarnings: number;
+    payoutReady: boolean;
+    minimumPayout: number;
+  } | null>(null);
 
   useEffect(() => {
     fetch(`/api/wallet?userId=${userId}`)

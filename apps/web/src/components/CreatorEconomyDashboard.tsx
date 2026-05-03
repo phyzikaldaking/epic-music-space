@@ -41,7 +41,7 @@ export default function CreatorEconomyDashboard() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: any }) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-white/5 p-4 rounded">
       <p className="text-xs text-white/40 uppercase">{label}</p>
