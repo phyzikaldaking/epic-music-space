@@ -31,8 +31,8 @@ const BOOST_PACKAGES = {
   },
   city_spotlight: {
     id: "city_spotlight",
-    label: "City Spotlight",
-    description: "Premium city map billboard placement for 7 days",
+    label: "Mainstage Spotlight",
+    description: "Elite homepage banner + featured Marketplace placement for 7 days",
     priceUsd: 75,
     boostPoints: 40,
     durationDays: 7,

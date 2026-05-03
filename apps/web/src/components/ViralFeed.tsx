@@ -88,7 +88,7 @@ export default function ViralFeed() {
     });
 
     return () => observerRef.current?.disconnect();
-  }, [clips.length, activeIndex]);
+  }, [clips, activeIndex]);
 
   useEffect(() => {
     const clip = clips[activeIndex];

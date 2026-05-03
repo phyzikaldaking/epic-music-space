@@ -72,8 +72,9 @@ export default function BattleRoyaleCard({
   }
 
   useEffect(() => {
+    const refs = audioRefs.current;
     return () => {
-      Object.values(audioRefs.current).forEach((a) => { if (a) { a.pause(); a.src = ""; } });
+      Object.values(refs).forEach((a) => { if (a) { a.pause(); a.src = ""; } });
     };
   }, []);
 

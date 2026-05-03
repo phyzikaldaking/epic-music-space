@@ -54,9 +54,9 @@ export default async function BoostPage() {
     {
       id: "city_spotlight",
       icon: "🏙️",
-      label: "City Spotlight",
+      label: "Mainstage Spotlight",
       price: "$75",
-      description: "Premium city map billboard placement + homepage banner for 7 days.",
+      description: "Elite homepage banner placement + featured position in the Marketplace for 7 days.",
       boost: "+40 boost pts",
       duration: "7 days",
       borderClass: "border-gold/60 hover:border-gold",

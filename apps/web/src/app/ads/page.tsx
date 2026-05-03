@@ -18,10 +18,10 @@ const LOCATIONS = [
   },
   {
     key: "CITY_BILLBOARD",
-    label: "Studio Billboard",
-    description: "Premium billboard shown on the City district page.",
+    label: "Mainstage Billboard",
+    description: "Premium billboard shown at the top of the Mainstage / Leaderboard page.",
     dailyRate: 199,
-    icon: "🏙️",
+    icon: "🏆",
     reach: "~4,100 daily impressions",
     border: "border-gold-500/35",
     bg: "bg-gold-500/6",
