@@ -6,6 +6,11 @@ import CreateBattleForm from "@/components/CreateBattleForm";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "Versus Battles | Epic Music Space",
+  description: "Vote on 1v1 track battles and Battle Royale showdowns. Discover the hottest music and help crown the next champion on Epic Music Space.",
+};
+
 export default async function VersusPage() {
   const session = await auth();
 

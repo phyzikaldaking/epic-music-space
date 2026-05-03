@@ -1,8 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import AdPurchaseForm from "@/components/AdPurchaseForm";
+import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Advertise | Epic Music Space",
+  description: "Promote your music on Epic Music Space. Buy billboard, marketplace banner, and Versus banner placements to reach thousands of listeners daily.",
+};
 
 const LOCATIONS = [
   {
