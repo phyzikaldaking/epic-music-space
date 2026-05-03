@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CHANNELS, createBrowserSupabaseClient } from "@/lib/supabase";
 
@@ -219,7 +220,7 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
                     <div className="absolute inset-0 bg-[linear-gradient(130deg,rgba(255,255,255,0.14),transparent_28%,transparent_72%,rgba(34,211,238,0.08))]" />
                     <div className="relative">
                       <div className="flex items-center justify-between"><span className="text-4xl font-black tracking-[-0.08em] text-white">#{index + 1}</span><span className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/50">{index === 0 ? "Leader" : "Finalist"}</span></div>
-                      <div className="mt-5 aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black/50">{track.coverUrl ? <img src={track.coverUrl} alt="" className="h-full w-full object-cover opacity-80" /> : <div className="grid h-full place-items-center text-xs font-black uppercase tracking-[0.18em] text-white/35">Live Screen</div>}</div>
+                      <div className="relative mt-5 aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black/50">{track.coverUrl ? <Image src={track.coverUrl} alt="" fill className="object-cover opacity-80" /> : <div className="grid h-full place-items-center text-xs font-black uppercase tracking-[0.18em] text-white/35">Live Screen</div>}</div>
                       <h3 className="mt-4 line-clamp-1 text-xl font-black tracking-[-0.04em] text-white">{track.title}</h3><p className="mt-1 line-clamp-1 text-sm text-white/45">{track.artist}</p>
                       <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-gold-300 via-white to-cyan-300" style={{ width: `${Math.max(8, Math.min(100, score / 12))}%` }} /></div>
                       <div className="mt-3 flex justify-between text-[11px] font-bold uppercase tracking-[0.14em] text-white/40"><span>Power</span><span>{score.toFixed(1)}</span></div>
