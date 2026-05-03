@@ -1,0 +1,19 @@
+name: Deploy Workers to Render
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/src/workers/**'
+      - 'apps/web/src/lib/**'
+      - 'render.yaml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render worker deploy
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_NOTIFICATIONS }}" \
+          | grep -q "^2" && echo "Deploy triggered" || (echo "Deploy failed" && exit 1)
