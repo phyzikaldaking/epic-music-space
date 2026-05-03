@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 
 interface Message {
   role: "user" | "assistant";
@@ -8,6 +10,7 @@ interface Message {
 }
 
 export default function AiPage() {
+  const { data: session, status } = useSession();
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -18,6 +21,40 @@ export default function AiPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  if (status === "loading") {
+    return (
+      <div className="mx-auto flex h-[calc(100vh-80px)] max-w-3xl flex-col items-center justify-center px-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!session?.user?.id) {
+    return (
+      <div className="mx-auto flex h-[calc(100vh-80px)] max-w-3xl flex-col items-center justify-center px-4 text-center">
+        <div className="mb-4 text-5xl">🤖</div>
+        <h1 className="text-3xl font-extrabold mb-2">EMS AI Assistant</h1>
+        <p className="text-white/50 mb-8 max-w-md">
+          Get song recommendations, licensing guidance, and platform help — powered by AI. Sign in to start chatting.
+        </p>
+        <div className="flex gap-3">
+          <Link
+            href="/auth/signin?callbackUrl=/ai"
+            className="rounded-xl bg-brand-500 px-6 py-2.5 text-sm font-semibold hover:bg-brand-600 transition"
+          >
+            Sign In
+          </Link>
+          <Link
+            href="/auth/signup?callbackUrl=/ai"
+            className="rounded-xl border border-white/20 px-6 py-2.5 text-sm font-semibold hover:bg-white/5 transition"
+          >
+            Create Account
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
