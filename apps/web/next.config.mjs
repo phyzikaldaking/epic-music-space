@@ -22,7 +22,7 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob: https://*.amazonaws.com https://*.supabase.co https://lh3.googleusercontent.com",
       "media-src 'self' blob: https://*.amazonaws.com https://*.supabase.co",
       "connect-src 'self' https://*.supabase.co https://api.openai.com https://api.stripe.com https://checkout.stripe.com",
@@ -30,7 +30,7 @@ const securityHeaders = [
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "object-src 'none'",
-      "font-src 'self'",
+      "font-src 'self' https://fonts.gstatic.com",
     ].join("; "),
   },
 ];
