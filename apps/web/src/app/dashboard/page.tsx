@@ -11,7 +11,7 @@ export default async function DashboardPage() {
   if (!session?.user?.id) redirect("/auth/signin");
   const siteUrl = getSiteUrl();
 
-  const user = await prisma.user.findUniqueOrThrow({
+  const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: {
       licenses: {
@@ -50,6 +50,8 @@ export default async function DashboardPage() {
       },
     },
   });
+
+  if (!user) redirect("/auth/signin");
 
   // Invite data
   const inviteData = await (async () => {

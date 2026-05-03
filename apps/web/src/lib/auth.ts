@@ -19,7 +19,7 @@ const googleEnabled = Boolean(googleClientId && googleClientSecret);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 }, // 30 days — persistent across browser restarts
   pages: {
     signIn: "/auth/signin",
     error: "/auth/signin",
