@@ -39,7 +39,7 @@ jobs:
         run: npm ci
 
       - name: Build web
-        run: npm --workspace apps/web run build
+        run: npm run build:web
 
       - name: API test suite (contracts)
         run: npm --workspace apps/api run test
