@@ -17,9 +17,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Minimum payout not reached" }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { songs: { orderBy: { createdAt: "desc" }, take: 1 } },
+  });
   if (!user?.stripeConnectId) {
     return NextResponse.json({ error: "User not connected to Stripe" }, { status: 400 });
+  }
+
+  const primarySong = user.songs[0];
+  if (!primarySong) {
+    return NextResponse.json({ error: "No songs found for this creator" }, { status: 400 });
   }
 
   const payoutAmount = Math.floor(wallet.availableBalance * 100);
@@ -36,6 +44,7 @@ export async function POST(req: Request) {
       amount: wallet.availableBalance,
       status: "PAID",
       userId,
+      songId: primarySong.id,
       period: "auto",
       paidAt: new Date(),
     },
