@@ -30,6 +30,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           GoogleProvider({
             clientId: googleClientId!,
             clientSecret: googleClientSecret!,
+            // Allow users who registered with email+password to sign in with
+            // Google using the same email without getting OAuthAccountNotLinked.
+            // Safe: Google verifies email ownership before returning the token.
+            allowDangerousEmailAccountLinking: true,
           }),
         ]
       : []),
@@ -90,11 +94,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
-        token.role = user.role;
-        token.subscriptionTier = user.subscriptionTier;
+        // For OAuth sign-ins the PrismaAdapter returns the DB user, but if
+        // role/subscriptionTier are missing (e.g. first-ever Google login on a
+        // freshly-created account), fall back to a DB lookup.
+        if (user.role && user.subscriptionTier !== undefined) {
+          token.role = user.role;
+          token.subscriptionTier = user.subscriptionTier;
+        } else if (account?.provider !== "credentials") {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { role: true, subscriptionTier: true },
+          });
+          token.role = dbUser?.role ?? "FAN";
+          token.subscriptionTier = dbUser?.subscriptionTier;
+        } else {
+          token.role = user.role;
+          token.subscriptionTier = user.subscriptionTier;
+        }
       }
       return token;
     },
