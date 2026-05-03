@@ -121,7 +121,7 @@ export async function GET() {
     data: {
       connectChargesEnabled: stripeAccount.charges_enabled,
       connectPayoutsEnabled: stripeAccount.payouts_enabled,
-      connectRequirements: req as Record<string, unknown> | null,
+      connectRequirements: req ?? null,
     },
   });
 
