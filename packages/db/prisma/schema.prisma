@@ -507,6 +507,60 @@ model ArtistDominanceStats {
   @@index([currentStreak])
 }
 
+model RankedSeason {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  status      SeasonStatus @default(SCHEDULED)
+  startsAt    DateTime
+  endsAt      DateTime
+  resetBoosts Boolean      @default(false)
+  metadata    Json?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  standings   SeasonStanding[]
+  @@index([status, startsAt, endsAt])
+}
+
+model SeasonStanding {
+  id              String     @id @default(cuid())
+  seasonId        String
+  season          RankedSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  artistId        String
+  artist          String
+  songId          String?
+  songTitle       String?
+  league          LeagueTier @default(BRONZE)
+  points          Float      @default(0)
+  peakRank        Int?
+  currentRank     Int?
+  crownWins       Int        @default(0)
+  longestStreak   Int        @default(0)
+  crownHours      Float      @default(0)
+  promotionLocked Boolean    @default(false)
+  updatedAt       DateTime   @updatedAt
+  createdAt       DateTime   @default(now())
+  @@unique([seasonId, artistId])
+  @@index([seasonId, points])
+  @@index([seasonId, league, points])
+}
+
+enum SeasonStatus {
+  SCHEDULED
+  ACTIVE
+  ENDED
+  ARCHIVED
+}
+
+enum LeagueTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+  CROWN
+}
+
 enum DominanceEventType {
   CROWN_WON
   CROWN_LOST
