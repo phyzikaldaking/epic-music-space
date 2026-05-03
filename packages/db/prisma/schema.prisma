@@ -65,6 +65,8 @@ model User {
   auctionsCreated Auction[]    @relation("AuctionSeller")
   auctionsWon     Auction[]    @relation("AuctionWinner")
   auctionBids     AuctionBid[] @relation("AuctionBidder")
+  resaleListings  ResaleListing[] @relation("ResaleSeller")
+  resalePurchases ResaleListing[] @relation("ResaleBuyer")
   behaviorEvents  UserBehaviorEvent[]
   tasteProfile    UserTasteProfile?
 }
@@ -160,6 +162,7 @@ model Song {
   versusMatchesB VersusMatch[]       @relation("VersusB")
   royaleEntries  BattleRoyaleEntry[] @relation("BattleRoyaleEntries")
   auctions       Auction[]
+  resaleListings ResaleListing[]
   behaviorEvents UserBehaviorEvent[]
   @@index([artistId])
   @@index([district])
@@ -178,6 +181,7 @@ model LicenseToken {
   song   Song   @relation(fields: [songId], references: [id], onDelete: Cascade)
   holderId String
   holder   User   @relation(fields: [holderId], references: [id], onDelete: Cascade)
+  resaleListing ResaleListing?
   transactions Transaction[]
   payouts      Payout[]
   @@unique([songId, tokenNumber])
@@ -207,6 +211,7 @@ model Transaction {
   song   Song?   @relation(fields: [songId], references: [id])
   licenseTokenId String?
   licenseToken   LicenseToken? @relation(fields: [licenseTokenId], references: [id])
+  resaleListing  ResaleListing?
   @@index([userId])
   @@index([status])
   @@index([userId, createdAt])
@@ -215,11 +220,48 @@ model Transaction {
 
 enum TransactionType {
   LICENSE_PURCHASE
+  RESALE_PURCHASE
   REVENUE_PAYOUT
   SUBSCRIPTION
   BOOST
   TIP
   AUCTION_WIN
+}
+
+model ResaleListing {
+  id        String              @id @default(cuid())
+  status    ResaleListingStatus @default(ACTIVE)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  soldAt    DateTime?
+
+  resalePrice Decimal @db.Decimal(10, 2)
+
+  songId String
+  song   Song   @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  licenseTokenId String @unique
+  licenseToken   LicenseToken @relation(fields: [licenseTokenId], references: [id], onDelete: Cascade)
+
+  sellerId String
+  seller   User   @relation("ResaleSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  buyerId String?
+  buyer   User?  @relation("ResaleBuyer", fields: [buyerId], references: [id])
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([songId, status])
+  @@index([sellerId, status])
+  @@index([buyerId])
+}
+
+enum ResaleListingStatus {
+  ACTIVE
+  SOLD
+  CANCELLED
 }
 
 enum PaymentStatus {
