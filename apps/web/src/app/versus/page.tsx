@@ -151,12 +151,68 @@ export default async function VersusPage() {
       )}
 
       {isEmpty ? (
-        <div className="py-20 text-center">
-          <p className="text-5xl mb-4">⚔️</p>
-          <p className="text-xl font-semibold text-white/60">No active battles right now.</p>
-          <p className="mt-2 text-sm text-white/30">
-            {isArtist ? "Be the first — start a battle above!" : "Check back soon — battles are coming."}
-          </p>
+        <div className="py-10">
+          {/* Demo preview card */}
+          <div className="mb-6 rounded-2xl border border-white/8 bg-white/3 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="rounded-full border border-accent-500/30 bg-accent-500/10 px-2.5 py-0.5 text-xs font-semibold text-accent-300">
+                Sample Battle
+              </span>
+              <span className="text-xs text-white/30">How it works ↓</span>
+            </div>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+              {/* Song A */}
+              <div className="rounded-xl border border-white/8 bg-white/5 p-4">
+                <div className="mb-2 h-16 w-16 rounded-lg bg-gradient-to-br from-brand-600 to-accent-600 flex items-center justify-center text-2xl">
+                  🎵
+                </div>
+                <p className="font-semibold text-sm truncate">Stellar Drift</p>
+                <p className="text-xs text-white/40 truncate">EMS Demo Orchestra</p>
+                <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
+                  <div className="h-1.5 w-[62%] rounded-full bg-brand-500" />
+                </div>
+                <p className="mt-1 text-xs text-white/40">62% of votes</p>
+              </div>
+              {/* VS divider */}
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-2xl font-black text-accent-400">VS</span>
+                <span className="text-xs text-white/30">1v1</span>
+              </div>
+              {/* Song B */}
+              <div className="rounded-xl border border-white/8 bg-white/5 p-4">
+                <div className="mb-2 h-16 w-16 rounded-lg bg-gradient-to-br from-pink-600 to-orange-500 flex items-center justify-center text-2xl">
+                  🎵
+                </div>
+                <p className="font-semibold text-sm truncate">Orbital Chase</p>
+                <p className="text-xs text-white/40 truncate">EMS Demo Orchestra</p>
+                <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
+                  <div className="h-1.5 w-[38%] rounded-full bg-pink-500" />
+                </div>
+                <p className="mt-1 text-xs text-white/40">38% of votes</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <p className="text-xl font-semibold text-white/60">No active battles right now.</p>
+            <p className="mt-2 text-sm text-white/35 max-w-sm mx-auto">
+              {isArtist
+                ? "Start a battle above — pit two of your tracks against each other and let the community vote."
+                : session?.user?.id
+                  ? "Check back soon! Artists are setting up battles. Meanwhile, browse the marketplace."
+                  : "Sign up as an artist to start battles, or join as a listener to vote when battles go live."}
+            </p>
+            {!session?.user?.id && (
+              <div className="mt-5 flex justify-center gap-3">
+                <a href="/auth/signup?role=ARTIST" className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-600 transition">
+                  Join as Artist
+                </a>
+                <a href="/marketplace" className="rounded-xl border border-white/15 px-5 py-2.5 text-sm font-semibold text-white/70 hover:bg-white/8 transition">
+                  Browse Tracks
+                </a>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-6">

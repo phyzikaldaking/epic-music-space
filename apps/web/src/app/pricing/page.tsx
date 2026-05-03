@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
+import { useSession } from "next-auth/react";
 
 const TIERS = [
   {
@@ -123,6 +124,8 @@ function PricingContent() {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [trialSuccess, setTrialSuccess] = useState(false);
+  const { status: authStatus } = useSession();
+  const isGuest = authStatus === "unauthenticated";
 
   async function startTrial() {
     setError("");
@@ -354,7 +357,11 @@ function PricingContent() {
                 disabled={loading === tier.key}
                 className={`w-full rounded-xl py-3 text-sm font-bold transition disabled:opacity-50 ${tier.ctaClass}`}
               >
-                {loading === tier.key ? "Redirecting…" : `Get ${tier.name}`}
+                {loading === tier.key
+                  ? "Redirecting…"
+                  : isGuest
+                    ? `Sign up for ${tier.name}`
+                    : `Get ${tier.name}`}
               </button>
             </div>
           ))}

@@ -10,6 +10,7 @@ function VerifyEmailContent() {
   const error = params.get("error");
   const email = params.get("email") ?? "";
   const token = params.get("token") ?? "";
+  const emailFailed = params.get("emailFailed") === "1";
   const [resent, setResent] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendError, setResendError] = useState("");
@@ -143,6 +144,15 @@ function VerifyEmailContent() {
       body={`We sent a verification link to ${email || "your email"}. Click the link to activate your account. It expires in 24 hours.`}
       cta={
         <div className="space-y-3 text-center text-sm text-white/40">
+          {emailFailed && (
+            <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+              ⚠️ Email delivery is not yet configured. Please use the &quot;Resend verification&quot; button below, or contact{" "}
+              <a href="mailto:support@epicmusicspace.com" className="underline hover:text-yellow-200">
+                support@epicmusicspace.com
+              </a>{" "}
+              to manually verify your account.
+            </div>
+          )}
           <p>Didn&apos;t receive it?</p>
           <ResendForm
             email={resendEmail}

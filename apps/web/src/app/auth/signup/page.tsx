@@ -124,10 +124,9 @@ function SignUpContent() {
     }
 
     if (data.verificationEmailSent === false) {
-      setError(
-        data.error ??
-          "Account created, but verification email could not be sent yet. Please use resend verification.",
-      );
+      // Email not sent — redirect to verify page with flag so user can resend
+      router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}&emailFailed=1`);
+      return;
     }
 
     router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}`);
