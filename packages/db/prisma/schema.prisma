@@ -519,6 +519,8 @@ model RankedSeason {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   standings   SeasonStanding[]
+  rewards     SeasonReward[]
+  ceremonies  SeasonResetCeremony[]
   @@index([status, startsAt, endsAt])
 }
 
@@ -545,6 +547,45 @@ model SeasonStanding {
   @@index([seasonId, league, points])
 }
 
+model SeasonReward {
+  id          String       @id @default(cuid())
+  seasonId    String
+  season      RankedSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  artistId    String
+  artist      String
+  rank        Int
+  league      LeagueTier
+  rewardType  RewardType
+  title       String
+  description String
+  value       Decimal?     @db.Decimal(10, 2)
+  status      RewardStatus @default(PENDING)
+  issuedAt    DateTime?
+  createdAt   DateTime     @default(now())
+  metadata    Json?
+  @@index([seasonId, rank])
+  @@index([artistId, status])
+}
+
+model SeasonResetCeremony {
+  id              String         @id @default(cuid())
+  seasonId        String
+  season          RankedSeason   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  status          CeremonyStatus @default(SCHEDULED)
+  winnerArtistId  String?
+  winnerArtist    String?
+  winnerSongId    String?
+  winnerSongTitle String?
+  headline        String
+  startsAt        DateTime
+  completedAt     DateTime?
+  nextSeasonSlug  String?
+  metadata        Json?
+  createdAt       DateTime       @default(now())
+  @@index([seasonId, status])
+  @@index([startsAt])
+}
+
 enum SeasonStatus {
   SCHEDULED
   ACTIVE
@@ -559,6 +600,28 @@ enum LeagueTier {
   PLATINUM
   DIAMOND
   CROWN
+}
+
+enum RewardType {
+  CASH
+  BOOST_CREDITS
+  FREE_PLACEMENT
+  BADGE
+  FEATURED_SLOT
+}
+
+enum RewardStatus {
+  PENDING
+  ISSUED
+  CLAIMED
+  EXPIRED
+}
+
+enum CeremonyStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+  CANCELLED
 }
 
 enum DominanceEventType {
