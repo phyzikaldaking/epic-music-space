@@ -6,6 +6,7 @@ import { enqueueAiScoring, enqueueAnalytics } from "@/lib/queues";
 import { cacheGet, cacheSet, cacheDel, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 import { strictLimiter, lenientLimiter } from "@/lib/rateLimit";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
+import { getActiveLimits } from "@/lib/tierLimits";
 
 const createSongSchema = z.object({
   title: z.string().min(1).max(200),
@@ -70,12 +71,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({ where: { id: session.user.id } });
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true, subscriptionTier: true, trialExpiresAt: true },
+  });
   if (!user || user.role === "LISTENER") {
     return NextResponse.json(
       { error: "Only artists can upload songs." },
       { status: 403 }
     );
+  }
+
+  // Enforce tier song upload limits
+  const limits = getActiveLimits(user);
+  if (limits.maxSongs < 999_999) {
+    const songCount = await prisma.song.count({
+      where: { artistId: session.user.id, isActive: true },
+    });
+    if (songCount >= limits.maxSongs) {
+      return NextResponse.json(
+        {
+          error: `Your ${user.subscriptionTier} plan allows up to ${limits.maxSongs} active song${limits.maxSongs === 1 ? "" : "s"}. Upgrade at /pricing to upload more.`,
+        },
+        { status: 403 }
+      );
+    }
   }
 
   const body = await req.json();
