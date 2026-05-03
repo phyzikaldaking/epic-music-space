@@ -33,6 +33,16 @@ model User {
   trialExpiresAt   DateTime?
   stripeConnectId  String?          @unique
 
+  // ── Stripe Connect compliance ──────────────────────────────
+  connectChargesEnabled Boolean  @default(false)
+  connectPayoutsEnabled Boolean  @default(false)
+  connectRequirements   Json?    // Stripe requirements object (currently_due, errors, etc.)
+  connectCountry        String?  // ISO 3166-1 alpha-2 from Stripe account
+
+  // ── Tax compliance ─────────────────────────────────────────
+  taxFormStatus TaxFormStatus @default(NOT_COLLECTED)
+  taxIdType     String?       // e.g. "us_ein", "us_ssn", "gb_vat", "eu_vat"
+
   accounts Account[]
   sessions Session[]
   songs        Song[]
@@ -55,6 +65,8 @@ model User {
   auctionsCreated Auction[]    @relation("AuctionSeller")
   auctionsWon     Auction[]    @relation("AuctionWinner")
   auctionBids     AuctionBid[] @relation("AuctionBidder")
+  behaviorEvents  UserBehaviorEvent[]
+  tasteProfile    UserTasteProfile?
 }
 
 enum Role {
@@ -62,6 +74,13 @@ enum Role {
   ARTIST
   LABEL
   ADMIN
+}
+
+enum TaxFormStatus {
+  NOT_COLLECTED
+  PENDING
+  COLLECTED
+  EXEMPT
 }
 
 enum SubscriptionTier {
@@ -141,6 +160,7 @@ model Song {
   versusMatchesB VersusMatch[]       @relation("VersusB")
   royaleEntries  BattleRoyaleEntry[] @relation("BattleRoyaleEntries")
   auctions       Auction[]
+  behaviorEvents UserBehaviorEvent[]
   @@index([artistId])
   @@index([district])
   @@index([isActive])
@@ -631,4 +651,48 @@ enum DominanceEventType {
   RANK_LOST
   BOOST_APPLIED
   PLACEMENT_WON
+}
+
+// ── Personalization / Viral Feed ─────────────────────────────────────────────
+
+enum BehaviorEventType {
+  view
+  watch_75
+  like
+  share
+  skip
+  view_track
+}
+
+model UserBehaviorEvent {
+  id          String            @id @default(cuid())
+  userId      String
+  clipId      String
+  songId      String?
+  artist      String?
+  eventType   BehaviorEventType
+  value       Float             @default(0)
+  metadata    Json?
+  createdAt   DateTime          @default(now())
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song        Song?             @relation(fields: [songId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([clipId, eventType])
+  @@index([songId, eventType])
+}
+
+model UserTasteProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  artistAffinity    Json     @default("{}")
+  songAffinity      Json     @default("{}")
+  eventAffinity     Json     @default("{}")
+  skipSignals       Json     @default("{}")
+  lastCalculatedAt  DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

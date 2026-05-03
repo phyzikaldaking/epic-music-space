@@ -8,16 +8,20 @@ const schema = z.object({
   songId: z.string().cuid(),
 });
 
+// Minimum payout: $10 USD (1000 cents). Below this Stripe fees make transfers uneconomical.
+const MIN_PAYOUT_CENTS = 1000;
+
 /**
  * POST /api/stripe-connect/payout
  *
  * Initiates a Stripe Transfer for unpaid song earnings to the artist's
- * connected account. This is a manual trigger — in production this would
- * be run by a scheduled BullMQ job.
+ * connected account with full compliance gates:
+ *   1. Account must exist (stripeConnectId set)
+ *   2. Account must have payouts_enabled (KYC + bank verified)
+ *   3. Account must have no currently_due requirements (identity verified)
+ *   4. Minimum payout threshold enforced ($10)
  *
- * Revenue split:
- *   - Artist receives 90% of each license sale
- *   - Platform retains 10%
+ * Revenue split is stored per-payout record (set at license purchase time).
  */
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -35,7 +39,16 @@ export async function POST(req: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, role: true, stripeConnectId: true },
+    select: {
+      id: true,
+      role: true,
+      stripeConnectId: true,
+      connectChargesEnabled: true,
+      connectPayoutsEnabled: true,
+      connectRequirements: true,
+      connectCountry: true,
+      taxFormStatus: true,
+    },
   });
 
   if (!user) {
@@ -46,25 +59,56 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // ── Gate 1: Stripe Connect account must exist ──────────────────────────
   if (!user.stripeConnectId) {
     return NextResponse.json(
-      { error: "You must complete Stripe onboarding before requesting a payout." },
+      { error: "Complete Stripe Connect onboarding before requesting payouts.", code: "NO_CONNECT_ACCOUNT" },
       { status: 402 }
     );
   }
 
-  // Verify song belongs to this artist
+  // ── Gate 2: Payouts must be enabled on the connected account ──────────
+  if (!user.connectPayoutsEnabled) {
+    return NextResponse.json(
+      {
+        error: "Your account is not yet approved for payouts. Complete identity verification in your payout settings.",
+        code: "PAYOUTS_DISABLED",
+      },
+      { status: 403 }
+    );
+  }
+
+  // ── Gate 3: No pending KYC / identity requirements ────────────────────
+  const requirements = user.connectRequirements as {
+    currently_due?: string[];
+    eventually_due?: string[];
+    disabled_reason?: string | null;
+    errors?: Array<{ code: string; reason: string; requirement: string }>;
+  } | null;
+
+  const currentlyDue = requirements?.currently_due ?? [];
+  if (currentlyDue.length > 0) {
+    return NextResponse.json(
+      {
+        error: "Action required: your Stripe account has pending verification requirements. Visit payout settings to resolve them.",
+        code: "KYC_INCOMPLETE",
+        requirements: currentlyDue,
+      },
+      { status: 403 }
+    );
+  }
+
+  // ── Gate 4: Verify song belongs to this artist ────────────────────────
   const song = await prisma.song.findUnique({
     where: { id: songId },
-    select: { id: true, title: true, artistId: true, licensePrice: true, soldLicenses: true },
+    select: { id: true, title: true, artistId: true },
   });
 
   if (!song || song.artistId !== session.user.id) {
     return NextResponse.json({ error: "Song not found or not yours." }, { status: 404 });
   }
 
-  // Sum up unpaid license sales for this song.
-  // payout.amount is already the artist's share (set at webhook time using revenueSharePct).
+  // ── Aggregate pending earnings ─────────────────────────────────────────
   const pendingPayouts = await prisma.payout.findMany({
     where: { songId, userId: session.user.id, status: "PENDING" },
   });
@@ -73,18 +117,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No pending earnings for this song." }, { status: 404 });
   }
 
-  const totalPendingCents = pendingPayouts.reduce((acc, p) => {
-    return acc + Math.round(Number(p.amount) * 100);
-  }, 0);
+  const totalPendingCents = pendingPayouts.reduce(
+    (acc, p) => acc + Math.round(Number(p.amount) * 100),
+    0
+  );
 
-  if (totalPendingCents < 100) {
+  // ── Gate 5: Minimum payout threshold ──────────────────────────────────
+  if (totalPendingCents < MIN_PAYOUT_CENTS) {
     return NextResponse.json(
-      { error: "Minimum payout is $1.00. Accumulate more earnings first." },
+      {
+        error: `Minimum payout is $${(MIN_PAYOUT_CENTS / 100).toFixed(2)}. You have $${(totalPendingCents / 100).toFixed(2)} pending.`,
+        code: "BELOW_MINIMUM",
+        pendingCents: totalPendingCents,
+        minimumCents: MIN_PAYOUT_CENTS,
+      },
       { status: 400 }
     );
   }
 
-  // Create Stripe Transfer
+  // ── Create Stripe Transfer ─────────────────────────────────────────────
   const transfer = await stripe.transfers.create({
     amount: totalPendingCents,
     currency: "usd",
@@ -92,15 +143,16 @@ export async function POST(req: NextRequest) {
     metadata: {
       emsUserId: user.id,
       songId,
+      songTitle: song.title,
       payoutCount: pendingPayouts.length.toString(),
+      payoutCountry: user.connectCountry ?? "unknown",
     },
   });
 
-  // Mark payouts as PAID
-  const now = new Date();
+  // ── Mark payouts as PAID ───────────────────────────────────────────────
   await prisma.payout.updateMany({
     where: { id: { in: pendingPayouts.map((p) => p.id) } },
-    data: { status: "PAID", paidAt: now },
+    data: { status: "PAID", paidAt: new Date() },
   });
 
   return NextResponse.json({

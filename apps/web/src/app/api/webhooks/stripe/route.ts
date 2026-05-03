@@ -277,7 +277,54 @@ async function handleAdPurchaseCompleted(session: Stripe.Checkout.Session) {
   }
 }
 async function handleConnectAccountUpdated(account: Stripe.Account) {
+  // Resolve the EMS user — prefer metadata, fall back to stripeConnectId lookup
   const emsUserId = account.metadata?.emsUserId;
-  if (!emsUserId) return;
-  await prisma.user.updateMany({ where: { id: emsUserId }, data: { stripeConnectId: account.id } });
+  const whereClause = emsUserId
+    ? { id: emsUserId }
+    : { stripeConnectId: account.id };
+
+  // Determine tax form status from country + verification state
+  const taxFormStatus = resolveTaxFormStatus(account);
+
+  await prisma.user.updateMany({
+    where: whereClause,
+    data: {
+      stripeConnectId: account.id,
+      connectChargesEnabled: account.charges_enabled,
+      connectPayoutsEnabled: account.payouts_enabled,
+      connectRequirements: account.requirements as Record<string, unknown> | null,
+      connectCountry: account.country ?? null,
+      taxFormStatus,
+    },
+  });
+
+  console.log(
+    `[stripe-webhook] account.updated: id=${account.id} charges=${account.charges_enabled} payouts=${account.payouts_enabled} country=${account.country} taxStatus=${taxFormStatus}`
+  );
+}
+
+/**
+ * Maps Stripe's account verification state to our internal TaxFormStatus.
+ *
+ * Rules:
+ *  - If Stripe has not yet collected identity/tax info (requirements pending) → PENDING
+ *  - If account is fully verified (details_submitted + no disabled_reason) → COLLECTED
+ *  - Non-profits or manually marked exempt entities → EXEMPT
+ *  - Default → NOT_COLLECTED
+ */
+function resolveTaxFormStatus(account: Stripe.Account): string {
+  if (!account.details_submitted) return "NOT_COLLECTED";
+
+  const req = account.requirements;
+  const hasPendingTaxFields =
+    req?.currently_due?.some(
+      (f) => f.includes("tax") || f.includes("ssn") || f.includes("id_number")
+    ) ?? false;
+
+  if (hasPendingTaxFields) return "PENDING";
+
+  // Fully verified with no blocking requirements
+  if (account.charges_enabled && account.payouts_enabled) return "COLLECTED";
+
+  return "PENDING";
 }
