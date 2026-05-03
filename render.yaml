@@ -1,0 +1,63 @@
+## Epic Music Space — Render Background Workers
+## Deploy this repo on Render to run BullMQ workers as persistent background services.
+## Required env vars: DATABASE_URL, DIRECT_URL, REDIS_URL, POSTHOG_API_KEY, POSTHOG_HOST, OPENAI_API_KEY
+
+services:
+  # ── Notifications Worker ──────────────────────────────────────────────────
+  - type: worker
+    name: ems-notifications-worker
+    runtime: node
+    region: oregon
+    plan: starter          # $7/mo — upgrade to standard for HA
+    rootDir: apps/web
+    buildCommand: cd ../.. && npm ci --include=dev && npx prisma generate --schema packages/db/prisma/schema.prisma
+    startCommand: npx tsx src/workers/notifications.ts
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+
+  # ── Analytics Worker ──────────────────────────────────────────────────────
+  - type: worker
+    name: ems-analytics-worker
+    runtime: node
+    region: oregon
+    plan: starter
+    rootDir: apps/web
+    buildCommand: cd ../.. && npm ci --include=dev && npx prisma generate --schema packages/db/prisma/schema.prisma
+    startCommand: npx tsx src/workers/analytics.ts
+    envVars:
+      - key: REDIS_URL
+        sync: false
+      - key: POSTHOG_API_KEY
+        sync: false
+      - key: POSTHOG_HOST
+        sync: false
+      - key: NODE_ENV
+        value: production
+
+  # ── AI Scoring Worker ─────────────────────────────────────────────────────
+  - type: worker
+    name: ems-ai-scoring-worker
+    runtime: node
+    region: oregon
+    plan: starter
+    rootDir: apps/web
+    buildCommand: cd ../.. && npm ci --include=dev && npx prisma generate --schema packages/db/prisma/schema.prisma
+    startCommand: npx tsx src/workers/aiScoring.ts
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
