@@ -292,7 +292,7 @@ async function handleConnectAccountUpdated(account: Stripe.Account) {
       stripeConnectId: account.id,
       connectChargesEnabled: account.charges_enabled,
       connectPayoutsEnabled: account.payouts_enabled,
-      connectRequirements: account.requirements as Record<string, unknown> | null,
+      connectRequirements: account.requirements ? JSON.parse(JSON.stringify(account.requirements)) : null,
       connectCountry: account.country ?? null,
       taxFormStatus,
     },
