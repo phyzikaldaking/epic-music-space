@@ -12,8 +12,32 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render worker deploy
+      - name: Deploy notifications worker
         run: |
-          curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_NOTIFICATIONS }}" \
-          | grep -q "^2" && echo "Deploy triggered" || (echo "Deploy failed" && exit 1)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_SVC_NOTIFICATIONS }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache":"do_not_clear"}')
+          echo "Notifications deploy status: $STATUS"
+          [[ "$STATUS" =~ ^2 ]] || (echo "Deploy failed" && exit 1)
+
+      - name: Deploy analytics worker
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_SVC_ANALYTICS }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache":"do_not_clear"}')
+          echo "Analytics deploy status: $STATUS"
+          [[ "$STATUS" =~ ^2 ]] || (echo "Deploy failed" && exit 1)
+
+      - name: Deploy AI scoring worker
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_SVC_AI_SCORING }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache":"do_not_clear"}')
+          echo "AI scoring deploy status: $STATUS"
+          [[ "$STATUS" =~ ^2 ]] || (echo "Deploy failed" && exit 1)
