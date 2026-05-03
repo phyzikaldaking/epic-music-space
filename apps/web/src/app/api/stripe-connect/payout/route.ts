@@ -63,22 +63,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Song not found or not yours." }, { status: 404 });
   }
 
-  // Sum up unpaid license sales for this song
+  // Sum up unpaid license sales for this song.
+  // payout.amount is already the artist's share (set at webhook time using revenueSharePct).
   const pendingPayouts = await prisma.payout.findMany({
     where: { songId, userId: session.user.id, status: "PENDING" },
-    include: { licenseToken: { select: { price: true } } },
   });
 
   if (pendingPayouts.length === 0) {
     return NextResponse.json({ error: "No pending earnings for this song." }, { status: 404 });
   }
 
-  // Total pending amount
   const totalPendingCents = pendingPayouts.reduce((acc, p) => {
-    const price = p.licenseToken ? Number(p.licenseToken.price) : Number(p.amount);
-    // Artist gets 90%, platform keeps 10%
-    const artistShare = Math.round(price * 0.9 * 100); // convert to cents
-    return acc + artistShare;
+    return acc + Math.round(Number(p.amount) * 100);
   }, 0);
 
   if (totalPendingCents < 100) {

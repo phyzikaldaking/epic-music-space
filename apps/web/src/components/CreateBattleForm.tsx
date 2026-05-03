@@ -79,18 +79,28 @@ export default function CreateBattleForm({ songs }: CreateBattleFormProps) {
   }
 
   const mode = selected.length > 2 ? "royale" : "1v1";
-
-  if (songs.length < 2) return null;
+  const canBattle = songs.length >= 2;
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600 glow-purple-sm"
-      >
-        ⚔️ Create Battle
-      </button>
+      <div className="flex flex-col items-end gap-1">
+        <button
+          type="button"
+          onClick={() => canBattle && setOpen(true)}
+          disabled={!canBattle}
+          title={!canBattle ? "Upload at least 2 songs to create a battle" : undefined}
+          className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white transition ${
+            canBattle
+              ? "bg-brand-500 hover:bg-brand-600 glow-purple-sm"
+              : "bg-white/10 cursor-not-allowed opacity-50"
+          }`}
+        >
+          ⚔️ Create Battle
+        </button>
+        {!canBattle && (
+          <p className="text-[11px] text-white/35">Upload 2+ songs to battle</p>
+        )}
+      </div>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">

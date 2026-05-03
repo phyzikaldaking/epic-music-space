@@ -22,7 +22,11 @@ async function getConnectStatus(stripeConnectId: string | null) {
   }
 }
 
-export default async function PayoutsPage() {
+export default async function PayoutsPage(props: {
+  searchParams: Promise<Record<string, string>>;
+}) {
+  const searchParams = await props.searchParams;
+  const justConnected = searchParams.connected === "1" || searchParams.connect === "success";
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
 
@@ -37,6 +41,7 @@ export default async function PayoutsPage() {
           id: true,
           title: true,
           licensePrice: true,
+          revenueSharePct: true,
           soldLicenses: true,
           payouts: {
             select: {
@@ -63,7 +68,8 @@ export default async function PayoutsPage() {
     const paidPayouts = song.payouts.filter((p) => p.status === "PAID");
     const pendingAmount = pendingPayouts.reduce((s, p) => s + Number(p.amount), 0);
     const paidAmount = paidPayouts.reduce((s, p) => s + Number(p.amount), 0);
-    const estimatedEarnings = Number(song.licensePrice) * song.soldLicenses * 0.9;
+    const revenueShare = Number(song.revenueSharePct) / 100;
+    const estimatedEarnings = Number(song.licensePrice) * song.soldLicenses * revenueShare;
     return { ...song, pendingAmount, paidAmount, estimatedEarnings, hasPending: pendingPayouts.length > 0 };
   });
 
@@ -81,8 +87,14 @@ export default async function PayoutsPage() {
           ← Dashboard
         </Link>
         <h1 className="text-4xl font-extrabold text-gradient-ems">Payouts</h1>
-        <p className="mt-2 text-white/50">90% of every license sale, paid directly to you.</p>
+        <p className="mt-2 text-white/50">Your revenue share, paid directly to you.</p>
       </div>
+
+      {justConnected && (
+        <div className="mb-6 rounded-2xl border border-green-500/30 bg-green-500/10 px-5 py-4 text-green-300 font-semibold">
+          🎉 Stripe Connect is set up! You&apos;ll receive automatic payouts when licenses sell.
+        </div>
+      )}
 
       {/* Connect status card */}
       <div className={`glass-card rounded-2xl border p-6 mb-8 ${
@@ -158,7 +170,7 @@ export default async function PayoutsPage() {
                   <p className="font-semibold truncate">{song.title}</p>
                   <p className="text-xs text-white/40 mt-0.5">
                     {song.soldLicenses} license{song.soldLicenses !== 1 ? "s" : ""} ·{" "}
-                    {fmt(Number(song.licensePrice))} each · 90% share
+                    {fmt(Number(song.licensePrice))} each · {Number(song.revenueSharePct)}% your share
                   </p>
                 </div>
 

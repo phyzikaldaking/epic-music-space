@@ -206,7 +206,7 @@ export default async function DashboardPage() {
               )}
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             {user.role === "ADMIN" && (
               <Link
                 href="/admin"
@@ -223,6 +223,12 @@ export default async function DashboardPage() {
                 Upload song
               </Link>
             )}
+            <Link
+              href="/versus"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-accent-500/40 bg-accent-500/10 px-5 text-sm font-black text-accent-300 transition hover:bg-accent-500/20"
+            >
+              ⚔️ Battles
+            </Link>
           </div>
         </div>
 

@@ -96,7 +96,8 @@ export default async function VersusPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
-      <div className="mb-10 flex items-start justify-between">
+      {/* ── Header ──────────────────────────────────── */}
+      <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-3 text-4xl font-extrabold">
             <svg
@@ -122,13 +123,39 @@ export default async function VersusPage() {
         {isArtist && <CreateBattleForm songs={artistSongs} />}
       </div>
 
+      {/* ── Artist CTA banner (prominent, always visible) ── */}
+      {isArtist && (
+        <div className="mb-8 flex items-center justify-between gap-4 rounded-2xl border border-accent-500/25 bg-accent-500/8 px-5 py-4">
+          <div>
+            <p className="font-bold text-accent-300">⚔️ Ready to battle?</p>
+            <p className="mt-0.5 text-sm text-white/45">
+              {artistSongs.length >= 2
+                ? "Pick 2–10 of your songs and let the community decide."
+                : "Upload at least 2 songs, then start a 1v1 or Battle Royale."}
+            </p>
+          </div>
+          <CreateBattleForm songs={artistSongs} />
+        </div>
+      )}
+
+      {!session?.user?.id && (
+        <div className="mb-8 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/4 px-5 py-4">
+          <p className="text-sm text-white/50">Sign in to vote and create battles.</p>
+          <a
+            href="/auth/signin?callbackUrl=/versus"
+            className="rounded-xl bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600 transition"
+          >
+            Sign in
+          </a>
+        </div>
+      )}
+
       {isEmpty ? (
-        <div className="py-24 text-center text-white/30">
-          <p className="text-xl font-semibold">No active battles right now.</p>
-          <p className="mt-2 text-sm">
-            {isArtist
-              ? "Start the first battle using the button above!"
-              : "Check back soon!"}
+        <div className="py-20 text-center">
+          <p className="text-5xl mb-4">⚔️</p>
+          <p className="text-xl font-semibold text-white/60">No active battles right now.</p>
+          <p className="mt-2 text-sm text-white/30">
+            {isArtist ? "Be the first — start a battle above!" : "Check back soon — battles are coming."}
           </p>
         </div>
       ) : (
