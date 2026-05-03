@@ -211,7 +211,7 @@ model Transaction {
   song   Song?   @relation(fields: [songId], references: [id])
   licenseTokenId String?
   licenseToken   LicenseToken? @relation(fields: [licenseTokenId], references: [id])
-  resaleListing  ResaleListing?
+  resaleListings ResaleListing[]
   @@index([userId])
   @@index([status])
   @@index([userId, createdAt])
@@ -249,7 +249,7 @@ model ResaleListing {
   buyerId String?
   buyer   User?  @relation("ResaleBuyer", fields: [buyerId], references: [id])
 
-  transactionId String?
+  transactionId String? @unique
   transaction   Transaction? @relation(fields: [transactionId], references: [id])
 
   @@index([status, createdAt])
