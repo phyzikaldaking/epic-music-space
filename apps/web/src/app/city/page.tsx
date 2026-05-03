@@ -1,5 +1,7 @@
 import Image from "next/image";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import DistrictBadge from "@/components/DistrictBadge";
 import { DISTRICT_META } from "@/lib/scoring";
 import { Suspense } from "react";
@@ -30,6 +32,20 @@ type StudioRow = {
 };
 
 export default async function CityPage() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    redirect("/auth/signin?callbackUrl=/city");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { subscriptionTier: true },
+  });
+  const allowedTiers = ["PRO", "PRIME", "TEAM", "LABEL_TIER"];
+  if (!user || !allowedTiers.includes(user.subscriptionTier)) {
+    redirect("/pricing?reason=city");
+  }
+
   let topPrime: SongRow[] = [];
   let topLabel: SongRow[] = [];
   let topIndie: SongRow[] = [];

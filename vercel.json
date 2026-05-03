@@ -4,8 +4,14 @@
   "buildCommand": "npm run vercel:build",
   "outputDirectory": "apps/web/.next",
   "crons": [
-    { "path": "/api/cron/expire-battles", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/settle-auctions", "schedule": "*/5 * * * *" }
+    {
+      "path": "/api/cron/expire-battles",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/settle-auctions",
+      "schedule": "*/5 * * * *"
+    }
   ],
   "headers": [
     {
