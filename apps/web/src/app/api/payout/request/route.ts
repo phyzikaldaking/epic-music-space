@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCreatorWalletSummary } from "@/lib/wallet";
 import { stripe } from "@/lib/stripe";
 
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  const userId = body?.userId;
-
-  if (!userId) {
-    return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+export async function POST() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const userId = session.user.id;
 
   const wallet = await getCreatorWalletSummary(userId);
 
