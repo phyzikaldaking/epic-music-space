@@ -34,7 +34,7 @@
     "db:studio": "cd packages/db && npx prisma studio",
     "stripe:listen": "node scripts/ops/stripe-listen.mjs",
     "supabase:link": "node scripts/ops/supabase-link.mjs",
-    "vercel:build": "npm run clean:web && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma generate --schema packages/db/prisma/schema.prisma && mkdir -p apps/web/packages/db/generated/client && find packages/db/generated/client -name '*.node' -exec cp {} apps/web/packages/db/generated/client/ \\; && npm --workspace apps/web run build"
+    "vercel:build": "npm run clean:web && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma migrate deploy --schema packages/db/prisma/schema.prisma && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma generate --schema packages/db/prisma/schema.prisma && mkdir -p apps/web/packages/db/generated/client && find packages/db/generated/client -name '*.node' -exec cp {} apps/web/packages/db/generated/client/ \\; && npm --workspace apps/web run build"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
