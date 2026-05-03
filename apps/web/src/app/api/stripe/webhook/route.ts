@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getTierFromStripePriceId } from "@/lib/subscriptions";
 import type Stripe from "stripe";
 import type { AdLocation } from "@ems/db";
+import { getResaleSplit } from "@/lib/beatMarket";
 
 export async function POST(req: Request) {
   const headersList = await headers();
@@ -117,6 +118,124 @@ export async function POST(req: Request) {
             },
           },
         });
+      }
+
+      return NextResponse.json({ received: true });
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Resale purchase fulfilment
+    // ─────────────────────────────────────────────────────────
+
+    if (metadataType === "resale_purchase") {
+      const resaleListingId = session.metadata?.resaleListingId;
+      const buyerId = session.metadata?.userId;
+
+      if (!resaleListingId || !buyerId) {
+        return NextResponse.json({ received: true });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const listing = await tx.resaleListing.findUnique({
+          where: { id: resaleListingId },
+          include: {
+            song: { select: { id: true, artistId: true } },
+            licenseToken: { select: { id: true, holderId: true, songId: true } },
+          },
+        });
+
+        if (!listing || listing.status !== "ACTIVE") return;
+        if (listing.licenseToken.holderId !== listing.sellerId) return;
+
+        // Prevent buying if buyer already holds a license for the song
+        const existing = await tx.licenseToken.findFirst({
+          where: { songId: listing.songId, holderId: buyerId, status: "ACTIVE" },
+          select: { id: true },
+        });
+        if (existing) return;
+
+        const txRow = await tx.transaction.findFirst({
+          where: { stripeSessionId: session.id, userId: buyerId, type: "RESALE_PURCHASE" },
+          select: { id: true, status: true },
+        });
+
+        if (!txRow) return;
+        if (txRow.status === "SUCCEEDED") return;
+
+        await tx.licenseToken.update({
+          where: { id: listing.licenseTokenId },
+          data: { holderId: buyerId },
+        });
+
+        await tx.resaleListing.update({
+          where: { id: listing.id },
+          data: {
+            status: "SOLD",
+            soldAt: new Date(),
+            buyerId,
+            transactionId: txRow.id,
+          },
+        });
+
+        await tx.transaction.update({
+          where: { id: txRow.id },
+          data: {
+            status: "SUCCEEDED",
+            licenseTokenId: listing.licenseTokenId,
+            metadata: {
+              type: "resale_purchase",
+              resaleListingId: listing.id,
+              finalizedAt: new Date().toISOString(),
+            },
+          },
+        });
+
+        // Record the artist royalty as a payout row (transfer attempt below)
+        const split = getResaleSplit(Number(listing.resalePrice));
+        if (split.artistRoyalty > 0) {
+          await tx.payout.create({
+            data: {
+              amount: split.artistRoyalty,
+              userId: listing.song.artistId,
+              songId: listing.song.id,
+              licenseTokenId: listing.licenseTokenId,
+              period: "resale",
+            },
+          });
+        }
+      });
+
+      // Attempt Stripe Connect transfer to the artist (best-effort)
+      try {
+        const listing = await prisma.resaleListing.findUnique({
+          where: { id: resaleListingId },
+          include: { song: { select: { id: true, artistId: true } } },
+        });
+
+        if (!listing) return NextResponse.json({ received: true });
+        const artist = await prisma.user.findUnique({ where: { id: listing.song.artistId } });
+
+        const split = getResaleSplit(Number(listing.resalePrice));
+        if (artist?.stripeConnectId && split.artistRoyalty > 0) {
+          await stripe.transfers.create({
+            amount: Math.round(split.artistRoyalty * 100),
+            currency: "usd",
+            destination: artist.stripeConnectId,
+            metadata: { songId: listing.song.id, resaleListingId: listing.id },
+          });
+
+          await prisma.payout.updateMany({
+            where: {
+              userId: artist.id,
+              songId: listing.song.id,
+              period: "resale",
+              licenseTokenId: listing.licenseTokenId,
+            },
+            data: { status: "PAID", paidAt: new Date() },
+          });
+        }
+      } catch (err) {
+        console.error("[stripe/webhook] resale artist transfer failed", err);
       }
 
       return NextResponse.json({ received: true });
