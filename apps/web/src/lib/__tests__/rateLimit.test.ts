@@ -26,15 +26,11 @@ vi.mock("next/server", () => {
   };
 });
 
+import type { NextRequest } from "next/server";
 import { withRateLimit, strictLimiter } from "../rateLimit";
+import { NextResponse } from "next/server";
 
-import { __nextResponseJson } from "next/server";
-
-type MinimalNextRequest = {
-  headers: {
-    get(key: string): string | null;
-  };
-};
+const __nextResponseJson = NextResponse.json as ReturnType<typeof vi.fn>;
 
 type RateLimitContext = { key: string };
 type MinimalNextResponse = { status: number; headers: Record<string, string> };
@@ -44,7 +40,7 @@ function reqWithHeaders(headers: Record<string, string>) {
     headers: {
       get: (key: string) => headers[key.toLowerCase()] ?? null,
     },
-  } satisfies MinimalNextRequest;
+  } as unknown as NextRequest;
 }
 
 describe("withRateLimit", () => {
@@ -60,14 +56,14 @@ describe("withRateLimit", () => {
     const limiter = strictLimiter as unknown as { consume: (key: string) => Promise<unknown> };
     const consumeSpy = vi.spyOn(limiter, "consume").mockResolvedValue(undefined);
 
-    const handler = vi.fn(async (_req: MinimalNextRequest, ctx: RateLimitContext) => ({
+    const handler = vi.fn(async (_req: NextRequest, ctx: RateLimitContext) => ({
       ok: true,
       key: ctx.key,
     }));
 
     const wrapped = withRateLimit(
       strictLimiter,
-      handler as unknown as (req: unknown, ctx: RateLimitContext) => Promise<MinimalNextResponse>,
+      handler as unknown as (req: NextRequest, ctx: { key: string }) => Promise<ReturnType<typeof NextResponse.json>>,
     );
 
     const req = reqWithHeaders({ "x-forwarded-for": "1.2.3.4, 5.6.7.8" });
@@ -82,14 +78,14 @@ describe("withRateLimit", () => {
     const limiter = strictLimiter as unknown as { consume: (key: string) => Promise<unknown> };
     const consumeSpy = vi.spyOn(limiter, "consume").mockResolvedValue(undefined);
 
-    const handler = vi.fn(async (_req: MinimalNextRequest, ctx: RateLimitContext) => ({
+    const handler = vi.fn(async (_req: NextRequest, ctx: RateLimitContext) => ({
       ok: true,
       key: ctx.key,
     }));
 
     const wrapped = withRateLimit(
       strictLimiter,
-      handler as unknown as (req: unknown, ctx: RateLimitContext) => Promise<MinimalNextResponse>,
+      handler as unknown as (req: NextRequest, ctx: { key: string }) => Promise<ReturnType<typeof NextResponse.json>>,
     );
 
     const req = reqWithHeaders({ "x-real-ip": "9.9.9.9" });
@@ -106,7 +102,7 @@ describe("withRateLimit", () => {
     const handler = vi.fn(async () => ({ ok: true }));
     const wrapped = withRateLimit(
       strictLimiter,
-      handler as unknown as (req: unknown, ctx: RateLimitContext) => Promise<MinimalNextResponse>,
+      handler as unknown as (req: NextRequest, ctx: { key: string }) => Promise<ReturnType<typeof NextResponse.json>>,
     );
 
     const req = reqWithHeaders({ "x-real-ip": "9.9.9.9" });

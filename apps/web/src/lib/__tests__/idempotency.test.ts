@@ -1,19 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { NextRequest } from "next/server";
 
 import { buildIdempotencyKey } from "../idempotency";
-
-type MinimalNextRequest = {
-  headers: {
-    get(key: string): string | null;
-  };
-};
 
 function reqWithHeaders(headers: Record<string, string>) {
   return {
     headers: {
       get: (key: string) => headers[key.toLowerCase()] ?? null,
     },
-  } satisfies MinimalNextRequest;
+  } as unknown as NextRequest;
 }
 
 describe("buildIdempotencyKey", () => {
