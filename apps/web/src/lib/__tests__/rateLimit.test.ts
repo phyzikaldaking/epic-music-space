@@ -1,23 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Must mock ./redis BEFORE importing rateLimit module.
+// Must mock dependencies BEFORE importing rateLimit module.
 vi.mock("../redis", () => ({
   getRedis: vi.fn(() => null),
 }));
 
-const nextResponseJson = vi.fn((body: unknown, init?: { status?: number; headers?: Record<string, string> }) => ({
-  body,
-  status: init?.status ?? 200,
-  headers: init?.headers ?? {},
-}));
+vi.mock("next/server", () => {
+  const json = vi.fn(
+    (
+      body: unknown,
+      init?: { status?: number; headers?: Record<string, string> },
+    ) => ({
+      body,
+      status: init?.status ?? 200,
+      headers: init?.headers ?? {},
+    }),
+  );
 
-vi.mock("next/server", () => ({
-  NextResponse: {
-    json: nextResponseJson,
-  },
-}));
+  return {
+    NextResponse: {
+      json,
+    },
+    // expose for assertions
+    __nextResponseJson: json,
+  };
+});
 
 import { withRateLimit, strictLimiter } from "../rateLimit";
+
+import { __nextResponseJson } from "next/server";
 
 function reqWithHeaders(headers: Record<string, string>) {
   return {
@@ -29,7 +40,7 @@ function reqWithHeaders(headers: Record<string, string>) {
 
 describe("withRateLimit", () => {
   beforeEach(() => {
-    nextResponseJson.mockClear();
+    (__nextResponseJson as any).mockClear();
   });
 
   afterEach(() => {
@@ -70,9 +81,8 @@ describe("withRateLimit", () => {
     const res = await wrapped(req);
 
     expect(handler).not.toHaveBeenCalled();
-    expect(nextResponseJson).toHaveBeenCalledTimes(1);
+    expect(__nextResponseJson).toHaveBeenCalledTimes(1);
     expect((res as any).status).toBe(429);
     expect((res as any).headers["Retry-After"]).toBe("60");
   });
 });
-
