@@ -164,19 +164,19 @@ const premiumHomeCss = `
 .vc-hero { min-height: 100vh; background: #050507; }
 .vc-studio-photo {
   opacity: 0;
-  filter: brightness(0.7) contrast(1.12) saturate(1.02);
-  transform: scale(1.02);
+  filter: brightness(0.52) contrast(1.18) saturate(0.88);
+  transform: scale(1.03);
   animation:
-    vc-photo-fade-in 1.6s ease-out forwards,
-    vc-photo-breathe 14s ease-in-out 1.6s infinite alternate;
+    vc-photo-fade-in 2s ease-out forwards,
+    vc-photo-breathe 18s ease-in-out 2s infinite alternate;
 }
 @keyframes vc-photo-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 @keyframes vc-photo-breathe {
-  0% { filter: brightness(0.68) contrast(1.1) saturate(0.98); transform: scale(1.02); }
-  100% { filter: brightness(0.78) contrast(1.14) saturate(1.06); transform: scale(1.06); }
+  0% { filter: brightness(0.48) contrast(1.16) saturate(0.84); transform: scale(1.03); }
+  100% { filter: brightness(0.58) contrast(1.22) saturate(0.96); transform: scale(1.07); }
 }
 .vc-studio-tint {
   background: linear-gradient(135deg, rgba(5,5,8,0.36), rgba(11,26,31,0.26), rgba(93,72,20,0.20));
@@ -509,7 +509,7 @@ export default async function HomePage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           className="vc-studio-photo"
-          src="https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=2600&q=85&auto=format&fit=crop"
+          src="https://images.unsplash.com/photo-1559825481-12a05cc00344?w=2600&q=85&auto=format&fit=crop"
           alt=""
           aria-hidden="true"
         />
