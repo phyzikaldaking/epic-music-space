@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-import { getTierLimits } from "@/lib/tierLimits";
+import { getActiveLimits } from "@/lib/tierLimits";
 
 const SONG_SELECT = {
   id: true,
@@ -42,11 +42,11 @@ export async function POST(req: NextRequest) {
 
   const creator = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { subscriptionTier: true, role: true },
+    select: { subscriptionTier: true, trialExpiresAt: true, role: true },
   });
   const canCreate =
     creator?.role === "ADMIN" ||
-    (creator && getTierLimits(creator.subscriptionTier).canCreateVersus);
+    (creator && getActiveLimits(creator).canCreateVersus);
   if (!canCreate) {
     return NextResponse.json(
       { error: "Battle creation requires a Pro plan or higher. Upgrade at /pricing." },

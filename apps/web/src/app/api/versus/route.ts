@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-import { getTierLimits } from "@/lib/tierLimits";
+import { getActiveLimits } from "@/lib/tierLimits";
 
 const createSchema = z.object({
   songAId: z.string().cuid(),
@@ -31,9 +31,9 @@ export async function POST(req: NextRequest) {
 
   const creator = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { subscriptionTier: true },
+    select: { subscriptionTier: true, trialExpiresAt: true },
   });
-  if (!creator || !getTierLimits(creator.subscriptionTier).canCreateVersus) {
+  if (!creator || !getActiveLimits(creator).canCreateVersus) {
     return NextResponse.json(
       { error: "Versus battle creation requires a Pro plan or higher. Upgrade at /pricing." },
       { status: 403 }

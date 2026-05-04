@@ -6,7 +6,7 @@ import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
 import { getSiteUrl } from "@/lib/site";
-import { getTierLimits } from "@/lib/tierLimits";
+import { getActiveLimits } from "@/lib/tierLimits";
 
 // ─────────────────────────────────────────────────────────
 // Boost package definitions
@@ -86,9 +86,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Enforce tier: only PRO and above can purchase boosts
-  const tier = session.user.subscriptionTier ?? "FREE";
-  if (!getTierLimits(tier).canBoost) {
+  // Enforce tier with trial-expiry awareness — fetch from DB, not JWT
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { subscriptionTier: true, trialExpiresAt: true },
+  });
+  if (!dbUser || !getActiveLimits(dbUser).canBoost) {
     return NextResponse.json(
       { error: "Boost purchases require a Pro plan or higher. Upgrade at /pricing." },
       { status: 403 },

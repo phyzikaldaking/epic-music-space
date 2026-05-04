@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getActiveLimits } from "@/lib/tierLimits";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
@@ -15,10 +16,9 @@ export default async function AnalyticsPage() {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { subscriptionTier: true },
+    select: { subscriptionTier: true, trialExpiresAt: true },
   });
-  const allowedTiers = ["PRO", "PRIME", "TEAM", "LABEL_TIER"];
-  if (!user || !allowedTiers.includes(user.subscriptionTier)) {
+  if (!user || !getActiveLimits(user).canAccessAnalytics) {
     redirect("/pricing?reason=analytics");
   }
 

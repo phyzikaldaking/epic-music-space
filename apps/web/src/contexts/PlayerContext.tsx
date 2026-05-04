@@ -208,6 +208,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (state.isPlaying) void audio.play().catch(() => {});
   }, [state.currentSong?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fire stream increment whenever a new song starts — keeps streamCount accurate
+  // for tracks played via the global player bar (not just the inline AudioPlayer).
+  useEffect(() => {
+    if (state.currentSong?.id) {
+      void fetch(`/api/songs/${state.currentSong.id}/stream`, { method: "POST" });
+    }
+  }, [state.currentSong?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // React to isPlaying toggled externally
   useEffect(() => {
     const audio = audioRef.current;

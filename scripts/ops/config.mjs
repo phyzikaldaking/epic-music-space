@@ -35,6 +35,7 @@ export const serviceRequirements = {
   "Upstash Redis": ["REDIS_URL"],
   Resend: ["RESEND_API_KEY"],
   PostHog: ["POSTHOG_API_KEY"],
+  Cron: ["CRON_SECRET"],
 };
 
 export const optionalRequirements = {
