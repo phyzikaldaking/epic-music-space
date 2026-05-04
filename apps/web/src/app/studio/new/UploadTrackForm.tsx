@@ -331,7 +331,6 @@ export default function UploadTrackForm() {
             {audioUploadState === "done" && audioUrl && (
               <div className="mb-3 rounded-xl bg-white/5 border border-white/10 p-3">
                 <p className="mb-2 text-xs font-semibold text-green-400">✓ Upload complete — preview your track:</p>
-                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                 <audio controls src={audioUrl} className="w-full" style={{ colorScheme: "dark" }} />
               </div>
             )}
