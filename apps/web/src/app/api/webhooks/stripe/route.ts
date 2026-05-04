@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { stripe, getStripeWebhookSecret } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
-import { TaxFormStatus } from "@ems/db";
+import { Prisma, TaxFormStatus } from "@ems/db";
 import { enqueueNotification } from "@/lib/queues";
+
+/** Typed Prisma P2002 check — avoids brittle error message string matching. */
+function isUniqueConstraintError(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+}
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { track } from "@/lib/analytics";
 import { CACHE_TAGS } from "@/lib/cacheTags";
@@ -32,7 +37,7 @@ export async function POST(req: NextRequest) {
       data: { source: "stripe", eventId: event.id },
     });
   } catch (err) {
-    if (String((err as Error)?.message ?? "").includes("Unique constraint")) {
+    if (isUniqueConstraintError(err)) {
       return NextResponse.json({ received: true, deduped: true });
     }
     // Non-unique-constraint failures aren't fatal — continue processing.
@@ -220,7 +225,7 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
       grossDollars: Number(existing.amount),
     });
   } catch (err) {
-    if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+    if (!isUniqueConstraintError(err)) {
       console.warn("[stripe-webhook] license ledger write failed", err);
     }
   }
@@ -297,7 +302,7 @@ async function handleSubscriptionCheckoutCompleted(session: Stripe.Checkout.Sess
     try {
       await recordSubscription({ userId, transactionId: tx.id, grossDollars });
     } catch (err) {
-      if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+      if (!isUniqueConstraintError(err)) {
         console.warn("[stripe-webhook] subscription ledger write failed", err);
       }
     }
@@ -328,7 +333,7 @@ async function handleBoostCheckoutCompleted(session: Stripe.Checkout.Session) {
   try {
     await recordBoost({ songId, buyerId: userId, transactionId: updated.id, grossDollars: Number(updated.amount) });
   } catch (err) {
-    if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+    if (!isUniqueConstraintError(err)) {
       console.warn("[stripe-webhook] boost ledger write failed", err);
     }
   }
@@ -414,7 +419,7 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
         grossDollars: Number(txRow.amount),
       });
     } catch (err) {
-      if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+      if (!isUniqueConstraintError(err)) {
         console.warn("[stripe-webhook] tip ledger write failed", err);
       }
     }
@@ -466,6 +471,21 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
       return null;
     }
 
+    // Atomic settlement lock: flip auction status to SETTLED as the FIRST write
+    // inside this transaction. If two webhook deliveries race past the outer
+    // ProcessedWebhook dedupe (e.g., exactly simultaneous delivery), only one
+    // will flip count === 1 here — the other returns null cleanly and Stripe
+    // gets a 200, preventing a retry storm. This makes license issuance
+    // idempotent at the database level.
+    const settleRes = await tx.auction.updateMany({
+      where: { id: auction.id, status: { not: "SETTLED" } },
+      data: { status: "SETTLED", winnerId: txRow.userId, currentBid: txRow.amount },
+    });
+    if (settleRes.count !== 1) {
+      // Another concurrent handler already claimed this auction.
+      return null;
+    }
+
     const maxTokenForSong = await tx.licenseToken.findFirst({
       where: { songId: auction.songId },
       orderBy: { tokenNumber: "desc" },
@@ -485,15 +505,6 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
     await tx.song.update({
       where: { id: auction.songId },
       data: { soldLicenses: { increment: 1 } },
-    });
-
-    await tx.auction.update({
-      where: { id: auction.id },
-      data: {
-        status: "SETTLED",
-        winnerId: txRow.userId,
-        currentBid: txRow.amount,
-      },
     });
 
     await tx.transaction.update({
@@ -531,7 +542,7 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
       grossDollars: settled.grossAmount,
     });
   } catch (err) {
-    if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+    if (!isUniqueConstraintError(err)) {
       console.warn("[stripe-webhook] auction ledger write failed", err);
     }
   }
@@ -607,7 +618,7 @@ async function handleServicePurchaseCompleted(session: Stripe.Checkout.Session) 
       grossDollars: Number(txRow.amount),
     });
   } catch (err) {
-    if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+    if (!isUniqueConstraintError(err)) {
       console.warn("[stripe-webhook] service ledger write failed", err);
     }
   }
@@ -658,7 +669,7 @@ async function handleAdPurchaseCompleted(session: Stripe.Checkout.Session) {
           grossDollars: Number(txRow.amount),
         });
       } catch (err) {
-        if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+        if (!isUniqueConstraintError(err)) {
           console.warn("[stripe-webhook] ad ledger write failed", err);
         }
       }
