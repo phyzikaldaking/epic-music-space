@@ -334,7 +334,65 @@ async function handleBoostCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 }
 async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
-  await prisma.transaction.updateMany({ where: { stripeSessionId: session.id, status: "PENDING" }, data: { status: "FAILED" } });
+  const tx = await prisma.transaction.findUnique({
+    where: { stripeSessionId: session.id },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      metadata: true,
+    },
+  });
+
+  await prisma.transaction.updateMany({
+    where: { stripeSessionId: session.id, status: "PENDING" },
+    data: { status: "FAILED" },
+  });
+
+  const isAuctionWin =
+    session.metadata?.type === "auction_win" ||
+    ((tx?.metadata as { auctionId?: string } | null | undefined)?.auctionId != null);
+
+  if (!isAuctionWin) return;
+
+  const auctionId =
+    session.metadata?.auctionId ??
+    (tx?.metadata as { auctionId?: string } | null | undefined)?.auctionId;
+  const sellerId =
+    session.metadata?.sellerId ??
+    ((tx?.metadata as { sellerId?: string } | null | undefined)?.sellerId ?? null);
+  const winnerId = session.metadata?.userId ?? tx?.userId ?? null;
+
+  if (auctionId) {
+    await prisma.auction.updateMany({
+      where: {
+        id: auctionId,
+        status: { in: ["ENDED", "ACTIVE"] },
+      },
+      data: { status: "EXPIRED", winnerId: null },
+    });
+  }
+
+  await Promise.allSettled([
+    winnerId
+      ? enqueueNotification({
+          userId: winnerId,
+          type: "AUCTION_PAYMENT_EXPIRED",
+          title: "Auction payment window expired",
+          body: "Your winner checkout session expired before payment completed.",
+          metadata: { auctionId, transactionId: tx?.id },
+        })
+      : Promise.resolve(),
+    sellerId
+      ? enqueueNotification({
+          userId: sellerId,
+          type: "AUCTION_EXPIRED",
+          title: "Auction winner did not complete payment",
+          body: "The winning bidder did not complete checkout within the payment window.",
+          metadata: { auctionId, transactionId: tx?.id },
+        })
+      : Promise.resolve(),
+  ]);
 }
 async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
   await prisma.transaction.updateMany({ where: { stripePaymentIntentId: pi.id }, data: { status: "FAILED" } });
@@ -378,27 +436,7 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
     if (!txRow) return null;
 
     // Idempotency: if this session was already fulfilled, avoid duplicate license issuance.
-    if (txRow.status === "SUCCEEDED") {
-      const auctionId =
-        (txRow.metadata as { auctionId?: string } | null | undefined)?.auctionId ??
-        session.metadata?.auctionId ??
-        null;
-      if (!auctionId) return null;
-
-      const auction = await tx.auction.findUnique({
-        where: { id: auctionId },
-        select: { id: true, sellerId: true, songId: true },
-      });
-      if (!auction) return null;
-
-      return {
-        transactionId: txRow.id,
-        grossAmount: Number(txRow.amount),
-        songId: auction.songId ?? txRow.songId ?? null,
-        sellerId: auction.sellerId,
-        winnerId: txRow.userId,
-      };
-    }
+    if (txRow.status === "SUCCEEDED") return null;
 
     const auctionId =
       (txRow.metadata as { auctionId?: string } | null | undefined)?.auctionId ??

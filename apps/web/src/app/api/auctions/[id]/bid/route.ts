@@ -3,15 +3,30 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { moderateLimiter } from "@/lib/rateLimit";
 import { enqueueNotification } from "@/lib/queues";
+import { getMinimumAuctionBid, normalizeUsdAmount } from "@/lib/auctionMath";
 import { z } from "zod";
 
 export const runtime = "nodejs";
 
 type Params = { params: Promise<{ id: string }> };
 
+const ANTI_SNIPE_WINDOW_MS = 2 * 60 * 1000;
+const ANTI_SNIPE_EXTENSION_MS = 2 * 60 * 1000;
+
 const bidSchema = z.object({
-  amount: z.number().positive().max(1_000_000),
+  amount: z
+    .number()
+    .positive()
+    .max(1_000_000)
+    .transform((v) => normalizeUsdAmount(v)),
 });
+
+class BidConflictRetryError extends Error {
+  constructor() {
+    super("AUCTION_BID_CONFLICT_RETRY");
+    this.name = "BidConflictRetryError";
+  }
+}
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -52,66 +67,154 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { amount } = parsed.data;
 
-  const auction = await prisma.auction.findUnique({
-    where: { id },
-    include: { song: { select: { title: true, artistId: true } } },
-  });
+  const MAX_RETRIES = 3;
+  let placedBid:
+    | {
+        previousTopBidderId: string | null;
+        songTitle: string;
+        sellerId: string;
+        endsAtIso: string;
+        antiSnipeExtended: boolean;
+      }
+    | null = null;
 
-  if (!auction) {
-    return NextResponse.json({ error: "Auction not found" }, { status: 404 });
-  }
-  if (auction.status !== "ACTIVE") {
-    return NextResponse.json({ error: "Auction is not active" }, { status: 409 });
-  }
-  if (new Date() >= auction.endsAt) {
-    return NextResponse.json({ error: "Auction has ended" }, { status: 409 });
-  }
-  if (auction.sellerId === session.user.id) {
-    return NextResponse.json({ error: "You cannot bid on your own auction" }, { status: 403 });
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const auction = await tx.auction.findUnique({
+          where: { id },
+          include: { song: { select: { title: true } } },
+        });
+
+        if (!auction) {
+          return {
+            ok: false as const,
+            status: 404,
+            error: "Auction not found",
+          };
+        }
+        if (auction.status !== "ACTIVE") {
+          return {
+            ok: false as const,
+            status: 409,
+            error: "Auction is not active",
+          };
+        }
+        if (new Date() >= auction.endsAt) {
+          return {
+            ok: false as const,
+            status: 409,
+            error: "Auction has ended",
+          };
+        }
+        if (auction.sellerId === session.user.id) {
+          return {
+            ok: false as const,
+            status: 403,
+            error: "You cannot bid on your own auction",
+          };
+        }
+
+        const minBid = getMinimumAuctionBid(
+          Number(auction.startingBid),
+          auction.currentBid == null ? null : Number(auction.currentBid),
+        );
+
+        if (amount < minBid) {
+          return {
+            ok: false as const,
+            status: 400,
+            error: `Bid must be at least $${minBid.toFixed(2)}`,
+          };
+        }
+
+        const now = new Date();
+        const msRemaining = auction.endsAt.getTime() - now.getTime();
+        const antiSnipeExtended = msRemaining <= ANTI_SNIPE_WINDOW_MS;
+        const nextEndsAt = antiSnipeExtended
+          ? new Date(auction.endsAt.getTime() + ANTI_SNIPE_EXTENSION_MS)
+          : auction.endsAt;
+
+        const updateRes = await tx.auction.updateMany({
+          where: {
+            id,
+            status: "ACTIVE",
+            endsAt: { gt: now },
+            ...(auction.currentBid == null
+              ? { currentBid: null }
+              : { currentBid: auction.currentBid }),
+          },
+          data: {
+            currentBid: amount,
+            winnerId: session.user.id,
+            ...(antiSnipeExtended ? { endsAt: nextEndsAt } : {}),
+          },
+        });
+
+        if (updateRes.count !== 1) {
+          throw new BidConflictRetryError();
+        }
+
+        await tx.auctionBid.create({
+          data: { auctionId: id, bidderId: session.user.id, amount },
+        });
+
+        return {
+          ok: true as const,
+          previousTopBidderId: auction.winnerId ?? null,
+          songTitle: auction.song.title,
+          sellerId: auction.sellerId,
+          endsAtIso: nextEndsAt.toISOString(),
+          antiSnipeExtended,
+        };
+      });
+
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+
+      placedBid = result;
+      break;
+    } catch (err) {
+      if (err instanceof BidConflictRetryError && attempt < MAX_RETRIES - 1) {
+        continue;
+      }
+      throw err;
+    }
   }
 
-  const minBid = auction.currentBid
-    ? Number(auction.currentBid) + 0.01
-    : Number(auction.startingBid);
-
-  if (amount < minBid) {
+  if (!placedBid) {
     return NextResponse.json(
-      { error: `Bid must be at least $${minBid.toFixed(2)}` },
-      { status: 400 },
+      { error: "Another bid was placed at the same time. Please try again." },
+      { status: 409 },
     );
   }
 
-  // Use winnerId (the current top bidder set on each bid) instead of a lookup-by-amount
-  // to avoid false matches when two bidders submit the same amount concurrently.
-  const previousTopBidderId = auction.winnerId ?? null;
-
-  await prisma.$transaction(async (tx) => {
-    await tx.auctionBid.create({
-      data: { auctionId: id, bidderId: session.user.id, amount },
-    });
-    await tx.auction.update({
-      where: { id },
-      data: { currentBid: amount, winnerId: session.user.id },
-    });
-  });
-
-  if (previousTopBidderId && previousTopBidderId !== session.user.id) {
+  if (
+    placedBid.previousTopBidderId &&
+    placedBid.previousTopBidderId !== session.user.id
+  ) {
     await enqueueNotification({
-      userId: previousTopBidderId,
+      userId: placedBid.previousTopBidderId,
       type: "AUCTION_OUTBID",
       title: "You've been outbid!",
-      body: `Someone placed a higher bid of $${amount.toFixed(2)} on "${auction.song.title}". Bid again to stay in the lead.`,
-      metadata: { auctionId: id, songTitle: auction.song.title, newBid: amount },
+      body: `Someone placed a higher bid of $${amount.toFixed(2)} on "${placedBid.songTitle}". Bid again to stay in the lead.`,
+      metadata: { auctionId: id, songTitle: placedBid.songTitle, newBid: amount },
     });
   }
 
   await enqueueNotification({
-    userId: auction.sellerId,
+    userId: placedBid.sellerId,
     type: "AUCTION_BID_RECEIVED",
     title: "New bid on your auction!",
-    body: `Someone bid $${amount.toFixed(2)} on "${auction.song.title}".`,
+    body: `Someone bid $${amount.toFixed(2)} on "${placedBid.songTitle}".`,
     metadata: { auctionId: id, amount },
   });
 
-  return NextResponse.json({ success: true, currentBid: amount });
+  return NextResponse.json({
+    success: true,
+    currentBid: amount,
+    endsAt: placedBid.endsAtIso,
+    antiSnipeExtended: placedBid.antiSnipeExtended,
+  });
 }
