@@ -115,6 +115,24 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Auto-create a Studio for the artist if they don't have one yet
+  const existingStudio = await prisma.studio.findFirst({
+    where: { userId: session.user.id },
+    select: { id: true },
+  });
+  if (!existingStudio) {
+    const baseSlug = (parsed.data.artist ?? "artist")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 28) || "artist";
+    const taken = await prisma.studio.findFirst({ where: { username: baseSlug }, select: { id: true } });
+    const username = taken ? `${baseSlug}-${session.user.id.slice(-4)}` : baseSlug;
+    await prisma.studio.create({
+      data: { userId: session.user.id, username },
+    }).catch(() => { /* race condition — another request already created it */ });
+  }
+
   // Invalidate trending cache
   await cacheDel(CACHE_KEYS.trendingSongs);
 

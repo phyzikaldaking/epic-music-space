@@ -62,6 +62,12 @@ export default async function VirtualStudioPage({
   const { genre } = await searchParams;
   const activeGenre = genre ?? "all";
 
+  // Fetch the current user's own studio username so "My Studio" links correctly
+  const myStudio = await prisma.studio.findFirst({
+    where: { userId: session.user.id },
+    select: { username: true },
+  });
+
   // Fetch studios with recently active songs — these are the "live sessions"
   const studios = await prisma.studio.findMany({
     where: {
@@ -191,7 +197,7 @@ export default async function VirtualStudioPage({
               </Link>
               {session.user && (
                 <Link
-                  href={`/studio/${session.user.name?.toLowerCase().replace(/\s+/g, "-") ?? ""}`}
+                  href={myStudio ? `/studio/${myStudio.username}` : "/studio/new"}
                   className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-5 py-3 text-sm font-semibold text-white/70 transition hover:bg-white/6 hover:text-white"
                 >
                   My Studio

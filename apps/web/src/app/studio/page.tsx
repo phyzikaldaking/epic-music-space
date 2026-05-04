@@ -22,6 +22,6 @@ export default async function StudioIndexPage() {
     redirect(`/studio/${studio.username}`);
   }
 
-  // Artist has no studio yet — send them to create their first song/studio
-  redirect("/studio/new");
+  // No studio yet — send them to the virtual studio live room to explore
+  redirect("/studio/live");
 }
