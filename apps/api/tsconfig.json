@@ -4,7 +4,6 @@
     "outDir": "dist",
     "rootDir": "src",
     "module": "CommonJS",
-    "ignoreDeprecations": "6.0",
     "moduleResolution": "node",
     "target": "ES2022",
     "strict": true,
