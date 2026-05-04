@@ -141,6 +141,12 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
     ? (Number(auction.currentBid) + 0.01).toFixed(2)
     : Number(auction.startingBid).toFixed(2);
   const isSeller = session?.user?.id === auction.seller.id;
+  const isWinner = session?.user?.id != null && session.user.id === auction.winner?.id;
+  const hasPlacedBid =
+    session?.user?.id != null && auction.bids.some((bid) => bid.bidder.id === session.user.id);
+  const canDownloadRecords =
+    session?.user?.id != null &&
+    (isSeller || isWinner || hasPlacedBid || session.user.role === "ADMIN");
   const currentBid = auction.currentBid ?? auction.startingBid;
 
   return (
@@ -381,6 +387,15 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
           >
             View song page →
           </Link>
+
+          {canDownloadRecords && (
+            <a
+              href={`/api/auctions/${auction.id}/records?format=csv`}
+              className="block rounded-2xl border border-white/[0.08] bg-white/[0.02] px-5 py-4 text-sm text-white/60 hover:bg-white/5 hover:text-white transition text-center"
+            >
+              Download legal records (CSV) ↓
+            </a>
+          )}
         </div>
       </div>
     </div>

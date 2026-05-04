@@ -114,7 +114,18 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="mb-3 text-xl font-bold text-white">11. Contact</h2>
+          <h2 className="mb-3 text-xl font-bold text-white">11. Records &amp; Audit Trails</h2>
+          <p>
+            For licensing and auction activity, EMS stores transaction and bidding
+            records for compliance, fraud prevention, and dispute handling.
+            Participants in an auction (seller, winner, bidders) may export
+            their auction records in machine-readable formats from the relevant
+            auction page.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-xl font-bold text-white">12. Contact</h2>
           <p>
             Questions about these Terms? Contact us at{" "}
             <a href="mailto:legal@epicmusicspace.com" className="text-brand-400 hover:underline">

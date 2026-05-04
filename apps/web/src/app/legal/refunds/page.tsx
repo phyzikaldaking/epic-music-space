@@ -68,7 +68,9 @@ export default function RefundsPage() {
           <h2 className="text-xl font-bold text-white">Auctions</h2>
           <p className="mt-2 leading-relaxed">
             Winning bids are final. If the seller fails to deliver within 14 days,
-            we issue a full refund and ban the seller account.
+            we issue a full refund and ban the seller account. Auction participants
+            should retain their downloadable auction records (CSV/JSON) for dispute
+            review.
           </p>
         </section>
 

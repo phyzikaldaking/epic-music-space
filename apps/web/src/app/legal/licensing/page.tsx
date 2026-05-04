@@ -172,6 +172,12 @@ export default function LicensingPage() {
 
         <section>
           <h2 className="mb-3 text-xl font-bold text-white">12. Contact</h2>
+          <p className="mb-3 text-sm">
+            Auction participants can download auditable auction records (bids,
+            settlement status, and transaction references) from the auction
+            detail page. Records are exported as CSV or JSON and are intended
+            for tax, legal, and accounting workflows.
+          </p>
           <p className="text-sm">
             Legal questions:{" "}
             <a
