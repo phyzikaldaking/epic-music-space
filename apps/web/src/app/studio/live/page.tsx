@@ -9,9 +9,9 @@ import type { Metadata } from "next";
 export const revalidate = 30;
 
 export const metadata: Metadata = {
-  title: "Virtual Studio — Epic Music Space",
+  title: "Listening Sessions — Epic Music Space",
   description:
-    "Join live listen sessions, discover new music, and connect with artists in the Virtual Studio.",
+    "Drop into live listening rooms hosted by artists. Hear albums in real time, react in chat, raise your hand to take the floor, and license tracks while the music's still playing.",
 };
 
 type SessionStudio = {
@@ -149,14 +149,15 @@ export default async function VirtualStudioPage({
           <div>
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/8 px-3 py-1 text-xs font-bold text-brand-400">
               <span className="h-1.5 w-1.5 rounded-full bg-brand-400 studio-live-pulse" />
-              Live Now
+              Live Rooms
             </div>
             <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl">
-              Virtual <span className="text-gradient-ems">Studio</span>
+              Listening <span className="text-gradient-ems">Sessions</span>
             </h1>
             <p className="mt-3 max-w-xl text-white/45">
-              Drop into live listen sessions, discover artists in real time, and
-              vibe with the community. Sessions are always open — just hit join.
+              Live audio rooms hosted by artists. Hear the album, talk between
+              tracks, raise your hand to take the floor, and license songs
+              while the music&apos;s still playing.
             </p>
           </div>
 
@@ -179,13 +180,25 @@ export default async function VirtualStudioPage({
           </div>
         </div>
 
+        {/* ── Realtime audio status banner ──────────────────────────────── */}
+        <div className="mb-6 rounded-2xl border border-amber-400/25 bg-amber-400/8 px-5 py-3 text-sm text-amber-200">
+          <span className="font-bold">Live audio rooms are rolling out.</span>{" "}
+          <span className="text-amber-200/80">
+            Hand-raising, host mic, and live chat go live tier-by-tier in the
+            coming weeks. Today, every studio below is a live room directory —
+            join an artist&apos;s page to listen, react, and license.
+          </span>
+        </div>
+
         {/* ── Host your own session CTA ──────────────────────────────────── */}
         <div className="mb-10 overflow-hidden rounded-3xl border border-brand-500/25 bg-gradient-to-r from-brand-500/10 via-accent-500/6 to-transparent p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="mb-1 text-lg font-extrabold">🎙️ Host a Listen Session</p>
+              <p className="mb-1 text-lg font-extrabold">🎙️ Host a Listening Session</p>
               <p className="text-sm text-white/50">
-                Upload a track and your studio opens automatically. Listeners can join, react, and grab licenses in real time.
+                Upload a track and your studio opens as a live room. Pass the
+                mic, take questions, and let fans license your music while
+                they&apos;re still in the chat.
               </p>
             </div>
             <div className="flex gap-3 flex-shrink-0">
@@ -292,24 +305,24 @@ export default async function VirtualStudioPage({
         {/* ── How it works ──────────────────────────────────────────────── */}
         <div className="mt-16 rounded-3xl border border-white/8 bg-[#0d0d14] p-8">
           <h2 className="mb-6 text-center text-lg font-bold text-white/70">
-            How the Virtual Studio works
+            How a listening session works
           </h2>
           <div className="grid gap-6 text-center md:grid-cols-3">
             {[
               {
                 icon: "🎙️",
-                title: "Artists Upload",
-                desc: "Post a track and your studio room opens instantly. Your session is live as long as your track is active.",
+                title: "Artist hosts the room",
+                desc: "Open a live audio session. Press play on your album, talk between tracks, and welcome fans into the same room as you.",
               },
               {
-                icon: "🎧",
-                title: "Listeners Join",
-                desc: "Browse rooms by genre or vibe. Click any session to listen in full, leave a reaction, or grab a license.",
+                icon: "🙋",
+                title: "Fans take the floor",
+                desc: "Listeners react in chat or raise a hand. You decide who speaks. It's a Q&A, a release party, and a concert in one.",
               },
               {
                 icon: "💰",
-                title: "Earn in Real Time",
-                desc: "Every license sold during your session pays out instantly via Stripe. More listeners = more momentum = higher AI score.",
+                title: "Licenses sell live",
+                desc: "Fans in the room are one tap from licensing the song they're hearing. Sales fire while the music's still rolling — you keep 90%.",
               },
             ].map((step) => (
               <div key={step.title} className="flex flex-col items-center gap-3">

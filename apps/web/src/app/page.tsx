@@ -10,9 +10,9 @@ import { formatPrice } from "@ems/utils";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Epic Music Space — Where Artists Get Heard, Get Paid, and Get Famous",
+  title: "Epic Music Space — Live Listening Parties for Artists & Their Fans",
   description:
-    "Drop tracks, win Versus battles, sell licenses, and watch your fans hold a piece of your career. The artist platform built to make you the next one up.",
+    "Host live listening sessions for your fans, family, and friends across the world. Play your album, talk between tracks, take live questions, and turn drops into events. Battles, licensing, and royalties built in.",
   alternates: { canonical: "/" },
 };
 
@@ -60,20 +60,20 @@ function mapDemoTracksToSampleSongs(tracks: Awaited<ReturnType<typeof getDemoTra
 }
 
 const marqueeItems = [
-  "Live Versus Battles",
-  "Real-Time Drops",
+  "Live Listening Parties",
+  "Drop Your Album Live",
+  "Take the Floor",
+  "Versus Battles",
   "90% to the Artist",
-  "Set Your Own Price",
   "Fans Hold Your Catalog",
   "Climb the Charts",
-  "Get Heard Tonight",
-  "Live Versus Battles",
-  "Real-Time Drops",
+  "Live Listening Parties",
+  "Drop Your Album Live",
+  "Take the Floor",
+  "Versus Battles",
   "90% to the Artist",
-  "Set Your Own Price",
   "Fans Hold Your Catalog",
   "Climb the Charts",
-  "Get Heard Tonight",
 ];
 
 const trackArtClasses = ["vc-track-art-1", "vc-track-art-2", "vc-track-art-3"];
@@ -449,18 +449,26 @@ export default async function HomePage() {
     mainEntity: [
       {
         "@type": "Question",
-        name: "How do artists make money on Epic Music Space?",
+        name: "How do listening sessions work on Epic Music Space?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "You set your license price and how many licenses to sell. Every license is a paid sale that hits your wallet — and you keep 90%. License holders share streaming revenue with you, so the more your song plays, the more everyone wins.",
+          text: "You open a live audio room — like a private radio station. Press play on your album or unreleased tracks, talk between songs, take questions, and hand the mic to fans when you're ready. Family, friends, and listeners from anywhere in the world join the same room and react in real time.",
         },
       },
       {
         "@type": "Question",
-        name: "What are Versus battles?",
+        name: "How big can my listening room get?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Live track-versus-track showdowns. Drop your song into the ring against another artist, fans vote in real time, and winners climb the discovery charts overnight. It's how unknown artists go viral on EMS.",
+          text: "Free studios fit a small crew so you can vibe with your closest fans. Paid tiers unlock larger rooms — up to thousands of live listeners in a single session — with priority queue control and richer host tools.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "How do artists make money on Epic Music Space?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Sessions, sales, and battles all feed each other. Sell licenses (you keep 90%), get tipped in live rooms, win Versus battles to climb the charts, and earn streaming royalties forever. Every fan in your room is one click from licensing the song they're hearing.",
         },
       },
       {
@@ -468,7 +476,7 @@ export default async function HomePage() {
         name: "Do I keep my rights?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Yes. You own the master. Buyers receive a digital license to use the track under transparent terms — they don't own your music. Your catalog is yours forever.",
+          text: "Yes. You own the master. Buyers receive a digital license under transparent terms — they don't own your music. Your catalog stays yours forever.",
         },
       },
     ],
@@ -521,25 +529,26 @@ export default async function HomePage() {
         <div className="vc-horizon" aria-hidden="true" />
 
         <div className="vc-hero-content">
-          <p className="vc-eyebrow">The artist platform built to make you the next one up</p>
+          <p className="vc-eyebrow">Live listening parties for the streaming era</p>
           <h1 className="vc-hero-h1">
-            Drop it.
+            Throw a
             <br />
-            Battle it.
+            listening party.
             <br />
-            Get paid.
+            Anywhere.
           </h1>
           <p className="vc-hero-tagline">
-            Upload your track, fight for the crown in <span className="accent">live Versus battles</span>,
-            and turn every fan into a paying license holder. Keep 90%. Own your masters.
-            Watch your name climb the charts in real time.
+            Press play on your <span className="accent">album, unreleased track, or whole catalog</span>,
+            and talk between songs while fans, family, and friends from across the world
+            sit in the same room with you. Hand them the mic when you&apos;re ready.
+            Every listener is one click from licensing your music.
           </p>
           <div className="vc-hero-ctas">
             <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
-              Open Your Studio →
+              Host Your First Session →
             </Link>
-            <Link href="/versus" className="vc-btn vc-btn-ghost">
-              Watch a Battle
+            <Link href="/studio/live" className="vc-btn vc-btn-ghost">
+              Drop Into a Room
             </Link>
           </div>
         </div>
@@ -565,37 +574,120 @@ export default async function HomePage() {
           </h2>
           <p className="vc-section-sub">
             EMS gives you the tools the majors keep behind closed doors —
-            licensing, distribution, fan investment, real-time analytics,
-            and a stage to perform on every single night.
+            live audio rooms, licensing, distribution, fan investment, and
+            a stage to perform on every single night.
           </p>
           <div className="vc-platform-grid">
             <article className="vc-platform-card">
-              <span className="vc-platform-num">01 / Drop</span>
-              <h3>Release on your terms.</h3>
+              <span className="vc-platform-num">01 / Host</span>
+              <h3>Open a live listening room.</h3>
               <p>
-                Upload a track, set your license price, cap your supply, and
-                decide what your sound is worth. No A&amp;R gatekeeping. Your
-                drop goes live the second you click publish.
+                Your studio is a live audio space — like a club, a radio booth,
+                and a record release party in one. You press play, you talk
+                between tracks, you pass the mic to fans when they raise a hand.
+                Every listener in the world is sitting in the same room as you.
               </p>
             </article>
             <article className="vc-platform-card">
               <span className="vc-platform-num">02 / Battle</span>
-              <h3>Live Versus is your stage.</h3>
+              <h3>Step in the ring on Versus.</h3>
               <p>
-                Step in the ring against another artist. Fans vote in real time.
-                Winners climb the charts overnight. This is how unknown artists
-                go viral on EMS — and it happens every night.
+                Drop your track against another artist&apos;s. Fans vote in
+                real time, winners climb the charts overnight. This is how
+                unknown artists go viral on EMS — every night, no playlist
+                gatekeepers, no cosigns required.
               </p>
             </article>
             <article className="vc-platform-card">
               <span className="vc-platform-num">03 / Get Paid</span>
               <h3>Keep 90% of every license.</h3>
               <p>
-                Every sale hits your wallet instantly. Your fans become license
-                holders who share in your streaming revenue — so they win when
-                you win, and they push your tracks harder than any marketing team.
+                Every license sold during your session pays out instantly.
+                Fans become license holders who share in your streaming revenue —
+                so they win when you win, and they push your tracks harder
+                than any marketing team.
               </p>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <section className="vc-section vc-platform-section">
+        <div className="vc-container">
+          <p className="vc-section-eyebrow">The flagship feature</p>
+          <h2 className="vc-section-title">
+            Listening sessions, live —{" "}
+            <span className="glow">turn every drop into an event.</span>
+          </h2>
+          <p className="vc-section-sub">
+            Spotify, Apple, and SoundCloud are vending machines. Epic Music
+            Space is a venue. You host. Your fans show up. The album plays in
+            the same room as everyone in it. Comments fly, mics get passed,
+            licenses sell while the music&apos;s still rolling.
+          </p>
+          <div className="vc-platform-grid">
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">01 / Open Doors</span>
+              <h3>You&apos;re the host.</h3>
+              <p>
+                Spin up a session in seconds. Cue up the album, the mixtape,
+                the unreleased one — whatever you&apos;re in the mood to play.
+                Drop a description. Hit live.
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">02 / They Show Up</span>
+              <h3>Fans from anywhere.</h3>
+              <p>
+                Your mom in Atlanta, the producer in Berlin, the fan in Tokyo —
+                they all join the same room and hear it at the same moment.
+                Live chat fires. Reactions roll across the screen. The room
+                feels the song with you.
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">03 / Take the Floor</span>
+              <h3>Pass the mic.</h3>
+              <p>
+                Listeners raise a hand. You decide who speaks. Talk through a
+                verse, take a question, react to your own track. It&apos;s a
+                concert, a Q&amp;A, and a release party — running at the same time.
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">04 / They Buy In</span>
+              <h3>Licenses sell live.</h3>
+              <p>
+                Every fan in the room is one tap from licensing the song
+                they&apos;re hearing. Tips fly in. The supply ticks down. By
+                the time the room empties, you&apos;ve been paid — and the
+                holders go push your track to everyone they know.
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">05 / Scale With Tier</span>
+              <h3>Bigger plan, bigger room.</h3>
+              <p>
+                Free studios fit your inner circle. Paid tiers unlock larger
+                rooms, longer sessions, priority queue tools, and replay drops.
+                When you&apos;re ready to fill the building, the building grows
+                with you.
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">06 / Replay &amp; Resell</span>
+              <h3>The session never dies.</h3>
+              <p>
+                Every session can be saved as a replay drop — your fans who
+                missed it tune in later, licenses keep selling, and the room
+                lives on as a moment in your catalog forever.
+              </p>
+            </article>
+          </div>
+          <div className="vc-catalog-link mt-8">
+            <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
+              Host Your First Session →
+            </Link>
           </div>
         </div>
       </section>
@@ -651,14 +743,15 @@ export default async function HomePage() {
                   For Artists
                 </p>
                 <h3>
-                  Get heard. <span className="high">Get paid.</span>
+                  Host the room. <span className="high">Run the show.</span>
                   <br />
-                  Get famous.
+                  Get paid in real time.
                 </h3>
                 <p>
-                  Drop tracks, fight in live battles, sell licenses, and turn
-                  your fans into co-owners of your career. Keep 90%, own your
-                  masters, and get notified the moment someone licenses your sound.
+                  Open live listening sessions for fans across the world, pass
+                  the mic when you want, and turn the people in your room into
+                  paying license holders before they leave. Battles, charts,
+                  and 90% royalties baked in.
                 </p>
                 <div className="vc-split-stats">
                   <div className="vc-stat">
@@ -723,7 +816,22 @@ export default async function HomePage() {
           </h2>
           <div className="vc-feat-grid vc-feat-grid-top">
             <div className="vc-feat-card versus">
-              <span className="vc-feat-tag">Live Versus Battles</span>
+              <span className="vc-feat-tag">Live Listening Sessions</span>
+              <h3>The flagship — Clubhouse for music</h3>
+              <p>
+                Open a live audio room. Press play on your album, your unreleased
+                track, your back catalog. Talk between songs. Read the chat. Hand
+                the mic to fans when they raise a hand. Family across the country,
+                fans on the other side of the world — all in the same room with
+                you, hearing it together. Subscription tier sets your room size,
+                from intimate listening parties to thousand-strong releases.
+              </p>
+              <Link href="/studio/live" className="vc-feat-link vc-feat-link-pink">
+                See Live Rooms →
+              </Link>
+            </div>
+            <div className="vc-feat-card">
+              <span className="vc-feat-tag">Versus Battles</span>
               <h3>Step in the ring tonight</h3>
               <p>
                 Drop your track against another artist&apos;s. Fans watch live,
@@ -731,7 +839,7 @@ export default async function HomePage() {
                 The fastest way to go viral on EMS — no playlist gatekeepers,
                 no cosigns required.
               </p>
-              <Link href="/versus" className="vc-feat-link vc-feat-link-pink">
+              <Link href="/versus" className="vc-feat-link">
                 Enter a Battle →
               </Link>
             </div>
@@ -747,26 +855,14 @@ export default async function HomePage() {
                 See the Marketplace →
               </Link>
             </div>
-            <div className="vc-feat-card">
-              <span className="vc-feat-tag">Your Studio. Your Brand.</span>
-              <h3>A page that proves you&apos;re moving</h3>
-              <p>
-                Your own profile, your followers, your district badge, your
-                sales numbers. Tip jar built in. Earn badges as you climb.
-                Send a single link and let the receipts speak for themselves.
-              </p>
-              <Link href="/auth/signup?role=ARTIST" className="vc-feat-link">
-                Build Your Studio →
-              </Link>
-            </div>
             <div className="vc-feat-card versus">
-              <span className="vc-feat-tag">EMS Score</span>
+              <span className="vc-feat-tag">EMS Score &amp; Studio Brand</span>
               <h3>The AI scout in your corner</h3>
               <p>
                 Every track gets a score on composition, production, and market
-                fit. Higher scores get pushed into the marketplace, the charts,
-                and the &quot;tracks to watch&quot; rails. Make the song. Let
-                the AI be your A&amp;R.
+                fit. Your studio profile shows the receipts — followers, sales,
+                badges, district — all in one place. Make the song, let the AI
+                be your A&amp;R, and let your page do the talking.
               </p>
               <Link
                 href="/leaderboard"
@@ -867,19 +963,19 @@ export default async function HomePage() {
         <div className="vc-container vc-closing-inner">
           <p className="vc-eyebrow">Your move</p>
           <h2 className="vc-section-title vc-closing-title">
-            Stop waiting to be discovered. Drop a track tonight and let the
-            crowd decide.
+            Open a room. Press play. Watch the world show up.
           </h2>
           <p className="vc-section-sub vc-closing-sub">
-            Sign-up is free. Uploads are free. You only get charged when you
-            sell — and when you sell, you keep 90%.
+            Sign-up is free. Uploads are free. Hosting your first listening
+            session is free. You only get charged when you sell — and when
+            you sell, you keep 90%.
           </p>
           <div className="vc-hero-ctas">
             <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
-              Open Your Studio →
+              Host Your First Session →
             </Link>
-            <Link href="/versus" className="vc-btn vc-btn-chrome">
-              Watch Tonight&apos;s Battles
+            <Link href="/studio/live" className="vc-btn vc-btn-chrome">
+              Drop Into a Live Room
             </Link>
           </div>
         </div>

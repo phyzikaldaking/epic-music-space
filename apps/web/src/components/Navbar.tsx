@@ -4,19 +4,20 @@ import NavbarAuth from "@/components/NavbarAuth";
 import NavbarMobileMenu from "@/components/NavbarMobileMenu";
 
 const PUBLIC_LINKS = [
+  { href: "/studio/live", label: "Sessions" },
+  { href: "/versus", label: "Battles" },
   { href: "/marketplace", label: "Browse" },
-  { href: "/legal/licensing", label: "Licensing" },
-  { href: "/pricing", label: "Pricing" },
   { href: "/leaderboard", label: "Charts" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/studio/new", label: "For Artists" },
 ];
 
 const AUTHED_LINKS = [
-  { href: "/marketplace", label: "Browse" },
-  { href: "/auctions", label: "Auctions" },
+  { href: "/studio/live", label: "Sessions" },
   { href: "/versus", label: "Battles" },
+  { href: "/marketplace", label: "Browse" },
   { href: "/leaderboard", label: "Charts" },
-  { href: "/studio/live", label: "Studio" },
+  { href: "/auctions", label: "Auctions" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/invite", label: "Invite" },
   { href: "/boost", label: "Boost" },
