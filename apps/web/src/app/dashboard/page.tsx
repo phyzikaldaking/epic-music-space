@@ -17,60 +17,89 @@ export default async function DashboardPage() {
   if (!session?.user?.id) redirect("/auth/signin");
   const siteUrl = getSiteUrl();
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: {
-      licenses: {
-        include: { song: true },
-        orderBy: { purchasedAt: "desc" },
-        take: 10,
+  const userId = session.user.id;
+
+  // Fan out: split the previous single-query waterfall into parallel reads.
+  // Each section renders from its own query so a slow row doesn't block the
+  // others, and the executor can hit the DB connection pool concurrently.
+  const [
+    userRow,
+    licenses,
+    transactions,
+    songs,
+    badges,
+    auctionsCreated,
+    auctionBids,
+    invite,
+    inviteUsedCount,
+  ] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      include: { studio: { select: { username: true } } },
+    }),
+    prisma.licenseToken.findMany({
+      where: { holderId: userId },
+      include: { song: true },
+      orderBy: { purchasedAt: "desc" },
+      take: 10,
+    }),
+    prisma.transaction.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    }),
+    prisma.song.findMany({
+      where: { artistId: userId, isActive: true },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: { _count: { select: { versusMatchesA: true, versusMatchesB: true } } },
+    }),
+    prisma.userBadge.findMany({
+      where: { userId },
+      orderBy: { awardedAt: "desc" },
+    }),
+    prisma.auction.findMany({
+      where: { sellerId: userId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: {
+        song: { select: { id: true, title: true } },
+        _count: { select: { bids: true } },
       },
-      transactions: {
-        orderBy: { createdAt: "desc" },
-        take: 10,
-      },
-      songs: {
-        where: { isActive: true },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        include: { _count: { select: { versusMatchesA: true, versusMatchesB: true } } },
-      },
-      studio: { select: { username: true } },
-      badges: { orderBy: { awardedAt: "desc" } },
-      auctionsCreated: {
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        include: {
-          song: { select: { id: true, title: true } },
-          _count: { select: { bids: true } },
+    }),
+    prisma.auctionBid.findMany({
+      where: { bidderId: userId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: {
+        auction: {
+          include: { song: { select: { id: true, title: true } } },
         },
       },
-      auctionBids: {
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        include: {
-          auction: {
-            include: { song: { select: { id: true, title: true } } },
-          },
-        },
-      },
-    },
-  });
-
-  if (!user) redirect("/auth/signin");
-
-  // Invite data
-  const inviteData = await (async () => {
-    const invite = await prisma.inviteCode.findFirst({
-      where: { createdById: user.id },
+    }),
+    prisma.inviteCode.findFirst({
+      where: { createdById: userId },
       orderBy: { createdAt: "asc" },
-    });
-    if (!invite) return null;
-    const usedCount = await prisma.inviteCode.count({
-      where: { createdById: user.id, usedById: { not: null } },
-    });
-    return { code: invite.code, usedCount };
-  })();
+    }),
+    prisma.inviteCode.count({
+      where: { createdById: userId, usedById: { not: null } },
+    }),
+  ]);
+
+  if (!userRow) redirect("/auth/signin");
+
+  // Re-stitch the shape downstream code expects.
+  const user = {
+    ...userRow,
+    licenses,
+    transactions,
+    songs,
+    badges,
+    auctionsCreated,
+    auctionBids,
+  };
+
+  const inviteData = invite ? { code: invite.code, usedCount: inviteUsedCount } : null;
 
   const totalInvested = user.transactions
     .filter((t) => t.status === "SUCCEEDED" && t.type === "LICENSE_PURCHASE")
