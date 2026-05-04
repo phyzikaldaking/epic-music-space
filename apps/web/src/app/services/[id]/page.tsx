@@ -20,6 +20,11 @@ export default async function ServiceDetailPage({
       where: { id },
       include: {
         provider: { select: { id: true, name: true, image: true, username: true, role: true } },
+        reviews: {
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          include: { buyer: { select: { name: true, image: true } } },
+        },
       },
     }),
   ]);
@@ -59,14 +64,21 @@ export default async function ServiceDetailPage({
             <div>
               <p className="text-sm font-semibold">
                 {listing.provider.username ? (
-                  <Link href={`/studio/${listing.provider.username}`} className="text-brand-300 hover:underline">
+                  <Link href={`/pro/${listing.provider.username}`} className="text-brand-300 hover:underline">
                     {listing.provider.name ?? listing.provider.username}
                   </Link>
                 ) : (
                   <span>{listing.provider.name ?? "Pro"}</span>
                 )}
               </p>
-              <p className="text-xs uppercase tracking-widest text-white/40">{listing.provider.role.toLowerCase()}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs uppercase tracking-widest text-white/40">{listing.provider.role.toLowerCase()}</p>
+                {listing.rating !== null && listing.ratingCount > 0 && (
+                  <p className="text-xs text-amber-300">
+                    ★ {listing.rating.toFixed(1)} <span className="text-white/40">({listing.ratingCount})</span>
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -78,6 +90,25 @@ export default async function ServiceDetailPage({
             <div className="mt-6">
               <p className="mb-2 text-xs font-bold uppercase tracking-widest text-white/45">Sample</p>
               <audio src={listing.exampleAudioUrl} controls className="w-full" />
+            </div>
+          )}
+
+          {listing.reviews.length > 0 && (
+            <div className="mt-8">
+              <p className="mb-3 text-xs font-bold uppercase tracking-widest text-white/45">
+                Recent reviews
+              </p>
+              <div className="space-y-3">
+                {listing.reviews.map((r) => (
+                  <div key={r.id} className="rounded-2xl border border-white/8 bg-white/3 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold">{r.buyer.name ?? "Buyer"}</p>
+                      <span className="text-amber-300 text-sm">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span>
+                    </div>
+                    {r.body && <p className="mt-2 text-sm text-white/70">{r.body}</p>}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

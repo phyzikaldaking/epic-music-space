@@ -363,35 +363,169 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 }
 async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Session) {
-  await prisma.transaction.updateMany({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
+  const settled = await prisma.$transaction(async (tx) => {
+    const txRow = await tx.transaction.findUnique({
+      where: { stripeSessionId: session.id },
+      select: {
+        id: true,
+        userId: true,
+        amount: true,
+        songId: true,
+        status: true,
+        metadata: true,
+      },
+    });
+    if (!txRow) return null;
 
-  // Look up the auction to find seller + song so we can credit the seller.
-  const txRow = await prisma.transaction.findUnique({
-    where: { stripeSessionId: session.id },
-    select: { id: true, amount: true, songId: true, metadata: true },
-  });
-  const auctionId = (txRow?.metadata as { auctionId?: string } | null | undefined)?.auctionId
-    ?? session.metadata?.auctionId;
-  if (!txRow || !auctionId) return;
+    // Idempotency: if this session was already fulfilled, avoid duplicate license issuance.
+    if (txRow.status === "SUCCEEDED") {
+      const auctionId =
+        (txRow.metadata as { auctionId?: string } | null | undefined)?.auctionId ??
+        session.metadata?.auctionId ??
+        null;
+      if (!auctionId) return null;
 
-  const auction = await prisma.auction.findUnique({
-    where: { id: auctionId },
-    select: { sellerId: true, songId: true },
+      const auction = await tx.auction.findUnique({
+        where: { id: auctionId },
+        select: { id: true, sellerId: true, songId: true },
+      });
+      if (!auction) return null;
+
+      return {
+        transactionId: txRow.id,
+        grossAmount: Number(txRow.amount),
+        songId: auction.songId ?? txRow.songId ?? null,
+        sellerId: auction.sellerId,
+        winnerId: txRow.userId,
+      };
+    }
+
+    const auctionId =
+      (txRow.metadata as { auctionId?: string } | null | undefined)?.auctionId ??
+      session.metadata?.auctionId ??
+      null;
+    if (!auctionId) return null;
+
+    const auction = await tx.auction.findUnique({
+      where: { id: auctionId },
+      include: {
+        song: {
+          select: {
+            id: true,
+            title: true,
+            soldLicenses: true,
+          },
+        },
+      },
+    });
+    if (!auction) return null;
+
+    // Protect against fulfillment for the wrong user if metadata was tampered.
+    if (auction.winnerId && auction.winnerId !== txRow.userId) {
+      console.warn(
+        `[stripe-webhook] auction winner mismatch: auction=${auction.id} winner=${auction.winnerId} txUser=${txRow.userId}`,
+      );
+      return null;
+    }
+
+    const maxTokenForSong = await tx.licenseToken.findFirst({
+      where: { songId: auction.songId },
+      orderBy: { tokenNumber: "desc" },
+      select: { tokenNumber: true },
+    });
+
+    const licenseToken = await tx.licenseToken.create({
+      data: {
+        songId: auction.songId,
+        holderId: txRow.userId,
+        price: txRow.amount,
+        tokenNumber: (maxTokenForSong?.tokenNumber ?? 0) + 1,
+      },
+      select: { id: true, tokenNumber: true },
+    });
+
+    await tx.song.update({
+      where: { id: auction.songId },
+      data: { soldLicenses: { increment: 1 } },
+    });
+
+    await tx.auction.update({
+      where: { id: auction.id },
+      data: {
+        status: "SETTLED",
+        winnerId: txRow.userId,
+        currentBid: txRow.amount,
+      },
+    });
+
+    await tx.transaction.update({
+      where: { id: txRow.id },
+      data: {
+        status: "SUCCEEDED",
+        stripePaymentIntentId: session.payment_intent as string | undefined,
+        licenseTokenId: licenseToken.id,
+      },
+    });
+
+    return {
+      transactionId: txRow.id,
+      grossAmount: Number(txRow.amount),
+      songId: auction.songId ?? txRow.songId ?? null,
+      sellerId: auction.sellerId,
+      winnerId: txRow.userId,
+      songTitle: auction.song.title,
+      tokenNumber: licenseToken.tokenNumber,
+      auctionId: auction.id,
+    };
   });
-  if (!auction) return;
+
+  if (!settled) return;
+
+  // Auction settlement changes listing availability and ranking projections.
+  revalidateTag(CACHE_TAGS.songs);
+  revalidateTag(CACHE_TAGS.homepage);
 
   try {
     await recordAuctionWin({
-      songId: auction.songId ?? txRow.songId ?? null,
-      sellerId: auction.sellerId,
-      transactionId: txRow.id,
-      grossDollars: Number(txRow.amount),
+      songId: settled.songId,
+      sellerId: settled.sellerId,
+      transactionId: settled.transactionId,
+      grossDollars: settled.grossAmount,
     });
   } catch (err) {
     if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
       console.warn("[stripe-webhook] auction ledger write failed", err);
     }
   }
+
+  await Promise.allSettled([
+    enqueueNotification({
+      userId: settled.winnerId,
+      type: "AUCTION_WIN",
+      title: "Auction payment confirmed ✅",
+      body: settled.songTitle
+        ? `Your payment for "${settled.songTitle}" was confirmed. License #${settled.tokenNumber} is now active.`
+        : `Your auction payment was confirmed. License #${settled.tokenNumber} is now active.`,
+      metadata: {
+        auctionId: settled.auctionId,
+        transactionId: settled.transactionId,
+        tokenNumber: settled.tokenNumber,
+      },
+    }),
+    enqueueNotification({
+      userId: settled.sellerId,
+      type: "AUCTION_SETTLED",
+      title: "Auction settled and paid",
+      body: settled.songTitle
+        ? `Payment for "${settled.songTitle}" completed. The winning license has been delivered.`
+        : "Auction payment completed. The winning license has been delivered.",
+      metadata: {
+        auctionId: settled.auctionId,
+        transactionId: settled.transactionId,
+        grossAmount: settled.grossAmount,
+      },
+    }),
+  ]);
 }
 async function handleServicePurchaseCompleted(session: Stripe.Checkout.Session) {
   const orderId = session.metadata?.orderId;

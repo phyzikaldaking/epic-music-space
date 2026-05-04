@@ -8,7 +8,10 @@ import { rateLimit } from "@/lib/rateLimitInline";
 
 export const runtime = "nodejs";
 
-const schema = z.object({ brief: z.string().max(2000).optional() });
+const schema = z.object({
+  brief: z.string().max(2000).optional(),
+  briefUrl: z.string().url().optional(),
+});
 
 export async function POST(
   req: Request,
@@ -57,6 +60,7 @@ export async function POST(
       providerId: listing.providerId,
       priceUsd: listing.priceUsd,
       briefText: parsed.data.brief ?? null,
+      briefUrl: parsed.data.briefUrl ?? null,
       status: "PENDING",
     },
     select: { id: true },
@@ -78,7 +82,7 @@ export async function POST(
         },
       },
     ],
-    success_url: `${baseUrl}/dashboard/orders?order=${order.id}&status=success`,
+    success_url: `${baseUrl}/dashboard/orders/${order.id}?status=success`,
     cancel_url: `${baseUrl}/services/${listing.id}?cancelled=1`,
     metadata: {
       type: "service_purchase",

@@ -49,12 +49,11 @@ export default async function OrdersDashboard() {
         <div className="space-y-3">
           {orders.map((o) => {
             const meta = SERVICE_KIND_META[o.listing.kind];
-            const downloadUrl =
-              o.deliverableUrl ?? (o.status === "PAID" || o.status === "DELIVERED" ? o.listing.downloadUrl : null);
             return (
-              <div
+              <Link
                 key={o.id}
-                className="flex flex-col gap-3 rounded-2xl border border-white/8 bg-[#0d0d14] p-4 sm:flex-row sm:items-start sm:justify-between"
+                href={`/dashboard/orders/${o.id}`}
+                className="flex flex-col gap-3 rounded-2xl border border-white/8 bg-[#0d0d14] p-4 transition hover:border-brand-500/30 sm:flex-row sm:items-start sm:justify-between"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -62,24 +61,17 @@ export default async function OrdersDashboard() {
                     <span
                       className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${STATUS_BADGE[o.status]}`}
                     >
-                      {o.status}
+                      {o.status.replace(/_/g, " ")}
                     </span>
                   </div>
                   <p className="text-xs text-white/45">
                     {meta.label} · ${Number(o.priceUsd).toFixed(2)} · from {o.provider.name ?? o.provider.username ?? "Pro"}
                   </p>
                 </div>
-                {downloadUrl && (
-                  <a
-                    href={downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-shrink-0 rounded-xl bg-brand-500 px-4 py-2 text-xs font-bold text-white hover:bg-brand-600"
-                  >
-                    {meta.isInstant ? "Download" : "Open delivery"} →
-                  </a>
-                )}
-              </div>
+                <span className="flex-shrink-0 text-xs font-semibold text-brand-300">
+                  Open →
+                </span>
+              </Link>
             );
           })}
         </div>

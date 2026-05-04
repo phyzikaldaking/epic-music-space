@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -20,7 +20,8 @@ export default function UploadTrackForm() {
   const [key, setKey] = useState("");
 
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [, setCoverFile] = useState<File | null>(null);
+  // _coverFile stored only to allow clearing on error via setCoverFile(null)
+  const [_coverFile, setCoverFile] = useState<File | null>(null);
   const [stemFile, setStemFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState("");
@@ -28,6 +29,11 @@ export default function UploadTrackForm() {
   const [stemUrl, setStemUrl] = useState("");
 
   const [audioUploadState, setAudioUploadState] = useState<UploadState>("idle");
+
+    const [audioProgress, setAudioProgress] = useState(0);
+    const [coverProgress, setCoverProgress] = useState(0);
+    const [stemProgress, setStemProgress] = useState(0);
+
   const [coverUploadState, setCoverUploadState] = useState<UploadState>("idle");
   const [stemUploadState, setStemUploadState] = useState<UploadState>("idle");
   const [submitState, setSubmitState] = useState<UploadState>("idle");
@@ -37,30 +43,66 @@ export default function UploadTrackForm() {
   const coverRef = useRef<HTMLInputElement>(null);
   const stemRef = useRef<HTMLInputElement>(null);
 
-  async function uploadFile(file: File, type: "audio" | "cover"): Promise<string> {
-    const form = new FormData();
-    form.append("file", file);
-    form.append("type", type);
-    const res = await fetch("/api/upload", { method: "POST", body: form });
-    const data = await res.json() as { url?: string; error?: string };
-    if (!res.ok || !data.url) {
-      throw new Error(data.error ?? "Upload failed");
+  // ── Upload helpers ─────────────────────────────────────────────────────────
+  // 1. Ask the API for a Supabase signed upload URL (tiny JSON request).
+  // 2. PUT the file bytes directly from the browser to Supabase Storage.
+  //    This bypasses Vercel's 4.5 MB body limit entirely.
+  const getSignedUrl = useCallback(async (
+    type: "audio" | "cover" | "stem",
+    file: File,
+  ): Promise<{ signedUrl: string; publicUrl: string }> => {
+    const res = await fetch("/api/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, fileName: file.name, mimeType: file.type, fileSize: file.size }),
+    });
+    const data = await res.json() as { signedUrl?: string; publicUrl?: string; error?: string };
+    if (!res.ok || !data.signedUrl || !data.publicUrl) {
+      throw new Error(data.error ?? "Could not start upload. Please try again.");
     }
-    return data.url;
-  }
+    return { signedUrl: data.signedUrl, publicUrl: data.publicUrl };
+  }, []);
 
+  const uploadDirect = useCallback(async (
+    signedUrl: string,
+    file: File,
+    onProgress: (pct: number) => void,
+  ): Promise<void> => {
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", signedUrl);
+      xhr.setRequestHeader("Content-Type", file.type);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          onProgress(100);
+          resolve();
+        } else {
+          reject(new Error(`Upload failed (${xhr.status}). Please try again.`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Network error during upload. Check your connection."));
+      xhr.send(file);
+    });
+  }, []);
   async function handleAudioChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setAudioFile(file);
     setAudioUploadState("uploading");
+    setAudioProgress(0);
+    setAudioUrl("");
     setError(null);
     try {
-      const url = await uploadFile(file, "audio");
-      setAudioUrl(url);
+      const { signedUrl, publicUrl } = await getSignedUrl("audio", file);
+      await uploadDirect(signedUrl, file, setAudioProgress);
+      setAudioUrl(publicUrl);
       setAudioUploadState("done");
     } catch (err) {
       setAudioUploadState("error");
+      setAudioProgress(0);
       setError(err instanceof Error ? err.message : "Audio upload failed");
     }
   }
@@ -71,16 +113,19 @@ export default function UploadTrackForm() {
     setCoverFile(file);
     setCoverPreview(URL.createObjectURL(file));
     setCoverUploadState("uploading");
+    setCoverProgress(0);
     setError(null);
     try {
-      const url = await uploadFile(file, "cover");
-      setCoverUrl(url);
+      const { signedUrl, publicUrl } = await getSignedUrl("cover", file);
+      await uploadDirect(signedUrl, file, setCoverProgress);
+      setCoverUrl(publicUrl);
       setCoverUploadState("done");
     } catch (err) {
       setCoverUploadState("error");
       setCoverPreview(null);
       setCoverFile(null);
-      setError(err instanceof Error ? err.message : "Cover upload failed. You can proceed without a cover.");
+      setCoverProgress(0);
+      setError(err instanceof Error ? err.message : "Cover upload failed. You can continue without a cover.");
     }
   }
 
@@ -89,18 +134,16 @@ export default function UploadTrackForm() {
     if (!file) return;
     setStemFile(file);
     setStemUploadState("uploading");
+    setStemProgress(0);
     setError(null);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("type", "stem");
-      const res = await fetch("/api/upload", { method: "POST", body: form });
-      const data = await res.json() as { url?: string; error?: string };
-      if (!res.ok || !data.url) throw new Error(data.error ?? "Upload failed");
-      setStemUrl(data.url);
+      const { signedUrl, publicUrl } = await getSignedUrl("stem", file);
+      await uploadDirect(signedUrl, file, setStemProgress);
+      setStemUrl(publicUrl);
       setStemUploadState("done");
     } catch (err) {
       setStemUploadState("error");
+      setStemProgress(0);
       setError(err instanceof Error ? err.message : "Stem upload failed");
     }
   }
@@ -206,6 +249,17 @@ export default function UploadTrackForm() {
               {coverUploadState === "error" && (
                 <p className="mt-1 text-red-400">Upload failed — you can continue without a cover</p>
               )}
+              {coverUploadState === "uploading" && (
+                <div className="mt-2">
+                  <div className="h-1.5 w-full rounded-full bg-white/10">
+                    <div
+                      className="h-1.5 rounded-full bg-brand-400 transition-all duration-200"
+                      style={{ width: `${coverProgress}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-brand-400">{coverProgress}%</p>
+                </div>
+              )}
             </div>
           </div>
           <input
@@ -247,7 +301,7 @@ export default function UploadTrackForm() {
               <div className="text-white/40">
                 <p className="text-lg mb-1">🎵</p>
                 <p className="text-sm">Click to upload audio file</p>
-                <p className="text-xs mt-1">MP3, WAV, FLAC, AAC — max 50MB</p>
+                <p className="text-xs mt-1">MP3, WAV, FLAC, AAC — max 200MB</p>
               </div>
             )}
           </button>
@@ -260,12 +314,38 @@ export default function UploadTrackForm() {
             onChange={handleAudioChange}
           />
           <div className="mt-3">
+            {/* Upload progress bar */}
+            {audioUploadState === "uploading" && (
+              <div className="mb-3">
+                <div className="h-1.5 w-full rounded-full bg-white/10">
+                  <div
+                    className="h-1.5 rounded-full bg-brand-400 transition-all duration-200"
+                    style={{ width: `${audioProgress}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-brand-400">Uploading… {audioProgress}%</p>
+              </div>
+            )}
+
+            {/* Audio preview player — shows once upload is done or URL is pasted */}
+            {audioUploadState === "done" && audioUrl && (
+              <div className="mb-3 rounded-xl bg-white/5 border border-white/10 p-3">
+                <p className="mb-2 text-xs font-semibold text-green-400">✓ Upload complete — preview your track:</p>
+                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                <audio controls src={audioUrl} className="w-full" style={{ colorScheme: "dark" }} />
+              </div>
+            )}
+
             <p className="text-xs text-white/30 mb-1">— or paste a direct audio URL —</p>
             <input
               type="url"
               placeholder="https://..."
               value={audioUrl}
-              onChange={(e) => setAudioUrl(e.target.value)}
+              onChange={(e) => {
+                setAudioUrl(e.target.value);
+                // Reset upload state when user manually pastes a URL
+                if (e.target.value && audioUploadState === "idle") setAudioUploadState("done");
+              }}
               className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60"
             />
           </div>
@@ -319,6 +399,17 @@ export default function UploadTrackForm() {
             className="hidden"
             onChange={handleStemChange}
           />
+          {stemUploadState === "uploading" && (
+            <div className="mt-3">
+              <div className="h-1.5 w-full rounded-full bg-white/10">
+                <div
+                  className="h-1.5 rounded-full bg-brand-400 transition-all duration-200"
+                  style={{ width: `${stemProgress}%` }}
+                />
+              </div>
+              <p className="mt-1 text-xs text-brand-400">Uploading… {stemProgress}%</p>
+            </div>
+          )}
         </div>
 
         <div className="glass-card rounded-2xl p-5 space-y-4">

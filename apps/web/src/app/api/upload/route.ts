@@ -1,56 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase";
-import { strictLimiter } from "@/lib/rateLimit";
+import { moderateLimiter } from "@/lib/rateLimit";
 
-const ALLOWED_AUDIO_TYPES = [
-  "audio/mpeg",
-  "audio/mp3",
-  "audio/wav",
-  "audio/x-wav",
-  "audio/flac",
-  "audio/aac",
-  "audio/ogg",
-  "audio/webm",
-];
+// ─── Allowed MIME types per upload type ────────────────────────────────────
+const ALLOWED_AUDIO_TYPES = new Set([
+  "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav",
+  "audio/flac", "audio/aac", "audio/ogg", "audio/webm",
+]);
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+]);
+const ALLOWED_STEM_TYPES = new Set([
+  "application/zip", "application/x-zip-compressed", "application/octet-stream",
+  "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/flac",
+]);
 
-const ALLOWED_IMAGE_TYPES = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-];
-
-const ALLOWED_STEM_TYPES = [
-  "application/zip",
-  "application/x-zip-compressed",
-  "application/octet-stream",
-  "audio/mpeg",
-  "audio/mp3",
-  "audio/wav",
-  "audio/x-wav",
-  "audio/flac",
-];
-
-const MAX_AUDIO_SIZE = 50 * 1024 * 1024;  // 50 MB
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024;   // 5 MB
+const MAX_AUDIO_SIZE = 200 * 1024 * 1024; // 200 MB
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;  // 10 MB
 const MAX_STEM_SIZE  = 500 * 1024 * 1024; // 500 MB
 
 /**
  * POST /api/upload
  *
- * Uploads an audio file or cover image to Supabase Storage and returns
- * the public URL. Requires authentication.
+ * Returns a Supabase signed upload URL so the browser can PUT the file
+ * directly to Supabase Storage — bypassing the Vercel 4.5 MB body limit.
  *
- * Body: multipart/form-data
- *   file     — the file to upload
- *   type     — "audio" | "cover" (determines bucket + size limits)
- *
- * Returns { url: string } on success.
- *
- * Gracefully returns a 503 when Supabase Storage is not configured so the
- * rest of the platform still works (artists can paste direct URLs instead).
+ * Body: JSON { type: "audio"|"cover"|"stem", fileName: string, mimeType: string, fileSize: number }
+ * Returns: { signedUrl: string, publicUrl: string, path: string }
  */
 export async function POST(req: NextRequest) {
   const ip =
@@ -59,7 +36,7 @@ export async function POST(req: NextRequest) {
     "unknown";
 
   try {
-    await strictLimiter.consume(ip);
+    await moderateLimiter.consume(ip);
   } catch {
     return NextResponse.json(
       { error: "Too many requests. Please slow down." },
@@ -72,20 +49,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // ── Parse multipart form ──────────────────────────────────────────────────
-  let formData: FormData;
+  // ── Parse JSON body ───────────────────────────────────────────────────────
+  let body: { type?: string; fileName?: string; mimeType?: string; fileSize?: number };
   try {
-    formData = await req.formData();
+    body = await req.json() as typeof body;
   } catch {
-    return NextResponse.json({ error: "Expected multipart/form-data" }, { status: 400 });
+    return NextResponse.json({ error: "Expected JSON body" }, { status: 400 });
   }
 
-  const file = formData.get("file");
-  const uploadType = formData.get("type") as string | null;
-
-  if (!file || !(file instanceof File)) {
-    return NextResponse.json({ error: "No file provided" }, { status: 400 });
-  }
+  const { type: uploadType, fileName = "", mimeType = "", fileSize = 0 } = body;
 
   if (!uploadType || !["audio", "cover", "stem"].includes(uploadType)) {
     return NextResponse.json(
@@ -99,55 +71,45 @@ export async function POST(req: NextRequest) {
   const allowedTypes = isStem ? ALLOWED_STEM_TYPES : isAudio ? ALLOWED_AUDIO_TYPES : ALLOWED_IMAGE_TYPES;
   const maxSize = isStem ? MAX_STEM_SIZE : isAudio ? MAX_AUDIO_SIZE : MAX_IMAGE_SIZE;
 
-  if (!allowedTypes.includes(file.type)) {
-    return NextResponse.json(
-      { error: `Invalid file type: ${file.type}` },
-      { status: 415 }
-    );
+  // Validate mimeType and size from JSON metadata (Supabase enforces content-type on upload too)
+  if (mimeType && !allowedTypes.has(mimeType)) {
+    return NextResponse.json({ error: `Invalid file type: ${mimeType}` }, { status: 415 });
   }
-
-  if (file.size > maxSize) {
+  if (fileSize > maxSize) {
     const limitMb = maxSize / (1024 * 1024);
     return NextResponse.json(
-      { error: `File too large. Maximum size is ${limitMb}MB.` },
+      { error: `File too large. Maximum is ${limitMb} MB.` },
       { status: 413 }
     );
   }
 
-  // ── Upload to Supabase Storage ────────────────────────────────────────────
+  // ── Create Supabase signed upload URL ────────────────────────────────────
   const supabase = createServerSupabaseClient();
-
   if (!supabase) {
     return NextResponse.json(
-      { error: "File storage is not configured. Please provide a direct URL instead." },
+      { error: "File storage is not configured. Paste a direct URL below." },
       { status: 503 }
     );
   }
 
-  const ext = file.name.split(".").pop() ?? (isStem ? "zip" : isAudio ? "mp3" : "jpg");
-  const bucket = isStem ? "audio" : isAudio ? "audio" : "covers";
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? (isStem ? "zip" : isAudio ? "mp3" : "jpg");
+  const bucket = isAudio || isStem ? "audio" : "covers";
   const pathPrefix = isStem ? `stems/${session.user.id}` : session.user.id;
-  const path = `${pathPrefix}/${Date.now()}.${ext}`;
+  const storagePath = `${pathPrefix}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  const { error: uploadError } = await supabase.storage
+  const { data: signedData, error: signedError } = await supabase.storage
     .from(bucket)
-    .upload(path, buffer, {
-      contentType: file.type,
-      upsert: false,
-    });
+    .createSignedUploadUrl(storagePath);
 
-  if (uploadError) {
-    console.error("[upload] Supabase Storage error:", uploadError);
-    return NextResponse.json(
-      { error: "Upload failed. Please try again." },
-      { status: 500 }
-    );
+  if (signedError || !signedData) {
+    console.error("[upload] createSignedUploadUrl error:", signedError);
+    return NextResponse.json({ error: "Could not create upload URL. Please try again." }, { status: 500 });
   }
 
-  const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+  const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(storagePath);
 
-  return NextResponse.json({ url: urlData.publicUrl }, { status: 201 });
+  return NextResponse.json(
+    { signedUrl: signedData.signedUrl, publicUrl, path: storagePath },
+    { status: 200 }
+  );
 }

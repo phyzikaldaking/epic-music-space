@@ -76,6 +76,8 @@ model User {
   serviceListings    ServiceListing[]    @relation("ServiceProvider")
   serviceOrdersAsBuyer    ServiceOrder[] @relation("ServiceBuyer")
   serviceOrdersAsProvider ServiceOrder[] @relation("ServiceProviderOrders")
+  serviceMessages    ServiceOrderMessage[] @relation("ServiceMessageAuthor")
+  serviceReviews     ServiceReview[]    @relation("ServiceReviewer")
 }
 
 enum Role {
@@ -999,6 +1001,7 @@ model ServiceListing {
   updatedAt     DateTime            @updatedAt
 
   orders        ServiceOrder[]
+  reviews       ServiceReview[]
 
   @@index([status, kind, createdAt])
   @@index([providerId, status])
@@ -1036,21 +1039,74 @@ model ServiceOrder {
   briefUrl     String?            @db.Text  // upload link for stems
   deliverableUrl String?          @db.Text  // provider's final delivery
   deliveredAt  DateTime?
+  completedAt  DateTime?                    // buyer accepted (or auto-accepted)
+  acceptDeadline DateTime?                  // 14 days after deliveredAt
+  revisionsUsed Int               @default(0)
   stripeSessionId      String?    @unique
   stripePaymentIntentId String?   @unique
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
+  messages     ServiceOrderMessage[]
+  revisions    ServiceOrderRevision[]
+  review       ServiceReview?
+
   @@index([buyerId, status])
   @@index([providerId, status])
   @@index([listingId, status])
+  @@index([status, acceptDeadline])
+}
+
+model ServiceOrderMessage {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromUserId String
+  fromUser  User     @relation("ServiceMessageAuthor", fields: [fromUserId], references: [id], onDelete: Cascade)
+  body      String   @db.Text
+  attachmentUrl String? @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model ServiceOrderRevision {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  revisionNumber Int           // 1 = first delivery, 2 = first revision, ...
+  deliverableUrl String  @db.Text
+  message   String?  @db.Text
+  deliveredAt DateTime @default(now())
+
+  @@unique([orderId, revisionNumber])
+  @@index([orderId])
+}
+
+model ServiceReview {
+  id          String   @id @default(cuid())
+  orderId     String   @unique
+  order       ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  listingId   String
+  listing     ServiceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyerId     String
+  buyer       User     @relation("ServiceReviewer", fields: [buyerId], references: [id], onDelete: Cascade)
+  providerId  String
+  rating      Int      // 1..5
+  body        String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([listingId, createdAt])
+  @@index([providerId, createdAt])
 }
 
 enum ServiceOrderStatus {
-  PENDING        // checkout started, payment not confirmed
-  PAID           // payment received, awaiting provider work
-  IN_PROGRESS    // provider acknowledged
-  DELIVERED      // deliverableUrl set
-  REFUNDED       // refunded via Stripe
-  CANCELLED      // either side cancelled before delivery
+  PENDING               // checkout started, payment not confirmed
+  PAID                  // payment received, awaiting provider work
+  IN_PROGRESS           // provider acknowledged or revising
+  DELIVERED             // deliverableUrl set, awaiting buyer review
+  REVISION_REQUESTED    // buyer asked for changes
+  COMPLETED             // buyer accepted (or auto-accepted) — payout finalized
+  REFUNDED              // refunded via Stripe
+  CANCELLED             // either side cancelled before delivery
 }
