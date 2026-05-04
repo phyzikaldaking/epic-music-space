@@ -1,8 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@ems/db";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
 import { enqueueNotification } from "@/lib/queues";
+import type Stripe from "stripe";
+
+// Stripe error subclasses that are never worth retrying (invalid input,
+// auth, or account-level rejections). Anything else (connection, rate-limit,
+// server error) should still be retried on the next cron run.
+const STRIPE_NON_RETRYABLE_TYPES = new Set([
+  "StripeInvalidRequestError",
+  "StripeAuthenticationError",
+  "StripePermissionError",
+  "StripeIdempotencyError",
+]);
+
+function isNonRetryableStripeError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  // stripe-node adds a `type` property on every error object
+  const errType = (err as { type?: string }).type;
+  return !!(errType && STRIPE_NON_RETRYABLE_TYPES.has(errType));
+}
 
 export const runtime = "nodejs";
 
@@ -154,16 +173,17 @@ export async function GET(req: NextRequest) {
 
       retried++;
     } catch (err) {
-      if (retryCount >= MAX_AUCTION_CHECKOUT_RETRIES) {
+      const nonRetryable = isNonRetryableStripeError(err);
+      if (retryCount >= MAX_AUCTION_CHECKOUT_RETRIES || nonRetryable) {
         await prisma.transaction.update({
           where: { id: tx.id },
           data: {
             metadata: {
               auctionId,
               sellerId: md.sellerId ?? auction.sellerId,
-              retryState: "CHECKOUT_RETRY_GAVE_UP",
+              retryState: nonRetryable ? "CHECKOUT_NON_RETRYABLE_ERROR" : "CHECKOUT_RETRY_GAVE_UP",
               retryCount,
-              lastError: String((err as Error)?.message ?? "unknown"),
+              lastError: String((err as { type?: string; message?: string }).type ?? (err as Error)?.message ?? "unknown"),
             },
           },
         });
@@ -248,10 +268,17 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    await prisma.auction.update({
-      where: { id: auction.id },
+    // Atomic idempotency lock: only mark ENDED if still ACTIVE.
+    // If two cron runs overlap (e.g. Vercel parallel invocations), only one
+    // will get count === 1; the other skips cleanly.
+    const lockResult = await prisma.auction.updateMany({
+      where: { id: auction.id, status: "ACTIVE" },
       data: { status: "ENDED", winnerId: topBid.bidderId, currentBid: topBid.amount },
     });
+    if (lockResult.count !== 1) {
+      // Another cron run already claimed this auction — skip
+      continue;
+    }
 
     const amountCents = Math.round(Number(topBid.amount) * 100);
 
@@ -321,6 +348,8 @@ export async function GET(req: NextRequest) {
     } catch (err) {
       console.error(`[settle-auctions] Failed to create checkout for auction ${auction.id}:`, err);
 
+      const nonRetryable = isNonRetryableStripeError(err);
+
       // Queue retry state directly on a failed transaction so retries can run
       // independently from auction status transitions.
       await prisma.transaction.create({
@@ -333,13 +362,37 @@ export async function GET(req: NextRequest) {
           metadata: {
             auctionId: auction.id,
             sellerId: auction.sellerId,
-            retryState: "CHECKOUT_CREATE_FAILED",
-            retryAfter: nextRetryAtIso(now, 1),
+            retryState: nonRetryable ? "CHECKOUT_NON_RETRYABLE_ERROR" : "CHECKOUT_CREATE_FAILED",
+            retryAfter: nonRetryable ? null : nextRetryAtIso(now, 1),
             retryCount: 1,
-            lastError: String((err as Error)?.message ?? "unknown"),
+            lastError: String((err as { type?: string; message?: string }).type ?? (err as Error)?.message ?? "unknown"),
           },
         },
       });
+
+      if (nonRetryable) {
+        // Immediately expire — this won't succeed on any retry
+        await prisma.auction.updateMany({
+          where: { id: auction.id, status: "ENDED" },
+          data: { status: "EXPIRED", winnerId: null },
+        });
+        await Promise.allSettled([
+          enqueueNotification({
+            userId: auction.sellerId,
+            type: "AUCTION_EXPIRED",
+            title: "Auction checkout failed (non-retryable)",
+            body: `Checkout for "${auction.song.title}" failed due to a configuration error. Please contact support.`,
+            metadata: { auctionId: auction.id },
+          }),
+          enqueueNotification({
+            userId: topBid.bidderId,
+            type: "AUCTION_PAYMENT_EXPIRED",
+            title: "Auction checkout could not be created",
+            body: `We were unable to create a checkout for "${auction.song.title}". Please contact support.`,
+            metadata: { auctionId: auction.id },
+          }),
+        ]);
+      }
 
       retry_failed++;
     }
