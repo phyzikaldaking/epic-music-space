@@ -32,25 +32,43 @@ export async function GET(
   if (!id) return new NextResponse("Missing id", { status: 400 });
 
   // ── Origin / Referer check ──────────────────────────────────────────────
+  // Build the set of acceptable hosts: the canonical site host, the same
+  // host with/without a leading "www.", any *.vercel.app preview domain on
+  // this project, and the request's own Host (so server-side fetches from
+  // /api/* routes that proxy through this endpoint are also allowed).
   const origin = req.headers.get("origin");
   const referer = req.headers.get("referer");
-  const siteHost = new URL(getSiteUrl()).host;
-  const isOriginOk =
-    !!origin &&
-    (origin.endsWith(siteHost) ||
-      origin === `https://${siteHost}` ||
-      origin === `http://${siteHost}`);
-  const isRefererOk =
-    !!referer &&
-    (() => {
-      try {
-        return new URL(referer).host === siteHost;
-      } catch {
-        return false;
-      }
-    })();
+  const requestHost = req.headers.get("host");
 
-  if (!isOriginOk && !isRefererOk) {
+  const allowedHosts = new Set<string>();
+  try {
+    const canonical = new URL(getSiteUrl()).host;
+    allowedHosts.add(canonical);
+    allowedHosts.add(canonical.startsWith("www.") ? canonical.slice(4) : `www.${canonical}`);
+  } catch {
+    /* ignore — fall through */
+  }
+  if (requestHost) allowedHosts.add(requestHost);
+
+  function hostFromUrl(url: string | null): string | null {
+    if (!url) return null;
+    try {
+      return new URL(url).host;
+    } catch {
+      return null;
+    }
+  }
+
+  const originHost = hostFromUrl(origin);
+  const refererHost = hostFromUrl(referer);
+
+  const isOk =
+    (originHost && allowedHosts.has(originHost)) ||
+    (refererHost && allowedHosts.has(refererHost)) ||
+    // Same-origin fetch from a Vercel preview deployment of this project
+    (refererHost?.endsWith(".vercel.app") && (refererHost.includes("epic-music-space") || refererHost === requestHost));
+
+  if (!isOk) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
