@@ -38,6 +38,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const { id: matchId } = await params;
+
+  // Anti-fraud: per-IP-per-match throttle. Defends against brigading where
+  // many sockpuppet accounts churn votes from one egress IP. The
+  // unique-vote constraint still prevents duplicate counts per user.
+  try {
+    await moderateLimiter.consume(`versus-vote:${ip}:${matchId}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many vote attempts on this match from your network. Try again in a minute." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
   const body = await req.json();
   const parsed = voteSchema.safeParse(body);
   if (!parsed.success) {

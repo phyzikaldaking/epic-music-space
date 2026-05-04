@@ -1282,3 +1282,63 @@ model SavedTrack {
   @@index([userId, createdAt])
   @@index([songId])
 }
+
+// ─────────────────────────────────────────
+// VERSUS CHALLENGES (cross-artist consent flow)
+// ─────────────────────────────────────────
+
+model VersusChallenge {
+  id              String    @id @default(cuid())
+  challengerId    String    // user.id of the artist who initiated
+  challengerSongId String   // song.id they're putting up
+  opponentId      String    // user.id of the artist being challenged
+  opponentSongId  String?   // song.id the opponent picks on accept
+  status          VersusChallengeStatus @default(PENDING)
+  message         String?   @db.Text
+  durationHours   Int       @default(24)
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime  // PENDING expires after 48h
+  acceptedAt      DateTime?
+  declinedAt      DateTime?
+  matchId         String?   @unique // populated once the resulting VersusMatch is created
+
+  @@index([opponentId, status])
+  @@index([challengerId, status])
+  @@index([expiresAt])
+}
+
+enum VersusChallengeStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────
+// VERSUS TIPS (tip-with-vote)
+// ─────────────────────────────────────────
+
+model VersusTip {
+  id              String   @id @default(cuid())
+  matchId         String
+  voterId         String
+  votedSongId     String
+  amountUsd       Decimal  @db.Decimal(10, 2)
+  status          VersusTipStatus @default(PENDING)
+  stripeSessionId String?  @unique
+  stripePaymentIntentId String? @unique
+  createdAt       DateTime @default(now())
+  paidAt          DateTime?
+
+  @@index([matchId])
+  @@index([voterId])
+  @@index([status])
+}
+
+enum VersusTipStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}

@@ -51,8 +51,10 @@ export async function POST(req: NextRequest) {
       if (session.mode === "payment") {
         const sessionType = session.metadata?.type;
         if (sessionType === "PLACEMENT_BID") await handlePlacementBidCompleted(session);
+        else if (sessionType === "PLACEMENT_PURCHASE") await handlePlacementPurchaseCompleted(session);
         else if (sessionType === "boost") await handleBoostCheckoutCompleted(session);
         else if (sessionType === "tip") await handleTipCheckoutCompleted(session);
+        else if (sessionType === "versus_tip") await handleVersusTipCompleted(session);
         else if (sessionType === "auction_win") await handleAuctionWinCheckoutCompleted(session);
         else if (sessionType === "AD_PURCHASE") await handleAdPurchaseCompleted(session);
         else if (sessionType === "service_purchase") await handleServicePurchaseCompleted(session);
@@ -175,7 +177,8 @@ async function handlePlacementBidCompleted(session: Stripe.Checkout.Session) {
 }
 
 async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) {
-  const { songId, userId } = session.metadata ?? {};
+  const songId = session.metadata?.songId;
+  const userId = session.metadata?.userId ?? session.metadata?.buyerId;
   if (!songId || !userId) return;
 
   const existing = await prisma.transaction.findUnique({
@@ -445,6 +448,41 @@ async function handleBoostCheckoutCompleted(session: Stripe.Checkout.Session) {
   } catch (err) {
     if (!isUniqueConstraintError(err)) {
       console.warn("[stripe-webhook] boost ledger write failed", err);
+    }
+  }
+}
+async function handlePlacementPurchaseCompleted(session: Stripe.Checkout.Session) {
+  const { songId, userId, boostScore } = session.metadata ?? {};
+  if (!songId || !userId || !boostScore) {
+    console.error("[stripe-webhook] PLACEMENT_PURCHASE missing metadata", session.metadata);
+    return;
+  }
+
+  const existing = await prisma.transaction.findUnique({ where: { stripeSessionId: session.id } });
+  if (existing?.status === "SUCCEEDED") return;
+
+  const score = Number(boostScore);
+  if (!Number.isFinite(score) || score <= 0) {
+    console.error("[stripe-webhook] Invalid PLACEMENT_PURCHASE boostScore", boostScore);
+    return;
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.song.update({ where: { id: songId }, data: { boostScore: { increment: score } } });
+    return tx.transaction.update({
+      where: { stripeSessionId: session.id },
+      data: {
+        status: "SUCCEEDED",
+        stripePaymentIntentId: session.payment_intent as string | undefined,
+      },
+    });
+  });
+
+  try {
+    await recordBoost({ songId, buyerId: userId, transactionId: updated.id, grossDollars: Number(updated.amount) });
+  } catch (err) {
+    if (!isUniqueConstraintError(err)) {
+      console.warn("[stripe-webhook] placement purchase ledger write failed", err);
     }
   }
 }
@@ -1085,4 +1123,87 @@ async function handleConnectAccountDeauthorized(connectedAccountId: string) {
       connectRequirements: undefined,
     },
   });
+}
+
+async function handleVersusTipCompleted(session: Stripe.Checkout.Session) {
+  const tipId = session.metadata?.tipId;
+  if (!tipId) {
+    console.error("[stripe-webhook] versus_tip missing tipId metadata", session.id);
+    return;
+  }
+
+  const tip = await prisma.versusTip.findUnique({ where: { id: tipId } });
+  if (!tip || tip.status === "PAID") return;
+
+  await prisma.versusTip.update({
+    where: { id: tip.id },
+    data: {
+      status: "PAID",
+      paidAt: new Date(),
+      stripePaymentIntentId: session.payment_intent as string | undefined,
+    },
+  });
+
+  // Look up the match + both artists' Connect accounts.
+  const match = await prisma.versusMatch.findUnique({
+    where: { id: tip.matchId },
+    include: {
+      songA: { select: { artistId: true } },
+      songB: { select: { artistId: true } },
+    },
+  });
+  if (!match) return;
+
+  // 50/50 split — winner-leaning bias is enforced by who the voter chose
+  // (their pick gets the slightly nicer "voted-for" framing in the UI), but
+  // payout is symmetric so neither artist gets shafted by a small tip.
+  const totalAmount = Number(tip.amountUsd);
+  const halfCents = Math.floor((totalAmount * 100) / 2);
+
+  const [artistA, artistB] = await prisma.user.findMany({
+    where: { id: { in: [match.songA.artistId, match.songB.artistId] } },
+    select: { id: true, stripeConnectId: true },
+  });
+
+  await Promise.allSettled([
+    artistA?.stripeConnectId
+      ? stripe.transfers.create(
+          {
+            amount: halfCents,
+            currency: "usd",
+            destination: artistA.stripeConnectId,
+            metadata: { kind: "versus_tip", tipId, matchId: tip.matchId },
+          },
+          { idempotencyKey: `versus-tip-transfer-${tipId}-A` },
+        )
+      : Promise.resolve(null),
+    artistB?.stripeConnectId
+      ? stripe.transfers.create(
+          {
+            amount: halfCents,
+            currency: "usd",
+            destination: artistB.stripeConnectId,
+            metadata: { kind: "versus_tip", tipId, matchId: tip.matchId },
+          },
+          { idempotencyKey: `versus-tip-transfer-${tipId}-B` },
+        )
+      : Promise.resolve(null),
+  ]);
+
+  await Promise.allSettled([
+    enqueueNotification({
+      userId: match.songA.artistId,
+      type: "VERSUS_TIP",
+      title: `❤️ Tip received ($${(halfCents / 100).toFixed(2)})`,
+      body: `A listener tipped both artists in your battle. Your share is in your Stripe Connect balance.`,
+      metadata: { matchId: tip.matchId, tipId },
+    }),
+    enqueueNotification({
+      userId: match.songB.artistId,
+      type: "VERSUS_TIP",
+      title: `❤️ Tip received ($${(halfCents / 100).toFixed(2)})`,
+      body: `A listener tipped both artists in your battle. Your share is in your Stripe Connect balance.`,
+      metadata: { matchId: tip.matchId, tipId },
+    }),
+  ]);
 }
