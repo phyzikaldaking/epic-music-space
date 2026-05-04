@@ -206,6 +206,47 @@ export async function recordBoost(opts: {
   return { eventId: event.id };
 }
 
+// ── Service sale (engineer mix/master, producer template/beat, lesson) ──
+//
+// 90% provider (PENDING — settles in weekly payout cycle), 10% platform.
+export async function recordServiceSale(opts: {
+  tx?: Tx;
+  providerId: string;
+  transactionId: string;
+  grossDollars: number;
+}): Promise<{ eventId: string; providerCents: number; platformCents: number }> {
+  const grossCents = dollarsToCents(opts.grossDollars);
+  const platformCents = Math.floor((grossCents * PLATFORM_FEE_BPS) / 10_000);
+  const providerCents = grossCents - platformCents;
+  const db = opts.tx ?? prisma;
+
+  const event = await db.revenueEvent.create({
+    data: {
+      type: "SERVICE_SALE",
+      transactionId: opts.transactionId,
+      grossCents,
+      splits: {
+        create: [
+          {
+            userId: opts.providerId,
+            role: "ARTIST",
+            amountCents: providerCents,
+            status: "PENDING",
+          },
+          {
+            userId: opts.providerId,
+            role: "PLATFORM",
+            amountCents: platformCents,
+            status: "EXCLUDED",
+          },
+        ],
+      },
+    },
+    select: { id: true },
+  });
+  return { eventId: event.id, providerCents, platformCents };
+}
+
 // ── Subscription (platform retains 100% in v1) ─────────────────────────
 export async function recordSubscription(opts: {
   tx?: Tx;

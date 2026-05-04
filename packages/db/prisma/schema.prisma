@@ -73,11 +73,16 @@ model User {
   roomBans           RoomBan[]           @relation("RoomBanned")
   roomBansIssued     RoomBan[]           @relation("RoomBannedBy")
   revenueSplits      RevenueSplit[]      @relation("RevenueSplits")
+  serviceListings    ServiceListing[]    @relation("ServiceProvider")
+  serviceOrdersAsBuyer    ServiceOrder[] @relation("ServiceBuyer")
+  serviceOrdersAsProvider ServiceOrder[] @relation("ServiceProviderOrders")
 }
 
 enum Role {
   LISTENER
   ARTIST
+  PRODUCER
+  ENGINEER
   LABEL
   ADMIN
 }
@@ -241,6 +246,7 @@ enum TransactionType {
   BOOST
   TIP
   AUCTION_WIN
+  SERVICE_PURCHASE
 }
 
 enum PaymentStatus {
@@ -474,6 +480,7 @@ enum RevenueEventType {
   AUCTION_WIN
   BOOST
   SUBSCRIPTION
+  SERVICE_SALE
   REFUND        // negative gross — clawback
 }
 
@@ -962,4 +969,88 @@ model RoomMessage {
 
   @@index([roomId, createdAt])
   @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Services marketplace — engineers offer mix/master, producers sell
+// templates / beats / sample packs. Listings are bookable; an order
+// is paid via Stripe and a Transaction + RevenueEvent is recorded.
+// ─────────────────────────────────────────────────────────────
+
+model ServiceListing {
+  id            String              @id @default(cuid())
+  providerId    String
+  provider      User                @relation("ServiceProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  kind          ServiceListingKind
+  title         String
+  description   String              @db.Text
+  priceUsd      Decimal             @db.Decimal(10, 2)
+  deliveryDays  Int                 @default(7)
+  exampleAudioUrl String?
+  coverUrl      String?
+  // For non-bespoke goods (templates / beats / kits): instant download.
+  // Set when kind is template/beat/kit. URL surfaced after purchase.
+  downloadUrl   String?             @db.Text
+  status        ServiceListingStatus @default(LIVE)
+  totalSold     Int                 @default(0)
+  rating        Float?
+  ratingCount   Int                 @default(0)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  orders        ServiceOrder[]
+
+  @@index([status, kind, createdAt])
+  @@index([providerId, status])
+}
+
+enum ServiceListingKind {
+  MIX                 // engineer service
+  MASTER              // engineer service
+  MIX_MASTER_BUNDLE   // engineer service
+  PRODUCER_TEMPLATE   // FL/Logic/Ableton project file
+  BEAT                // producer-made beat license
+  DRUM_KIT
+  SAMPLE_PACK
+  LESSON              // 1:1 session
+}
+
+enum ServiceListingStatus {
+  LIVE
+  PAUSED
+  SOLD_OUT
+  ARCHIVED
+}
+
+model ServiceOrder {
+  id           String             @id @default(cuid())
+  listingId    String
+  listing      ServiceListing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyerId      String
+  buyer        User               @relation("ServiceBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  providerId   String
+  provider     User               @relation("ServiceProviderOrders", fields: [providerId], references: [id], onDelete: Cascade)
+  priceUsd     Decimal            @db.Decimal(10, 2)
+  status       ServiceOrderStatus @default(PENDING)
+  briefText    String?            @db.Text  // buyer's notes (BPM, key, references, etc.)
+  briefUrl     String?            @db.Text  // upload link for stems
+  deliverableUrl String?          @db.Text  // provider's final delivery
+  deliveredAt  DateTime?
+  stripeSessionId      String?    @unique
+  stripePaymentIntentId String?   @unique
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([buyerId, status])
+  @@index([providerId, status])
+  @@index([listingId, status])
+}
+
+enum ServiceOrderStatus {
+  PENDING        // checkout started, payment not confirmed
+  PAID           // payment received, awaiting provider work
+  IN_PROGRESS    // provider acknowledged
+  DELIVERED      // deliverableUrl set
+  REFUNDED       // refunded via Stripe
+  CANCELLED      // either side cancelled before delivery
 }

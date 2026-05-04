@@ -6,21 +6,21 @@ import NavbarMobileMenu from "@/components/NavbarMobileMenu";
 const PUBLIC_LINKS = [
   { href: "/studio/live", label: "Sessions" },
   { href: "/versus", label: "Battles" },
-  { href: "/marketplace", label: "Browse" },
+  { href: "/marketplace", label: "Tracks" },
+  { href: "/services", label: "Services" },
   { href: "/leaderboard", label: "Charts" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/studio/new", label: "For Artists" },
 ];
 
 const AUTHED_LINKS = [
   { href: "/studio/live", label: "Sessions" },
   { href: "/versus", label: "Battles" },
-  { href: "/marketplace", label: "Browse" },
+  { href: "/marketplace", label: "Tracks" },
+  { href: "/services", label: "Services" },
   { href: "/leaderboard", label: "Charts" },
   { href: "/auctions", label: "Auctions" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dashboard/wallet", label: "Wallet" },
-  { href: "/invite", label: "Invite" },
 ];
 
 const ADMIN_LINK = { href: "/admin", label: "Admin" };

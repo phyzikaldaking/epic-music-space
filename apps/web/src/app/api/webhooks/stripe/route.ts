@@ -7,7 +7,7 @@ import { enqueueNotification } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { track } from "@/lib/analytics";
 import { CACHE_TAGS } from "@/lib/cacheTags";
-import { recordLicenseSale, recordTip, recordAdPurchase, recordRefund, recordAuctionWin, recordBoost, recordSubscription } from "@/lib/revenueShare";
+import { recordLicenseSale, recordTip, recordAdPurchase, recordRefund, recordAuctionWin, recordBoost, recordSubscription, recordServiceSale } from "@/lib/revenueShare";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
         else if (sessionType === "tip") await handleTipCheckoutCompleted(session);
         else if (sessionType === "auction_win") await handleAuctionWinCheckoutCompleted(session);
         else if (sessionType === "AD_PURCHASE") await handleAdPurchaseCompleted(session);
+        else if (sessionType === "service_purchase") await handleServicePurchaseCompleted(session);
         else await handleLicenseCheckoutCompleted(session);
       } else if (session.mode === "subscription") {
         await handleSubscriptionCheckoutCompleted(session);
@@ -392,6 +393,67 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
     }
   }
 }
+async function handleServicePurchaseCompleted(session: Stripe.Checkout.Session) {
+  const orderId = session.metadata?.orderId;
+  const providerId = session.metadata?.providerId;
+  if (!orderId || !providerId) {
+    console.error("[stripe-webhook] service_purchase missing metadata", session.metadata);
+    return;
+  }
+
+  const txRow = await prisma.transaction.findUnique({
+    where: { stripeSessionId: session.id },
+    select: { id: true, amount: true, status: true },
+  });
+  if (!txRow || txRow.status === "SUCCEEDED") return;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.update({
+      where: { id: txRow.id },
+      data: {
+        status: "SUCCEEDED",
+        stripePaymentIntentId: session.payment_intent as string | undefined,
+      },
+    });
+    await tx.serviceOrder.update({
+      where: { id: orderId },
+      data: {
+        status: "PAID",
+        stripePaymentIntentId: session.payment_intent as string | undefined,
+      },
+    });
+    await tx.serviceListing.update({
+      where: { id: (await tx.serviceOrder.findUnique({ where: { id: orderId }, select: { listingId: true } }))!.listingId },
+      data: { totalSold: { increment: 1 } },
+    });
+  });
+
+  try {
+    await recordServiceSale({
+      providerId,
+      transactionId: txRow.id,
+      grossDollars: Number(txRow.amount),
+    });
+  } catch (err) {
+    if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+      console.warn("[stripe-webhook] service ledger write failed", err);
+    }
+  }
+
+  // Notify provider that they have a new order
+  try {
+    await enqueueNotification({
+      userId: providerId,
+      type: "SERVICE_ORDER",
+      title: "New service order 🎚️",
+      body: `You have a new order — $${Number(txRow.amount).toFixed(2)}.`,
+      metadata: { orderId },
+    });
+  } catch (err) {
+    console.warn("[stripe-webhook] service order notification failed", err);
+  }
+}
+
 async function handleAdPurchaseCompleted(session: Stripe.Checkout.Session) {
   const { adId, userId } = session.metadata ?? {};
   if (!adId || !userId) {

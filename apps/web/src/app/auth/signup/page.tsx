@@ -10,19 +10,37 @@ const ROLES = [
     value: "ARTIST",
     icon: "🎤",
     label: "Artist",
-    sub: "Upload songs & earn royalties",
-    accent: "brand",
+    sub: "Upload songs, earn royalties",
     border: "border-brand-500/50",
     bg: "bg-brand-500/10",
     ring: "ring-brand-500",
     textAccent: "text-brand-400",
   },
   {
+    value: "PRODUCER",
+    icon: "🎛️",
+    label: "Producer",
+    sub: "Sell beats, kits, templates",
+    border: "border-orange-500/50",
+    bg: "bg-orange-500/8",
+    ring: "ring-orange-500",
+    textAccent: "text-orange-400",
+  },
+  {
+    value: "ENGINEER",
+    icon: "🎚️",
+    label: "Engineer",
+    sub: "Offer mixing & mastering",
+    border: "border-emerald-500/50",
+    bg: "bg-emerald-500/8",
+    ring: "ring-emerald-500",
+    textAccent: "text-emerald-400",
+  },
+  {
     value: "LISTENER",
     icon: "🎧",
-    label: "Buyer / Creator",
-    sub: "Find and license tracks fast",
-    accent: "cyan",
+    label: "Fan / Listener",
+    sub: "Find tracks, back artists",
     border: "border-accent-500/50",
     bg: "bg-accent-500/8",
     ring: "ring-accent-500",
@@ -30,10 +48,9 @@ const ROLES = [
   },
   {
     value: "LABEL",
-    icon: "📢",
-    label: "Brand / Label",
-    sub: "Advertise & sign artists",
-    accent: "gold",
+    icon: "🏷️",
+    label: "Label",
+    sub: "Sign artists, run a roster",
     border: "border-gold-500/50",
     bg: "bg-gold-500/8",
     ring: "ring-gold-500",
@@ -95,6 +112,10 @@ function SignUpContent() {
   const roleTasks =
     selectedRole === "ARTIST"
       ? ["Create profile", "Upload first song", "Set price"]
+      : selectedRole === "PRODUCER"
+      ? ["List a beat or template", "Set price", "Connect Stripe payouts"]
+      : selectedRole === "ENGINEER"
+      ? ["List mix / master service", "Set delivery time", "Connect Stripe payouts"]
       : selectedRole === "LABEL"
       ? ["Create label profile", "Invite first artist", "Launch campaign"]
       : ["Save first search", "Watchlist 3 tracks", "License first track"];
@@ -160,7 +181,7 @@ function SignUpContent() {
             <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-white/40">
               I am a…
             </p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               {ROLES.map((role) => (
                 <button
                   key={role.value}
@@ -192,6 +213,24 @@ function SignUpContent() {
                   <div className="rounded-lg border border-brand-500/25 bg-brand-500/10 px-3 py-2">1. Profile</div>
                   <div className="rounded-lg border border-brand-500/25 bg-brand-500/10 px-3 py-2">2. Upload</div>
                   <div className="rounded-lg border border-brand-500/25 bg-brand-500/10 px-3 py-2">3. Pricing</div>
+                </div>
+              </>
+            ) : selectedRole === "PRODUCER" ? (
+              <>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">Producer storefront</p>
+                <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-white/70 sm:grid-cols-3">
+                  <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-3 py-2">List beats &amp; templates</div>
+                  <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-3 py-2">Instant download</div>
+                  <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-3 py-2">Keep 90%</div>
+                </div>
+              </>
+            ) : selectedRole === "ENGINEER" ? (
+              <>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">Engineer services</p>
+                <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-white/70 sm:grid-cols-3">
+                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">Mixing</div>
+                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">Mastering</div>
+                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">Templates &amp; lessons</div>
                 </div>
               </>
             ) : (

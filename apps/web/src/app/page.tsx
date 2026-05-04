@@ -530,7 +530,7 @@ export default async function HomePage() {
         <div className="vc-horizon" aria-hidden="true" />
 
         <div className="vc-hero-content">
-          <p className="vc-eyebrow">Live listening parties for the streaming era</p>
+          <p className="vc-eyebrow">For artists, producers, engineers &amp; the fans who back them</p>
           <h1 className="vc-hero-h1">
             Throw a
             <br />
@@ -607,6 +607,58 @@ export default async function HomePage() {
                 Fans become license holders who share in your streaming revenue —
                 so they win when you win, and they push your tracks harder
                 than any marketing team.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section className="vc-section vc-platform-section">
+        <div className="vc-container">
+          <p className="vc-section-eyebrow">Built for everyone in the studio</p>
+          <h2 className="vc-section-title">
+            Artists, producers, engineers — <span className="glow">and the fans who pay them</span>
+          </h2>
+          <p className="vc-section-sub">
+            Pick the lane that fits how you make money. Your storefront, your
+            audience, your cut. The fans get to discover you and support the
+            people who actually make the music.
+          </p>
+          <div className="vc-platform-grid">
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">🎤 Artists</span>
+              <h3>Drop tracks. Host listening parties. Get paid.</h3>
+              <p>
+                Upload songs, set license prices, run live rooms, win Versus
+                battles, sell ad placements on your studio. Keep 90% of every
+                sale. <Link href="/auth/signup?role=ARTIST" className="vc-feat-link">Join as Artist →</Link>
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">🎛️ Producers</span>
+              <h3>Sell beats, kits, templates, and project files.</h3>
+              <p>
+                List instant-download beats, drum kits, sample packs, and FL /
+                Logic / Ableton templates. Buyers download the second the
+                payment clears. <Link href="/auth/signup?role=PRODUCER" className="vc-feat-link">Join as Producer →</Link>
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">🎚️ Engineers</span>
+              <h3>Offer mixing, mastering, and lessons.</h3>
+              <p>
+                List your mix, master, mix+master bundle, or 1:1 services.
+                Set your turnaround. Buyers brief you and pay through Stripe;
+                you deliver and get paid out weekly. <Link href="/auth/signup?role=ENGINEER" className="vc-feat-link">Join as Engineer →</Link>
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">🎧 Fans</span>
+              <h3>Discover the next wave first.</h3>
+              <p>
+                Drop into live rooms, vote in battles, license tracks, and
+                back artists with tips. Every fan in the room is one tap from
+                supporting the people they listen to. <Link href="/auth/signup?role=LISTENER" className="vc-feat-link">Join as Fan →</Link>
               </p>
             </article>
           </div>
