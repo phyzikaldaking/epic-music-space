@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import AudioPlayer from "@/components/AudioPlayer";
-import { demoTracks } from "@/lib/demoTracks";
+import { getDemoTracks } from "@/lib/demoTracks";
 import { prisma } from "@/lib/prisma";
 
 export const revalidate = 60;
@@ -38,29 +38,24 @@ type HomeData = {
   sampleSongs: SampleSong[];
 };
 
-const demoSampleSongs: SampleSong[] = demoTracks.map((t) => ({
-  id: t.id,
-  title: t.title,
-  artist: t.artist,
-  genre: t.genre,
-  audioUrl: t.audioUrl,
-  coverUrl: t.coverUrl,
-  bpm: t.bpm,
-  key: t.key,
-  licensePrice: t.licensePrice,
-  revenueSharePct: t.revenueSharePct,
-  totalLicenses: t.totalLicenses,
-  soldLicenses: t.soldLicenses,
-  aiScore: t.aiScore,
-  description: t.description,
-}));
-
-const emptyHomeData: HomeData = {
-  songCount: 0,
-  licenseCount: 0,
-  totalRevenue: 0,
-  sampleSongs: demoSampleSongs,
-};
+function mapDemoTracksToSampleSongs(tracks: Awaited<ReturnType<typeof getDemoTracks>>): SampleSong[] {
+  return tracks.map((track) => ({
+    id: track.id,
+    title: track.title,
+    artist: track.artist,
+    genre: track.genre,
+    audioUrl: track.audioUrl,
+    coverUrl: track.coverUrl,
+    bpm: track.bpm,
+    key: track.key,
+    licensePrice: track.licensePrice,
+    revenueSharePct: track.revenueSharePct,
+    totalLicenses: track.totalLicenses,
+    soldLicenses: track.soldLicenses,
+    aiScore: track.aiScore,
+    description: track.description,
+  }));
+}
 
 const marqueeItems = [
   "Premium Licensing",
@@ -341,6 +336,14 @@ const premiumHomeCss = `
 
 const getHomeData = unstable_cache(
   async (): Promise<HomeData> => {
+    const demoSampleSongs = mapDemoTracksToSampleSongs(await getDemoTracks());
+    const emptyHomeData: HomeData = {
+      songCount: 0,
+      licenseCount: 0,
+      totalRevenue: 0,
+      sampleSongs: demoSampleSongs,
+    };
+
     if (!hasUsableDatabaseUrl()) return emptyHomeData;
     try {
       const [songCount, licenseCount, transactionSum, sampleSongs] =

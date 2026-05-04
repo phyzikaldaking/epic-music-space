@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { getDemoTracks } from "@/lib/demoTracks";
 import VersusCard from "@/components/VersusCard";
 import BattleRoyaleCard from "@/components/BattleRoyaleCard";
 import CreateBattleForm from "@/components/CreateBattleForm";
@@ -13,6 +14,9 @@ export const metadata = {
 
 export default async function VersusPage() {
   const session = await auth();
+  const previewTracks = await getDemoTracks();
+  const previewA = previewTracks[0];
+  const previewB = previewTracks[1] ?? previewTracks[0];
 
   const isArtist =
     Boolean(session?.user?.id) && session!.user.role !== "LISTENER";
@@ -171,8 +175,8 @@ export default async function VersusPage() {
                 <div className="mb-2 h-16 w-16 rounded-lg bg-gradient-to-br from-brand-600 to-accent-600 flex items-center justify-center text-2xl">
                   🎵
                 </div>
-                <p className="font-semibold text-sm truncate">Stellar Drift</p>
-                <p className="text-xs text-white/40 truncate">EMS Demo Orchestra</p>
+                <p className="font-semibold text-sm truncate">{previewA?.title ?? "Featured Beat"}</p>
+                <p className="text-xs text-white/40 truncate">{previewA?.artist ?? "Epic Music Space"}</p>
                 <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
                   <div className="h-1.5 w-[62%] rounded-full bg-brand-500" />
                 </div>
@@ -188,8 +192,8 @@ export default async function VersusPage() {
                 <div className="mb-2 h-16 w-16 rounded-lg bg-gradient-to-br from-pink-600 to-orange-500 flex items-center justify-center text-2xl">
                   🎵
                 </div>
-                <p className="font-semibold text-sm truncate">Orbital Chase</p>
-                <p className="text-xs text-white/40 truncate">EMS Demo Orchestra</p>
+                <p className="font-semibold text-sm truncate">{previewB?.title ?? "Next Up"}</p>
+                <p className="text-xs text-white/40 truncate">{previewB?.artist ?? "Epic Music Space"}</p>
                 <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
                   <div className="h-1.5 w-[38%] rounded-full bg-pink-500" />
                 </div>

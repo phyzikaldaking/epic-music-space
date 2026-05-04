@@ -10,7 +10,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import type { Song } from "@ems/db";
-import { demoTracks } from "@/lib/demoTracks";
+import { getDemoTracks } from "@/lib/demoTracks";
 
 export const revalidate = 30;
 
@@ -54,7 +54,11 @@ export default async function MarketplacePage(props: {
   try {
     allSongs = await prisma.song.findMany({ where: { isActive: true } });
   } catch {
-    allSongs = demoTracks as unknown as MarketplaceSong[];
+    allSongs = await getDemoTracks() as unknown as MarketplaceSong[];
+  }
+
+  if (allSongs.length === 0) {
+    allSongs = await getDemoTracks() as unknown as MarketplaceSong[];
   }
 
   const rankedSongs = allSongs

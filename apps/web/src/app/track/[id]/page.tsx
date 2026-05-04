@@ -8,7 +8,7 @@ import SongCard from "@/components/SongCard";
 import LicenseButton from "@/components/LicenseButton";
 import TrackActions from "@/components/TrackActions";
 import type { Metadata } from "next";
-import { demoTracks } from "@/lib/demoTracks";
+import { getDemoTracks } from "@/lib/demoTracks";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -51,6 +51,7 @@ async function getTrack(id: string): Promise<TrackDetail | null> {
     // DB unavailable — fall through to demo check
   }
 
+  const demoTracks = await getDemoTracks();
   const demo = demoTracks.find((d) => d.id === id);
   if (demo) {
     return {
@@ -290,13 +291,12 @@ export default async function TrackPage({ params, searchParams }: Props) {
                 </span>
                 <span>{soldOutPct}% sold</span>
               </div>
-              <div className="h-2 w-full rounded-full bg-white/10">
-                {/* eslint-disable-next-line react/forbid-dom-props */}
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-500 transition-all"
-                  style={{ width: `${soldOutPct}%` }}
-                />
-              </div>
+              <progress
+                className="h-2 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-white/10 [&::-webkit-progress-value]:bg-gradient-to-r [&::-webkit-progress-value]:from-brand-500 [&::-webkit-progress-value]:to-accent-500 [&::-moz-progress-bar]:bg-brand-500"
+                value={soldOutPct}
+                max={100}
+                aria-label={`${soldOutPct}% of licenses sold`}
+              />
             </div>
 
             {/* Download trackout for existing license holders */}
