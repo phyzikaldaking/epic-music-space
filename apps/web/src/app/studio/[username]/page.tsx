@@ -27,6 +27,7 @@ const getStudioByUsername = cache(async (username: string) =>
           name: true,
           image: true,
           role: true,
+          emailVerified: true,
           connectChargesEnabled: true,
           connectPayoutsEnabled: true,
           songs: {
@@ -173,9 +174,9 @@ export default async function StudioProfilePage({ params }: Props) {
             <span className="rounded-full bg-white/8 border border-white/15 px-2.5 py-0.5 text-xs font-bold text-white/60">
               Lv.{studio.level}
             </span>
-            {user.connectChargesEnabled && user.connectPayoutsEnabled && (
+            {user.connectChargesEnabled && user.connectPayoutsEnabled ? (
               <span
-                title="Identity verified via Stripe Connect"
+                title="Identity + payouts verified via Stripe Connect"
                 className="inline-flex items-center gap-1 rounded-full border border-sky-500/40 bg-sky-500/12 px-2 py-0.5 text-[11px] font-bold text-sky-300"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -183,7 +184,17 @@ export default async function StudioProfilePage({ params }: Props) {
                 </svg>
                 Verified
               </span>
-            )}
+            ) : user.emailVerified ? (
+              <span
+                title="Email verified — full identity verification pending"
+                className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-white/55"
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M9 16.2 4.8 12l-1.4 1.4L9 19l12-12-1.4-1.4z" />
+                </svg>
+                Email verified
+              </span>
+            ) : null}
             {user.ownedLabel && (
               <a
                 href={`/label/${user.ownedLabel.id}`}

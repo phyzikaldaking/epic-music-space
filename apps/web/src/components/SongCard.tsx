@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { formatPrice } from "@ems/utils";
 import PromoteSongButton from "@/components/PromoteSongButton";
+import { usePlayer } from "@/contexts/PlayerContext";
 
 type PriceLike = string | number | { toString(): string };
 
@@ -88,102 +89,27 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
   const isChampion = tier === "CROWN" || (rankScore > 0 && rankScore >= 250);
   const dominancePercent = Math.max(8, Math.min(100, Math.round(rankScore / 3)));
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const animationRef = useRef<number | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [audioError, setAudioError] = useState(false);
+  const player = usePlayer();
+  const isCurrent = player.currentSong?.id === id;
+  const playing = isCurrent && player.isPlaying;
+  const progress = isCurrent ? player.progress : 0;
+  const energy = isCurrent && player.isPlaying ? Math.min(100, Math.round(player.progress * 0.9 + 12)) : 0;
+  const audioError = false;
+  const spectrum = useMemo(() => visualizerBars.map((bar) => bar * (playing ? 0.85 : 0.45)), [playing]);
   const [hovered, setHovered] = useState(false);
-  const [energy, setEnergy] = useState(0);
-  const [spectrum, setSpectrum] = useState<number[]>(visualizerBars.map((bar) => bar * 0.45));
 
   const wallTilt = useMemo(() => {
     const seed = id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return seed % 2 === 0 ? "md:rotate-y-[-5deg]" : "md:rotate-y-[5deg]";
   }, [id]);
 
-  useEffect(() => {
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = "";
-        audioRef.current = null;
-      }
-      void audioContextRef.current?.close().catch(() => undefined);
-    };
-  }, []);
-
-  function startAnalyser() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextCtor) return;
-    if (!audioContextRef.current) audioContextRef.current = new AudioContextCtor();
-    const context = audioContextRef.current;
-    void context.resume();
-    if (!analyserRef.current) {
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 64;
-      analyser.smoothingTimeConstant = 0.72;
-      analyserRef.current = analyser;
-    }
-    if (!sourceRef.current) {
-      sourceRef.current = context.createMediaElementSource(audio);
-      sourceRef.current.connect(analyserRef.current);
-      analyserRef.current.connect(context.destination);
-    }
-    const analyser = analyserRef.current;
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    const tick = () => {
-      analyser.getByteFrequencyData(data);
-      const nextSpectrum = visualizerBars.map((fallback, index) => Math.max(12, Math.min(100, ((data[index % data.length] ?? fallback) / 255) * 100)));
-      const bass = data.slice(0, 6).reduce((sum, value) => sum + value, 0) / (6 * 255);
-      setEnergy(Math.round(bass * 100));
-      setSpectrum(nextSpectrum);
-      animationRef.current = requestAnimationFrame(tick);
-    };
-    if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    tick();
-  }
-
   function handlePlayClick() {
-    if (!audioUrl || audioError) return;
-    if (!audioRef.current) {
-      const audio = new Audio(audioUrl);
-      audio.crossOrigin = "anonymous";
-      audio.preload = "metadata";
-      audio.volume = 0.8;
-      audio.addEventListener("timeupdate", () => {
-        if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
-      });
-      audio.addEventListener("ended", () => {
-        setPlaying(false);
-        setProgress(0);
-        setEnergy(0);
-        audio.currentTime = 0;
-        if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      });
-      audio.addEventListener("pause", () => setPlaying(false));
-      audio.addEventListener("error", () => {
-        setAudioError(true);
-        setPlaying(false);
-      });
-      audioRef.current = audio;
-    }
-    if (playing) {
-      audioRef.current.pause();
-      setPlaying(false);
+    if (!audioUrl) return;
+    if (isCurrent) {
+      player.togglePlay();
       return;
     }
-    startAnalyser();
-    void audioRef.current.play().then(() => setPlaying(true)).catch(() => {
-      setAudioError(true);
-      setPlaying(false);
-    });
+    player.playSong({ id, title, artist, audioUrl, coverUrl: coverUrl ?? null });
   }
 
   return (

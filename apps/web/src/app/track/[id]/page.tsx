@@ -155,12 +155,62 @@ export default async function TrackPage({ params, searchParams }: Props) {
     ? Math.round((song.soldLicenses / song.totalLicenses) * 100)
     : 0;
 
-  const [related, userLicense] = await Promise.all([
+  const isOwner =
+    !song.isDemo &&
+    !!session?.user?.id &&
+    !!song.artist_?.id &&
+    session.user.id === song.artist_.id;
+
+  const [related, userLicense, ownerStats] = await Promise.all([
     song.isDemo ? Promise.resolve([]) : getRelatedTracks(id, song.genre),
     !song.isDemo && session?.user?.id
       ? prisma.licenseToken.findFirst({
           where: { songId: id, holderId: session.user.id, status: "ACTIVE" },
         }).catch(() => null)
+      : Promise.resolve(null),
+    isOwner
+      ? (async () => {
+          const [behaviorCounts, recentBuyers, distinctListeners] = await Promise.all([
+            prisma.userBehaviorEvent.groupBy({
+              by: ["eventType"],
+              where: { songId: id },
+              _count: { _all: true },
+            }).catch(() => [] as Array<{ eventType: string; _count: { _all: number } }>),
+            prisma.licenseToken.findMany({
+              where: { songId: id },
+              orderBy: { purchasedAt: "desc" },
+              take: 5,
+              select: {
+                id: true,
+                purchasedAt: true,
+                price: true,
+                holder: { select: { name: true, image: true, studio: { select: { username: true } } } },
+              },
+            }).catch(() => []),
+            prisma.userBehaviorEvent.findMany({
+              where: { songId: id, eventType: "view_track" },
+              distinct: ["userId"],
+              select: { userId: true },
+            }).catch(() => []),
+          ]);
+          const counts: Record<string, number> = {};
+          for (const c of behaviorCounts) counts[c.eventType] = c._count._all;
+          return {
+            views: counts["view_track"] ?? 0,
+            plays: counts["view"] ?? 0,
+            likes: counts["like"] ?? 0,
+            shares: counts["share"] ?? 0,
+            distinctListeners: distinctListeners.length,
+            recentBuyers: recentBuyers.map((b) => ({
+              id: b.id,
+              purchasedAt: b.purchasedAt,
+              price: Number(b.price),
+              holderName: b.holder.name,
+              holderImage: b.holder.image,
+              holderUsername: b.holder.studio?.username ?? null,
+            })),
+          };
+        })()
       : Promise.resolve(null),
   ]);
 
@@ -357,6 +407,63 @@ export default async function TrackPage({ params, searchParams }: Props) {
           )}
         </div>
       </div>
+
+      {/* Owner-only analytics */}
+      {ownerStats && (
+        <section className="mt-12 rounded-2xl border border-brand-500/25 bg-brand-500/4 p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <span className="rounded-full bg-brand-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-brand-300">
+              Artist view
+            </span>
+            <h2 className="text-lg font-bold">Track performance</h2>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {[
+              { label: "Page views", value: ownerStats.views },
+              { label: "Plays", value: ownerStats.plays },
+              { label: "Distinct listeners", value: ownerStats.distinctListeners },
+              { label: "Likes", value: ownerStats.likes },
+              { label: "Licenses sold", value: song.soldLicenses },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl border border-white/8 bg-white/3 p-3">
+                <p className="text-[10px] uppercase tracking-widest text-white/40">{s.label}</p>
+                <p className="mt-1 text-xl font-extrabold tabular-nums">{s.value}</p>
+              </div>
+            ))}
+          </div>
+          {ownerStats.views > 0 && (
+            <p className="mt-3 text-xs text-white/45">
+              Conversion: {((song.soldLicenses / Math.max(ownerStats.views, 1)) * 100).toFixed(1)}% of visitors who view this track buy a license.
+            </p>
+          )}
+          {ownerStats.recentBuyers.length > 0 && (
+            <div className="mt-5">
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-white/45">
+                Recent buyers
+              </h3>
+              <ul className="space-y-1.5">
+                {ownerStats.recentBuyers.map((b) => (
+                  <li key={b.id} className="flex items-center gap-2 text-sm">
+                    <span className="text-white/65">
+                      {b.holderUsername ? (
+                        <Link href={`/studio/${b.holderUsername}`} className="hover:underline">
+                          {b.holderName ?? "anonymous"}
+                        </Link>
+                      ) : (
+                        b.holderName ?? "anonymous"
+                      )}
+                    </span>
+                    <span className="ml-auto text-xs text-white/35">
+                      ${b.price.toFixed(2)} ·{" "}
+                      {new Date(b.purchasedAt).toLocaleDateString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Related tracks */}
       {related.length > 0 && (

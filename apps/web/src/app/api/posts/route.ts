@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { moderateLimiter, strictLimiter } from "@/lib/rateLimit";
 import { getMuxClient } from "@/lib/mux";
+import { enqueueNotification } from "@/lib/queues";
 
 const createPostSchema = z.object({
   body: z.string().min(1, "Post can't be empty").max(2000),
@@ -197,6 +198,41 @@ export async function POST(req: NextRequest) {
       _count: { select: { likes: true, comments: true } },
     },
   });
+
+  // Fan out a notification to every follower. Best-effort — never blocks the
+  // post create response. Capped so a 100k-follower account doesn't trigger
+  // a 100k-row insert in the request hot path; the cap is generous enough
+  // for v1 and we can move to a queued worker once we hit it regularly.
+  void (async () => {
+    try {
+      const FANOUT_CAP = 5000;
+      const followers = await prisma.userFollow.findMany({
+        where: { followingId: session.user.id },
+        select: { followerId: true },
+        take: FANOUT_CAP,
+      });
+      const authorName = post.author.name ?? "An artist you follow";
+      const snippet = post.body.length > 140 ? `${post.body.slice(0, 140)}…` : post.body;
+      const studioUsername = post.author.studio?.username;
+      await Promise.all(
+        followers.map((f) =>
+          enqueueNotification({
+            userId: f.followerId,
+            type: "FOLLOWED_POST",
+            title: `${authorName} posted`,
+            body: snippet,
+            metadata: {
+              postId: post.id,
+              authorId: post.author.id,
+              authorStudio: studioUsername,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      console.warn("[posts:create] follower fanout failed", err);
+    }
+  })();
 
   return NextResponse.json({ post }, { status: 201 });
 }

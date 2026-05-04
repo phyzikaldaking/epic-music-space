@@ -443,8 +443,8 @@ export default async function DashboardPage() {
               </Link>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-2xl border border-white/8 bg-[#141414]">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
                   <tr>
                     <th className="px-5 py-3.5 text-left">Song</th>
@@ -497,16 +497,22 @@ export default async function DashboardPage() {
                         {new Date(l.purchasedAt).toLocaleDateString()}
                       </td>
                       <td className="px-5 py-3.5">
-                        {l.song?.hasStems ? (
-                          <a
-                            href={`/api/licenses/${l.id}/download`}
-                            className="inline-flex items-center gap-1 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs font-semibold text-brand-400 transition hover:bg-brand-500/20"
+                        <div className="flex items-center gap-1.5">
+                          <Link
+                            href={`/licenses/${l.id}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/70 transition hover:bg-white/10"
                           >
-                            ↓ Trackout
-                          </a>
-                        ) : (
-                          <span className="text-xs text-white/20">—</span>
-                        )}
+                            Receipt
+                          </Link>
+                          {l.song?.hasStems && (
+                            <a
+                              href={`/api/licenses/${l.id}/download`}
+                              className="inline-flex items-center gap-1 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs font-semibold text-brand-400 transition hover:bg-brand-500/20"
+                            >
+                              ↓ Trackout
+                            </a>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -858,8 +864,8 @@ export default async function DashboardPage() {
               No transactions yet.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-2xl border border-white/8 bg-[#141414]">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
                   <tr>
                     <th className="px-5 py-3.5 text-left">Type</th>

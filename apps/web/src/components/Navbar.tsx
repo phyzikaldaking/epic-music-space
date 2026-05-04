@@ -2,9 +2,12 @@ import Link from "next/link";
 import NavbarLinks from "@/components/NavbarLinks";
 import NavbarAuth from "@/components/NavbarAuth";
 import NavbarMobileMenu from "@/components/NavbarMobileMenu";
+import NavbarSearch from "@/components/NavbarSearch";
+import NotificationBell from "@/components/NotificationBell";
 
 const PUBLIC_LINKS = [
   { href: "/feed", label: "Feed" },
+  { href: "/trending", label: "Trending" },
   { href: "/studio/live", label: "Sessions" },
   { href: "/versus", label: "Battles" },
   { href: "/marketplace", label: "Tracks" },
@@ -15,6 +18,7 @@ const PUBLIC_LINKS = [
 
 const AUTHED_LINKS = [
   { href: "/feed", label: "Feed" },
+  { href: "/trending", label: "Trending" },
   { href: "/studio/live", label: "Sessions" },
   { href: "/versus", label: "Battles" },
   { href: "/marketplace", label: "Tracks" },
@@ -57,6 +61,8 @@ export default function Navbar() {
         />
 
         <div className="flex items-center gap-3">
+          <NavbarSearch />
+          <NotificationBell />
           <NavbarAuth />
           <NavbarMobileMenu publicLinks={PUBLIC_LINKS} authedLinks={AUTHED_LINKS} />
         </div>

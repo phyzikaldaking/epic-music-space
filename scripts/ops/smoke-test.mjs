@@ -28,6 +28,8 @@ const routes = [
   { path: "/status", expect: 200 },
   { path: "/support", expect: 200 },
   { path: "/investors", expect: 200 },
+  { path: "/trending", expect: 200 },
+  { path: "/search", expect: 200 },
   { path: "/legal/terms", expect: 200 },
   { path: "/legal/privacy", expect: 200 },
   { path: "/legal/refunds", expect: 200 },
