@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import CompactAudioPlayer from "@/components/CompactAudioPlayer";
 
 type CompareTrack = {
   id: string;
@@ -80,7 +81,11 @@ export default function MarketplaceConfidencePanel({ tracks }: Props) {
                 </option>
               ))}
             </select>
-            <audio id="ab-player-a" className="mt-3 w-full" controls preload="none" src={trackA?.audioUrl ?? undefined} />
+            {trackA?.audioUrl && (
+              <div className="mt-3">
+                <CompactAudioPlayer src={trackA.audioUrl} audioId="ab-player-a" label="A" />
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-white/10 bg-black/30 p-3">
@@ -97,7 +102,11 @@ export default function MarketplaceConfidencePanel({ tracks }: Props) {
                 </option>
               ))}
             </select>
-            <audio id="ab-player-b" className="mt-3 w-full" controls preload="none" src={trackB?.audioUrl ?? undefined} />
+            {trackB?.audioUrl && (
+              <div className="mt-3">
+                <CompactAudioPlayer src={trackB.audioUrl} audioId="ab-player-b" label="B" />
+              </div>
+            )}
           </div>
         </div>
 

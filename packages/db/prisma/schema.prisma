@@ -177,6 +177,10 @@ model Song {
   stemUrl   String?
   stemFiles Json?
   hasStems  Boolean @default(false)
+  // When false (default), the audio file is preview-only. Listeners can stream
+  // through the proxy but cannot download the underlying file. License
+  // purchase or artist opt-in (true) is required for download.
+  allowFreeDownload Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   artistId String

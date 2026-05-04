@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { formatPrice } from "@ems/utils";
 import PromoteSongButton from "@/components/PromoteSongButton";
 import { usePlayer } from "@/contexts/PlayerContext";
+import { getStreamUrl } from "@/lib/audioStream";
 
 type PriceLike = string | number | { toString(): string };
 
@@ -109,7 +110,9 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
       player.togglePlay();
       return;
     }
-    player.playSong({ id, title, artist, audioUrl, coverUrl: coverUrl ?? null });
+    // Always stream through the same-origin proxy so the raw Supabase URL
+    // never appears in the browser's network panel.
+    player.playSong({ id, title, artist, audioUrl: getStreamUrl(id), coverUrl: coverUrl ?? null });
   }
 
   return (

@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import CompactAudioPlayer from "@/components/CompactAudioPlayer";
 
 type UploadState = "idle" | "uploading" | "done" | "error";
 
@@ -14,6 +15,7 @@ export default function UploadTrackForm() {
   const [genre, setGenre] = useState("");
   const [description, setDescription] = useState("");
   const [licensePrice, setLicensePrice] = useState("9.99");
+  const [allowFreeDownload, setAllowFreeDownload] = useState(false);
   const [revenueSharePct, setRevenueSharePct] = useState("10");
   const [totalLicenses, setTotalLicenses] = useState("100");
   const [bpm, setBpm] = useState("");
@@ -176,6 +178,7 @@ export default function UploadTrackForm() {
       coverUrl: finalCoverUrl || undefined,
       stemUrl: stemUrl.trim() || undefined,
       hasStems: !!stemUrl.trim(),
+      allowFreeDownload,
       bpm: bpm ? Number(bpm) : undefined,
       key: key.trim() || undefined,
       licensePrice: Number(licensePrice),
@@ -331,7 +334,7 @@ export default function UploadTrackForm() {
             {audioUploadState === "done" && audioUrl && (
               <div className="mb-3 rounded-xl bg-white/5 border border-white/10 p-3">
                 <p className="mb-2 text-xs font-semibold text-green-400">✓ Upload complete — preview your track:</p>
-                <audio controls src={audioUrl} className="w-full" style={{ colorScheme: "dark" }} />
+                <CompactAudioPlayer src={audioUrl} label="Preview" />
               </div>
             )}
 
@@ -555,6 +558,26 @@ export default function UploadTrackForm() {
               ${(Number(licensePrice) * Number(totalLicenses)).toLocaleString("en-US", { maximumFractionDigits: 2 })}
             </p>
           </div>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/3 p-4">
+            <input
+              type="checkbox"
+              checked={allowFreeDownload}
+              onChange={(e) => setAllowFreeDownload(e.target.checked)}
+              className="mt-1 h-4 w-4 cursor-pointer accent-brand-500"
+            />
+            <span className="flex-1">
+              <span className="block text-sm font-semibold">
+                Allow free download of the audio file
+              </span>
+              <span className="mt-1 block text-xs text-white/50">
+                Off by default. When off, listeners can preview the track but
+                cannot download the audio file. Buying a license unlocks the
+                download regardless of this toggle. Turn ON only if you want
+                this track freely downloadable for promotion.
+              </span>
+            </span>
+          </label>
         </div>
 
         {error && (

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { usePlayer } from "@/contexts/PlayerContext";
+import { getStreamUrl } from "@/lib/audioStream";
 
 interface SongResult {
   id: string;
@@ -126,7 +127,7 @@ export default function SearchClient({
                           id: s.id,
                           title: s.title,
                           artist: s.artist,
-                          audioUrl: s.audioUrl,
+                          audioUrl: getStreamUrl(s.id),
                           coverUrl: s.coverUrl,
                         })
                       }

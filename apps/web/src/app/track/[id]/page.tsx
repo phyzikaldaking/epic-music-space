@@ -9,6 +9,7 @@ import AudioPlayer from "@/components/AudioPlayer";
 import SongCard from "@/components/SongCard";
 import LicenseButton from "@/components/LicenseButton";
 import TrackActions from "@/components/TrackActions";
+import { getStreamUrl } from "@/lib/audioStream";
 import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
@@ -35,6 +36,7 @@ type TrackDetail = {
   aiScore: number | null;
   isActive: boolean;
   hasStems: boolean;
+  allowFreeDownload: boolean;
   artist_: { id: string; name: string | null; image: string | null } | null;
   _count: { licenses: number };
   isDemo: boolean;
@@ -50,7 +52,7 @@ const getTrack = unstable_cache(
           _count: { select: { licenses: true } },
         },
       });
-      if (song) return { ...song, isDemo: false };
+      if (song) return { ...song, isDemo: false } as TrackDetail;
     } catch {
       // DB unavailable — fall through to demo check
     }
@@ -75,6 +77,7 @@ const getTrack = unstable_cache(
         aiScore: demo.aiScore,
         isActive: true,
         hasStems: false,
+        allowFreeDownload: false,
         artist_: null,
         _count: { licenses: demo.soldLicenses },
         isDemo: true,
@@ -310,9 +313,34 @@ export default async function TrackPage({ params, searchParams }: Props) {
             )}
           </div>
 
-          {/* Audio preview player */}
+          {/* Audio preview player — streams through same-origin proxy. */}
           {song.audioUrl && (
-            <AudioPlayer audioUrl={song.audioUrl} title={song.title} songId={song.id} />
+            <AudioPlayer
+              audioUrl={getStreamUrl(song.id)}
+              title={song.title}
+              songId={song.id}
+            />
+          )}
+
+          {/* Preview-only lock pill (when track isn't downloadable for the
+              current viewer). This is messaging — actual download
+              prevention is enforced server-side. */}
+          {song.audioUrl && !userLicense && !song.allowFreeDownload && (
+            <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/8 bg-white/3 px-3 py-2 text-xs text-white/55">
+              <svg className="h-3.5 w-3.5 text-white/55" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path d="M12 1C9.24 1 7 3.24 7 6v3H6c-1.1 0-2 .9-2 2v9c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-9c0-1.1-.9-2-2-2h-1V6c0-2.76-2.24-5-5-5zm-3 8V6c0-1.66 1.34-3 3-3s3 1.34 3 3v3H9zm3 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" />
+              </svg>
+              <span>
+                Preview only —{" "}
+                {song.isDemo ? (
+                  "demo track, not for sale."
+                ) : remaining === 0 ? (
+                  "sold out."
+                ) : (
+                  <>license below to download.</>
+                )}
+              </span>
+            </div>
           )}
 
           {/* Play in global player + Share */}
@@ -322,7 +350,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
                 id: song.id,
                 title: song.title,
                 artist: song.artist_?.name ?? song.artist,
-                audioUrl: song.audioUrl,
+                audioUrl: getStreamUrl(song.id),
                 coverUrl: song.coverUrl,
               }}
             />

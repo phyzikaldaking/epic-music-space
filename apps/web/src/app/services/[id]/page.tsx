@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SERVICE_KIND_META } from "@/lib/serviceListings";
 import BuyServiceButton from "./BuyServiceButton";
+import CompactAudioPlayer from "@/components/CompactAudioPlayer";
 
 export const revalidate = 30;
 
@@ -89,7 +90,7 @@ export default async function ServiceDetailPage({
           {listing.exampleAudioUrl && (
             <div className="mt-6">
               <p className="mb-2 text-xs font-bold uppercase tracking-widest text-white/45">Sample</p>
-              <audio src={listing.exampleAudioUrl} controls className="w-full" />
+              <CompactAudioPlayer src={listing.exampleAudioUrl} label="Sample" />
             </div>
           )}
 

@@ -23,6 +23,12 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
     audio.preload = "metadata";
+    try {
+      audio.setAttribute("controlsList", "nodownload nofullscreen noremoteplayback");
+      audio.setAttribute("disablePictureInPicture", "true");
+    } catch {
+      /* older browsers — non-fatal */
+    }
 
     audio.addEventListener("loadedmetadata", () => {
       setDuration(audio.duration);

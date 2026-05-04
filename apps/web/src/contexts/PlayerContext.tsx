@@ -158,6 +158,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const audio = new Audio();
     audio.preload = "metadata";
     audio.volume = initialState.volume;
+    // Hardening: hide download button in Chrome's overflow menu, disable PiP,
+    // and disable remote-playback. The element is never rendered with native
+    // <audio controls> anyway — these are belt-and-suspenders for the case
+    // where it leaks into a future debug surface.
+    try {
+      audio.setAttribute("controlsList", "nodownload nofullscreen noremoteplayback");
+      audio.setAttribute("disablePictureInPicture", "true");
+      audio.crossOrigin = "anonymous";
+    } catch {
+      /* older browsers — non-fatal */
+    }
 
     audio.addEventListener("timeupdate", () => {
       if (audio.duration) {
@@ -214,7 +225,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (state.currentSong?.id) {
       void fetch(`/api/songs/${state.currentSong.id}/stream`, { method: "POST" });
     }
-  }, [state.currentSong?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.currentSong?.id]);
 
   // React to isPlaying toggled externally
   useEffect(() => {
