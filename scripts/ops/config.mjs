@@ -86,6 +86,8 @@ export const sharedAppKeys = unique([
   "POSTHOG_API_KEY",
   "POSTHOG_HOST",
   "CRON_SECRET",
+  "AD_TRACKING_SALT",
+  "MIN_CREATOR_PAYOUT_USD",
 ]);
 
 export const rootEnvKeys = unique([...controlPlaneKeys, ...sharedAppKeys]);
@@ -119,6 +121,8 @@ export const githubSecretKeys = unique([
   "NEXT_PUBLIC_APP_URL",
   "SITE_URL",
   "CRON_SECRET",
+  "AD_TRACKING_SALT",
+  "MIN_CREATOR_PAYOUT_USD",
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
   "SUPABASE_PROJECT_REF",

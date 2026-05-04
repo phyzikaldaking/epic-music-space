@@ -3,9 +3,11 @@ import { unstable_cache } from "next/cache";
 import { auth } from "@/lib/auth";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
+import { Suspense } from "react";
 import VersusCard from "@/components/VersusCard";
 import BattleRoyaleCard from "@/components/BattleRoyaleCard";
 import CreateBattleForm from "@/components/CreateBattleForm";
+import AdSlot from "@/components/ads/AdSlot";
 
 export const metadata = {
   title: "Versus Battles | Epic Music Space",
@@ -117,6 +119,7 @@ export default async function VersusPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
+      <Suspense><AdSlot location="VERSUS_BANNER" className="mb-8" /></Suspense>
       {/* ── Header ──────────────────────────────────── */}
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>

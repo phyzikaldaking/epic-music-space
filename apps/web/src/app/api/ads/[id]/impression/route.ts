@@ -14,6 +14,23 @@ export async function POST(
 ) {
   const { id } = await params;
 
+  // Origin / Referer gate — only accept impression beacons from our own
+  // origins (or trusted preview deployments). Trivial CSRF + scraped-bot
+  // discouragement; the real fraud signal is the dedupe window below.
+  const origin = req.headers.get("origin") ?? "";
+  const referer = req.headers.get("referer") ?? "";
+  const allowed = (process.env.NEXT_PUBLIC_SITE_URL ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (allowed.length > 0) {
+    const sourceUrl = origin || referer;
+    const ok = sourceUrl && allowed.some((a) => sourceUrl.startsWith(a));
+    if (!ok && !sourceUrl.includes(".vercel.app")) {
+      return NextResponse.json({ ok: false, reason: "origin" }, { status: 403 });
+    }
+  }
+
   const ip = clientIp(req);
   const ipHash = hashIp(ip);
 

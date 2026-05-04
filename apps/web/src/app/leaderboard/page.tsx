@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import LiveLeaderboard from "@/components/LiveLeaderboard";
+import AdSlot from "@/components/ads/AdSlot";
 
 export const revalidate = 60;
 
@@ -68,6 +70,7 @@ export default async function LeaderboardPage({
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
+      <Suspense><AdSlot location="CITY_BILLBOARD" className="mb-8" /></Suspense>
       <div className="mb-8">
         <h1 className="flex items-center gap-3 text-4xl font-extrabold">
           <svg

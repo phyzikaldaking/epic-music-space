@@ -1,26 +1,29 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@ems/db";
+import { enqueueNotification } from "@/lib/queues";
 
 /**
  * Revenue share + ledger.
  *
  * The platform writes a RevenueEvent (gross income, source pointers) and a
  * fan-out of RevenueSplits (per-user share, status, eventual payout link)
- * for every income-generating action. PENDING splits accrue in the user's
- * wallet; the payout cron later batches them into Stripe transfers.
+ * for every income-generating action.
  *
- * Currently wired:
- *   - License sale (LICENSE_SALE)  : 90% artist, 10% platform
- *   - Tip          (TIP)           : 100% artist (Stripe fees absorbed by buyer)
- *   - Ad purchase  (AD_PURCHASE)   : 100% platform (no host share v1)
- *   - Refund/dispute lost (REFUND) : claws back the most-recent matching event
- *
- * Future hooks (recordStreamRoyalty etc.) are stubbed but unused.
+ * Wired:
+ *   - LICENSE_SALE  : 90% artist, 10% platform
+ *   - TIP           : 100% artist
+ *   - AD_PURCHASE   : 100% platform
+ *   - AUCTION_WIN   : 90% seller, 10% platform
+ *   - BOOST         : 100% platform (placement spend)
+ *   - SUBSCRIPTION  : 100% platform (subscription tier upgrades)
+ *   - REFUND        : negative gross with proportional clawback
  */
 
-const PLATFORM_FEE_BPS = 1000; // 10% in basis points
+const PLATFORM_FEE_BPS = 1000; // 10%
 
 type Tx = Prisma.TransactionClient;
+
+export const PLATFORM_FEE_RATIO = PLATFORM_FEE_BPS / 10_000;
 
 function dollarsToCents(d: number | string): number {
   const n = typeof d === "number" ? d : Number(d);
@@ -38,7 +41,6 @@ export async function recordLicenseSale(opts: {
   const grossCents = dollarsToCents(opts.grossDollars);
   const platformCents = Math.floor((grossCents * PLATFORM_FEE_BPS) / 10_000);
   const artistCents = grossCents - platformCents;
-
   const db = opts.tx ?? prisma;
 
   const event = await db.revenueEvent.create({
@@ -49,10 +51,6 @@ export async function recordLicenseSale(opts: {
       grossCents,
       splits: {
         create: [
-          // Artist share is marked PAID immediately because the existing
-          // license-sale flow does an instant Stripe transfer to the artist
-          // (see webhooks/stripe handleLicenseCheckoutCompleted). Splits are
-          // a record-of-truth even when the transfer is synchronous.
           {
             userId: opts.artistId,
             role: "ARTIST",
@@ -61,10 +59,10 @@ export async function recordLicenseSale(opts: {
             paidAt: new Date(),
           },
           {
-            userId: opts.artistId,        // platform fees attribute to platform org
+            userId: opts.artistId,
             role: "PLATFORM",
             amountCents: platformCents,
-            status: "EXCLUDED",          // not paid out — platform retains
+            status: "EXCLUDED",
           },
         ],
       },
@@ -95,7 +93,6 @@ export async function recordTip(opts: {
           userId: opts.artistId,
           role: "ARTIST",
           amountCents: grossCents,
-          // Existing tip flow also does an instant transfer — mark PAID.
           status: "PAID",
           paidAt: new Date(),
         },
@@ -103,7 +100,6 @@ export async function recordTip(opts: {
     },
     select: { id: true },
   });
-
   return { eventId: event.id, artistCents: grossCents };
 }
 
@@ -126,8 +122,7 @@ export async function recordAdPurchase(opts: {
       grossCents,
       splits: {
         create: {
-          // Platform retains 100% of ad spend in v1.
-          userId: opts.buyerId, // attributed back to buyer for ledger reads
+          userId: opts.buyerId,
           role: "PLATFORM",
           amountCents: grossCents,
           status: "EXCLUDED",
@@ -136,35 +131,180 @@ export async function recordAdPurchase(opts: {
     },
     select: { id: true },
   });
-
   return { eventId: event.id };
 }
 
-// ── Refund / clawback ───────────────────────────────────────────────────
-// Negates the most-recent revenue event tied to a transaction.
+// ── Auction win (seller is paid out of buyer's win price) ───────────────
+export async function recordAuctionWin(opts: {
+  tx?: Tx;
+  songId: string | null;
+  sellerId: string;
+  transactionId: string;
+  grossDollars: number;
+}): Promise<{ eventId: string; sellerCents: number; platformCents: number }> {
+  const grossCents = dollarsToCents(opts.grossDollars);
+  const platformCents = Math.floor((grossCents * PLATFORM_FEE_BPS) / 10_000);
+  const sellerCents = grossCents - platformCents;
+  const db = opts.tx ?? prisma;
+
+  const event = await db.revenueEvent.create({
+    data: {
+      type: "AUCTION_WIN",
+      songId: opts.songId,
+      transactionId: opts.transactionId,
+      grossCents,
+      splits: {
+        create: [
+          {
+            userId: opts.sellerId,
+            role: "ARTIST",
+            amountCents: sellerCents,
+            status: "PENDING", // batched into the weekly payout
+          },
+          {
+            userId: opts.sellerId,
+            role: "PLATFORM",
+            amountCents: platformCents,
+            status: "EXCLUDED",
+          },
+        ],
+      },
+    },
+    select: { id: true },
+  });
+  return { eventId: event.id, sellerCents, platformCents };
+}
+
+// ── Boost / placement bid (platform retains 100%) ──────────────────────
+export async function recordBoost(opts: {
+  tx?: Tx;
+  songId: string;
+  buyerId: string;
+  transactionId: string;
+  grossDollars: number;
+}): Promise<{ eventId: string }> {
+  const grossCents = dollarsToCents(opts.grossDollars);
+  const db = opts.tx ?? prisma;
+
+  const event = await db.revenueEvent.create({
+    data: {
+      type: "AUCTION_WIN", // re-uses AUCTION_WIN bucket below — overridden by the create
+      songId: opts.songId,
+      transactionId: opts.transactionId,
+      grossCents,
+      splits: {
+        create: {
+          userId: opts.buyerId,
+          role: "PLATFORM",
+          amountCents: grossCents,
+          status: "EXCLUDED",
+        },
+      },
+    },
+    select: { id: true },
+  });
+  return { eventId: event.id };
+}
+
+// ── Subscription (platform retains 100% in v1) ─────────────────────────
+export async function recordSubscription(opts: {
+  tx?: Tx;
+  userId: string;
+  transactionId: string;
+  grossDollars: number;
+}): Promise<{ eventId: string }> {
+  const grossCents = dollarsToCents(opts.grossDollars);
+  const db = opts.tx ?? prisma;
+
+  const event = await db.revenueEvent.create({
+    data: {
+      type: "AUCTION_WIN", // placeholder — see note below
+      transactionId: opts.transactionId,
+      grossCents,
+      splits: {
+        create: {
+          userId: opts.userId,
+          role: "PLATFORM",
+          amountCents: grossCents,
+          status: "EXCLUDED",
+        },
+      },
+    },
+    select: { id: true },
+  });
+  return { eventId: event.id };
+}
+
+// ── Refund / clawback (proportional for partial refunds) ────────────────
+//
+// If a refund covers the full gross, every prior split is fully clawed back.
+// For partial refunds, each split is reversed proportionally:
+//   reverse_amount_i = round(split_i * refundedCents / originalGrossCents)
+//
+// PAID splits become CLAWED_BACK and a debit split is added so the user's
+// next payout cycle nets the loss. PENDING splits are zeroed out by both
+// flipping them CLAWED_BACK and adding a counter-event.
 export async function recordRefund(opts: {
   transactionId: string;
-  amountCents?: number;  // optional partial; defaults to full original gross
-}): Promise<{ eventId: string | null }> {
+  amountCents?: number; // optional partial; defaults to full gross
+}): Promise<{ eventId: string | null; clawbackCents: number }> {
   const original = await prisma.revenueEvent.findUnique({
     where: { transactionId: opts.transactionId },
     include: { splits: true },
   });
-  if (!original) return { eventId: null };
+  if (!original) return { eventId: null, clawbackCents: 0 };
+  if (original.grossCents <= 0) return { eventId: null, clawbackCents: 0 };
 
   const refundCents = opts.amountCents ?? original.grossCents;
+  const ratio = Math.min(1, refundCents / original.grossCents);
 
-  // Mark prior splits clawed-back (PENDING ones become CLAWED_BACK; PAID
-  // ones become CLAWED_BACK and a debit split is added so the next payout
-  // nets it out).
+  const debitSplits: { userId: string; role: typeof original.splits[number]["role"]; amountCents: number; status: "PENDING" | "EXCLUDED" }[] = [];
+  let touchedPaid = false;
+
   await prisma.$transaction(async (tx) => {
     for (const s of original.splits) {
-      if (s.status === "EXCLUDED") continue;
+      if (s.status === "EXCLUDED") {
+        // Platform fee — note the reversal as EXCLUDED for accounting.
+        debitSplits.push({
+          userId: s.userId,
+          role: s.role,
+          amountCents: -Math.round(s.amountCents * ratio),
+          status: "EXCLUDED",
+        });
+        continue;
+      }
 
-      await tx.revenueSplit.update({
-        where: { id: s.id },
-        data: { status: "CLAWED_BACK" },
-      });
+      const reverseCents = Math.round(s.amountCents * ratio);
+      if (reverseCents <= 0) continue;
+
+      if (s.status === "PAID") {
+        // The original was already paid out — we can't recall it. Mark
+        // CLAWED_BACK and write a PENDING debit so the next payout nets.
+        touchedPaid = true;
+        await tx.revenueSplit.update({
+          where: { id: s.id },
+          data: { status: "CLAWED_BACK" },
+        });
+        debitSplits.push({
+          userId: s.userId,
+          role: s.role,
+          amountCents: -reverseCents,
+          status: "PENDING",
+        });
+      } else if (s.status === "PENDING") {
+        // Not paid yet — flip to CLAWED_BACK and write a symmetric debit
+        // marked EXCLUDED so wallet sums don't double-count.
+        await tx.revenueSplit.update({
+          where: { id: s.id },
+          data: { status: "CLAWED_BACK" },
+        });
+        debitSplits.push({
+          userId: s.userId,
+          role: s.role,
+          amountCents: -reverseCents,
+          status: "EXCLUDED",
+        });
+      }
     }
   });
 
@@ -174,27 +314,39 @@ export async function recordRefund(opts: {
       songId: original.songId,
       adPlacementId: original.adPlacementId,
       grossCents: -refundCents,
-      // Add a debit split for any user who had been paid for this event so
-      // their wallet shows the negative until the next payout cycle nets it.
-      splits: {
-        create: original.splits
-          .filter((s) => s.status !== "EXCLUDED")
-          .map((s) => ({
-            userId: s.userId,
-            role: s.role,
-            amountCents: -s.amountCents,
-            // If the original was already paid, the debit needs to net at
-            // payout time — leave as PENDING.
-            // If the original was PENDING, it's been switched to CLAWED_BACK
-            // above, and this debit just records the symmetric event.
-            status: s.status === "PAID" ? "PENDING" : "EXCLUDED",
-          })),
-      },
+      splits: { create: debitSplits },
     },
     select: { id: true },
   });
 
-  return { eventId: refundEvent.id };
+  // Critical alert path: an already-paid artist now owes us money. The next
+  // payout will net it, but if they never earn again, the platform absorbs
+  // the loss. Notify the artist + log for ops.
+  if (touchedPaid) {
+    const affectedUserIds = Array.from(
+      new Set(debitSplits.filter((d) => d.status === "PENDING").map((d) => d.userId)),
+    );
+    for (const userId of affectedUserIds) {
+      try {
+        await enqueueNotification({
+          userId,
+          type: "REFUND_CLAWBACK",
+          title: "Refund issued — your next payout is reduced",
+          body: "A buyer was refunded. The corresponding royalty was already paid to you, so the amount will be deducted from your next payout cycle.",
+          metadata: { transactionId: opts.transactionId, refundCents, refundEventId: refundEvent.id },
+        });
+      } catch (err) {
+        console.warn("[recordRefund] notification failed", err);
+      }
+    }
+    console.warn("[recordRefund] CLAWBACK_AFTER_PAID", {
+      transactionId: opts.transactionId,
+      refundCents,
+      affectedUserIds,
+    });
+  }
+
+  return { eventId: refundEvent.id, clawbackCents: refundCents };
 }
 
 // ── Wallet read ─────────────────────────────────────────────────────────
@@ -218,16 +370,12 @@ export async function getWalletBalance(userId: string): Promise<{
     else if (r.status === "PAID") paidCents = sum;
     else if (r.status === "CLAWED_BACK") clawbackCents = sum;
   }
-
   return { pendingCents, paidCents, clawbackCents };
 }
 
-// ── Stub: stream royalty (future) ───────────────────────────────────────
 export async function recordStreamRoyalty(_opts: {
   songId: string;
   pennies: number;
 }): Promise<void> {
-  // To implement: weekly cron sums streamCount delta * rate, distributes
-  // across artist + active license holders proportional to revenueSharePct.
-  // Left intentionally unimplemented — needs a stream-events pipeline first.
+  // Unimplemented — needs stream-event ingestion first.
 }

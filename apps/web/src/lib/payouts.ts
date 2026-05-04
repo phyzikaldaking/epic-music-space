@@ -1,52 +1,101 @@
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { enqueueNotification } from "@/lib/queues";
 
 const MIN_PAYOUT_USD = Number(process.env.MIN_CREATOR_PAYOUT_USD ?? "20");
 const MIN_PAYOUT_CENTS = Math.round(MIN_PAYOUT_USD * 100);
+// 1099-NEC threshold: above this in a calendar year and US tax form must be on file.
+const TAX_REPORTABLE_THRESHOLD_CENTS = 60_000; // $600 / yr
+
+// Stable advisory-lock keys for the cron. Any 2 ints. Together they form a 64-bit key.
+const PAYOUT_LOCK_KEY_A = 0xE3C70D;
+const PAYOUT_LOCK_KEY_B = 0x504159; // 'PAY'
 
 export type PayoutResult = {
   userId: string;
   attemptedCents: number;
   payoutId?: string;
-  status: "PAID" | "SKIPPED_BELOW_MIN" | "SKIPPED_NO_CONNECT" | "SKIPPED_TAX_PENDING" | "SKIPPED_NEGATIVE" | "FAILED";
+  status:
+    | "PAID"
+    | "SKIPPED_BELOW_MIN"
+    | "SKIPPED_NO_CONNECT"
+    | "SKIPPED_TAX_PENDING"
+    | "SKIPPED_TAX_THRESHOLD"
+    | "SKIPPED_NEGATIVE"
+    | "SKIPPED_CURRENCY"
+    | "FAILED";
   error?: string;
 };
 
+/** Acquire a Postgres advisory lock for the payout cron. Returns true if held. */
+export async function tryAcquirePayoutLock(): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ pg_try_advisory_lock: boolean }[]>`
+    SELECT pg_try_advisory_lock(${PAYOUT_LOCK_KEY_A}, ${PAYOUT_LOCK_KEY_B})
+  `;
+  return rows[0]?.pg_try_advisory_lock === true;
+}
+
+export async function releasePayoutLock(): Promise<void> {
+  await prisma.$queryRaw`SELECT pg_advisory_unlock(${PAYOUT_LOCK_KEY_A}, ${PAYOUT_LOCK_KEY_B})`;
+}
+
+async function getYearToDatePaidCents(userId: string): Promise<number> {
+  const yearStart = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
+  const agg = await prisma.revenueSplit.aggregate({
+    where: {
+      userId,
+      status: "PAID",
+      paidAt: { gte: yearStart },
+      role: { in: ["ARTIST", "HOLDER", "LABEL", "HOST"] },
+    },
+    _sum: { amountCents: true },
+  });
+  return agg._sum.amountCents ?? 0;
+}
+
 /**
- * Process all PENDING revenue splits for a single user. Sums them into a
- * single Stripe transfer (idempotent per period+user) and a Payout row.
- * On success, the splits are linked to the new Payout and flipped to PAID.
- *
- * Called by the cron handler — never from the user-facing path.
+ * Process all PENDING revenue splits for a single user. Idempotent per
+ * (userId, period) via a unique index on Payout.
  */
 export async function processPayoutsForUser(
   userId: string,
-  period: string,                  // e.g. "2026-W19" — also used as idempotency key suffix
+  period: string,
 ): Promise<PayoutResult> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
       id: true,
+      email: true,
       stripeConnectId: true,
       connectChargesEnabled: true,
       connectPayoutsEnabled: true,
+      connectCountry: true,
       taxFormStatus: true,
     },
   });
 
   if (!user) return { userId, attemptedCents: 0, status: "FAILED", error: "user not found" };
 
-  // Tax-form gate: only COLLECTED or EXEMPT users get paid out.
-  if (user.taxFormStatus !== "COLLECTED" && user.taxFormStatus !== "EXEMPT") {
-    return { userId, attemptedCents: 0, status: "SKIPPED_TAX_PENDING" };
-  }
-
-  // Stripe Connect gate: must be onboarded with payouts enabled.
+  // Stripe Connect gate
   if (!user.stripeConnectId || !user.connectPayoutsEnabled) {
     return { userId, attemptedCents: 0, status: "SKIPPED_NO_CONNECT" };
   }
 
-  // Sum pending splits (artist/holder/label/host roles only — not platform).
+  // Currency gate — Stripe destinations have a settlement currency. Today
+  // the platform only books USD. Skip non-USD destinations until we add
+  // per-currency ledgering.
+  let destinationCurrency = "usd";
+  try {
+    const account = await stripe.accounts.retrieve(user.stripeConnectId);
+    destinationCurrency = (account.default_currency ?? "usd").toLowerCase();
+  } catch {
+    // If we can't reach Stripe, fall through and let the transfer fail loudly.
+  }
+  if (destinationCurrency !== "usd") {
+    return { userId, attemptedCents: 0, status: "SKIPPED_CURRENCY", error: `destination=${destinationCurrency}` };
+  }
+
+  // Sum pending splits
   const agg = await prisma.revenueSplit.aggregate({
     where: {
       userId,
@@ -57,33 +106,41 @@ export async function processPayoutsForUser(
   });
   const cents = agg._sum.amountCents ?? 0;
 
-  if (cents < 0) {
-    // Net negative — wait for more inflow before issuing. Don't issue a
-    // negative-amount Stripe transfer.
-    return { userId, attemptedCents: cents, status: "SKIPPED_NEGATIVE" };
-  }
-  if (cents < MIN_PAYOUT_CENTS) {
-    return { userId, attemptedCents: cents, status: "SKIPPED_BELOW_MIN" };
+  if (cents < 0) return { userId, attemptedCents: cents, status: "SKIPPED_NEGATIVE" };
+  if (cents < MIN_PAYOUT_CENTS) return { userId, attemptedCents: cents, status: "SKIPPED_BELOW_MIN" };
+
+  // Tax-form gate — ALWAYS gated above the 1099-NEC threshold for US users.
+  // For others, COLLECTED or EXEMPT also unlocks payout.
+  if (user.taxFormStatus !== "COLLECTED" && user.taxFormStatus !== "EXEMPT") {
+    const yearToDate = await getYearToDatePaidCents(userId);
+    const projected = yearToDate + cents;
+    if (projected >= TAX_REPORTABLE_THRESHOLD_CENTS) {
+      return { userId, attemptedCents: cents, status: "SKIPPED_TAX_THRESHOLD" };
+    }
+    return { userId, attemptedCents: cents, status: "SKIPPED_TAX_PENDING" };
   }
 
-  // Idempotency: same userId + period must produce the same Stripe transfer.
   const idempotencyKey = `payout:${userId}:${period}`;
 
+  let payoutId: string | undefined;
   try {
-    // Create the Payout row first so we have a stable id to attach splits to,
-    // then create the Stripe transfer with the idempotency key.
-    const payout = await prisma.payout.create({
-      data: {
+    // Upsert payout row first (idempotent per userId+period via unique index).
+    const payout = await prisma.payout.upsert({
+      where: { userId_period: { userId, period } },
+      create: {
         amount: cents / 100,
         currency: "usd",
         period,
         status: "PENDING",
         userId,
-        // Pick any songId we paid out for — required by current schema.
-        // We grab one from the pending splits.
-        songId: await pickAnySongIdForUser(userId),
+      },
+      update: {
+        amount: cents / 100,
+        // Keep PENDING if a prior attempt errored; otherwise leave as-is.
+        status: "PENDING",
       },
     });
+    payoutId = payout.id;
 
     const transfer = await stripe.transfers.create(
       {
@@ -110,43 +167,40 @@ export async function processPayoutsForUser(
       }),
     ]);
 
+    // Best-effort notification — don't let queue hiccups fail the payout.
+    try {
+      await enqueueNotification({
+        userId,
+        type: "PAYOUT",
+        title: `$${(cents / 100).toFixed(2)} paid out`,
+        body: `Your weekly royalty payout for ${period} just hit your account.`,
+        metadata: { payoutId: payout.id, period, amountCents: cents },
+      });
+    } catch (err) {
+      console.warn("[payouts] notification failed", err);
+    }
+
     return { userId, attemptedCents: cents, payoutId: payout.id, status: "PAID" };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "transfer failed";
-    return { userId, attemptedCents: cents, status: "FAILED", error: msg };
+    const reason = err instanceof Error ? err.message : "transfer failed";
+    // Persist the failure for ops visibility + retry tooling.
+    try {
+      await prisma.payoutFailure.create({
+        data: { userId, payoutId, period, amountCents: cents, reason: reason.slice(0, 1000) },
+      });
+    } catch {
+      console.warn("[payouts] could not persist failure record");
+    }
+    if (payoutId) {
+      await prisma.payout.update({
+        where: { id: payoutId },
+        data: { status: "FAILED" },
+      }).catch(() => {});
+    }
+    return { userId, attemptedCents: cents, status: "FAILED", error: reason };
   }
 }
 
-async function pickAnySongIdForUser(userId: string): Promise<string> {
-  // The legacy Payout.songId is required (not-null). Prefer the artist's
-  // most recent active song; fall back to any song in their pending splits;
-  // finally fall back to a sentinel (we may relax this column to nullable
-  // in a future migration).
-  const ownSong = await prisma.song.findFirst({
-    where: { artistId: userId, isActive: true },
-    select: { id: true },
-    orderBy: { createdAt: "desc" },
-  });
-  if (ownSong) return ownSong.id;
-
-  const split = await prisma.revenueSplit.findFirst({
-    where: { userId, status: "PENDING" },
-    include: { event: { select: { songId: true } } },
-  });
-  if (split?.event?.songId) return split.event.songId;
-
-  // Last-resort: any song id at all so the FK is satisfied. The Payout row
-  // is for a non-song income path (tip, ad, etc.) — surface this in the
-  // metadata via the Payout.period. Better fix is making songId nullable.
-  const anySong = await prisma.song.findFirst({ select: { id: true } });
-  if (!anySong) throw new Error("Cannot create payout: no songs in system");
-  return anySong.id;
-}
-
-/**
- * Iterate every user with pending splits >= min payout, run processPayoutsForUser
- * for each. Caller supplies the period string.
- */
 export async function runPayoutCycle(period: string): Promise<{
   results: PayoutResult[];
   totalPaidCents: number;
@@ -178,9 +232,6 @@ export async function runPayoutCycle(period: string): Promise<{
   return { results, totalPaidCents, totalPayouts };
 }
 
-/**
- * "2026-W19" style ISO-week period string used for idempotent payout cycles.
- */
 export function isoWeekPeriod(date = new Date()): string {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const dayNum = d.getUTCDay() || 7;

@@ -248,14 +248,41 @@ model Payout {
   createdAt DateTime     @default(now())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  songId String
-  song   Song   @relation(fields: [songId], references: [id])
+  songId String?
+  song   Song?   @relation(fields: [songId], references: [id])
   licenseTokenId String?
   licenseToken   LicenseToken? @relation(fields: [licenseTokenId], references: [id])
   splits         RevenueSplit[]
   stripeTransferId String?    @unique
+  failures       PayoutFailure[]
+  @@unique([userId, period])
   @@index([userId])
   @@index([status])
+  @@index([period])
+}
+
+model ProcessedWebhook {
+  id          String   @id @default(cuid())
+  source      String   // "stripe" | "livekit" | etc
+  eventId     String
+  processedAt DateTime @default(now())
+
+  @@unique([source, eventId])
+  @@index([processedAt])
+}
+
+model PayoutFailure {
+  id        String   @id @default(cuid())
+  userId    String
+  payoutId  String?
+  payout    Payout?  @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  period    String
+  amountCents Int
+  reason    String   @db.Text
+  retried   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
   @@index([period])
 }
 

@@ -1,5 +1,6 @@
-import { cache } from "react";
+import { cache, Suspense } from "react";
 import Image from "next/image";
+import AdSlot from "@/components/ads/AdSlot";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notFound } from "next/navigation";
@@ -122,6 +123,7 @@ export default async function StudioProfilePage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
+      <Suspense><AdSlot location="STUDIO_SIDEBAR" className="mb-6" /></Suspense>
       {/* Banner */}
       <div className="relative mb-8 h-48 w-full overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 via-accent-600 to-brand-900">
         {studio.bannerUrl && (

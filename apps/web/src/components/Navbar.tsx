@@ -19,8 +19,8 @@ const AUTHED_LINKS = [
   { href: "/leaderboard", label: "Charts" },
   { href: "/auctions", label: "Auctions" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard/wallet", label: "Wallet" },
   { href: "/invite", label: "Invite" },
-  { href: "/boost", label: "Boost" },
 ];
 
 const ADMIN_LINK = { href: "/admin", label: "Admin" };
