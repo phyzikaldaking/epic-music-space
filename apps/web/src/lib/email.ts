@@ -79,6 +79,216 @@ export async function sendVerificationEmail(email: string, token: string) {
   return { ok: true };
 }
 
+interface MilestoneEmail {
+  to: string;
+  artistName: string;
+  kind: "first_sale" | "first_follower" | "first_tip";
+  amountUsd?: number;
+  songTitle?: string;
+  followerName?: string;
+}
+
+const MILESTONE_COPY: Record<MilestoneEmail["kind"], { subject: (m: MilestoneEmail) => string; heading: string; emoji: string }> = {
+  first_sale: {
+    subject: (m) => `🎉 Your first sale on Epic Music Space — $${m.amountUsd?.toFixed(2) ?? "0.00"}`,
+    heading: "You just made your first sale.",
+    emoji: "💸",
+  },
+  first_follower: {
+    subject: () => `🎤 You've got your first follower on Epic Music Space`,
+    heading: "Someone just hit follow.",
+    emoji: "🎤",
+  },
+  first_tip: {
+    subject: (m) => `❤️ Your first tip on Epic Music Space — $${m.amountUsd?.toFixed(2) ?? "0.00"}`,
+    heading: "A fan just tipped you.",
+    emoji: "❤️",
+  },
+};
+
+/**
+ * Sends a one-time milestone email to an artist. Best-effort: returns ok=false
+ * with a code instead of throwing so callers can fire-and-forget.
+ */
+export async function sendArtistMilestoneEmail(m: MilestoneEmail) {
+  const copy = MILESTONE_COPY[m.kind];
+  if (!resend) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[email] Milestone email blocked — RESEND_API_KEY not set", m.kind);
+      return { ok: false, error: "EMAIL_PROVIDER_NOT_CONFIGURED" };
+    }
+    console.info("[email] (dev) milestone:", m);
+    return { ok: true, dev: true };
+  }
+  const base = getSiteUrl();
+  const detail =
+    m.kind === "first_sale"
+      ? `<strong>${m.songTitle ?? "your track"}</strong> just sold its first license for <strong>$${m.amountUsd?.toFixed(2) ?? "0.00"}</strong>. The buyer's payment landed in your Stripe Connect balance — payouts run every Monday.`
+      : m.kind === "first_tip"
+        ? `<strong>${m.followerName ?? "A fan"}</strong> sent you <strong>$${m.amountUsd?.toFixed(2) ?? "0.00"}</strong>. The full amount (minus Stripe processing) lands in your Connect balance.`
+        : `<strong>${m.followerName ?? "A new fan"}</strong> followed you. They'll see new uploads and posts on their feed.`;
+
+  const html = `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#fff;font-family:-apple-system,sans-serif;padding:40px 16px">
+    <div style="max-width:540px;margin:0 auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px 32px">
+      <div style="font-size:48px;margin-bottom:8px">${copy.emoji}</div>
+      <h1 style="margin:0 0 12px;font-size:22px">${copy.heading}</h1>
+      <p style="color:rgba(255,255,255,0.7);line-height:1.6">${detail}</p>
+      <p style="margin:24px 0">
+        <a href="${base}/dashboard" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:700">Open dashboard →</a>
+      </p>
+      <p style="color:rgba(255,255,255,0.4);font-size:11px;margin-top:32px">You're getting this because you have an artist account on Epic Music Space.</p>
+    </div></body></html>`;
+
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: m.to,
+    subject: copy.subject(m),
+    html,
+    text: `${copy.heading}\n\n${detail.replace(/<[^>]+>/g, "")}\n\n${base}/dashboard`,
+  });
+  if (error) {
+    console.error("[email] milestone send failed", error);
+    return { ok: false, error };
+  }
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────
+// Drip onboarding sequence — used by /api/cron/email-drip
+// ─────────────────────────────────────────────────────────
+
+export type DripStep = "welcome_day_0" | "tips_day_1" | "payout_day_3";
+
+interface DripPayload {
+  to: string;
+  name: string;
+  step: DripStep;
+  isArtist: boolean;
+}
+
+const DRIP_COPY: Record<
+  DripStep,
+  {
+    subject: string;
+    heading: string;
+    forArtist: string;
+    forListener: string;
+    cta: { label: string; path: string };
+  }
+> = {
+  welcome_day_0: {
+    subject: "Welcome to Epic Music Space — start here",
+    heading: "Welcome aboard 🎶",
+    forArtist:
+      "You're set up as an artist. Three things give you the best first week: claim your studio username, upload your first track, and connect Stripe so payouts run automatically.",
+    forListener:
+      "Find tracks you love, follow the artists making them, and license what you want. The marketplace is sortable by genre, mood, and BPM.",
+    cta: { label: "Open my dashboard", path: "/dashboard" },
+  },
+  tips_day_1: {
+    subject: "Day 1: get the most out of Epic Music Space",
+    heading: "A few tips while you're getting started",
+    forArtist:
+      "Cover art lifts conversion ~30%. Stems unlock a higher license tier. Posting an update on your /studio page gives followers a reason to come back. And every track on your studio shows your AI-derived EMS Score — higher score, higher placement.",
+    forListener:
+      "Following an artist puts their new uploads in your /feed. Liking a track lifts it for everyone. License purchases show up on your dashboard with a downloadable receipt.",
+    cta: { label: "Browse the marketplace", path: "/marketplace" },
+  },
+  payout_day_3: {
+    subject: "Reminder: connect Stripe to get paid",
+    heading: "One step left before your first payout",
+    forArtist:
+      "We hold your earnings in escrow until you complete Stripe Connect onboarding. It takes ~3 minutes, requires a bank account or debit card, and is the last step before payouts auto-run every Monday.",
+    forListener: "", // Listeners don't get this step.
+    cta: { label: "Connect Stripe now", path: "/dashboard?connect=start" },
+  },
+};
+
+export async function sendDripEmail(payload: DripPayload) {
+  const copy = DRIP_COPY[payload.step];
+  const body = payload.isArtist ? copy.forArtist : copy.forListener;
+  if (!body) return { ok: false, skipped: "not-applicable-for-role" };
+
+  if (!resend) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[email] drip blocked — RESEND_API_KEY not set", payload.step);
+      return { ok: false, error: "EMAIL_PROVIDER_NOT_CONFIGURED" };
+    }
+    console.info("[email] (dev) drip:", payload);
+    return { ok: true, dev: true };
+  }
+
+  const base = getSiteUrl();
+  const ctaUrl = `${base}${copy.cta.path}`;
+
+  const html = `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#fff;font-family:-apple-system,sans-serif;padding:40px 16px">
+    <div style="max-width:540px;margin:0 auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px 32px">
+      <h1 style="margin:0 0 12px;font-size:22px">${copy.heading}</h1>
+      <p style="color:rgba(255,255,255,0.7);line-height:1.65;font-size:14px">Hi ${escapeHtml(payload.name)},</p>
+      <p style="color:rgba(255,255,255,0.7);line-height:1.65;font-size:14px">${body}</p>
+      <p style="margin:24px 0">
+        <a href="${ctaUrl}" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:700">${copy.cta.label} →</a>
+      </p>
+      <p style="color:rgba(255,255,255,0.4);font-size:11px;margin-top:32px">You're getting this as part of the Epic Music Space onboarding sequence. <a style="color:rgba(255,255,255,0.55)" href="${base}/profile/edit">Manage email preferences</a>.</p>
+    </div></body></html>`;
+
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: payload.to,
+    subject: copy.subject,
+    html,
+    text: `${copy.heading}\n\nHi ${payload.name},\n\n${body}\n\n${copy.cta.label}: ${ctaUrl}`,
+  });
+  if (error) {
+    console.error("[email] drip send failed", error);
+    return { ok: false, error };
+  }
+  return { ok: true };
+}
+
+/** Sends a confirmation to a user who just opened a support ticket. */
+export async function sendSupportConfirmation(opts: {
+  to: string;
+  name: string | null;
+  ticketCode: string;
+  subject: string;
+}) {
+  if (!resend) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[email] support confirmation blocked — RESEND_API_KEY not set");
+      return { ok: false, error: "EMAIL_PROVIDER_NOT_CONFIGURED" };
+    }
+    console.info("[email] (dev) support ticket:", opts);
+    return { ok: true, dev: true };
+  }
+  const base = getSiteUrl();
+  const html = `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#fff;font-family:-apple-system,sans-serif;padding:40px 16px">
+    <div style="max-width:540px;margin:0 auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px 32px">
+      <h1 style="margin:0 0 12px;font-size:22px">We got it 👋</h1>
+      <p style="color:rgba(255,255,255,0.7);line-height:1.6">Hi ${escapeHtml(opts.name ?? "there")},</p>
+      <p style="color:rgba(255,255,255,0.7);line-height:1.6">Thanks for reaching out — we'll respond within one business day. Reply to this email any time and your reply will append to the same ticket.</p>
+      <div style="margin:24px 0;padding:16px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px">
+        <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.16em;color:rgba(255,255,255,0.4)">Ticket</p>
+        <p style="margin:4px 0 0;font-family:ui-monospace,SFMono-Regular,monospace;font-size:14px;color:#a78bfa">${opts.ticketCode}</p>
+        <p style="margin:8px 0 0;font-size:14px;color:rgba(255,255,255,0.85)">${escapeHtml(opts.subject)}</p>
+      </div>
+      <p style="color:rgba(255,255,255,0.4);font-size:11px;margin-top:24px">If this wasn't you, ignore this email — no further action will be taken. Visit ${base} for help articles.</p>
+    </div></body></html>`;
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: opts.to,
+    subject: `[${opts.ticketCode}] We got your message`,
+    html,
+    text: `Hi ${opts.name ?? "there"},\n\nThanks for reaching out — we'll respond within one business day.\n\nTicket: ${opts.ticketCode}\nSubject: ${opts.subject}\n\nReply to this email any time.`,
+  });
+  if (error) return { ok: false, error };
+  return { ok: true };
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+}
+
 function buildVerificationHtml(url: string) {
   return `<!DOCTYPE html>
 <html lang="en">

@@ -4,6 +4,7 @@ import NavbarAuth from "@/components/NavbarAuth";
 import NavbarMobileMenu from "@/components/NavbarMobileMenu";
 
 const PUBLIC_LINKS = [
+  { href: "/feed", label: "Feed" },
   { href: "/studio/live", label: "Sessions" },
   { href: "/versus", label: "Battles" },
   { href: "/marketplace", label: "Tracks" },
@@ -13,6 +14,7 @@ const PUBLIC_LINKS = [
 ];
 
 const AUTHED_LINKS = [
+  { href: "/feed", label: "Feed" },
   { href: "/studio/live", label: "Sessions" },
   { href: "/versus", label: "Battles" },
   { href: "/marketplace", label: "Tracks" },

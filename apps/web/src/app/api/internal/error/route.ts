@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rateLimitInline";
+import * as Sentry from "@sentry/nextjs";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,21 @@ export async function POST(req: Request) {
     href: body.href,
     stack: body.stack?.slice(0, 2000),
   });
+
+  // Forward to Sentry if configured. We synthesize an Error so the stack
+  // trace and message land in the right buckets.
+  if (process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN) {
+    try {
+      const err = new Error(body.message ?? "client global-error");
+      if (body.stack) err.stack = body.stack;
+      Sentry.captureException(err, {
+        tags: { source: "client-global-error" },
+        extra: { digest: body.digest, href: body.href },
+      });
+    } catch {
+      /* ignore Sentry capture failures */
+    }
+  }
 
   const webhook = process.env.AUTH_ALERT_WEBHOOK_URL;
   if (webhook) {

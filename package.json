@@ -23,6 +23,7 @@
     "env:push:preview": "node scripts/ops/env-push.mjs preview",
     "env:push:prod": "node scripts/ops/env-push.mjs prod",
     "reliability:smoke": "node scripts/ops/smoke.mjs",
+    "smoke": "node scripts/ops/smoke-test.mjs",
     "reliability:synthetics": "node scripts/ops/synthetics.mjs",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",

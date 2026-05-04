@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAdminAction, ipFromRequest } from "@/lib/adminAudit";
 
 export const runtime = "nodejs";
 
@@ -74,6 +75,18 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   }
 
   await prisma.auction.update({ where: { id }, data: { status: "CANCELLED" } });
+
+  // Audit-log admin cancellations (separate from owner-cancellations).
+  if (auction.sellerId !== session.user.id && session.user.role === "ADMIN") {
+    await logAdminAction({
+      adminId: session.user.id,
+      adminEmail: session.user.email,
+      action: "auction.cancel",
+      target: id,
+      metadata: { sellerId: auction.sellerId },
+      ip: ipFromRequest(_req),
+    });
+  }
 
   return NextResponse.json({ success: true });
 }

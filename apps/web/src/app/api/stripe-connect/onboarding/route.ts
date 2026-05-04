@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
+import { strictLimiter } from "@/lib/rateLimit";
 
 const APP_URL = getSiteUrl();
 
@@ -14,11 +15,23 @@ const APP_URL = getSiteUrl();
  *
  * Returns: { url: string }
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Hard rate limit — prevents a stuck client from creating a stream of Stripe
+  // accounts via repeated GET-on-mount calls.
+  try {
+    await strictLimiter.consume(`stripe-connect:${session.user.id}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many onboarding attempts. Try again in a minute." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
+  void req;
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -36,7 +49,10 @@ export async function GET() {
     );
   }
 
-  // Create account if needed
+  // Create account if needed. Two concurrent GETs from the same user could
+  // both pass the !connectId check and both create accounts. We use a
+  // conditional update — only the first one wins, and the loser deletes its
+  // orphaned Stripe account before continuing.
   let connectId = user.stripeConnectId;
   if (!connectId) {
     const account = await stripe.accounts.create({
@@ -46,11 +62,34 @@ export async function GET() {
       business_type: "individual",
       metadata: { emsUserId: user.id },
     });
-    connectId = account.id;
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { stripeConnectId: connectId },
+
+    const updated = await prisma.user.updateMany({
+      where: { id: user.id, stripeConnectId: null },
+      data: { stripeConnectId: account.id },
     });
+
+    if (updated.count === 1) {
+      connectId = account.id;
+    } else {
+      // Another request created an account first — clean up our orphan.
+      try {
+        await stripe.accounts.del(account.id);
+      } catch (err) {
+        console.warn("[stripe-connect] orphan account cleanup failed", err);
+      }
+      const refreshed = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { stripeConnectId: true },
+      });
+      connectId = refreshed?.stripeConnectId ?? null;
+    }
+
+    if (!connectId) {
+      return NextResponse.json(
+        { error: "Could not initialize Stripe Connect. Please retry." },
+        { status: 500 },
+      );
+    }
   }
 
   // Generate onboarding link

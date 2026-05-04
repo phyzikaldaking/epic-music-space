@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { logAdminAction, ipFromRequest } from "@/lib/adminAudit";
+import { checkAdminIpAllowlist } from "@/lib/adminGuard";
 
-async function requireAdmin() {
+async function requireAdmin(req: NextRequest) {
+  const ipBlock = checkAdminIpAllowlist(req);
+  if (ipBlock) return null;
   const session = await auth();
   if (!session?.user?.id) return null;
   if (session.user.role !== "ADMIN") return null;
@@ -11,7 +15,7 @@ async function requireAdmin() {
 }
 
 export async function GET(req: NextRequest) {
-  if (!(await requireAdmin())) {
+  if (!(await requireAdmin(req))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -71,7 +75,8 @@ const patchSchema = z.object({
 });
 
 export async function PATCH(req: NextRequest) {
-  if (!(await requireAdmin())) {
+  const session = await requireAdmin(req);
+  if (!session) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -82,9 +87,17 @@ export async function PATCH(req: NextRequest) {
   }
 
   const { songId, action } = parsed.data;
+  const ip = ipFromRequest(req);
 
   if (action === "delete") {
     await prisma.song.delete({ where: { id: songId } });
+    await logAdminAction({
+      adminId: session.user.id,
+      adminEmail: session.user.email,
+      action: "song.delete",
+      target: songId,
+      ip,
+    });
     return NextResponse.json({ deleted: true });
   }
 
@@ -95,6 +108,15 @@ export async function PATCH(req: NextRequest) {
     where: { id: songId },
     data: { isActive: !song.isActive },
     select: { id: true, isActive: true },
+  });
+
+  await logAdminAction({
+    adminId: session.user.id,
+    adminEmail: session.user.email,
+    action: "song.toggle_active",
+    target: songId,
+    metadata: { isActive: updated.isActive },
+    ip,
   });
 
   return NextResponse.json(updated);

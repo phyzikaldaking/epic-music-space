@@ -13,6 +13,7 @@ import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { track } from "@/lib/analytics";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import { recordLicenseSale, recordTip, recordAdPurchase, recordRefund, recordAuctionWin, recordBoost, recordSubscription, recordServiceSale } from "@/lib/revenueShare";
+import { sendArtistMilestoneEmail } from "@/lib/email";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -189,19 +190,128 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
     return;
   }
 
-  const license = await prisma.licenseToken.create({
-    data: {
-      tokenNumber: song.soldLicenses + 1,
-      price: existing.amount,
-      songId: song.id,
-      holderId: existing.userId,
-    },
+  // Atomically reserve a slot. If two webhooks process concurrently, only the
+  // one whose conditional update wins claims the next tokenNumber; the other
+  // sees count=0 and bails out (Stripe will retry, and the next pass will see
+  // the transaction already SUCCEEDED via the existing-check above).
+  const reservation = await prisma.$transaction(async (tx) => {
+    const reserved = await tx.song.updateMany({
+      where: {
+        id: song.id,
+        soldLicenses: { lt: song.totalLicenses },
+      },
+      data: { soldLicenses: { increment: 1 } },
+    });
+    if (reserved.count === 0) {
+      return null;
+    }
+    const updatedSong = await tx.song.findUnique({
+      where: { id: song.id },
+      select: { soldLicenses: true },
+    });
+    if (!updatedSong) return null;
+
+    const newLicense = await tx.licenseToken.create({
+      data: {
+        tokenNumber: updatedSong.soldLicenses, // post-increment value
+        price: existing.amount,
+        songId: song.id,
+        holderId: existing.userId,
+      },
+    });
+    return newLicense;
   });
 
-  await prisma.song.update({
-    where: { id: song.id },
-    data: { soldLicenses: { increment: 1 } },
-  });
+  // Best-effort first-sale email: send only when the artist's prior sold
+  // count was 0 (we observed it on `song` before the increment). Fire and
+  // forget so a slow Resend response doesn't delay the webhook.
+  if (reservation && song.soldLicenses === 0) {
+    void (async () => {
+      try {
+        const artist = await prisma.user.findUnique({
+          where: { id: song.artistId },
+          select: { email: true, name: true },
+        });
+        if (artist?.email) {
+          await sendArtistMilestoneEmail({
+            to: artist.email,
+            artistName: artist.name ?? "there",
+            kind: "first_sale",
+            amountUsd: Number(existing.amount),
+            songTitle: song.title,
+          });
+        }
+      } catch (err) {
+        console.warn("[stripe-webhook] first-sale email failed", err);
+      }
+    })();
+  }
+
+  if (!reservation) {
+    console.warn(
+      "[stripe-webhook] license issuance refused — song sold out",
+      { sessionId: session.id, songId: song.id },
+    );
+
+    // Auto-refund the buyer immediately. We have the payment_intent on the
+    // session so we can issue the refund inline without a follow-up job.
+    let refundId: string | null = null;
+    let refundError: string | null = null;
+    const paymentIntentId = session.payment_intent as string | undefined;
+    if (paymentIntentId) {
+      try {
+        const refund = await stripe.refunds.create(
+          {
+            payment_intent: paymentIntentId,
+            reason: "requested_by_customer",
+            metadata: {
+              emsReason: "SOLD_OUT_AT_WEBHOOK",
+              transactionId: existing.id,
+              songId: song.id,
+            },
+          },
+          { idempotencyKey: `refund-soldout-${existing.id}` },
+        );
+        refundId = refund.id;
+      } catch (err) {
+        refundError = err instanceof Error ? err.message : "unknown";
+        console.error("[stripe-webhook] auto-refund failed", err);
+      }
+    }
+
+    await prisma.transaction.update({
+      where: { id: existing.id },
+      data: {
+        status: "FAILED",
+        metadata: {
+          reason: "SOLD_OUT_AT_WEBHOOK",
+          autoRefundId: refundId,
+          autoRefundError: refundError,
+        },
+      },
+    });
+
+    // Notify the buyer so they're not staring at a successful Stripe receipt
+    // without a license.
+    try {
+      await enqueueNotification({
+        userId: existing.userId,
+        type: "REFUND_ISSUED",
+        title: "Refund issued — track sold out",
+        body: `"${song.title}" sold out before we could issue your license. ${
+          refundId
+            ? "We've automatically refunded your payment in full."
+            : "Please contact support to confirm your refund."
+        }`,
+        metadata: { songId: song.id, transactionId: existing.id, refundId },
+      });
+    } catch (err) {
+      console.warn("[stripe-webhook] sold-out notification failed", err);
+    }
+
+    return;
+  }
+  const license = reservation;
 
   // License sale changed soldLicenses — bust home + track caches.
   revalidateTag(CACHE_TAGS.songs);
@@ -423,6 +533,37 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
         console.warn("[stripe-webhook] tip ledger write failed", err);
       }
     }
+
+    // First-tip milestone email — best-effort.
+    void (async () => {
+      try {
+        const priorTipCount = await prisma.transaction.count({
+          where: {
+            type: "TIP",
+            status: "SUCCEEDED",
+            id: { not: txRow.id },
+            metadata: { path: ["artistId"], equals: artistId },
+          },
+        });
+        if (priorTipCount === 0) {
+          const [artist, fan] = await Promise.all([
+            prisma.user.findUnique({ where: { id: artistId }, select: { email: true, name: true } }),
+            prisma.user.findUnique({ where: { id: txRow.userId }, select: { name: true } }),
+          ]);
+          if (artist?.email) {
+            await sendArtistMilestoneEmail({
+              to: artist.email,
+              artistName: artist.name ?? "there",
+              kind: "first_tip",
+              amountUsd: Number(txRow.amount),
+              followerName: fan?.name ?? "A fan",
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[stripe-webhook] first-tip email failed", err);
+      }
+    })();
   }
 }
 async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Session) {

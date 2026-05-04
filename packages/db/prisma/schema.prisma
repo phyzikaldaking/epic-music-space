@@ -78,6 +78,9 @@ model User {
   serviceOrdersAsProvider ServiceOrder[] @relation("ServiceProviderOrders")
   serviceMessages    ServiceOrderMessage[] @relation("ServiceMessageAuthor")
   serviceReviews     ServiceReview[]    @relation("ServiceReviewer")
+  posts              Post[]             @relation("PostAuthor")
+  postComments       PostComment[]      @relation("PostCommentAuthor")
+  postLikes          PostLike[]         @relation("PostLikeUser")
 }
 
 enum Role {
@@ -1109,4 +1112,154 @@ enum ServiceOrderStatus {
   COMPLETED             // buyer accepted (or auto-accepted) — payout finalized
   REFUNDED              // refunded via Stripe
   CANCELLED             // either side cancelled before delivery
+}
+
+// ─────────────────────────────────────────
+// USER TIMELINE / POSTS
+// ─────────────────────────────────────────
+
+model Post {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    User     @relation("PostAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body      String   @db.Text
+  // Optional song attachment (artists posting about a track)
+  songId    String?
+  // Media — at most one block per post (handled in app code)
+  imageUrl  String?
+  // Mux video — populated by webhook when asset is ready
+  muxUploadId  String?  @unique
+  muxAssetId   String?  @unique
+  muxPlaybackId String? @unique
+  videoStatus  PostVideoStatus @default(NONE)
+  videoDurationSec Int?
+  videoAspectRatio String?
+  isPublished Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments  PostComment[]
+  likes     PostLike[]
+
+  @@index([authorId, createdAt])
+  @@index([createdAt])
+  @@index([videoStatus])
+}
+
+enum PostVideoStatus {
+  NONE
+  UPLOADING   // direct upload created, file in transit / awaiting Mux pickup
+  PROCESSING  // Mux is encoding
+  READY       // playable
+  FAILED
+}
+
+model PostComment {
+  id       String   @id @default(cuid())
+  postId   String
+  post     Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User     @relation("PostCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body     String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([postId, createdAt])
+}
+
+model PostLike {
+  id       String   @id @default(cuid())
+  postId   String
+  post     Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation("PostLikeUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
+}
+
+// ─────────────────────────────────────────
+// ADMIN AUDIT LOG
+// ─────────────────────────────────────────
+
+model AdminActionLog {
+  id        String   @id @default(cuid())
+  adminId   String   // user id of the admin who took the action
+  adminEmail String? // snapshot, in case the admin user is later deleted
+  action    String   // e.g. "song.delete", "auction.cancel", "user.role_change"
+  target    String?  // resource id targeted (songId, auctionId, userId, etc.)
+  metadata  Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([adminId, createdAt])
+  @@index([action, createdAt])
+  @@index([target])
+}
+
+// ─────────────────────────────────────────
+// EMAIL DRIP SEQUENCE TRACKING
+// ─────────────────────────────────────────
+
+model EmailDripSent {
+  id        String   @id @default(cuid())
+  userId    String
+  step      String   // "welcome_day_0", "tips_day_1", "payout_day_3"
+  sentAt    DateTime @default(now())
+
+  @@unique([userId, step])
+  @@index([sentAt])
+}
+
+// ─────────────────────────────────────────
+// STATUS PAGE INCIDENTS
+// ─────────────────────────────────────────
+
+model StatusIncident {
+  id          String        @id @default(cuid())
+  title       String
+  body        String?       @db.Text
+  severity    IncidentSeverity @default(INVESTIGATING)
+  resolvedAt  DateTime?
+  createdById String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([resolvedAt])
+  @@index([createdAt])
+}
+
+enum IncidentSeverity {
+  INVESTIGATING
+  IDENTIFIED
+  MONITORING
+  RESOLVED
+}
+
+// ─────────────────────────────────────────
+// SUPPORT TICKETS
+// ─────────────────────────────────────────
+
+model SupportTicket {
+  id           String   @id @default(cuid())
+  ticketCode   String   @unique // human-friendly e.g. "EMS-7H3K"
+  email        String
+  name         String?
+  subject      String
+  body         String   @db.Text
+  userId       String?  // null when sender isn't logged in
+  status       SupportTicketStatus @default(OPEN)
+  ip           String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([email])
+}
+
+enum SupportTicketStatus {
+  OPEN
+  REPLIED
+  RESOLVED
+  SPAM
 }

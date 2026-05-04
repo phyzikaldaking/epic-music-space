@@ -73,22 +73,16 @@ export async function POST(req: NextRequest) {
   }
 
   const limits = getActiveLimits(user);
-  if (limits.maxSongs === 0) {
-    return NextResponse.json(
-      { error: "Song uploads require a Pro plan or higher. Upgrade at /pricing." },
-      { status: 403 }
-    );
-  }
-
   const existingSongCount = await prisma.song.count({ where: { artistId: user.id } });
 
-  if (limits.maxSongs < 999_999) {
-    if (existingSongCount >= limits.maxSongs) {
-      return NextResponse.json(
-        { error: `You've reached your ${limits.maxSongs}-song limit. Upgrade your plan at /pricing.` },
-        { status: 403 }
-      );
-    }
+  if (limits.maxSongs < 999_999 && existingSongCount >= limits.maxSongs) {
+    return NextResponse.json(
+      {
+        error: `You've reached your ${limits.maxSongs}-song limit on your current plan. Upgrade at /pricing to upload more.`,
+        upgradeUrl: "/pricing",
+      },
+      { status: 403 }
+    );
   }
 
   let rawBody: unknown;

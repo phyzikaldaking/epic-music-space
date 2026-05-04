@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rateLimitInline";
 import { z } from "zod";
+import { sendArtistMilestoneEmail } from "@/lib/email";
 
 const schema = z.object({
   targetUserId: z.string().cuid(),
@@ -30,7 +31,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Cannot follow yourself" }, { status: 400 });
   }
 
+  // Verify the target actually exists before creating a follow record.
+  const target = await prisma.user.findUnique({
+    where: { id: targetUserId },
+    select: { id: true },
+  });
+  if (!target) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
   if (action === "follow") {
+    const priorCount = await prisma.userFollow.count({
+      where: { followingId: targetUserId },
+    });
     await prisma.userFollow.upsert({
       where: {
         followerId_followingId: {
@@ -41,6 +54,28 @@ export async function POST(req: NextRequest) {
       create: { followerId: session.user.id, followingId: targetUserId },
       update: {},
     });
+
+    // First-follower milestone email — only when target had zero followers.
+    if (priorCount === 0) {
+      void (async () => {
+        try {
+          const [target, follower] = await Promise.all([
+            prisma.user.findUnique({ where: { id: targetUserId }, select: { email: true, name: true, role: true } }),
+            prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } }),
+          ]);
+          if (target?.email && target.role !== "LISTENER") {
+            await sendArtistMilestoneEmail({
+              to: target.email,
+              artistName: target.name ?? "there",
+              kind: "first_follower",
+              followerName: follower?.name ?? "Someone",
+            });
+          }
+        } catch (err) {
+          console.warn("[follow] first-follower email failed", err);
+        }
+      })();
+    }
   } else {
     await prisma.userFollow.deleteMany({
       where: { followerId: session.user.id, followingId: targetUserId },

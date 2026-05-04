@@ -15,7 +15,7 @@ const UNLIMITED = 999_999;
 export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
   FREE: {
     maxLicenses: 1,
-    maxSongs: 0,
+    maxSongs: 1,
     canCreateVersus: false,
     canCreateLabel: false,
     canBoost: false,
@@ -34,7 +34,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
   },
   STARTER: {
     maxLicenses: 5,
-    maxSongs: 0,
+    maxSongs: 3,
     canCreateVersus: false,
     canCreateLabel: false,
     canBoost: false,

@@ -9,6 +9,7 @@ import DistrictBadge from "@/components/DistrictBadge";
 import SongCard from "@/components/SongCard";
 import FollowButton from "@/components/FollowButton";
 import TipArtistButton from "@/components/TipArtistButton";
+import PostCard from "@/components/PostCard";
 import { BADGE_META } from "@/lib/badges";
 import type { Metadata } from "next";
 
@@ -26,6 +27,8 @@ const getStudioByUsername = cache(async (username: string) =>
           name: true,
           image: true,
           role: true,
+          connectChargesEnabled: true,
+          connectPayoutsEnabled: true,
           songs: {
             where: { isActive: true },
             orderBy: { aiScore: "desc" },
@@ -39,6 +42,14 @@ const getStudioByUsername = cache(async (username: string) =>
           ownedLabel: { select: { id: true, name: true, slug: true } },
           _count: { select: { followers: true, following: true, songs: true } },
           badges: { orderBy: { awardedAt: "asc" } },
+          posts: {
+            where: { isPublished: true },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            include: {
+              _count: { select: { likes: true, comments: true } },
+            },
+          },
           roomsHosted: {
             where: { recordings: { some: { status: "READY" } } },
             orderBy: { startedAt: "desc" },
@@ -162,6 +173,17 @@ export default async function StudioProfilePage({ params }: Props) {
             <span className="rounded-full bg-white/8 border border-white/15 px-2.5 py-0.5 text-xs font-bold text-white/60">
               Lv.{studio.level}
             </span>
+            {user.connectChargesEnabled && user.connectPayoutsEnabled && (
+              <span
+                title="Identity verified via Stripe Connect"
+                className="inline-flex items-center gap-1 rounded-full border border-sky-500/40 bg-sky-500/12 px-2 py-0.5 text-[11px] font-bold text-sky-300"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M12 2l2.39 4.84 5.34.78-3.86 3.76.91 5.32L12 14.27l-4.78 2.43.91-5.32L4.27 7.62l5.34-.78z" />
+                </svg>
+                Verified
+              </span>
+            )}
             {user.ownedLabel && (
               <a
                 href={`/label/${user.ownedLabel.id}`}
@@ -290,6 +312,38 @@ export default async function StudioProfilePage({ params }: Props) {
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* Posts / Timeline */}
+      {user.posts.length > 0 && (
+        <section className="mt-10">
+          <h2 className="mb-4 text-xl font-semibold">Updates</h2>
+          <div className="space-y-4">
+            {user.posts.map((p) => (
+              <PostCard
+                key={p.id}
+                id={p.id}
+                body={p.body}
+                imageUrl={p.imageUrl}
+                muxPlaybackId={p.muxPlaybackId}
+                videoStatus={p.videoStatus}
+                videoAspectRatio={p.videoAspectRatio}
+                createdAt={p.createdAt}
+                author={{
+                  id: user.id,
+                  name: user.name,
+                  image: user.image,
+                  role: user.role,
+                  studio: { username: studio.username },
+                }}
+                likeCount={p._count.likes}
+                commentCount={p._count.comments}
+                likedByMe={false}
+                isOwner={isOwner}
+              />
+            ))}
           </div>
         </section>
       )}

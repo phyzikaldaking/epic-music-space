@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAdminAction, ipFromRequest } from "@/lib/adminAudit";
 
 /**
  * POST /api/admin/bootstrap
@@ -35,6 +36,14 @@ export async function POST(req: NextRequest) {
   await prisma.user.update({
     where: { id: session.user.id },
     data: { role: "ADMIN" },
+  });
+
+  await logAdminAction({
+    adminId: session.user.id,
+    adminEmail: session.user.email,
+    action: "user.bootstrap_admin",
+    target: session.user.id,
+    ip: ipFromRequest(req),
   });
 
   return NextResponse.json({

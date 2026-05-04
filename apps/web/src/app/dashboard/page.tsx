@@ -2,6 +2,9 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { Metadata } from "next";
+import ArtistWelcomeBanner from "@/components/ArtistWelcomeBanner";
+import NextPayoutWidget from "@/components/NextPayoutWidget";
+import ProviderDashboardCard from "@/components/ProviderDashboardCard";
 
 export const metadata: Metadata = {
   title: "Dashboard | Epic Music Space",
@@ -87,6 +90,34 @@ export default async function DashboardPage() {
   ]);
 
   if (!userRow) redirect("/auth/signin");
+
+  // Provider stats — only fetched for PRODUCER / ENGINEER / LABEL.
+  const isProvider = userRow.role === "PRODUCER" || userRow.role === "ENGINEER" || userRow.role === "LABEL";
+  const providerStats = isProvider
+    ? await (async () => {
+        const [listingsCount, ordersInProgress, ordersDelivered, grossAgg] = await Promise.all([
+          prisma.serviceListing.count({
+            where: { providerId: userId, status: "LIVE" },
+          }),
+          prisma.serviceOrder.count({
+            where: { providerId: userId, status: { in: ["PAID", "IN_PROGRESS", "REVISION_REQUESTED"] } },
+          }),
+          prisma.serviceOrder.count({
+            where: { providerId: userId, status: { in: ["DELIVERED", "COMPLETED"] } },
+          }),
+          prisma.serviceOrder.aggregate({
+            where: { providerId: userId, status: "COMPLETED" },
+            _sum: { priceUsd: true },
+          }),
+        ]);
+        return {
+          listingsCount,
+          ordersInProgress,
+          ordersDelivered,
+          grossLifetime: Number(grossAgg._sum.priceUsd ?? 0),
+        };
+      })()
+    : null;
 
   // Re-stitch the shape downstream code expects.
   const user = {
@@ -275,6 +306,36 @@ export default async function DashboardPage() {
             </Link>
           </div>
         </div>
+
+        {/* ── First-time artist welcome checklist ───────────────────────── */}
+        {isArtist && (
+          <ArtistWelcomeBanner
+            hasUploadedSong={user.songs.length > 0}
+            hasStudio={!!user.studio}
+            payoutsReady={connectStatus.onboardingComplete}
+          />
+        )}
+
+        {/* ── Producer / Engineer / Label storefront card ────────────────── */}
+        {isProvider && providerStats && (
+          <ProviderDashboardCard
+            role={user.role as "PRODUCER" | "ENGINEER" | "LABEL"}
+            listingsCount={providerStats.listingsCount}
+            ordersInProgress={providerStats.ordersInProgress}
+            ordersDelivered={providerStats.ordersDelivered}
+            grossLifetime={providerStats.grossLifetime}
+          />
+        )}
+
+        {/* ── Next payout widget (artists with at least one sale) ───────── */}
+        {isArtist && totalSongsSold > 0 && (
+          <div className="mb-8">
+            <NextPayoutWidget
+              pendingDollars={artistEarnings}
+              payoutsReady={connectStatus.onboardingComplete}
+            />
+          </div>
+        )}
 
         {/* ── Studio setup prompt (artists without a studio) ─────────────── */}
         {isArtist && !user.studio && (

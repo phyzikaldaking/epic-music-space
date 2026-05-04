@@ -1,16 +1,30 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCreatorWalletSummary } from "@/lib/wallet";
 import { stripe } from "@/lib/stripe";
+import { strictLimiter } from "@/lib/rateLimit";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const userId = session.user.id;
+
+  // Rate limit by user (and IP) to prevent rapid-fire transfer requests.
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  try {
+    await strictLimiter.consume(`payout:${userId}`);
+    await strictLimiter.consume(`payout-ip:${ip}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many payout requests. Try again in a minute." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
 
   const wallet = await getCreatorWalletSummary(userId);
 

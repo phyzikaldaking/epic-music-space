@@ -52,13 +52,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "A song cannot battle itself." }, { status: 400 });
   }
 
-  // Validate both songs exist
+  // Validate both songs exist and that the creator owns BOTH of them.
+  // (Cross-artist battles require an invite/consent flow we haven't built —
+  // until then, only own-catalog matchups are allowed so artists never get
+  // dragged into a battle without permission.)
   const [songA, songB] = await Promise.all([
     prisma.song.findUnique({ where: { id: songAId } }),
     prisma.song.findUnique({ where: { id: songBId } }),
   ]);
   if (!songA || !songB) {
     return NextResponse.json({ error: "One or both songs not found." }, { status: 404 });
+  }
+  if (!songA.isActive || !songB.isActive) {
+    return NextResponse.json({ error: "Inactive songs can't battle." }, { status: 400 });
+  }
+  if (songA.artistId !== session.user.id || songB.artistId !== session.user.id) {
+    return NextResponse.json(
+      { error: "You can only stage battles between songs you own. Cross-artist battles need consent (coming soon)." },
+      { status: 403 },
+    );
   }
 
   const endsAt = new Date(Date.now() + durationHours * 60 * 60 * 1000);

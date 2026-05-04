@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { logAdminAction, ipFromRequest } from "@/lib/adminAudit";
+import { checkAdminIpAllowlist } from "@/lib/adminGuard";
 
 export const runtime = "nodejs";
 
-function requireAdmin(role: string | undefined | null) {
+function requireAdmin(role: string | undefined | null, req: NextRequest) {
+  const ipBlock = checkAdminIpAllowlist(req);
+  if (ipBlock) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   if (role !== "ADMIN") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -14,7 +20,7 @@ function requireAdmin(role: string | undefined | null) {
 
 export async function GET(req: NextRequest) {
   const session = await auth();
-  const forbidden = requireAdmin(session?.user?.role);
+  const forbidden = requireAdmin(session?.user?.role, req);
   if (forbidden) return forbidden;
 
   const { searchParams } = req.nextUrl;
@@ -72,7 +78,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: NextRequest) {
   const session = await auth();
-  const forbidden = requireAdmin(session?.user?.role);
+  const forbidden = requireAdmin(session?.user?.role, req);
   if (forbidden) return forbidden;
 
   const body = await req.json().catch(() => ({}));
@@ -99,6 +105,17 @@ export async function PATCH(req: NextRequest) {
     data: data as Parameters<typeof prisma.user.update>[0]["data"],
     select: { id: true, role: true, subscriptionTier: true },
   });
+
+  if (session?.user?.id) {
+    await logAdminAction({
+      adminId: session.user.id,
+      adminEmail: session.user.email,
+      action: role ? "user.role_change" : "user.tier_change",
+      target: userId,
+      metadata: { role, subscriptionTier },
+      ip: ipFromRequest(req),
+    });
+  }
 
   return NextResponse.json({ user });
 }

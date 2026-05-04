@@ -69,6 +69,15 @@ const nextConfig = {
         protocol: "https",
         hostname: "images.unsplash.com",
       },
+      {
+        // Mux thumbnail/static-renditions for video posts
+        protocol: "https",
+        hostname: "image.mux.com",
+      },
+      {
+        protocol: "https",
+        hostname: "stream.mux.com",
+      },
     ],
   },
   webpack(config) {
@@ -94,4 +103,27 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+// Wrap with Sentry's Next.js plugin only when DSN is configured.
+// (The plugin is a no-op runtime import when SENTRY_DSN is unset, but we
+// guard at build-time too so unconfigured deploys don't try to upload
+// source maps and fail.)
+let exported = nextConfig;
+if (process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN) {
+  try {
+    const { withSentryConfig } = await import("@sentry/nextjs");
+    exported = withSentryConfig(nextConfig, {
+      silent: true,
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      widenClientFileUpload: true,
+      hideSourceMaps: true,
+      disableLogger: true,
+      automaticVercelMonitors: false,
+    });
+  } catch {
+    // @sentry/nextjs not installed at build time — fall through.
+  }
+}
+
+export default exported;
