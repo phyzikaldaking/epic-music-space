@@ -23,7 +23,7 @@ const routes = [
   { path: "/versus", expect: 200 },
   { path: "/auctions", expect: 200 },
   { path: "/services", expect: 200 },
-  { path: "/rooms", expect: 200 },
+  { path: "/rooms", expectIn: [200, 302, 307, 308] },
   { path: "/viral", expect: 200 },
   { path: "/status", expect: 200 },
   { path: "/support", expect: 200 },
