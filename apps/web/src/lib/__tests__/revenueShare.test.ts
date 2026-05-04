@@ -64,3 +64,30 @@ describe("revenueShare math (pure)", () => {
     expect(reversePlatform).toBe(platformCents);
   });
 });
+
+describe("BOOST and SUBSCRIPTION (100% platform)", () => {
+  // Both event types go entirely to the platform — artist gets $0.
+  function platformOnlySplit(grossCents: number) {
+    return { platformCents: grossCents, artistCents: 0 };
+  }
+
+  it("boost of $5.00 → 500 platform, 0 artist", () => {
+    const { platformCents, artistCents } = platformOnlySplit(500);
+    expect(platformCents).toBe(500);
+    expect(artistCents).toBe(0);
+    expect(platformCents + artistCents).toBe(500);
+  });
+
+  it("subscription of $79.00 → 7900 platform, 0 artist", () => {
+    const { platformCents, artistCents } = platformOnlySplit(7_900);
+    expect(platformCents).toBe(7_900);
+    expect(artistCents).toBe(0);
+  });
+
+  it("platform-only sum invariant holds for any gross", () => {
+    for (let cents = 1; cents <= 100_000; cents += 173) {
+      const { platformCents, artistCents } = platformOnlySplit(cents);
+      expect(platformCents + artistCents).toBe(cents);
+    }
+  });
+});

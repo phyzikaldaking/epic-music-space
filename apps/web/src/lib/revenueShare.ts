@@ -188,7 +188,7 @@ export async function recordBoost(opts: {
 
   const event = await db.revenueEvent.create({
     data: {
-      type: "AUCTION_WIN", // re-uses AUCTION_WIN bucket below — overridden by the create
+      type: "BOOST",
       songId: opts.songId,
       transactionId: opts.transactionId,
       grossCents,
@@ -218,7 +218,7 @@ export async function recordSubscription(opts: {
 
   const event = await db.revenueEvent.create({
     data: {
-      type: "AUCTION_WIN", // placeholder — see note below
+      type: "SUBSCRIPTION",
       transactionId: opts.transactionId,
       grossCents,
       splits: {

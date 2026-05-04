@@ -460,6 +460,8 @@ enum RevenueEventType {
   AD_PURCHASE
   STREAM_ROYALTY
   AUCTION_WIN
+  BOOST
+  SUBSCRIPTION
   REFUND        // negative gross — clawback
 }
 
