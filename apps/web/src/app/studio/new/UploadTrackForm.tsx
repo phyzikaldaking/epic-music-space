@@ -16,6 +16,8 @@ export default function UploadTrackForm() {
   const [description, setDescription] = useState("");
   const [licensePrice, setLicensePrice] = useState("9.99");
   const [allowFreeDownload, setAllowFreeDownload] = useState(false);
+  const [isLegacy, setIsLegacy] = useState(false);
+  const [originalReleaseYear, setOriginalReleaseYear] = useState("");
   const [revenueSharePct, setRevenueSharePct] = useState("10");
   const [totalLicenses, setTotalLicenses] = useState("100");
   const [bpm, setBpm] = useState("");
@@ -660,6 +662,45 @@ export default function UploadTrackForm() {
                 download regardless of this toggle. Turn ON only if you want
                 this track freely downloadable for promotion.
               </span>
+            </span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/4 p-4">
+            <input
+              type="checkbox"
+              checked={isLegacy}
+              onChange={(e) => setIsLegacy(e.target.checked)}
+              className="mt-1 h-4 w-4 cursor-pointer accent-amber-500"
+            />
+            <span className="flex-1">
+              <span className="block text-sm font-semibold text-amber-200">
+                Legacy / vault track
+              </span>
+              <span className="mt-1 block text-xs text-white/55">
+                For older catalog material — songs you released years ago,
+                back-when-I-used-to-rap material, archived demos. Legacy
+                tracks land in a separate &ldquo;Vault&rdquo; section on your
+                studio page and are excluded from Trending and the
+                Marketplace home so new releases stay current. Listeners can
+                still find, stream, and license them.
+              </span>
+              {isLegacy && (
+                <span className="mt-3 block">
+                  <span className="block text-[10px] font-bold uppercase tracking-widest text-amber-200/70 mb-1">
+                    Original release year (optional)
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1900}
+                    max={new Date().getFullYear()}
+                    value={originalReleaseYear}
+                    onChange={(e) => setOriginalReleaseYear(e.target.value)}
+                    placeholder="e.g. 2003"
+                    className="w-32 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm placeholder-white/25"
+                  />
+                </span>
+              )}
             </span>
           </label>
         </div>

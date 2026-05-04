@@ -30,8 +30,10 @@ const getStudioByUsername = cache(async (username: string) =>
           emailVerified: true,
           connectChargesEnabled: true,
           connectPayoutsEnabled: true,
+          // Current catalog only — legacy tracks rendered in a separate
+          // "Vault" section sourced via a parallel query below.
           songs: {
-            where: { isActive: true },
+            where: { isActive: true, isLegacy: false },
             orderBy: { aiScore: "desc" },
             take: 20,
           },
@@ -112,6 +114,14 @@ export default async function StudioProfilePage({ params }: Props) {
 
   const { user } = studio;
   const isOwner = session?.user?.id === user.id;
+
+  // Legacy / vault catalog — fetched separately so the main catalog query
+  // stays small and indexed by the (artistId, isLegacy) compound index.
+  const legacySongs = await prisma.song.findMany({
+    where: { artistId: user.id, isActive: true, isLegacy: true },
+    orderBy: [{ originalReleaseYear: "desc" }, { createdAt: "desc" }],
+    take: 50,
+  }).catch(() => [] as Awaited<ReturnType<typeof prisma.song.findMany>>);
 
   const follow =
     session?.user?.id && !isOwner
@@ -388,6 +398,60 @@ export default async function StudioProfilePage({ params }: Props) {
           </div>
         )}
       </section>
+
+      {/* Legacy / Vault — older catalog grouped separately so it doesn't
+          dominate "what's new from this artist." */}
+      {legacySongs.length > 0 && (
+        <section className="mt-12">
+          <details className="group" open={legacySongs.length <= 6}>
+            <summary className="flex cursor-pointer items-center justify-between rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/8 via-transparent to-transparent px-5 py-4 hover:bg-amber-500/12">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl" aria-hidden>📼</span>
+                <div>
+                  <h2 className="text-base font-bold text-amber-100">
+                    From the vault
+                  </h2>
+                  <p className="text-xs text-white/55">
+                    Legacy catalog · {legacySongs.length} track{legacySongs.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-bold uppercase tracking-widest text-amber-200/60 group-open:hidden">
+                show ↓
+              </span>
+              <span className="text-xs font-bold uppercase tracking-widest text-amber-200/60 hidden group-open:inline">
+                hide ↑
+              </span>
+            </summary>
+
+            <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {legacySongs.map((song) => (
+                <div key={song.id} className="relative">
+                  {song.originalReleaseYear && (
+                    <span className="absolute -top-2 left-3 z-10 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold tracking-widest text-amber-200">
+                      {song.originalReleaseYear}
+                    </span>
+                  )}
+                  <SongCard
+                    id={song.id}
+                    title={song.title}
+                    artist={song.artist}
+                    genre={song.genre}
+                    coverUrl={song.coverUrl}
+                    audioUrl={song.audioUrl}
+                    licensePrice={song.licensePrice.toString()}
+                    revenueSharePct={song.revenueSharePct.toString()}
+                    soldLicenses={song.soldLicenses}
+                    totalLicenses={song.totalLicenses}
+                    bpm={song.bpm}
+                    musicalKey={song.key}
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
+        </section>
+      )}
     </div>
   );
 }

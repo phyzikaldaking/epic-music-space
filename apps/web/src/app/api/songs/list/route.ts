@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
   const songs = await prisma.song.findMany({
     where: {
       isActive: true,
+      isLegacy: false,
       ...(genre ? { genre: { equals: genre, mode: "insensitive" } } : {}),
       ...(search
         ? {

@@ -181,6 +181,12 @@ model Song {
   // through the proxy but cannot download the underlying file. License
   // purchase or artist opt-in (true) is required for download.
   allowFreeDownload Boolean @default(false)
+  // Legacy / vault tracks: older catalog material (e.g. "back when I used to
+  // rap"). Rendered in a separate Legacy section on /studio/[username] and
+  // excluded from /trending + /marketplace defaults so the new-releases
+  // surface stays current.
+  isLegacy            Boolean @default(false)
+  originalReleaseYear Int?    // optional context for legacy tracks (e.g. 2003)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   artistId String

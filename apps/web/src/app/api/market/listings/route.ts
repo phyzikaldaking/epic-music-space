@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     "market.listings.findMany",
     () =>
       prisma.song.findMany({
-        where: { isActive: true },
+        where: { isActive: true, isLegacy: false },
         orderBy: [{ aiScore: "desc" }, { createdAt: "desc" }],
         select: {
           id: true,

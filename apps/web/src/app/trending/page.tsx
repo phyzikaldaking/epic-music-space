@@ -37,7 +37,7 @@ async function getTrending(): Promise<TrendingSong[]> {
 
   // Fetch top candidates by AI score, then enrich with 7-day plays + sales.
   const candidates = await prisma.song.findMany({
-    where: { isActive: true },
+    where: { isActive: true, isLegacy: false },
     orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
     take: 60,
     select: {
