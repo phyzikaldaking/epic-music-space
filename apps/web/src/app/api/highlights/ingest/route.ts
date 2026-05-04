@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { buildClipCaption, buildHighlightTitle, scoreHighlight } from "@/lib/highlights";
+import { requireInternalOrAuth, internalAuthHeaders } from "@/lib/internalAuth";
+import { rateLimit } from "@/lib/rateLimitInline";
 
 const schema = z.object({
   eventType: z.enum(["leader_change", "tip", "boost", "crowd", "finale", "reaction"]),
@@ -22,7 +24,7 @@ async function callInternalApi(path: string, body: unknown, req: Request) {
   const origin = new URL(req.url).origin;
   const response = await fetch(`${origin}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...internalAuthHeaders() },
     body: JSON.stringify(body),
   });
 
@@ -31,6 +33,15 @@ async function callInternalApi(path: string, body: unknown, req: Request) {
 }
 
 export async function POST(req: Request) {
+  const authz = await requireInternalOrAuth(req);
+  if (!authz.ok) {
+    return NextResponse.json({ error: authz.error }, { status: authz.status });
+  }
+
+  const limitKey = authz.userId ?? "internal";
+  const blocked = await rateLimit("strict", `highlights:ingest:${limitKey}`);
+  if (blocked) return blocked;
+
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid highlight payload" }, { status: 400 });

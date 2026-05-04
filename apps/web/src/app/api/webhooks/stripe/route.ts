@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { stripe, getStripeWebhookSecret } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { TaxFormStatus } from "@ems/db";
 import { enqueueNotification } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { track } from "@/lib/analytics";
+import { CACHE_TAGS } from "@/lib/cacheTags";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -57,6 +59,34 @@ export async function POST(req: NextRequest) {
     case "account.updated": {
       const account = event.data.object as Stripe.Account;
       await handleConnectAccountUpdated(account);
+      break;
+    }
+    case "account.application.deauthorized": {
+      // The event delivers an Application, but the connected account id is
+      // the top-level event.account field.
+      if (event.account) await handleConnectAccountDeauthorized(event.account);
+      break;
+    }
+    case "charge.refunded": {
+      const charge = event.data.object as Stripe.Charge;
+      await handleChargeRefunded(charge);
+      break;
+    }
+    case "charge.dispute.created":
+    case "charge.dispute.updated":
+    case "charge.dispute.closed": {
+      const dispute = event.data.object as Stripe.Dispute;
+      await handleChargeDispute(dispute, event.type);
+      break;
+    }
+    case "payment_intent.canceled": {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      await handlePaymentIntentCanceled(pi);
+      break;
+    }
+    case "customer.deleted": {
+      const customer = event.data.object as Stripe.Customer;
+      await handleCustomerDeleted(customer);
       break;
     }
     default:
@@ -151,6 +181,10 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
     where: { id: song.id },
     data: { soldLicenses: { increment: 1 } },
   });
+
+  // License sale changed soldLicenses — bust home + track caches.
+  revalidateTag(CACHE_TAGS.songs);
+  revalidateTag(CACHE_TAGS.homepage);
 
   await prisma.transaction.update({
     where: { id: existing.id },
@@ -328,4 +362,172 @@ function resolveTaxFormStatus(account: Stripe.Account): TaxFormStatus {
   if (account.charges_enabled && account.payouts_enabled) return TaxFormStatus.COLLECTED;
 
   return TaxFormStatus.PENDING;
+}
+
+// ─── Refund / dispute / cancellation / customer deletion handlers ─────────
+
+async function handleChargeRefunded(charge: Stripe.Charge) {
+  const piId = typeof charge.payment_intent === "string"
+    ? charge.payment_intent
+    : charge.payment_intent?.id;
+
+  // Find the transaction for this PI and mark it refunded.
+  const transaction = await prisma.transaction.findFirst({
+    where: piId ? { stripePaymentIntentId: piId } : { stripeSessionId: charge.id },
+    select: { id: true, userId: true, songId: true, type: true, amount: true, status: true },
+  });
+  if (!transaction) {
+    console.warn("[stripe-webhook] charge.refunded: no matching transaction", charge.id);
+    return;
+  }
+  if (transaction.status === "REFUNDED") return;
+
+  const fullyRefunded = charge.amount_refunded >= charge.amount;
+
+  await prisma.transaction.update({
+    where: { id: transaction.id },
+    data: {
+      status: fullyRefunded ? "REFUNDED" : "SUCCEEDED",
+      metadata: {
+        refundedAmount: charge.amount_refunded / 100,
+        refundedAt: new Date().toISOString(),
+        fullyRefunded,
+      },
+    },
+  });
+
+  // If a license-purchase transaction is fully refunded, revoke the license.
+  if (fullyRefunded && transaction.type === "LICENSE_PURCHASE" && transaction.songId) {
+    const txWithLicense = await prisma.transaction.findUnique({
+      where: { id: transaction.id },
+      select: { licenseTokenId: true },
+    });
+    if (txWithLicense?.licenseTokenId) {
+      await prisma.licenseToken.update({
+        where: { id: txWithLicense.licenseTokenId },
+        data: { status: "REVOKED" },
+      });
+    }
+    await prisma.song.update({
+      where: { id: transaction.songId },
+      data: { soldLicenses: { decrement: 1 } },
+    });
+    revalidateTag(CACHE_TAGS.songs);
+    revalidateTag(CACHE_TAGS.homepage);
+  }
+
+  await enqueueNotification({
+    userId: transaction.userId,
+    type: "REFUND",
+    title: "Refund processed",
+    body: `$${(charge.amount_refunded / 100).toFixed(2)} was refunded.`,
+    metadata: { transactionId: transaction.id },
+  });
+}
+
+async function handleChargeDispute(dispute: Stripe.Dispute, eventType: string) {
+  const piId = typeof dispute.payment_intent === "string"
+    ? dispute.payment_intent
+    : dispute.payment_intent?.id;
+  if (!piId) return;
+
+  const transaction = await prisma.transaction.findFirst({
+    where: { stripePaymentIntentId: piId },
+    select: { id: true, userId: true, songId: true, type: true },
+  });
+  if (!transaction) return;
+
+  const isLost = dispute.status === "lost";
+  const isWon = dispute.status === "won";
+
+  await prisma.transaction.update({
+    where: { id: transaction.id },
+    data: {
+      // PaymentStatus has no DISPUTED state — keep SUCCEEDED while open and
+      // flip to REFUNDED once a dispute is lost. The dispute metadata captures
+      // the lifecycle for audit.
+      status: isLost ? "REFUNDED" : "SUCCEEDED",
+      metadata: {
+        disputeId: dispute.id,
+        disputeStatus: dispute.status,
+        disputeReason: dispute.reason,
+        eventType,
+      },
+    },
+  });
+
+  // Lost dispute on a license sale: revoke + decrement supply.
+  if (isLost && transaction.type === "LICENSE_PURCHASE" && transaction.songId) {
+    const txWithLicense = await prisma.transaction.findUnique({
+      where: { id: transaction.id },
+      select: { licenseTokenId: true },
+    });
+    if (txWithLicense?.licenseTokenId) {
+      await prisma.licenseToken.update({
+        where: { id: txWithLicense.licenseTokenId },
+        data: { status: "REVOKED" },
+      });
+    }
+    await prisma.song.update({
+      where: { id: transaction.songId },
+      data: { soldLicenses: { decrement: 1 } },
+    });
+    revalidateTag(CACHE_TAGS.songs);
+    revalidateTag(CACHE_TAGS.homepage);
+  }
+
+  if (eventType === "charge.dispute.created") {
+    await enqueueNotification({
+      userId: transaction.userId,
+      type: "DISPUTE",
+      title: "Payment disputed",
+      body: `A chargeback was filed on your transaction. Reason: ${dispute.reason}.`,
+      metadata: { transactionId: transaction.id, disputeId: dispute.id },
+    });
+  }
+}
+
+async function handlePaymentIntentCanceled(pi: Stripe.PaymentIntent) {
+  // PaymentStatus has no CANCELLED state — flip to FAILED with a metadata
+  // hint so dashboards can distinguish a cancellation from a hard failure.
+  await prisma.transaction.updateMany({
+    where: { stripePaymentIntentId: pi.id, status: { not: "SUCCEEDED" } },
+    data: {
+      status: "FAILED",
+      metadata: { canceled: true, cancellationReason: pi.cancellation_reason ?? null },
+    },
+  });
+}
+
+async function handleCustomerDeleted(customer: Stripe.Customer) {
+  // Stripe customer was deleted. Clear our reference so future checkouts mint
+  // a fresh customer; downgrade any active subscription to FREE.
+  const user = await prisma.user.findUnique({
+    where: { stripeCustomerId: customer.id },
+    select: { id: true },
+  });
+  if (!user) return;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      stripeCustomerId: null,
+      subscriptionTier: "FREE",
+    },
+  });
+}
+
+async function handleConnectAccountDeauthorized(connectedAccountId: string) {
+  // The artist disconnected their Stripe Connect account from us.
+  // Clear our copy of the connected-account id and the gating flags so the
+  // dashboard tells them to reconnect before payouts can resume.
+  await prisma.user.updateMany({
+    where: { stripeConnectId: connectedAccountId },
+    data: {
+      stripeConnectId: null,
+      connectChargesEnabled: false,
+      connectPayoutsEnabled: false,
+      connectRequirements: undefined,
+    },
+  });
 }

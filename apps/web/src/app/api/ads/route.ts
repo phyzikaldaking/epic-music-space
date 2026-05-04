@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { rateLimit } from "@/lib/rateLimitInline";
 import { z } from "zod";
 import { getSiteUrl } from "@/lib/site";
 
@@ -40,6 +41,9 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await rateLimit("strict", `ads:purchase:${session.user.id}`);
+  if (blocked) return blocked;
 
   const body = await req.json();
   const parsed = createAdSchema.safeParse(body);

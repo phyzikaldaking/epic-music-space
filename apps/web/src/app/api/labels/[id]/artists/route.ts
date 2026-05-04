@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rateLimitInline";
 import { z } from "zod";
 
 interface Params {
@@ -22,6 +23,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await rateLimit("moderate", `labels:offer:${session.user.id}`);
+  if (blocked) return blocked;
 
   const { id: labelId } = await params;
   const label = await prisma.label.findUnique({ where: { id: labelId } });

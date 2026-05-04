@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rateLimitInline";
 import { z } from "zod";
 
 const upsertSchema = z.object({
@@ -67,6 +68,9 @@ export async function PUT(req: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await rateLimit("moderate", `studio:upsert:${session.user.id}`);
+  if (blocked) return blocked;
 
   const body = await req.json();
   const parsed = upsertSchema.safeParse(body);

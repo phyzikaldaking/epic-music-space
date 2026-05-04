@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
@@ -6,6 +7,7 @@ import { calculateAiScore, scoreToDistrict } from "@/lib/scoring";
 import { moderateLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
+import { CACHE_TAGS } from "@/lib/cacheTags";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -81,62 +83,55 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "votedSongId must be one of the two songs in this match." }, { status: 400 });
   }
 
-  // Upsert vote (users can change their vote)
-  await prisma.versusVote.upsert({
-    where: { matchId_userId: { matchId, userId: session.user.id } },
-    create: { matchId, userId: session.user.id, votedSongId },
-    update: { votedSongId },
+  // Single transaction: vote upsert + recount + match update + score recompute.
+  // Both songs fetched in one findMany (was 2 sequential findUniques);
+  // both score updates happen inside the same tx so a vote either fully
+  // applies or fully rolls back.
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.versusVote.upsert({
+      where: { matchId_userId: { matchId, userId: session.user.id } },
+      create: { matchId, userId: session.user.id, votedSongId },
+      update: { votedSongId },
+    });
+
+    const [votesA, votesB] = await Promise.all([
+      tx.versusVote.count({ where: { matchId, votedSongId: match.songAId } }),
+      tx.versusVote.count({ where: { matchId, votedSongId: match.songBId } }),
+    ]);
+
+    const matchRow = await tx.versusMatch.update({
+      where: { id: matchId },
+      data: { votesA, votesB },
+    });
+
+    const songs = await tx.song.findMany({
+      where: { id: { in: [match.songAId, match.songBId] } },
+    });
+
+    for (const song of songs) {
+      const score = calculateAiScore({
+        soldLicenses: song.soldLicenses,
+        totalLicenses: song.totalLicenses,
+        streamCount: song.streamCount,
+        versusWins: song.versusWins,
+        versusLosses: song.versusLosses,
+        aiSentiment: 0.5,
+        boostScore: song.boostScore,
+        createdAt: song.createdAt,
+      });
+      await tx.song.update({
+        where: { id: song.id },
+        data: { aiScore: score, district: scoreToDistrict(score) },
+      });
+    }
+
+    return matchRow;
   });
 
-  // Recount votes
-  const [votesA, votesB] = await Promise.all([
-    prisma.versusVote.count({ where: { matchId, votedSongId: match.songAId } }),
-    prisma.versusVote.count({ where: { matchId, votedSongId: match.songBId } }),
-  ]);
-
-  const updated = await prisma.versusMatch.update({
-    where: { id: matchId },
-    data: { votesA, votesB },
-  });
-
-  // Update AI scores for both songs after vote change
-  const [songA, songB] = await Promise.all([
-    prisma.song.findUnique({ where: { id: match.songAId } }),
-    prisma.song.findUnique({ where: { id: match.songBId } }),
-  ]);
-
-  if (songA) {
-    const score = calculateAiScore({
-      soldLicenses: songA.soldLicenses,
-      totalLicenses: songA.totalLicenses,
-      streamCount: songA.streamCount,
-      versusWins: songA.versusWins,
-      versusLosses: songA.versusLosses,
-      aiSentiment: 0.5,
-      boostScore: songA.boostScore,
-      createdAt: songA.createdAt,
-    });
-    await prisma.song.update({
-      where: { id: match.songAId },
-      data: { aiScore: score, district: scoreToDistrict(score) },
-    });
-  }
-  if (songB) {
-    const score = calculateAiScore({
-      soldLicenses: songB.soldLicenses,
-      totalLicenses: songB.totalLicenses,
-      streamCount: songB.streamCount,
-      versusWins: songB.versusWins,
-      versusLosses: songB.versusLosses,
-      aiSentiment: 0.5,
-      boostScore: songB.boostScore,
-      createdAt: songB.createdAt,
-    });
-    await prisma.song.update({
-      where: { id: match.songBId },
-      data: { aiScore: score, district: scoreToDistrict(score) },
-    });
-  }
+  // Vote shifted scores — bust homepage / track / battles caches.
+  revalidateTag(CACHE_TAGS.songs);
+  revalidateTag(CACHE_TAGS.battles);
+  revalidateTag(CACHE_TAGS.homepage);
 
   // Track vote event
   await enqueueAnalytics({

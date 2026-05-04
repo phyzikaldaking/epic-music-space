@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { unstable_cache } from "next/cache";
 import { auth } from "@/lib/auth";
 import { getDemoTracks } from "@/lib/demoTracks";
+import { CACHE_TAGS } from "@/lib/cacheTags";
 import VersusCard from "@/components/VersusCard";
 import BattleRoyaleCard from "@/components/BattleRoyaleCard";
 import CreateBattleForm from "@/components/CreateBattleForm";
@@ -56,7 +57,7 @@ const getActiveBattles = unstable_cache(
     return { matches, royales };
   },
   ["versus-active-battles"],
-  { revalidate: 30 },
+  { revalidate: 30, tags: [CACHE_TAGS.battles] },
 );
 
 export default async function VersusPage() {

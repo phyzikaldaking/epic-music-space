@@ -11,6 +11,7 @@ import LicenseButton from "@/components/LicenseButton";
 import TrackActions from "@/components/TrackActions";
 import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
+import { CACHE_TAGS } from "@/lib/cacheTags";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -83,7 +84,7 @@ const getTrack = unstable_cache(
     return null;
   },
   ["track-detail"],
-  { revalidate: 300 },
+  { revalidate: 300, tags: [CACHE_TAGS.songs] },
 );
 
 const getRelatedTracks = unstable_cache(
@@ -111,7 +112,7 @@ const getRelatedTracks = unstable_cache(
     }
   },
   ["track-related"],
-  { revalidate: 300 },
+  { revalidate: 300, tags: [CACHE_TAGS.songs] },
 );
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

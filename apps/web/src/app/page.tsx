@@ -6,6 +6,7 @@ import AudioPlayer from "@/components/AudioPlayer";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { prisma } from "@/lib/prisma";
 import { formatPrice } from "@ems/utils";
+import { CACHE_TAGS } from "@/lib/cacheTags";
 
 export const revalidate = 60;
 
@@ -397,7 +398,7 @@ const getHomeData = unstable_cache(
     }
   },
   ["homepage-premium-studio-v1"],
-  { revalidate: 3600 },
+  { revalidate: 3600, tags: [CACHE_TAGS.homepage, CACHE_TAGS.songs] },
 );
 
 function hasUsableDatabaseUrl() {

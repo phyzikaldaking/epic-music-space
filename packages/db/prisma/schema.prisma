@@ -443,6 +443,7 @@ model Auction {
   @@index([status, endsAt])
   @@index([songId])
   @@index([sellerId])
+  @@index([sellerId, status])
 }
 
 enum AuctionStatus {
@@ -810,4 +811,5 @@ model RoomMessage {
   user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([roomId, createdAt])
+  @@index([userId, createdAt])
 }

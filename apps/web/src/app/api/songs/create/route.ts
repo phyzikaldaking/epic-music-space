@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import { cacheDel, CACHE_KEYS } from "@/lib/redis";
 import { enqueueAiScoring, enqueueAnalytics } from "@/lib/queues";
 import { getActiveLimits } from "@/lib/tierLimits";
 import { track } from "@/lib/analytics";
+import { CACHE_TAGS } from "@/lib/cacheTags";
 
 const createSongSchema = z.object({
   title: z.string().min(1).max(200),
@@ -152,6 +154,10 @@ export async function POST(req: NextRequest) {
       },
     });
   }
+
+  // Bust cached homepage / track / songs surfaces so the new track shows up immediately.
+  revalidateTag(CACHE_TAGS.songs);
+  revalidateTag(CACHE_TAGS.homepage);
 
   return NextResponse.json(
     {

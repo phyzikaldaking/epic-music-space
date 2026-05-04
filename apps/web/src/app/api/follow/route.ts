@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rateLimitInline";
 import { z } from "zod";
 
 const schema = z.object({
@@ -13,6 +14,9 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const blocked = await rateLimit("moderate", `follow:${session.user.id}`);
+  if (blocked) return blocked;
 
   const body = await req.json();
   const parsed = schema.safeParse(body);
