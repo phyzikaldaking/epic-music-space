@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 
 interface MySong {
   id: string;
@@ -64,14 +65,14 @@ export default function VersusNewClient({ mySongs, suggestions }: Props) {
         <p className="text-2xl">⚔️</p>
         <h2 className="mt-2 text-xl font-bold">Challenge sent</h2>
         <p className="mt-1 text-sm text-white/65">
-          Opponent has 48 hours to pick a track and accept. We'll email you when they do.
+          Opponent has 48 hours to pick a track and accept. We&apos;ll email you when they do.
         </p>
-        <a
+        <Link
           href="/versus/inbox"
           className="mt-4 inline-block rounded-xl bg-brand-500 px-5 py-2 text-sm font-bold hover:bg-brand-600"
         >
           View my inbox →
-        </a>
+        </Link>
       </div>
     );
   }

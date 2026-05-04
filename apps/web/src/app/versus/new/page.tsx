@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -29,12 +30,12 @@ export default async function VersusNewPage() {
         <p className="mt-2 text-sm text-white/55">
           Versus battles need at least one of your own tracks. Upload, then come back.
         </p>
-        <a
+        <Link
           href="/studio/new"
           className="mt-6 inline-block rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold hover:bg-brand-600"
         >
           Upload a track
-        </a>
+        </Link>
       </div>
     );
   }
