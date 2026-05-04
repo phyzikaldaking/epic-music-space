@@ -87,7 +87,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   // Host UI: change-track picker + recording state
   const [pickerOpen, setPickerOpen] = useState(false);
   const [hostSongs, setHostSongs] = useState<HostSong[]>([]);
-  const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [_recordingId, setRecordingId] = useState<string | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<"IDLE" | "STARTING" | "RECORDING" | "STOPPING">("IDLE");
 
   const lkRoomRef = useRef<Room | null>(null);

@@ -7,7 +7,7 @@ import { enqueueNotification } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { track } from "@/lib/analytics";
 import { CACHE_TAGS } from "@/lib/cacheTags";
-import { recordLicenseSale, recordTip, recordAdPurchase, recordRefund } from "@/lib/revenueShare";
+import { recordLicenseSale, recordTip, recordAdPurchase, recordRefund, recordAuctionWin, recordBoost, recordSubscription } from "@/lib/revenueShare";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -23,6 +23,20 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[stripe-webhook] Invalid signature", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  }
+
+  // Event-level dedupe: if Stripe redelivers the same event (network blip,
+  // 5xx response, manual replay) the second pass is a no-op.
+  try {
+    await prisma.processedWebhook.create({
+      data: { source: "stripe", eventId: event.id },
+    });
+  } catch (err) {
+    if (String((err as Error)?.message ?? "").includes("Unique constraint")) {
+      return NextResponse.json({ received: true, deduped: true });
+    }
+    // Non-unique-constraint failures aren't fatal — continue processing.
+    console.warn("[stripe-webhook] dedupe insert failed", err);
   }
 
   switch (event.type) {
@@ -226,12 +240,21 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
   try {
     const artist = await prisma.user.findUnique({ where: { id: song.artistId } });
     if (artist?.stripeConnectId && payoutAmount > 0) {
-      await stripe.transfers.create({
-        amount: Math.round(payoutAmount * 100),
-        currency: "usd",
-        destination: artist.stripeConnectId,
-        metadata: { songId: song.id, licenseId: license.id },
-      });
+      // Direct-charge + manual-transfer flow: the buyer's full payment lands
+      // in the platform Stripe balance, and we transfer only the artist's
+      // share. The remainder stays with the platform — that's our fee. No
+      // application_fee_amount is needed (that's a destination-charges
+      // concept). Idempotent via the transactionId in idempotencyKey so a
+      // retried webhook doesn't double-pay.
+      await stripe.transfers.create(
+        {
+          amount: Math.round(payoutAmount * 100),
+          currency: "usd",
+          destination: artist.stripeConnectId,
+          metadata: { songId: song.id, licenseId: license.id, transactionId: existing.id },
+        },
+        { idempotencyKey: `license-transfer:${existing.id}` },
+      );
       await prisma.payout.updateMany({
         where: { userId: artist.id, songId: song.id, licenseTokenId: license.id },
         data: { status: "PAID", paidAt: new Date() },
@@ -265,8 +288,19 @@ async function handleSubscriptionCheckoutCompleted(session: Stripe.Checkout.Sess
   if (!userId || !tier) return;
   const subscriptionId = typeof session.subscription === "string" ? session.subscription : (session.subscription?.id ?? null);
   const customerId = typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null);
+  const grossDollars = (session.amount_total ?? 0) / 100;
   await prisma.user.update({ where: { id: userId }, data: { subscriptionTier: (TIER_MAP[tier] ?? "STARTER") as never, ...(customerId ? { stripeCustomerId: customerId } : {}) } });
-  await prisma.transaction.create({ data: { userId, amount: 0, type: "SUBSCRIPTION", status: "SUCCEEDED", stripeSessionId: session.id, stripePaymentIntentId: subscriptionId ?? undefined, metadata: { stripeCustomerId: customerId, tier, subscriptionId } } });
+  const tx = await prisma.transaction.create({ data: { userId, amount: grossDollars, type: "SUBSCRIPTION", status: "SUCCEEDED", stripeSessionId: session.id, stripePaymentIntentId: subscriptionId ?? undefined, metadata: { stripeCustomerId: customerId, tier, subscriptionId } } });
+
+  if (grossDollars > 0) {
+    try {
+      await recordSubscription({ userId, transactionId: tx.id, grossDollars });
+    } catch (err) {
+      if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+        console.warn("[stripe-webhook] subscription ledger write failed", err);
+      }
+    }
+  }
 }
 async function handleSubscriptionChange(sub: Stripe.Subscription, eventType: string) {
   const customerId = sub.customer as string;
@@ -285,10 +319,18 @@ async function handleBoostCheckoutCompleted(session: Stripe.Checkout.Session) {
   const existing = await prisma.transaction.findUnique({ where: { stripeSessionId: session.id } });
   if (existing?.status === "SUCCEEDED") return;
   const points = Number(boostPoints);
-  await prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     await tx.song.update({ where: { id: songId }, data: { boostScore: { increment: points } } });
-    await tx.transaction.update({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
+    return tx.transaction.update({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
   });
+
+  try {
+    await recordBoost({ songId, buyerId: userId, transactionId: updated.id, grossDollars: Number(updated.amount) });
+  } catch (err) {
+    if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+      console.warn("[stripe-webhook] boost ledger write failed", err);
+    }
+  }
 }
 async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
   await prisma.transaction.updateMany({ where: { stripeSessionId: session.id, status: "PENDING" }, data: { status: "FAILED" } });
@@ -321,6 +363,34 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
 }
 async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Session) {
   await prisma.transaction.updateMany({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
+
+  // Look up the auction to find seller + song so we can credit the seller.
+  const txRow = await prisma.transaction.findUnique({
+    where: { stripeSessionId: session.id },
+    select: { id: true, amount: true, songId: true, metadata: true },
+  });
+  const auctionId = (txRow?.metadata as { auctionId?: string } | null | undefined)?.auctionId
+    ?? session.metadata?.auctionId;
+  if (!txRow || !auctionId) return;
+
+  const auction = await prisma.auction.findUnique({
+    where: { id: auctionId },
+    select: { sellerId: true, songId: true },
+  });
+  if (!auction) return;
+
+  try {
+    await recordAuctionWin({
+      songId: auction.songId ?? txRow.songId ?? null,
+      sellerId: auction.sellerId,
+      transactionId: txRow.id,
+      grossDollars: Number(txRow.amount),
+    });
+  } catch (err) {
+    if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+      console.warn("[stripe-webhook] auction ledger write failed", err);
+    }
+  }
 }
 async function handleAdPurchaseCompleted(session: Stripe.Checkout.Session) {
   const { adId, userId } = session.metadata ?? {};
@@ -504,7 +574,7 @@ async function handleChargeDispute(dispute: Stripe.Dispute, eventType: string) {
   if (!transaction) return;
 
   const isLost = dispute.status === "lost";
-  const isWon = dispute.status === "won";
+  const _isWon = dispute.status === "won";
 
   await prisma.transaction.update({
     where: { id: transaction.id },
