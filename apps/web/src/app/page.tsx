@@ -164,19 +164,20 @@ const premiumHomeCss = `
 .vc-hero { min-height: 100vh; background: #050507; }
 .vc-studio-photo {
   opacity: 0;
-  filter: brightness(0.52) contrast(1.18) saturate(0.88);
-  transform: scale(1.03);
+  filter: brightness(0.28) contrast(1.28) saturate(0.65) hue-rotate(10deg);
+  transform: scale(1.10);
   animation:
-    vc-photo-fade-in 2s ease-out forwards,
-    vc-photo-breathe 18s ease-in-out 2s infinite alternate;
+    vc-photo-fade-in 3.8s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+    vc-photo-breathe 22s ease-in-out 3.8s infinite alternate;
 }
 @keyframes vc-photo-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  0%   { opacity: 0;   transform: scale(1.10); filter: brightness(0.20) contrast(1.32) saturate(0.55) hue-rotate(14deg); }
+  60%  { opacity: 0.7; }
+  100% { opacity: 1;   transform: scale(1.03); filter: brightness(0.50) contrast(1.18) saturate(0.82) hue-rotate(6deg); }
 }
 @keyframes vc-photo-breathe {
-  0% { filter: brightness(0.48) contrast(1.16) saturate(0.84); transform: scale(1.03); }
-  100% { filter: brightness(0.58) contrast(1.22) saturate(0.96); transform: scale(1.07); }
+  0%   { filter: brightness(0.48) contrast(1.16) saturate(0.80) hue-rotate(5deg); transform: scale(1.03); }
+  100% { filter: brightness(0.56) contrast(1.22) saturate(0.88) hue-rotate(8deg); transform: scale(1.06); }
 }
 .vc-studio-tint {
   background: linear-gradient(135deg, rgba(5,5,8,0.36), rgba(11,26,31,0.26), rgba(93,72,20,0.20));
@@ -509,13 +510,16 @@ export default async function HomePage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           className="vc-studio-photo"
-          src="https://images.unsplash.com/photo-1559825481-12a05cc00344?w=2600&q=85&auto=format&fit=crop"
+          src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=2600&q=90&auto=format&fit=crop&crop=center"
           alt=""
           aria-hidden="true"
+          loading="eager"
+          fetchPriority="high"
         />
         <div className="vc-studio-tint" aria-hidden="true" />
         <div className="vc-studio-overlay" aria-hidden="true" />
         <div className="vc-studio-scan" aria-hidden="true" />
+        <div className="vc-grain" aria-hidden="true" />
         <div className="vc-grid-floor" aria-hidden="true" />
         <div className="vc-horizon" aria-hidden="true" />
 
