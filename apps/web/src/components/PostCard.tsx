@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import MuxPlayer from "@mux/mux-player-react/lazy";
@@ -42,6 +42,48 @@ export default function PostCard(props: PostCardProps) {
   const [likes, setLikes] = useState(props.likeCount);
   const [busy, setBusy] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const [videoStatus, setVideoStatus] = useState(props.videoStatus);
+  const [muxPlaybackId, setMuxPlaybackId] = useState(props.muxPlaybackId);
+  const [videoAspectRatio, setVideoAspectRatio] = useState(props.videoAspectRatio);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Poll the post API while the video is uploading/processing so the user
+  // sees the player auto-appear without having to refresh. Stops once the
+  // video is READY/FAILED or the component unmounts. Backs off after 5
+  // minutes of polling (Mux usually finishes well under a minute).
+  useEffect(() => {
+    if (videoStatus !== "UPLOADING" && videoStatus !== "PROCESSING") return;
+    let elapsedMs = 0;
+    const intervalMs = 4000;
+    const giveUpAfterMs = 5 * 60 * 1000;
+    pollRef.current = setInterval(async () => {
+      elapsedMs += intervalMs;
+      if (elapsedMs > giveUpAfterMs) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/posts/${props.id}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          videoStatus?: PostCardProps["videoStatus"];
+          muxPlaybackId?: string | null;
+          videoAspectRatio?: string | null;
+        };
+        if (data.videoStatus) setVideoStatus(data.videoStatus);
+        if (data.muxPlaybackId) setMuxPlaybackId(data.muxPlaybackId);
+        if (data.videoAspectRatio) setVideoAspectRatio(data.videoAspectRatio);
+        if (data.videoStatus === "READY" || data.videoStatus === "FAILED") {
+          if (pollRef.current) clearInterval(pollRef.current);
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+    }, intervalMs);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [props.id, videoStatus]);
 
   const profileHref = props.author.studio?.username
     ? `/studio/${props.author.studio.username}`
@@ -143,28 +185,28 @@ export default function PostCard(props: PostCardProps) {
         </div>
       )}
 
-      {props.videoStatus !== "NONE" && (
+      {videoStatus !== "NONE" && (
         <div className="mt-3 overflow-hidden rounded-xl border border-white/8 bg-black">
-          {props.videoStatus === "READY" && props.muxPlaybackId ? (
+          {videoStatus === "READY" && muxPlaybackId ? (
             <MuxPlayer
-              playbackId={props.muxPlaybackId}
+              playbackId={muxPlaybackId}
               streamType="on-demand"
               accentColor="#6C5CE7"
               style={{
-                aspectRatio: props.videoAspectRatio?.replace(":", "/") ?? "16/9",
+                aspectRatio: videoAspectRatio?.replace(":", "/") ?? "16/9",
                 width: "100%",
               }}
             />
-          ) : props.videoStatus === "FAILED" ? (
+          ) : videoStatus === "FAILED" ? (
             <div className="flex aspect-video items-center justify-center text-sm text-red-300">
               Video failed to process.
             </div>
           ) : (
             <div className="flex aspect-video items-center justify-center text-sm text-white/50">
               <div className="text-center">
-                <div className="mb-2 text-2xl">⏳</div>
+                <div className="mb-2 inline-block h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                 <p>Encoding video…</p>
-                <p className="text-xs text-white/30 mt-1">Refresh in a few seconds.</p>
+                <p className="mt-1 text-xs text-white/30">It&apos;ll appear here automatically when ready.</p>
               </div>
             </div>
           )}

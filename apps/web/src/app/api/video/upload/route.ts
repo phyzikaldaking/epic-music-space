@@ -30,7 +30,10 @@ export async function POST(req: NextRequest) {
   const mux = getMuxClient();
   if (!mux) {
     return NextResponse.json(
-      { error: "Video uploads are not configured. Contact support." },
+      {
+        error:
+          "Video uploads aren't configured on this environment. Photo posts work — try attaching an image instead.",
+      },
       { status: 503 }
     );
   }
@@ -46,7 +49,9 @@ export async function POST(req: NextRequest) {
       new_asset_settings: {
         playback_policy: ["public"],
         passthrough: session.user.id,
-        encoding_tier: "smart",
+        // `video_quality: "plus"` is the modern equivalent of the deprecated
+        // `encoding_tier: "smart"` — better adaptive bitrate, same price.
+        video_quality: "plus",
       },
     });
 

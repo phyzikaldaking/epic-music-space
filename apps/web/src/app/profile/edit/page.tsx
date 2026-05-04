@@ -29,20 +29,51 @@ export default function ProfileEditPage() {
   async function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    const MAX_BYTES = 10 * 1024 * 1024;
+    if (!ALLOWED.includes(file.type)) {
+      setError("Image must be JPEG, PNG, WebP, or GIF.");
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      setError("Image must be under 10 MB.");
+      return;
+    }
     setUploading(true);
     setError("");
-    const form = new FormData();
-    form.append("file", file);
-    form.append("type", "cover");
     try {
-      const res = await fetch("/api/upload", { method: "POST", body: form });
-      const data = await res.json() as { url?: string; error?: string };
-      if (!res.ok) { setError(data.error ?? "Upload failed."); return; }
-      setImageUrl(data.url ?? "");
-    } catch {
-      setError("Upload failed. Paste a URL instead.");
+      // Step 1 — ask the server for a Supabase signed upload URL.
+      const initRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "cover",
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        }),
+      });
+      const initData = (await initRes.json()) as {
+        signedUrl?: string;
+        publicUrl?: string;
+        error?: string;
+      };
+      if (!initRes.ok || !initData.signedUrl || !initData.publicUrl) {
+        throw new Error(initData.error ?? "Upload init failed.");
+      }
+      // Step 2 — PUT the file directly to Supabase Storage.
+      const putRes = await fetch(initData.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error(`Upload failed (${putRes.status}).`);
+      setImageUrl(initData.publicUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed. Paste a URL instead.");
     } finally {
       setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 

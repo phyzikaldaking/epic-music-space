@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -29,6 +29,57 @@ export default function StudioSetupForm({ studio }: { studio: StudioData | null 
   const [bannerUrl, setBannerUrl] = useState(studio?.bannerUrl ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const bannerFileRef = useRef<HTMLInputElement>(null);
+
+  async function handleBannerFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    const MAX_BYTES = 10 * 1024 * 1024;
+    if (!ALLOWED.includes(file.type)) {
+      setError("Banner must be JPEG, PNG, WebP, or GIF.");
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      setError("Banner must be under 10 MB.");
+      return;
+    }
+    setError(null);
+    setUploadingBanner(true);
+    try {
+      const initRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "cover",
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        }),
+      });
+      const initData = (await initRes.json()) as {
+        signedUrl?: string;
+        publicUrl?: string;
+        error?: string;
+      };
+      if (!initRes.ok || !initData.signedUrl || !initData.publicUrl) {
+        throw new Error(initData.error ?? "Upload init failed.");
+      }
+      const putRes = await fetch(initData.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error(`Upload failed (${putRes.status}).`);
+      setBannerUrl(initData.publicUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Banner upload failed.");
+    } finally {
+      setUploadingBanner(false);
+      if (bannerFileRef.current) bannerFileRef.current.value = "";
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -145,8 +196,30 @@ export default function StudioSetupForm({ studio }: { studio: StudioData | null 
         {/* Banner */}
         <div className="glass-card rounded-2xl p-5">
           <label htmlFor="studio-banner" className="mb-1 block text-sm font-semibold text-white/70">
-            Banner Image URL <span className="text-white/30 font-normal">(optional)</span>
+            Banner Image <span className="text-white/30 font-normal">(optional)</span>
           </label>
+          <p className="mb-3 text-xs text-white/35">Upload an image, or paste a direct image URL.</p>
+          <input
+            ref={bannerFileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            aria-label="Upload studio banner"
+            className="hidden"
+            onChange={handleBannerFile}
+          />
+          <button
+            type="button"
+            onClick={() => bannerFileRef.current?.click()}
+            disabled={uploadingBanner}
+            className="mb-3 flex items-center gap-2 rounded-xl border border-white/10 bg-white/4 px-4 py-2 text-sm text-white/70 transition hover:border-brand-500/50 hover:text-white disabled:opacity-50"
+          >
+            {uploadingBanner ? (
+              <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            ) : (
+              <span>📁</span>
+            )}
+            {uploadingBanner ? "Uploading…" : "Upload image"}
+          </button>
           <input
             id="studio-banner"
             type="url"
@@ -163,6 +236,7 @@ export default function StudioSetupForm({ studio }: { studio: StudioData | null 
                 fill
                 sizes="(max-width: 768px) 100vw, 672px"
                 className="object-cover"
+                unoptimized
               />
             </div>
           )}
