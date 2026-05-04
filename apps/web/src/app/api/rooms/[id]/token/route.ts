@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { mintRoomToken, isLiveKitConfigured, getLiveKitConfig } from "@/lib/livekit";
+import { rateLimit } from "@/lib/rateLimitInline";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,10 @@ export async function POST(
   }
 
   const { id } = await params;
+
+  // Cap reconnect storms: 30 token mints / min / user / room.
+  const blocked = await rateLimit("moderate", `room:token:${session.user.id}:${id}`);
+  if (blocked) return blocked;
   const room = await prisma.room.findUnique({
     where: { id },
     select: {

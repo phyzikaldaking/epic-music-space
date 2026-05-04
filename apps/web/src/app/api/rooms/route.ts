@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getRoomLimitsForTier } from "@/lib/roomTier";
 import { isLiveKitConfigured } from "@/lib/livekit";
 import { notifyFollowersOfNewRoom } from "@/lib/roomNotifications";
+import { rateLimit } from "@/lib/rateLimitInline";
 
 export const runtime = "nodejs";
 
@@ -34,6 +35,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Strict cap: 10 room creations / minute / user — abuse prevention.
+  const blocked = await rateLimit("strict", `room:create:${session.user.id}`);
+  if (blocked) return blocked;
+
   const body = (await req.json().catch(() => ({}))) as {
     title?: string;
     description?: string;
@@ -43,6 +48,13 @@ export async function POST(req: Request) {
   const title = body.title?.trim();
   if (!title || title.length < 3 || title.length > 120) {
     return NextResponse.json({ error: "Title must be 3–120 chars" }, { status: 400 });
+  }
+  if (body.description && body.description.length > 500) {
+    return NextResponse.json({ error: "Description too long (max 500)" }, { status: 400 });
+  }
+  // songId must be a cuid-ish opaque string if provided
+  if (body.songId && (typeof body.songId !== "string" || body.songId.length > 64)) {
+    return NextResponse.json({ error: "Invalid songId" }, { status: 400 });
   }
 
   const host = await prisma.user.findUnique({

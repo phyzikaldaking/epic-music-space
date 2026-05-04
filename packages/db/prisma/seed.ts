@@ -8,6 +8,24 @@ const demoArtist = {
   username: "ems-demo-orchestra",
 };
 
+// Demo media is hosted in Supabase Storage. Set DEMO_TRACKS_LOCAL_FALLBACK=1
+// while running the seed to keep the legacy /demo/audio/* paths instead.
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
+const AUDIO_BUCKET = process.env.SUPABASE_AUDIO_BUCKET ?? "audio";
+const COVERS_BUCKET = process.env.SUPABASE_COVERS_BUCKET ?? "covers";
+const PREFIX = process.env.SUPABASE_DEMO_PREFIX ?? "demo/legacy";
+const USE_LOCAL = process.env.DEMO_TRACKS_LOCAL_FALLBACK === "1";
+
+function audioUrl(filename: string): string {
+  if (USE_LOCAL || !SUPABASE_URL) return `/demo/audio/${filename}`;
+  return `${SUPABASE_URL}/storage/v1/object/public/${AUDIO_BUCKET}/${PREFIX}/${filename}`;
+}
+
+function coverUrl(filename: string): string {
+  if (USE_LOCAL || !SUPABASE_URL) return `/demo/covers/${filename}`;
+  return `${SUPABASE_URL}/storage/v1/object/public/${COVERS_BUCKET}/${PREFIX}/${filename}`;
+}
+
 const demoTracks = [
   {
     id: "demo-stellar-drift",
@@ -15,8 +33,8 @@ const demoTracks = [
     genre: "Cinematic",
     description:
       "Slow-burn cosmic tension for documentaries, title sequences, and atmospheric game menus.",
-    audioUrl: "/demo/audio/stellar-drift.wav",
-    coverUrl: "/demo/covers/stellar-drift.svg",
+    audioUrl: audioUrl("stellar-drift.wav"),
+    coverUrl: coverUrl("stellar-drift.svg"),
     bpm: 86,
     key: "A minor",
     licensePrice: "49.00",
@@ -32,8 +50,8 @@ const demoTracks = [
     genre: "Trailer",
     description:
       "Percussive sci-fi momentum for launch trailers, highlight reels, and mission reveals.",
-    audioUrl: "/demo/audio/orbital-chase.wav",
-    coverUrl: "/demo/covers/orbital-chase.svg",
+    audioUrl: audioUrl("orbital-chase.wav"),
+    coverUrl: coverUrl("orbital-chase.svg"),
     bpm: 128,
     key: "C minor",
     licensePrice: "79.00",
@@ -49,8 +67,8 @@ const demoTracks = [
     genre: "Ambient",
     description:
       "Hopeful orbital ambience for creator intros, science explainers, and cinematic transitions.",
-    audioUrl: "/demo/audio/nebula-rise.wav",
-    coverUrl: "/demo/covers/nebula-rise.svg",
+    audioUrl: audioUrl("nebula-rise.wav"),
+    coverUrl: coverUrl("nebula-rise.svg"),
     bpm: 102,
     key: "G minor",
     licensePrice: "59.00",

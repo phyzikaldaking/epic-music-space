@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { maskProfanity } from "@/lib/profanity";
+import { rateLimit } from "@/lib/rateLimitInline";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,11 @@ export async function POST(
   }
 
   const { id } = await params;
+
+  // Per-user-per-room chat limit: 30 messages / minute.
+  const blocked = await rateLimit("moderate", `room:msg:${session.user.id}:${id}`);
+  if (blocked) return blocked;
+
   const body = (await req.json().catch(() => ({}))) as { body?: string };
   const text = body.body?.trim();
   if (!text || text.length > 500) {
