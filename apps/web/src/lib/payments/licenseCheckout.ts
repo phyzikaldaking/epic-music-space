@@ -1,0 +1,197 @@
+import { prisma } from "@/lib/prisma";
+import { stripe } from "@/lib/stripe";
+import { getSiteUrl } from "@/lib/site";
+import { getTierLimits } from "@/lib/tierLimits";
+import { enqueueAnalytics } from "@/lib/queues";
+import { track } from "@/lib/analytics";
+import { fireAndForget, retry, withCircuitBreaker, withTimeout } from "@/lib/resilience";
+
+export class LicenseCheckoutError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "LicenseCheckoutError";
+  }
+}
+
+type LicenseCheckoutAnalytics = {
+  event: string;
+  firstPurchaseFunnelEvent?: string;
+};
+
+type CreateLicenseCheckoutInput = {
+  idempotencyKey: string;
+  quantity: number;
+  requestSource: string;
+  songId: string;
+  userId: string;
+  userEmail?: string | null;
+  analytics: LicenseCheckoutAnalytics;
+};
+
+export type LicenseCheckoutResult = {
+  checkoutUrl: string;
+  sessionId: string;
+};
+
+export async function createLicenseCheckoutSession(
+  input: CreateLicenseCheckoutInput,
+): Promise<LicenseCheckoutResult> {
+  const buyer = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: { subscriptionTier: true },
+  });
+
+  if (buyer) {
+    const limits = getTierLimits(buyer.subscriptionTier);
+    const held = await prisma.licenseToken.count({
+      where: { holderId: input.userId, status: "ACTIVE" },
+    });
+
+    if (held + input.quantity > limits.maxLicenses) {
+      throw new LicenseCheckoutError(
+        `Your ${buyer.subscriptionTier} plan allows ${limits.maxLicenses} active license(s). Upgrade to buy more.`,
+        403,
+      );
+    }
+  }
+
+  const activeLicensesCount = await prisma.licenseToken.count({
+    where: { holderId: input.userId, status: "ACTIVE" },
+  });
+
+  const song = await prisma.song.findUnique({ where: { id: input.songId } });
+  if (!song || !song.isActive) {
+    throw new LicenseCheckoutError("Song not found", 404);
+  }
+
+  const available = song.totalLicenses - song.soldLicenses;
+  if (available <= 0) {
+    throw new LicenseCheckoutError("This song is sold out", 409);
+  }
+  if (input.quantity > available) {
+    throw new LicenseCheckoutError(`Only ${available} license(s) available`, 409);
+  }
+
+  if (input.quantity === 1) {
+    const existing = await prisma.licenseToken.findFirst({
+      where: { songId: input.songId, holderId: input.userId, status: "ACTIVE" },
+    });
+    if (existing) {
+      throw new LicenseCheckoutError("You already hold a license for this song", 409);
+    }
+  }
+
+  const baseUrl = getSiteUrl();
+
+  const checkoutSession = await withCircuitBreaker(
+    "stripe.checkout.sessions.create",
+    () =>
+      retry(
+        () =>
+          withTimeout(
+            () =>
+              stripe.checkout.sessions.create(
+                {
+                  mode: "payment",
+                  payment_method_types: ["card"],
+                  line_items: [
+                    {
+                      price_data: {
+                        currency: "usd",
+                        unit_amount: Math.round(Number(song.licensePrice) * 100),
+                        product_data: {
+                          name: `License: ${song.title} by ${song.artist}`,
+                          description: `Digital music license — ${String(song.revenueSharePct)}% revenue share per license`,
+                          images: song.coverUrl ? [song.coverUrl] : [],
+                        },
+                      },
+                      quantity: input.quantity,
+                    },
+                  ],
+                  ...(input.userEmail ? { customer_email: input.userEmail } : {}),
+                  metadata: {
+                    type: "license_purchase",
+                    songId: input.songId,
+                    userId: input.userId,
+                    quantity: String(input.quantity),
+                    idempotencyKey: input.idempotencyKey,
+                    checkoutSource: input.requestSource,
+                  },
+                  success_url: `${baseUrl}/track/${input.songId}?checkout=success${
+                    input.requestSource === "api/stripe/checkout"
+                      ? "&session_id={CHECKOUT_SESSION_ID}"
+                      : ""
+                  }`,
+                  cancel_url: `${baseUrl}/track/${input.songId}?checkout=cancelled`,
+                },
+                { idempotencyKey: input.idempotencyKey },
+              ),
+            8000,
+            "stripe.checkout.sessions.create",
+          ),
+        { retries: 1, baseDelayMs: 300 },
+      ),
+    { failureThreshold: 4, cooldownMs: 15_000 },
+  );
+
+  try {
+    await prisma.transaction.create({
+      data: {
+        userId: input.userId,
+        songId: input.songId,
+        amount: Number(song.licensePrice) * input.quantity,
+        currency: "usd",
+        type: "LICENSE_PURCHASE",
+        status: "PENDING",
+        stripeSessionId: checkoutSession.id,
+        metadata: {
+          quantity: input.quantity,
+          idempotencyKey: input.idempotencyKey,
+          checkoutSource: input.requestSource,
+        },
+      },
+    });
+  } catch (error) {
+    const known = error as { code?: string };
+    if (known.code !== "P2002") throw error;
+  }
+
+  fireAndForget(
+    enqueueAnalytics({
+      event: input.analytics.event,
+      userId: input.userId,
+      songId: input.songId,
+      metadata: { quantity: input.quantity, idempotencyKey: input.idempotencyKey },
+      timestamp: new Date().toISOString(),
+    }),
+    `enqueueAnalytics ${input.analytics.event}`,
+  );
+
+  if (activeLicensesCount === 0 && input.analytics.firstPurchaseFunnelEvent) {
+    fireAndForget(
+      Promise.resolve(
+        track({
+          event: input.analytics.firstPurchaseFunnelEvent,
+          userId: input.userId,
+          properties: {
+            songId: input.songId,
+            quantity: input.quantity,
+          },
+        }),
+      ),
+      `track ${input.analytics.firstPurchaseFunnelEvent}`,
+    );
+  }
+
+  if (!checkoutSession.url) {
+    throw new Error("Stripe checkout session did not return a URL");
+  }
+
+  return {
+    checkoutUrl: checkoutSession.url,
+    sessionId: checkoutSession.id,
+  };
+}

@@ -30,6 +30,11 @@ const routes = [
   { path: "/investors", expect: 200 },
   { path: "/trending", expect: 200 },
   { path: "/search", expect: 200 },
+
+  // Versus extensions (authed-only — expect a redirect when unauthenticated)
+  { path: "/versus/inbox", expectIn: [200, 302, 307, 308] },
+  { path: "/versus/new", expectIn: [200, 302, 307, 308] },
+  { path: "/versus/history", expectIn: [200, 302, 307, 308] },
   { path: "/legal/terms", expect: 200 },
   { path: "/legal/privacy", expect: 200 },
   { path: "/legal/refunds", expect: 200 },
