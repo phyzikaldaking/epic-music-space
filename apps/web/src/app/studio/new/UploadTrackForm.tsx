@@ -4,6 +4,8 @@ import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CompactAudioPlayer from "@/components/CompactAudioPlayer";
+import EmbeddedAudioPreview from "@/components/EmbeddedAudioPreview";
+import { classifyAudioSource } from "@/lib/audioSource";
 
 type UploadState = "idle" | "uploading" | "done" | "error";
 
@@ -416,15 +418,32 @@ export default function UploadTrackForm() {
               </div>
             )}
 
-            {/* Audio preview player — shows once upload is done or URL is pasted */}
-            {audioUploadState === "done" && audioUrl && (
-              <div className="mb-3 rounded-xl bg-white/5 border border-white/10 p-3">
-                <p className="mb-2 text-xs font-semibold text-green-400">✓ Upload complete — preview your track:</p>
-                <CompactAudioPlayer src={audioUrl} label="Preview" />
-              </div>
-            )}
+            {/* Audio preview — render the right kind of player for the URL.
+                Direct stream → <CompactAudioPlayer>. Embed (YouTube /
+                Vimeo / SoundCloud / Spotify) → <EmbeddedAudioPreview>.
+                Unknown URL → graceful "preview unavailable" card. */}
+            {audioUploadState === "done" && audioUrl && (() => {
+              const src = classifyAudioSource(audioUrl);
+              return (
+                <div className="mb-3 rounded-xl bg-white/5 border border-white/10 p-3">
+                  <p className="mb-2 text-xs font-semibold text-green-400">
+                    ✓ {src.type === "stream" ? "Upload complete — preview your track:" : `Detected ${src.label ?? "external"} — preview only:`}
+                  </p>
+                  {src.type === "stream" ? (
+                    <CompactAudioPlayer src={audioUrl} label="Preview" />
+                  ) : (
+                    <EmbeddedAudioPreview audioUrl={audioUrl} title={title || "Preview"} />
+                  )}
+                  {src.warning && src.type !== "stream" && (
+                    <p className="mt-2 text-[11px] text-yellow-300/85">
+                      ⚠️ {src.warning}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
-            <p className="text-xs text-white/30 mb-1">— or paste a direct audio URL —</p>
+            <p className="text-xs text-white/30 mb-1">— or paste an audio URL (direct file, YouTube, Vimeo, SoundCloud, Spotify) —</p>
             <input
               type="url"
               placeholder="https://..."

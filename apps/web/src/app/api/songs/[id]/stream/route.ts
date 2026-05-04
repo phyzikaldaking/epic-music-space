@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { lenientLimiter, moderateLimiter } from "@/lib/rateLimit";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { getSiteUrl } from "@/lib/site";
+import { classifyAudioSource } from "@/lib/audioSource";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,6 +108,26 @@ export async function GET(
 
   if (!upstreamUrl) {
     return new NextResponse("Not found", { status: 404 });
+  }
+
+  // ── Reject embed-only sources up-front ─────────────────────────────────
+  // YouTube/Vimeo/SoundCloud/Spotify URLs return HTML, not audio bytes.
+  // Fetching and proxying that would either OOM the audio element or play
+  // nothing. Return a clear 422 so the client can render an embed iframe
+  // (or the "preview unavailable" fallback) instead of looping on retries.
+  const sourceKind = classifyAudioSource(upstreamUrl);
+  if (sourceKind.type !== "stream" && sourceKind.type !== "unknown") {
+    return NextResponse.json(
+      {
+        error: "embed_only",
+        type: sourceKind.type,
+        label: sourceKind.label,
+        message:
+          sourceKind.warning ??
+          "This track is hosted on an external player and can't be streamed through EMS.",
+      },
+      { status: 422 },
+    );
   }
 
   // ── Forward Range header so seek works ──────────────────────────────────

@@ -7,6 +7,7 @@ import { formatPrice } from "@ems/utils";
 import PromoteSongButton from "@/components/PromoteSongButton";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { getStreamUrl } from "@/lib/audioStream";
+import { isEmbedSource, classifyAudioSource } from "@/lib/audioSource";
 
 type PriceLike = string | number | { toString(): string };
 
@@ -104,8 +105,18 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
     return seed % 2 === 0 ? "md:rotate-y-[-5deg]" : "md:rotate-y-[5deg]";
   }, [id]);
 
+  const embedSource = audioUrl ? classifyAudioSource(audioUrl) : null;
+  const isEmbed = audioUrl ? isEmbedSource(audioUrl) : false;
+
   function handlePlayClick() {
     if (!audioUrl) return;
+    // Embed-only sources (YouTube/Vimeo/SoundCloud/Spotify) cannot stream
+    // through the global player — send the listener to the track page where
+    // the embedded player lives.
+    if (isEmbed) {
+      if (typeof window !== "undefined") window.location.href = `/track/${id}`;
+      return;
+    }
     if (isCurrent) {
       player.togglePlay();
       return;
@@ -133,7 +144,7 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.20),transparent_20%,transparent_62%,rgba(255,255,255,0.08))] opacity-70" />
           <div className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(0deg,rgba(255,255,255,0.035)_0_1px,transparent_1px_4px)] opacity-35 mix-blend-screen" />
           <div className={`pointer-events-none absolute inset-0 bg-white/10 opacity-0 ${hovered || playing ? "animate-pulse" : ""}`} />
-          <div className="absolute left-3 top-9 flex flex-wrap gap-1.5">{isChampion && <span className="rounded-full border border-gold-300/35 bg-gold-300/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-gold-100">Champion</span>}{placementLabel && <span className="rounded-full border border-cyan-300/35 bg-cyan-300/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">{placementLabel}</span>}{isTrending && <span className="badge-trending shadow-lg shadow-gold-500/20">Trending</span>}{(isBoosted || boostScore > 0) && <span className="badge-boosted shadow-lg shadow-brand-500/20">Boosted</span>}</div>
+          <div className="absolute left-3 top-9 flex flex-wrap gap-1.5">{isChampion && <span className="rounded-full border border-gold-300/35 bg-gold-300/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-gold-100">Champion</span>}{placementLabel && <span className="rounded-full border border-cyan-300/35 bg-cyan-300/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">{placementLabel}</span>}{isTrending && <span className="badge-trending shadow-lg shadow-gold-500/20">Trending</span>}{(isBoosted || boostScore > 0) && <span className="badge-boosted shadow-lg shadow-brand-500/20">Boosted</span>}{isEmbed && embedSource?.label && <span className="rounded-full border border-yellow-300/35 bg-yellow-300/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-yellow-100">{embedSource.label} · Preview only</span>}</div>
           <div className="absolute right-3 top-3 rounded-full border border-white/10 bg-black/60 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/55 backdrop-blur">{isChampion ? "Crown Screen" : playing ? `Bass ${energy}%` : "EMS Screen"}</div>
           {rankScore > 0 && <div className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full border border-white/10 bg-black/70 px-2.5 py-1 backdrop-blur"><span className="text-[10px] text-white/50">Power</span><span className="text-xs font-bold text-brand-300">{rankScore.toFixed(1)}</span></div>}
           {audioUrl && <button type="button" onClick={handlePlayClick} disabled={audioError} aria-label={audioError ? "Preview unavailable" : playing ? `Pause ${title} preview` : `Play ${title} preview`} className={`absolute bottom-3 right-3 flex h-12 w-12 items-center justify-center rounded-full border border-white/15 shadow-2xl backdrop-blur transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 disabled:cursor-not-allowed disabled:opacity-50 ${audioError ? "bg-white/20" : playing ? "bg-accent-500/95 shadow-accent-400/40" : "bg-brand-500/95 shadow-brand-400/35"}`}>{audioError ? <svg className="h-5 w-5 text-white/60" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" /></svg> : playing ? <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg> : <svg className="ml-0.5 h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>}</button>}

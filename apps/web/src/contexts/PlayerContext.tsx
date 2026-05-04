@@ -244,6 +244,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [state.volume]);
 
   const playSong = useCallback((song: PlayerSong) => {
+    // Refuse to load embed-only sources (YouTube, Vimeo, etc.) into the
+    // global <audio> element — they would silently fail to load and the
+    // player would just sit there. Surface a console hint and nudge the
+    // caller to navigate to the track page instead.
+    if (song.audioUrl) {
+      const u = song.audioUrl.toLowerCase();
+      const isEmbed =
+        u.includes("youtube.com") ||
+        u.includes("youtu.be") ||
+        u.includes("vimeo.com") ||
+        u.includes("soundcloud.com") ||
+        u.includes("open.spotify.com");
+      if (isEmbed) {
+        if (typeof window !== "undefined") {
+          window.location.href = `/track/${song.id}`;
+        }
+        return;
+      }
+    }
     dispatch({ type: "PLAY_SONG", song });
   }, []);
 

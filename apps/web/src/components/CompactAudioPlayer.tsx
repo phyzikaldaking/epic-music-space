@@ -30,6 +30,7 @@ export default function CompactAudioPlayer({ src, label, className, audioId }: P
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -44,24 +45,41 @@ export default function CompactAudioPlayer({ src, label, className, audioId }: P
       setProgress(0);
       setCurrentTime(0);
     };
+    const onError = () => {
+      setError(true);
+      setPlaying(false);
+    };
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onMeta);
     audio.addEventListener("ended", onEnd);
+    audio.addEventListener("error", onError);
     return () => {
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("loadedmetadata", onMeta);
       audio.removeEventListener("ended", onEnd);
+      audio.removeEventListener("error", onError);
     };
+  }, [src]);
+
+  // Reset error state when src changes
+  useEffect(() => {
+    setError(false);
   }, [src]);
 
   function toggle() {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || error) return;
     if (playing) {
       audio.pause();
       setPlaying(false);
     } else {
-      void audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      void audio
+        .play()
+        .then(() => setPlaying(true))
+        .catch(() => {
+          setPlaying(false);
+          setError(true);
+        });
     }
   }
 
@@ -78,6 +96,20 @@ export default function CompactAudioPlayer({ src, label, className, audioId }: P
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, "0")}`;
+  }
+
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className={`flex items-center gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/8 px-3 py-2 text-xs text-yellow-200 ${className ?? ""}`}
+      >
+        <span aria-hidden>⚠️</span>
+        <span className="flex-1">
+          Preview unavailable — this URL doesn&apos;t point to a playable audio file.
+        </span>
+      </div>
+    );
   }
 
   return (

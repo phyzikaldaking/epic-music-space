@@ -11,6 +11,8 @@ import LicenseButton from "@/components/LicenseButton";
 import TrackActions from "@/components/TrackActions";
 import { getStreamUrl } from "@/lib/audioStream";
 import SaveTrackButton from "@/components/SaveTrackButton";
+import EmbeddedAudioPreview from "@/components/EmbeddedAudioPreview";
+import { classifyAudioSource } from "@/lib/audioSource";
 import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
@@ -320,14 +322,25 @@ export default async function TrackPage({ params, searchParams }: Props) {
             )}
           </div>
 
-          {/* Audio preview player — streams through same-origin proxy. */}
-          {song.audioUrl && (
-            <AudioPlayer
-              audioUrl={getStreamUrl(song.id)}
-              title={song.title}
-              songId={song.id}
-            />
-          )}
+          {/* Audio preview — streams through the same-origin proxy when
+              the audio URL is a direct file, embeds the vendor player when
+              it's a YouTube / Vimeo / SoundCloud / Spotify URL, and shows
+              a graceful "preview unavailable" card otherwise. */}
+          {song.audioUrl && (() => {
+            const src = classifyAudioSource(song.audioUrl);
+            if (src.type === "stream") {
+              return (
+                <AudioPlayer
+                  audioUrl={getStreamUrl(song.id)}
+                  title={song.title}
+                  songId={song.id}
+                />
+              );
+            }
+            return (
+              <EmbeddedAudioPreview audioUrl={song.audioUrl} title={song.title} />
+            );
+          })()}
 
           {/* Preview-only lock pill (when track isn't downloadable for the
               current viewer). This is messaging — actual download
@@ -357,8 +370,11 @@ export default async function TrackPage({ params, searchParams }: Props) {
             </div>
           )}
 
-          {/* Play in global player + Share */}
-          {song.audioUrl && (
+          {/* Play in global player + Share — only for direct streams.
+              Embed-only tracks (YouTube, etc.) can't play in the global
+              player because the global player is an HTML5 <audio>
+              element, not an iframe. */}
+          {song.audioUrl && classifyAudioSource(song.audioUrl).type === "stream" && (
             <TrackActions
               song={{
                 id: song.id,
