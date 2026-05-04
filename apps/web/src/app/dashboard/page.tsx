@@ -163,6 +163,13 @@ export default async function DashboardPage() {
       ? Math.max(0, Math.ceil((user.trialExpiresAt.getTime() - Date.now()) / 86_400_000))
       : null;
 
+  const unknownBadgeMeta = {
+    label: "Unlocked Badge",
+    icon: "🏅",
+    description: "A newly unlocked platform badge.",
+    color: "text-white border-white/15 bg-white/5",
+  };
+
   return (
     <div className="min-h-screen bg-[#050509]">
       <div className="mx-auto max-w-7xl px-4 py-10">
@@ -201,7 +208,7 @@ export default async function DashboardPage() {
               Workspace
             </p>
             <h1 className="text-4xl font-black tracking-tight md:text-5xl">
-              {user.name ?? user.email}
+              {user.name ?? user.email ?? "Epic Music Space User"}
             </h1>
             <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/42">
               <span className="rounded-md border border-white/12 px-2.5 py-1">
@@ -365,13 +372,19 @@ export default async function DashboardPage() {
                       className="border-b border-white/5 transition hover:bg-white/3"
                     >
                       <td className="px-5 py-3.5">
-                        <Link
-                          href={`/track/${l.song.id}`}
-                          className="font-semibold text-brand-400 hover:underline"
-                        >
-                          {l.song.title}
-                        </Link>
-                        <div className="text-xs text-white/35">{l.song.artist}</div>
+                        {l.song ? (
+                          <>
+                            <Link
+                              href={`/track/${l.song.id}`}
+                              className="font-semibold text-brand-400 hover:underline"
+                            >
+                              {l.song.title}
+                            </Link>
+                            <div className="text-xs text-white/35">{l.song.artist}</div>
+                          </>
+                        ) : (
+                          <div className="text-xs text-white/40">Track unavailable</div>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 font-mono text-white/60">
                         #{l.tokenNumber}
@@ -394,7 +407,7 @@ export default async function DashboardPage() {
                         {new Date(l.purchasedAt).toLocaleDateString()}
                       </td>
                       <td className="px-5 py-3.5">
-                        {l.song.hasStems ? (
+                        {l.song?.hasStems ? (
                           <a
                             href={`/api/licenses/${l.id}/download`}
                             className="inline-flex items-center gap-1 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs font-semibold text-brand-400 transition hover:bg-brand-500/20"
@@ -515,9 +528,13 @@ export default async function DashboardPage() {
                   {user.auctionsCreated.map((a) => (
                     <tr key={a.id} className="border-b border-white/5 hover:bg-white/3 transition">
                       <td className="px-5 py-3.5">
-                        <Link href={`/auctions/${a.id}`} className="font-semibold text-brand-400 hover:underline">
-                          {a.song.title}
-                        </Link>
+                        {a.song ? (
+                          <Link href={`/auctions/${a.id}`} className="font-semibold text-brand-400 hover:underline">
+                            {a.song.title}
+                          </Link>
+                        ) : (
+                          <span className="text-white/40">Track unavailable</span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold border ${a.status === "ACTIVE" ? "bg-green-500/15 text-green-400 border-green-500/25" : a.status === "SETTLED" ? "bg-brand-500/15 text-brand-400 border-brand-500/25" : "bg-white/8 text-white/40 border-white/10"}`}>
@@ -565,9 +582,13 @@ export default async function DashboardPage() {
                     return (
                       <tr key={b.id} className="border-b border-white/5 hover:bg-white/3 transition">
                         <td className="px-5 py-3.5">
-                          <Link href={`/auctions/${b.auction.id}`} className="font-semibold text-brand-400 hover:underline">
-                            {b.auction.song.title}
-                          </Link>
+                          {b.auction.song ? (
+                            <Link href={`/auctions/${b.auction.id}`} className="font-semibold text-brand-400 hover:underline">
+                              {b.auction.song.title}
+                            </Link>
+                          ) : (
+                            <span className="text-white/40">Track unavailable</span>
+                          )}
                         </td>
                         <td className="px-5 py-3.5 text-gold-400 font-semibold">{formatPrice(b.amount)}</td>
                         <td className="px-5 py-3.5 text-white/60">
@@ -611,7 +632,7 @@ export default async function DashboardPage() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {user.badges.map((b) => {
-                const meta = BADGE_META[b.type as keyof typeof BADGE_META];
+                const meta = BADGE_META[b.type as keyof typeof BADGE_META] ?? unknownBadgeMeta;
                 return (
                   <div key={b.id} className={`flex items-center gap-4 rounded-2xl border p-4 ${meta.color}`}>
                     <span className="text-2xl flex-shrink-0">{meta.icon}</span>
