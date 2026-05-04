@@ -153,8 +153,10 @@ export async function POST(req: NextRequest) {
       { status: 201 },
     );
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const code = err instanceof Error ? err.constructor.name : "UnknownError";
     console.error("[register]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error", _debug: `${code}: ${msg}` }, { status: 500 });
   }
 }
 
