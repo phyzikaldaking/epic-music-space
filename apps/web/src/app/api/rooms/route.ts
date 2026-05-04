@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getRoomLimitsForTier } from "@/lib/roomTier";
 import { isLiveKitConfigured } from "@/lib/livekit";
+import { notifyFollowersOfNewRoom } from "@/lib/roomNotifications";
 
 export const runtime = "nodejs";
 
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
 
   const host = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, subscriptionTier: true },
+    select: { id: true, name: true, subscriptionTier: true },
   });
   if (!host) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
@@ -78,6 +79,14 @@ export async function POST(req: Request) {
       },
     },
     select: { id: true },
+  });
+
+  // Fire-and-forget: notify followers that the host went live.
+  void notifyFollowersOfNewRoom({
+    roomId: room.id,
+    hostId: host.id,
+    hostName: host.name ?? "An artist",
+    title,
   });
 
   return NextResponse.json({ id: room.id }, { status: 201 });

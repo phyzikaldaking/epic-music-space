@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { maskProfanity } from "@/lib/profanity";
 
 export const runtime = "nodejs";
 
@@ -43,8 +44,19 @@ export async function POST(
     return NextResponse.json({ error: "Room has ended" }, { status: 410 });
   }
 
+  // Block messages from banned users
+  const banned = await prisma.roomBan.findUnique({
+    where: { roomId_userId: { roomId: id, userId: session.user.id } },
+    select: { id: true },
+  });
+  if (banned) {
+    return NextResponse.json({ error: "You are banned from this room" }, { status: 403 });
+  }
+
+  const { masked } = maskProfanity(text);
+
   const message = await prisma.roomMessage.create({
-    data: { roomId: id, userId: session.user.id, body: text },
+    data: { roomId: id, userId: session.user.id, body: masked },
     include: { user: { select: { id: true, name: true, image: true } } },
   });
 

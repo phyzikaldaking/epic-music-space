@@ -17,29 +17,23 @@ export async function POST(
   const { id } = await params;
   const room = await prisma.room.findUnique({
     where: { id },
-    select: { hostId: true, status: true },
+    select: { hostId: true },
   });
   if (!room) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (room.hostId !== session.user.id) {
-    return NextResponse.json({ error: "Only host can end the room" }, { status: 403 });
+    return NextResponse.json({ error: "Only host can stop recording" }, { status: 403 });
   }
-  if (room.status !== "LIVE") {
+
+  const active = await prisma.roomRecording.findFirst({
+    where: { roomId: id, status: { in: ["PENDING", "RECORDING"] } },
+  });
+  if (!active || !active.egressId) {
     return NextResponse.json({ ok: true });
   }
 
-  // If a recording is running, stop it so the file finalizes.
-  const activeRecording = await prisma.roomRecording.findFirst({
-    where: { roomId: id, status: { in: ["PENDING", "RECORDING"] } },
-    select: { egressId: true },
-  });
-  if (activeRecording?.egressId) {
-    await stopRoomRecording(activeRecording.egressId);
-  }
+  await stopRoomRecording(active.egressId);
 
-  await prisma.room.update({
-    where: { id },
-    data: { status: "ENDED", endedAt: new Date() },
-  });
-
+  // We don't mark it READY here — the LiveKit webhook does that with the
+  // final filesize/duration when egress is fully written.
   return NextResponse.json({ ok: true });
 }

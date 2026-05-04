@@ -37,6 +37,17 @@ export async function POST(
     return NextResponse.json({ error: "Room has ended" }, { status: 410 });
   }
 
+  // Ban check (host can never be banned from their own room)
+  if (room.hostId !== session.user.id) {
+    const banned = await prisma.roomBan.findUnique({
+      where: { roomId_userId: { roomId: id, userId: session.user.id } },
+      select: { id: true },
+    });
+    if (banned) {
+      return NextResponse.json({ error: "You are banned from this room" }, { status: 403 });
+    }
+  }
+
   const isHost = room.hostId === session.user.id;
 
   // Check capacity for non-host joins

@@ -38,6 +38,22 @@ const getStudioByUsername = cache(async (username: string) =>
           ownedLabel: { select: { id: true, name: true, slug: true } },
           _count: { select: { followers: true, following: true, songs: true } },
           badges: { orderBy: { awardedAt: "asc" } },
+          roomsHosted: {
+            where: { recordings: { some: { status: "READY" } } },
+            orderBy: { startedAt: "desc" },
+            take: 8,
+            select: {
+              id: true,
+              title: true,
+              startedAt: true,
+              recordings: {
+                where: { status: "READY" },
+                orderBy: { completedAt: "desc" },
+                take: 1,
+                select: { id: true, playbackUrl: true, durationSeconds: true, completedAt: true },
+              },
+            },
+          },
         },
       },
     },
@@ -231,6 +247,50 @@ export default async function StudioProfilePage({ params }: Props) {
       <div className="mt-6">
         <AiScoreBar score={avgScore} />
       </div>
+
+      {/* Replay drops — saved listening sessions */}
+      {user.roomsHosted.length > 0 && (
+        <section className="mt-10">
+          <h2 className="mb-4 text-xl font-semibold">
+            🎧 Replay Drops <span className="text-sm font-normal text-white/40">— saved listening sessions</span>
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {user.roomsHosted.map((r) => {
+              const recording = r.recordings[0];
+              const mins = recording?.durationSeconds
+                ? Math.round(recording.durationSeconds / 60)
+                : null;
+              return (
+                <div
+                  key={r.id}
+                  className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/3 p-4"
+                >
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-brand-500/15 text-2xl">
+                    🎙️
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{r.title}</p>
+                    <p className="text-xs text-white/40">
+                      {new Date(r.startedAt).toLocaleDateString()}
+                      {mins ? ` · ${mins} min` : ""}
+                    </p>
+                  </div>
+                  {recording?.playbackUrl && (
+                    <a
+                      href={recording.playbackUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-600"
+                    >
+                      ▶ Play
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Songs */}
       <section className="mt-10">

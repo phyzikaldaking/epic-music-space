@@ -70,6 +70,8 @@ model User {
   roomsHosted        Room[]              @relation("RoomHost")
   roomParticipations RoomParticipant[]
   roomMessages       RoomMessage[]
+  roomBans           RoomBan[]           @relation("RoomBanned")
+  roomBansIssued     RoomBan[]           @relation("RoomBannedBy")
 }
 
 enum Role {
@@ -722,9 +724,52 @@ model Room {
   currentSong   Song?             @relation(fields: [currentSongId], references: [id], onDelete: SetNull)
   participants  RoomParticipant[]
   messages      RoomMessage[]
+  recordings    RoomRecording[]
+  bans          RoomBan[]
 
   @@index([status, startedAt])
   @@index([hostId, status])
+}
+
+model RoomRecording {
+  id              String           @id @default(cuid())
+  roomId          String
+  egressId        String?          @unique
+  status          RecordingStatus  @default(PENDING)
+  playbackUrl     String?
+  durationSeconds Int?
+  startedAt       DateTime         @default(now())
+  completedAt     DateTime?
+  failureReason   String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  room            Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, status])
+}
+
+enum RecordingStatus {
+  PENDING
+  RECORDING
+  READY
+  FAILED
+}
+
+model RoomBan {
+  id          String   @id @default(cuid())
+  roomId      String
+  userId      String
+  bannedById  String
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  room        Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user        User @relation("RoomBanned", fields: [userId], references: [id], onDelete: Cascade)
+  bannedBy    User @relation("RoomBannedBy", fields: [bannedById], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId])
 }
 
 enum RoomStatus {

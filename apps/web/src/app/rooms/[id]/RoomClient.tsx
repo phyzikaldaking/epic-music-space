@@ -3,7 +3,13 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Room, RoomEvent, Track } from "livekit-client";
+import {
+  Room,
+  RoomEvent,
+  Track,
+  LocalAudioTrack,
+  type LocalTrackPublication,
+} from "livekit-client";
 import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
 
 type Host = {
@@ -51,6 +57,8 @@ type Message = {
   createdAt: string;
 };
 
+type HostSong = { id: string; title: string; artist: string; coverUrl: string | null; audioUrl: string };
+
 interface Props {
   room: RoomData;
   currentUserId: string;
@@ -69,6 +77,18 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [ended, setEnded] = useState(room.status === "ENDED");
+  const [currentSong, setCurrentSong] = useState<Song | null>(room.currentSong);
+
+  // Synced track playback (host only publishes; others only listen via LiveKit)
+  const [trackPlaying, setTrackPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const trackPublicationRef = useRef<LocalTrackPublication | null>(null);
+
+  // Host UI: change-track picker + recording state
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [hostSongs, setHostSongs] = useState<HostSong[]>([]);
+  const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [recordingStatus, setRecordingStatus] = useState<"IDLE" | "STARTING" | "RECORDING" | "STOPPING">("IDLE");
 
   const lkRoomRef = useRef<Room | null>(null);
   const audioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -106,12 +126,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       await lkRoom.connect(data.url, data.token);
       lkRoomRef.current = lkRoom;
       setConnected(true);
-
-      const canPublish = data.role === "HOST" || data.role === "SPEAKER";
-      if (canPublish) {
-        // Don't auto-publish — let host/speaker explicitly unmute.
-        setMuted(true);
-      }
+      setMuted(true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to connect";
       setError(msg);
@@ -120,7 +135,27 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     }
   }, [connecting, connected, ended, room.id]);
 
+  const stopTrackPlayback = useCallback(async () => {
+    const lkRoom = lkRoomRef.current;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current.remove();
+      audioRef.current = null;
+    }
+    if (trackPublicationRef.current && lkRoom) {
+      try {
+        await lkRoom.localParticipant.unpublishTrack(trackPublicationRef.current.track!);
+      } catch {
+        // already unpublished
+      }
+      trackPublicationRef.current = null;
+    }
+    setTrackPlaying(false);
+  }, []);
+
   const disconnect = useCallback(async () => {
+    await stopTrackPlayback();
     const lkRoom = lkRoomRef.current;
     if (lkRoom) {
       await lkRoom.disconnect();
@@ -130,7 +165,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     audioElsRef.current.clear();
     setConnected(false);
     setMuted(true);
-  }, []);
+  }, [stopTrackPlayback]);
 
   useEffect(() => {
     return () => {
@@ -152,6 +187,65 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     }
   }
 
+  // ── Host: synced track playback ─────────────────────────────────────
+  // Plays through a hidden <audio>, captures the stream, and publishes the
+  // audio track to LiveKit so every listener hears it in sync.
+  async function startTrackPlayback() {
+    const song = currentSong;
+    const lkRoom = lkRoomRef.current;
+    if (!song || !lkRoom) return;
+    setError(null);
+
+    try {
+      const audio = new Audio(song.audioUrl);
+      audio.crossOrigin = "anonymous";
+      audio.loop = false;
+      // Mute element output locally so it doesn't double-up with the
+      // subscribed LiveKit playback (we're publishing the captured stream).
+      audio.muted = false;
+      audioRef.current = audio;
+
+      // Need to await play() before captureStream gets audio frames.
+      await audio.play();
+
+      type Captureable = HTMLMediaElement & {
+        captureStream?: () => MediaStream;
+        mozCaptureStream?: () => MediaStream;
+      };
+      const cap = audio as Captureable;
+      const stream = cap.captureStream?.() ?? cap.mozCaptureStream?.();
+      if (!stream) throw new Error("captureStream not supported in this browser");
+
+      const [mediaTrack] = stream.getAudioTracks();
+      if (!mediaTrack) throw new Error("No audio track to publish");
+
+      const lkTrack = new LocalAudioTrack(mediaTrack);
+      const pub = await lkRoom.localParticipant.publishTrack(lkTrack, {
+        name: `track:${song.id}`,
+        source: Track.Source.Unknown,
+      });
+      trackPublicationRef.current = pub;
+      setTrackPlaying(true);
+
+      audio.addEventListener("ended", () => {
+        void stopTrackPlayback();
+      });
+
+      // Tell listeners the track started so any UI that wants to react can.
+      const supabase = createBrowserSupabaseClient();
+      if (supabase) {
+        await supabase.channel(CHANNELS.room(room.id)).send({
+          type: "broadcast",
+          event: "track_started",
+          payload: { songId: song.id },
+        });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start playback");
+      await stopTrackPlayback();
+    }
+  }
+
   // ── Hand raising / lowering ─────────────────────────────────────────
   async function toggleHand() {
     const next = !handRaised;
@@ -161,8 +255,6 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ raised: next }),
     });
-
-    // Broadcast over Supabase so the host's UI updates instantly
     const supabase = createBrowserSupabaseClient();
     if (supabase) {
       await supabase.channel(CHANNELS.room(room.id)).send({
@@ -173,7 +265,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     }
   }
 
-  // ── Host: grant / revoke floor ──────────────────────────────────────
+  // ── Host: grant / revoke / kick / ban ───────────────────────────────
   async function grantFloor(userId: string) {
     await fetch(`/api/rooms/${room.id}/grant`, {
       method: "POST",
@@ -206,11 +298,104 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     }
   }
 
+  async function kickUser(userId: string) {
+    if (!confirm("Kick this listener from the room?")) return;
+    await fetch(`/api/rooms/${room.id}/kick`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+    const supabase = createBrowserSupabaseClient();
+    if (supabase) {
+      await supabase.channel(CHANNELS.room(room.id)).send({
+        type: "broadcast",
+        event: "user_kicked",
+        payload: { userId },
+      });
+    }
+  }
+
+  async function banUser(userId: string) {
+    const reason = prompt("Reason for ban (optional):", "");
+    if (reason === null) return; // cancelled
+    await fetch(`/api/rooms/${room.id}/ban`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, reason }),
+    });
+    const supabase = createBrowserSupabaseClient();
+    if (supabase) {
+      await supabase.channel(CHANNELS.room(room.id)).send({
+        type: "broadcast",
+        event: "user_banned",
+        payload: { userId },
+      });
+    }
+  }
+
   async function endRoom() {
     if (!confirm("End this listening session for everyone?")) return;
     await fetch(`/api/rooms/${room.id}/end`, { method: "POST" });
     setEnded(true);
     await disconnect();
+  }
+
+  // ── Host: change current track ──────────────────────────────────────
+  async function openTrackPicker() {
+    setPickerOpen(true);
+    if (hostSongs.length === 0) {
+      const res = await fetch(`/api/rooms/${room.id}/host-songs`);
+      if (res.ok) {
+        const data = (await res.json()) as { songs: HostSong[] };
+        setHostSongs(data.songs);
+      }
+    }
+  }
+
+  async function setCurrent(songId: string | null) {
+    setPickerOpen(false);
+    await stopTrackPlayback();
+    const res = await fetch(`/api/rooms/${room.id}/track`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ songId }),
+    });
+    if (!res.ok) {
+      setError("Couldn't set track");
+      return;
+    }
+    const data = (await res.json()) as { song: Song | null };
+    setCurrentSong(data.song);
+
+    const supabase = createBrowserSupabaseClient();
+    if (supabase) {
+      await supabase.channel(CHANNELS.room(room.id)).send({
+        type: "broadcast",
+        event: "track_changed",
+        payload: { song: data.song },
+      });
+    }
+  }
+
+  // ── Host: recording ─────────────────────────────────────────────────
+  async function startRecording() {
+    setRecordingStatus("STARTING");
+    const res = await fetch(`/api/rooms/${room.id}/record/start`, { method: "POST" });
+    const data = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
+    if (!res.ok) {
+      setRecordingStatus("IDLE");
+      setError(data.error ?? "Couldn't start recording");
+      return;
+    }
+    setRecordingId(data.id ?? null);
+    setRecordingStatus("RECORDING");
+  }
+
+  async function stopRecording() {
+    setRecordingStatus("STOPPING");
+    await fetch(`/api/rooms/${room.id}/record/stop`, { method: "POST" });
+    setRecordingId(null);
+    setRecordingStatus("IDLE");
   }
 
   // ── Send chat message ───────────────────────────────────────────────
@@ -224,7 +409,8 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       body: JSON.stringify({ body: text }),
     });
     if (!res.ok) {
-      setError("Couldn't send message");
+      const err = await res.json().catch(() => ({}));
+      setError((err as { error?: string }).error ?? "Couldn't send message");
       return;
     }
     const supabase = createBrowserSupabaseClient();
@@ -238,7 +424,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     }
   }
 
-  // ── Load initial participants + messages, subscribe to broadcasts ──
+  // ── Bootstrap participants + messages ───────────────────────────────
   useEffect(() => {
     let cancelled = false;
     async function bootstrap() {
@@ -288,6 +474,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     };
   }, [room.id]);
 
+  // ── Subscribe to broadcasts ─────────────────────────────────────────
   useEffect(() => {
     const supabase = createBrowserSupabaseClient();
     if (!supabase) return;
@@ -320,7 +507,6 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           if (p) next.set(userId, { ...p, role: "SPEAKER", handRaised: false });
           return next;
         });
-        // If we were the one granted, refresh our token to get publish perms
         if (userId === currentUserId) {
           void disconnect().then(() => connect());
         }
@@ -337,6 +523,34 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           void disconnect().then(() => connect());
         }
       })
+      .on("broadcast", { event: "user_kicked" }, ({ payload }) => {
+        const { userId } = payload as { userId: string };
+        setParticipants((prev) => {
+          const next = new Map(prev);
+          next.delete(userId);
+          return next;
+        });
+        if (userId === currentUserId) {
+          setError("You were removed from this room.");
+          void disconnect();
+        }
+      })
+      .on("broadcast", { event: "user_banned" }, ({ payload }) => {
+        const { userId } = payload as { userId: string };
+        setParticipants((prev) => {
+          const next = new Map(prev);
+          next.delete(userId);
+          return next;
+        });
+        if (userId === currentUserId) {
+          setError("You were banned from this room.");
+          void disconnect();
+        }
+      })
+      .on("broadcast", { event: "track_changed" }, ({ payload }) => {
+        const { song } = payload as { song: Song | null };
+        setCurrentSong(song);
+      })
       .on("broadcast", { event: "message" }, ({ payload }) => {
         const { message } = payload as { message: Message };
         setMessages((prev) => [...prev, message]);
@@ -351,7 +565,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   // ── Render ──────────────────────────────────────────────────────────
   const speakers = Array.from(participants.values()).filter((p) => p.role !== "LISTENER");
   const handsUp = Array.from(participants.values()).filter((p) => p.handRaised && p.role === "LISTENER");
-  const listenerCount = participants.size - speakers.length;
+  const listeners = Array.from(participants.values()).filter((p) => p.role === "LISTENER" && !p.handRaised);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -370,6 +584,12 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
                 Live Listening Room
               </>
             )}
+            {recordingStatus === "RECORDING" && (
+              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-bold text-red-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+                REC
+              </span>
+            )}
           </div>
           <h1 className="text-3xl font-extrabold">{room.title}</h1>
           <p className="text-sm text-white/50">
@@ -386,7 +606,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
             <p className="mt-2 max-w-2xl text-sm text-white/45">{room.description}</p>
           )}
         </div>
-        <div className="flex flex-shrink-0 gap-2">
+        <div className="flex flex-shrink-0 flex-wrap gap-2">
           {!connected && !ended && (
             <button
               type="button"
@@ -407,13 +627,38 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
             </button>
           )}
           {isHost && !ended && (
-            <button
-              type="button"
-              onClick={endRoom}
-              className="rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/20"
-            >
-              End Session
-            </button>
+            <>
+              {recordingStatus === "IDLE" && (
+                <button
+                  type="button"
+                  onClick={() => void startRecording()}
+                  className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/20"
+                >
+                  ● Record
+                </button>
+              )}
+              {recordingStatus === "RECORDING" && (
+                <button
+                  type="button"
+                  onClick={() => void stopRecording()}
+                  className="rounded-xl bg-red-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-red-600"
+                >
+                  ■ Stop
+                </button>
+              )}
+              {(recordingStatus === "STARTING" || recordingStatus === "STOPPING") && (
+                <span className="rounded-xl border border-white/15 px-4 py-2.5 text-sm text-white/50">
+                  {recordingStatus === "STARTING" ? "Starting..." : "Stopping..."}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={endRoom}
+                className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/20"
+              >
+                End Session
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -423,7 +668,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           <span className="font-bold">Live audio infrastructure isn&apos;t configured yet.</span>{" "}
           Set <code className="rounded bg-black/30 px-1">LIVEKIT_API_KEY</code>,{" "}
           <code className="rounded bg-black/30 px-1">LIVEKIT_API_SECRET</code>, and{" "}
-          <code className="rounded bg-black/30 px-1">NEXT_PUBLIC_LIVEKIT_URL</code> in environment variables to enable real-time audio. Chat is fully functional below.
+          <code className="rounded bg-black/30 px-1">NEXT_PUBLIC_LIVEKIT_URL</code> to enable real-time audio. Chat works.
         </div>
       )}
 
@@ -437,32 +682,116 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
         {/* Stage */}
         <div className="space-y-6">
           {/* Now playing */}
-          {room.currentSong && (
+          {currentSong && (
             <div className="flex items-center gap-4 rounded-3xl border border-white/8 bg-white/3 p-5">
               <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl bg-brand-900/30">
-                {room.currentSong.coverUrl ? (
-                  <Image
-                    src={room.currentSong.coverUrl}
-                    alt={room.currentSong.title}
-                    fill
-                    sizes="80px"
-                    className="object-cover"
-                  />
+                {currentSong.coverUrl ? (
+                  <Image src={currentSong.coverUrl} alt={currentSong.title} fill sizes="80px" className="object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-3xl">🎵</div>
                 )}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold uppercase tracking-widest text-brand-300">Now playing</p>
-                <p className="mt-1 truncate text-lg font-bold">{room.currentSong.title}</p>
-                <p className="truncate text-sm text-white/55">{room.currentSong.artist}</p>
+                <p className="mt-1 truncate text-lg font-bold">{currentSong.title}</p>
+                <p className="truncate text-sm text-white/55">{currentSong.artist}</p>
               </div>
-              <Link
-                href={`/track/${room.currentSong.id}`}
-                className="flex-shrink-0 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+              <div className="flex flex-shrink-0 flex-col items-end gap-2">
+                <Link
+                  href={`/track/${currentSong.id}`}
+                  className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-600"
+                >
+                  License · ${currentSong.licensePrice}
+                </Link>
+                {isHost && connected && (
+                  <div className="flex gap-2">
+                    {!trackPlaying ? (
+                      <button
+                        type="button"
+                        onClick={() => void startTrackPlayback()}
+                        className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/15"
+                      >
+                        ▶ Play to room
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void stopTrackPlayback()}
+                        className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/15"
+                      >
+                        ■ Stop
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void openTrackPicker()}
+                      className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/60 hover:bg-white/8"
+                    >
+                      Change
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {!currentSong && isHost && connected && (
+            <div className="flex items-center justify-between gap-3 rounded-3xl border border-dashed border-white/15 bg-white/3 p-5 text-sm text-white/50">
+              <span>No track featured. Pick one to feature for your listeners.</span>
+              <button
+                type="button"
+                onClick={() => void openTrackPicker()}
+                className="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-600"
               >
-                License · ${room.currentSong.licensePrice}
-              </Link>
+                Pick a track
+              </button>
+            </div>
+          )}
+
+          {/* Track picker overlay */}
+          {pickerOpen && (
+            <div className="rounded-3xl border border-white/10 bg-[#0d0d14] p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-white/60">Featured Track</h3>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  className="text-xs text-white/40 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="grid max-h-72 gap-2 overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={() => void setCurrent(null)}
+                  className="rounded-xl border border-white/10 bg-white/3 px-3 py-2 text-left text-sm text-white/55 hover:bg-white/6"
+                >
+                  Clear featured track
+                </button>
+                {hostSongs.length === 0 && (
+                  <p className="text-xs text-white/30">No tracks uploaded yet.</p>
+                )}
+                {hostSongs.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => void setCurrent(s.id)}
+                    className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/3 px-3 py-2 text-left transition hover:bg-white/6"
+                  >
+                    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-white/8">
+                      {s.coverUrl ? (
+                        <Image src={s.coverUrl} alt={s.title} fill sizes="40px" className="object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-sm">🎵</div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{s.title}</p>
+                      <p className="truncate text-xs text-white/45">{s.artist}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -471,7 +800,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-widest text-white/60">On Stage</h2>
               <span className="text-xs text-white/35">
-                {listenerCount} listening
+                {listeners.length + handsUp.length} listening
               </span>
             </div>
             <div className="flex flex-wrap gap-4">
@@ -508,7 +837,6 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
               ))}
             </div>
 
-            {/* Local mic controls */}
             {connected && (role === "HOST" || role === "SPEAKER") && (
               <div className="mt-6 border-t border-white/8 pt-4">
                 <button
@@ -525,7 +853,6 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
               </div>
             )}
 
-            {/* Listener: hand raise */}
             {connected && role === "LISTENER" && (
               <div className="mt-6 border-t border-white/8 pt-4">
                 <button
@@ -562,7 +889,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
                       </div>
                       <p className="text-sm font-semibold">{p.name}</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => void grantFloor(p.userId)}
@@ -570,10 +897,66 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
                       >
                         Pass mic
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void kickUser(p.userId)}
+                        className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/60 hover:bg-white/8"
+                      >
+                        Kick
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void banUser(p.userId)}
+                        className="rounded-lg border border-red-500/25 px-3 py-1.5 text-xs text-red-300 hover:bg-red-500/10"
+                      >
+                        Ban
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Host: full listener moderation panel */}
+          {isHost && listeners.length > 0 && (
+            <div className="rounded-3xl border border-white/8 bg-[#0d0d14] p-6">
+              <h3 className="mb-3 text-sm font-bold uppercase tracking-widest text-white/60">Listeners ({listeners.length})</h3>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {listeners.slice(0, 24).map((p) => (
+                  <div key={p.userId} className="flex items-center justify-between gap-3 rounded-xl bg-white/3 p-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="relative h-7 w-7 flex-shrink-0 overflow-hidden rounded-full bg-white/10">
+                        {p.image ? (
+                          <Image src={p.image} alt={p.name} fill sizes="28px" className="object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-xs">{p.name[0]?.toUpperCase()}</div>
+                        )}
+                      </div>
+                      <p className="truncate text-xs">{p.name}</p>
+                    </div>
+                    <div className="flex flex-shrink-0 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => void kickUser(p.userId)}
+                        className="rounded-md px-2 py-0.5 text-[10px] text-white/40 hover:bg-white/10 hover:text-white/80"
+                      >
+                        Kick
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void banUser(p.userId)}
+                        className="rounded-md px-2 py-0.5 text-[10px] text-red-300/70 hover:bg-red-500/10 hover:text-red-300"
+                      >
+                        Ban
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {listeners.length > 24 && (
+                <p className="mt-2 text-xs text-white/30">+ {listeners.length - 24} more</p>
+              )}
             </div>
           )}
         </div>
