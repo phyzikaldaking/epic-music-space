@@ -552,6 +552,39 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     console.warn("[stripe-webhook] refund ledger clawback failed", err);
   }
 
+  // Fraud alert: page ops if refund rate over the last hour spikes above 5%
+  // (with a min of 5 transactions to avoid false alerts on tiny samples).
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const [refundedCount, totalCount] = await Promise.all([
+      prisma.transaction.count({
+        where: { status: "REFUNDED", updatedAt: { gte: oneHourAgo } },
+      }),
+      prisma.transaction.count({
+        where: { status: { in: ["SUCCEEDED", "REFUNDED"] }, updatedAt: { gte: oneHourAgo } },
+      }),
+    ]);
+    if (totalCount >= 5 && refundedCount / totalCount > 0.05) {
+      const webhook = process.env.AUTH_ALERT_WEBHOOK_URL;
+      if (webhook) {
+        fetch(webhook, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: `[fraud-alert] Refund rate ${(refundedCount / totalCount * 100).toFixed(1)}% (${refundedCount}/${totalCount}) over the last hour. Last refund: tx=${transaction.id} $${(charge.amount_refunded / 100).toFixed(2)}`,
+          }),
+        }).catch(() => {});
+      }
+      console.warn("[stripe-webhook] FRAUD_ALERT refund_rate", {
+        refunded: refundedCount,
+        total: totalCount,
+        ratio: refundedCount / totalCount,
+      });
+    }
+  } catch (err) {
+    console.warn("[stripe-webhook] fraud rate check failed", err);
+  }
+
   await enqueueNotification({
     userId: transaction.userId,
     type: "REFUND",

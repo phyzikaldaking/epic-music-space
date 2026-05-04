@@ -244,6 +244,94 @@ export default function ProfileEditPage() {
       <p className="mt-6 text-center text-xs text-white/20">
         Email and role cannot be changed here. Contact support for account changes.
       </p>
+
+      <DeleteAccountSection />
+    </div>
+  );
+}
+
+function DeleteAccountSection() {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleDelete() {
+    if (confirm !== "DELETE") {
+      setErr("Type DELETE to confirm.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    const res = await fetch("/api/profile/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm, password: pw || undefined }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; mode?: string };
+    setBusy(false);
+    if (!res.ok) {
+      setErr(data.error ?? "Couldn't delete the account.");
+      return;
+    }
+    // Hard nav to the home page; session cookie is dead now.
+    window.location.href = "/?deleted=1";
+  }
+
+  return (
+    <div className="mt-12 border-t border-white/10 pt-8">
+      <h2 className="text-sm font-bold uppercase tracking-widest text-red-300/70">
+        Danger zone
+      </h2>
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="mt-3 rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-2.5 text-sm font-semibold text-red-300 hover:bg-red-500/15"
+        >
+          Delete my account
+        </button>
+      ) : (
+        <div className="mt-3 space-y-3 rounded-2xl border border-red-500/30 bg-red-500/5 p-5">
+          <p className="text-sm text-white/70">
+            This permanently deletes your studios, songs, licenses, room history,
+            and profile. Financial records (payouts, transactions) are kept for
+            accounting where required by law and your account is anonymized.
+          </p>
+          <input
+            type="password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            placeholder="Current password (skip if you signed in via Google)"
+            className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-red-500/50"
+          />
+          <input
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder='Type "DELETE" to confirm'
+            className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-red-500/50"
+          />
+          {err && <p className="text-xs text-red-300">{err}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setErr(null); setConfirm(""); setPw(""); }}
+              className="flex-1 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/70 hover:bg-white/10"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={busy || confirm !== "DELETE"}
+              className="flex-1 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-600 disabled:opacity-50"
+            >
+              {busy ? "Deleting…" : "Permanently delete"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

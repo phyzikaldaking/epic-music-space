@@ -4,6 +4,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
+import CookieConsent from "@/components/CookieConsent";
 import { getSiteUrl } from "@/lib/site";
 
 const siteUrl = getSiteUrl();
@@ -127,6 +128,7 @@ export default function RootLayout({
           <main id="main-content" className="pb-20">{children}</main>
           <Footer />
           <GlobalAudioPlayer />
+          <CookieConsent />
         </Providers>
       </body>
     </html>

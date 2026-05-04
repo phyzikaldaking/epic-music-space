@@ -86,9 +86,12 @@ function SignInContent() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-white/70">
-                Password
-              </label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="block text-sm font-medium text-white/70">Password</label>
+                <Link href="/auth/forgot" className="text-xs text-brand-300 hover:underline">
+                  Forgot?
+                </Link>
+              </div>
               <input
                 type="password"
                 required

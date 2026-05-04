@@ -36,6 +36,7 @@ const footerNav = [
       { label: "Terms of Service", href: "/legal/terms" },
       { label: "Privacy Policy", href: "/legal/privacy" },
       { label: "Licensing Agreement", href: "/legal/licensing" },
+      { label: "Refund Policy", href: "/legal/refunds" },
       { label: "Contact", href: "mailto:legal@epicmusicspace.com" },
     ],
   },

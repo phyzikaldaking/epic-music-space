@@ -131,6 +131,18 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique  // sha256 of the raw token; raw value is only emailed
+  expires   DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([expires])
+}
+
 model Song {
   id          String  @id @default(cuid())
   title       String
