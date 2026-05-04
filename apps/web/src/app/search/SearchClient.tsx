@@ -13,7 +13,7 @@ interface SongResult {
   artist: string;
   genre: string | null;
   coverUrl: string | null;
-  audioUrl: string;
+  streamUrl: string;
   licensePrice: number;
   bpm: number | null;
   key: string | null;
@@ -127,7 +127,7 @@ export default function SearchClient({
                           id: s.id,
                           title: s.title,
                           artist: s.artist,
-                          audioUrl: getStreamUrl(s.id),
+                          audioUrl: s.streamUrl,
                           coverUrl: s.coverUrl,
                         })
                       }

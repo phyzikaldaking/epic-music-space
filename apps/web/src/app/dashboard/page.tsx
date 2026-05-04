@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import ArtistWelcomeBanner from "@/components/ArtistWelcomeBanner";
 import NextPayoutWidget from "@/components/NextPayoutWidget";
 import ProviderDashboardCard from "@/components/ProviderDashboardCard";
+import ContinueListeningRail from "@/components/ContinueListeningRail";
 
 export const metadata: Metadata = {
   title: "Dashboard | Epic Music Space",
@@ -306,6 +307,9 @@ export default async function DashboardPage() {
             </Link>
           </div>
         </div>
+
+        {/* ── Continue listening (where you left off) ───────────────────── */}
+        <ContinueListeningRail />
 
         {/* ── First-time artist welcome checklist ───────────────────────── */}
         {isArtist && (

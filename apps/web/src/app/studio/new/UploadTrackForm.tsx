@@ -70,24 +70,47 @@ export default function UploadTrackForm() {
     file: File,
     onProgress: (pct: number) => void,
   ): Promise<void> => {
-    await new Promise<void>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("PUT", signedUrl);
-      xhr.setRequestHeader("Content-Type", file.type);
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          onProgress(100);
-          resolve();
-        } else {
-          reject(new Error(`Upload failed (${xhr.status}). Please try again.`));
-        }
-      };
-      xhr.onerror = () => reject(new Error("Network error during upload. Check your connection."));
-      xhr.send(file);
-    });
+    // One retry with exponential backoff on transient failures (network
+    // hiccup, transient 5xx). Fatal client errors (4xx) bail immediately.
+    async function attempt(): Promise<void> {
+      return new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", signedUrl);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            onProgress(100);
+            resolve();
+          } else if (xhr.status >= 500 || xhr.status === 0) {
+            const err = new Error(`Upload failed (${xhr.status}).`);
+            (err as Error & { retryable?: boolean }).retryable = true;
+            reject(err);
+          } else {
+            reject(new Error(`Upload failed (${xhr.status}). Please try again.`));
+          }
+        };
+        xhr.onerror = () => {
+          const err = new Error("Network error during upload.");
+          (err as Error & { retryable?: boolean }).retryable = true;
+          reject(err);
+        };
+        xhr.send(file);
+      });
+    }
+
+    try {
+      await attempt();
+    } catch (err) {
+      if (!(err as { retryable?: boolean }).retryable) throw err;
+      // Wait 1s with 30% jitter, then retry once.
+      const delay = 1_000 + Math.random() * 300;
+      await new Promise((r) => setTimeout(r, delay));
+      onProgress(0);
+      await attempt();
+    }
   }, []);
   async function handleAudioChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -246,6 +269,46 @@ export default function UploadTrackForm() {
             </button>
             <div className="flex-1 text-sm text-white/40">
               <p>Click to upload a cover image (JPG, PNG, WebP — max 5MB)</p>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!title.trim()) {
+                    alert("Add a track title first — the AI uses it to compose the cover.");
+                    return;
+                  }
+                  setCoverUploadState("uploading");
+                  setCoverProgress(0);
+                  try {
+                    const res = await fetch("/api/cover/generate", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ title: title.trim(), genre: genre.trim() || undefined }),
+                    });
+                    const data = (await res.json()) as { imageBase64?: string; error?: string };
+                    if (!res.ok || !data.imageBase64) {
+                      throw new Error(data.error ?? "Cover generation failed.");
+                    }
+                    // Convert base64 to a File and run through the existing upload pipeline.
+                    const bin = atob(data.imageBase64);
+                    const buf = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+                    const file = new File([buf], `cover-${Date.now()}.png`, { type: "image/png" });
+                    setCoverFile(file);
+                    setCoverPreview(URL.createObjectURL(file));
+                    const { signedUrl, publicUrl } = await getSignedUrl("cover", file);
+                    await uploadDirect(signedUrl, file, setCoverProgress);
+                    setCoverUrl(publicUrl);
+                    setCoverUploadState("done");
+                  } catch (err) {
+                    setCoverUploadState("error");
+                    setError(err instanceof Error ? err.message : "Cover generation failed.");
+                  }
+                }}
+                disabled={coverUploadState === "uploading"}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-brand-500/35 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-50"
+              >
+                ✨ Generate cover with AI
+              </button>
               {coverUploadState === "done" && (
                 <p className="mt-1 text-green-400">✓ Cover uploaded</p>
               )}
@@ -282,6 +345,27 @@ export default function UploadTrackForm() {
           <button
             type="button"
             onClick={() => audioRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.currentTarget.classList.add("border-brand-500/60", "bg-brand-500/5");
+            }}
+            onDragLeave={(e) => {
+              e.currentTarget.classList.remove("border-brand-500/60", "bg-brand-500/5");
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.currentTarget.classList.remove("border-brand-500/60", "bg-brand-500/5");
+              const file = e.dataTransfer.files?.[0];
+              if (!file || !audioRef.current) return;
+              if (!file.type.startsWith("audio/")) {
+                alert("Please drop an audio file (MP3, WAV, FLAC, AAC).");
+                return;
+              }
+              const dt = new DataTransfer();
+              dt.items.add(file);
+              audioRef.current.files = dt.files;
+              audioRef.current.dispatchEvent(new Event("change", { bubbles: true }));
+            }}
             className="w-full rounded-xl border-2 border-dashed border-white/15 p-6 text-center hover:border-brand-500/60 transition"
           >
             {audioFile ? (
@@ -303,7 +387,7 @@ export default function UploadTrackForm() {
             ) : (
               <div className="text-white/40">
                 <p className="text-lg mb-1">🎵</p>
-                <p className="text-sm">Click to upload audio file</p>
+                <p className="text-sm">Drop your audio file here, or click to browse</p>
                 <p className="text-xs mt-1">MP3, WAV, FLAC, AAC — max 200MB</p>
               </div>
             )}

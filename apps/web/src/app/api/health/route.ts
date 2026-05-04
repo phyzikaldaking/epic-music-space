@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getRedis } from "@/lib/redis";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { getMuxClient } from "@/lib/mux";
+import { getStripeHealthReport } from "@/lib/stripeEnv";
+import { getCriticalEnvironmentHealthReport } from "@/lib/criticalEnv";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +43,15 @@ async function checkDb(): Promise<ServiceCheck> {
   };
 }
 
+async function checkConfiguration(): Promise<ServiceCheck> {
+  const report = getCriticalEnvironmentHealthReport();
+  return {
+    name: "configuration",
+    status: report.status,
+    message: report.issues[0]?.message,
+  };
+}
+
 async function checkRedis(): Promise<ServiceCheck> {
   const redis = getRedis();
   if (!redis) return { name: "redis", status: "not_configured" };
@@ -69,19 +80,12 @@ async function checkSupabase(): Promise<ServiceCheck> {
 }
 
 async function checkStripe(): Promise<ServiceCheck> {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    return { name: "stripe", status: "not_configured" };
-  }
-  // Lazy import so unconfigured environments don't blow up at module-init.
-  const result = await timeIt(async () => {
-    const { stripe } = await import("@/lib/stripe");
-    await stripe.balance.retrieve();
-  });
+  const result = await getStripeHealthReport();
   return {
     name: "stripe",
-    status: result.error ? "down" : "ok",
+    status: result.status,
     latencyMs: result.latencyMs,
-    message: result.error,
+    message: result.message,
   };
 }
 
@@ -113,8 +117,23 @@ async function checkLiveKit(): Promise<ServiceCheck> {
   };
 }
 
+// In-memory cache so /status (which auto-refreshes every 30s) doesn't ping
+// every external service on every page load. Survives across requests on the
+// same Lambda instance; Vercel cold starts re-prime, which is fine.
+let healthCache: { at: number; payload: unknown } | null = null;
+const HEALTH_CACHE_MS = 30_000;
+
 export async function GET() {
-  const [db, redis, supabase, stripe, mux, livekit] = await Promise.all([
+  if (healthCache && Date.now() - healthCache.at < HEALTH_CACHE_MS) {
+    const payload = healthCache.payload as { status: string };
+    return NextResponse.json(payload, {
+      status: payload.status === "down" ? 503 : 200,
+      headers: { "Cache-Control": "public, max-age=30" },
+    });
+  }
+
+  const [configuration, db, redis, supabase, stripe, mux, livekit] = await Promise.all([
+    checkConfiguration(),
     checkDb(),
     checkRedis(),
     checkSupabase(),
@@ -123,7 +142,7 @@ export async function GET() {
     checkLiveKit(),
   ]);
 
-  const services = [db, redis, supabase, stripe, mux, livekit];
+  const services = [configuration, db, redis, supabase, stripe, mux, livekit];
   const anyDown = services.some((s) => s.status === "down");
   const allConfiguredOk = services.every((s) => s.status === "ok" || s.status === "not_configured");
 
@@ -133,12 +152,14 @@ export async function GET() {
       ? "healthy"
       : "degraded";
 
-  return NextResponse.json(
-    {
-      status: overall,
-      timestamp: new Date().toISOString(),
-      services,
-    },
-    { status: overall === "down" ? 503 : 200 },
-  );
+  const payload = {
+    status: overall,
+    timestamp: new Date().toISOString(),
+    services,
+  };
+  healthCache = { at: Date.now(), payload };
+  return NextResponse.json(payload, {
+    status: overall === "down" ? 503 : 200,
+    headers: { "Cache-Control": "public, max-age=30" },
+  });
 }

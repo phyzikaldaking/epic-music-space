@@ -104,5 +104,7 @@ export async function GET(req: NextRequest) {
     await cacheSet(CACHE_KEYS.trendingSongs, result, CACHE_TTL.trendingSongs);
   }
 
-  return NextResponse.json(result);
+  // Strip raw upstream audio URL — clients use the same-origin stream proxy.
+  const { publicSongs } = await import("@/lib/serializeSong");
+  return NextResponse.json(publicSongs(result));
 }

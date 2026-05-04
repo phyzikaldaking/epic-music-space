@@ -54,24 +54,31 @@ export async function POST(req: NextRequest) {
     const { name, email, password, role, inviteCode } = parsed.data;
     const normalizedEmail = email.trim().toLowerCase();
 
-    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-    if (existing) {
-      await emitAuthEvent("register_existing_email", {
-        ip,
-        email: normalizedEmail,
-      });
-      return NextResponse.json(
-        { error: "An account with this email already exists." },
-        { status: 409 }
-      );
-    }
-
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await prisma.user.create({
-      data: { name, email: normalizedEmail, passwordHash, role },
-      select: { id: true, email: true, name: true, role: true },
-    });
+    // Idempotent: if two clicks fire two concurrent register requests, the
+    // unique-email constraint guarantees only one row is created. We catch
+    // P2002 and report it as a regular "already exists" instead of a 500.
+    let user;
+    try {
+      user = await prisma.user.create({
+        data: { name, email: normalizedEmail, passwordHash, role },
+        select: { id: true, email: true, name: true, role: true },
+      });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "P2002") {
+        await emitAuthEvent("register_existing_email", {
+          ip,
+          email: normalizedEmail,
+        });
+        return NextResponse.json(
+          { error: "An account with this email already exists." },
+          { status: 409 },
+        );
+      }
+      throw err;
+    }
 
     await emitAuthEvent("register_created", {
       ip,

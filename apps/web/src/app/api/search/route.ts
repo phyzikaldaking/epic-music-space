@@ -87,12 +87,15 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
+  const { publicSong } = await import("@/lib/serializeSong");
   return NextResponse.json({
-    songs: songs.map((s) => ({
-      ...s,
-      licensePrice: Number(s.licensePrice),
-      revenueSharePct: Number(s.revenueSharePct),
-    })),
+    songs: songs.map((s) =>
+      publicSong({
+        ...s,
+        licensePrice: Number(s.licensePrice),
+        revenueSharePct: Number(s.revenueSharePct),
+      }),
+    ),
     artists,
   });
 }

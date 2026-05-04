@@ -7,6 +7,7 @@ import { cacheGet, cacheSet, cacheDel, CACHE_KEYS, CACHE_TTL } from "@/lib/redis
 import { strictLimiter, lenientLimiter } from "@/lib/rateLimit";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { getActiveLimits } from "@/lib/tierLimits";
+import { publicSong, publicSongs, type SongLike } from "@/lib/serializeSong";
 
 const createSongSchema = z.object({
   title: z.string().min(1).max(200),
@@ -38,8 +39,8 @@ export async function GET(req: NextRequest) {
   }
 
   const cacheKey = CACHE_KEYS.trendingSongs;
-  const cached = await cacheGet<unknown[]>(cacheKey);
-  if (cached) return NextResponse.json(cached);
+  const cached = await cacheGet<SongLike[]>(cacheKey);
+  if (cached) return NextResponse.json(publicSongs(cached));
 
   const songs = await prisma.song.findMany({
     where: { isActive: true },
@@ -47,8 +48,10 @@ export async function GET(req: NextRequest) {
     take: 50,
   });
 
+  // Cache the raw shape so we keep audioUrl available server-side; redact
+  // for the response.
   await cacheSet(cacheKey, songs, CACHE_TTL.trendingSongs);
-  return NextResponse.json(songs);
+  return NextResponse.json(publicSongs(songs));
 }
 
 export async function POST(req: NextRequest) {
@@ -174,6 +177,6 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json(song, { status: 201 });
+  return NextResponse.json(publicSong(song), { status: 201 });
 }
 

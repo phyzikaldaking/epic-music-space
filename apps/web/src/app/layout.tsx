@@ -9,6 +9,8 @@ import { getSiteUrl } from "@/lib/site";
 
 const siteUrl = getSiteUrl();
 const GlobalAudioPlayer = dynamic(() => import("@/components/GlobalAudioPlayer"));
+const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"));
+const KeyboardShortcuts = dynamic(() => import("@/components/KeyboardShortcuts"));
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -128,6 +130,8 @@ export default function RootLayout({
           <main id="main-content" className="pb-20">{children}</main>
           <Footer />
           <GlobalAudioPlayer />
+          <OnboardingTour />
+          <KeyboardShortcuts />
           <CookieConsent />
         </Providers>
       </body>

@@ -11,8 +11,20 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log to your error tracking service here
     console.error("[GlobalError]", error);
+    // Best-effort: post to /api/internal/error which forwards to Sentry +
+    // AUTH_ALERT_WEBHOOK_URL so unhandled boundary trips actually surface.
+    void fetch("/api/internal/error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        message: error.message,
+        digest: error.digest,
+        stack: error.stack?.slice(0, 4000),
+        href: typeof window !== "undefined" ? window.location.href : null,
+      }),
+    }).catch(() => {});
   }, [error]);
 
   return (

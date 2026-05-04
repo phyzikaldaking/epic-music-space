@@ -154,12 +154,14 @@ export async function POST(req: NextRequest) {
   revalidateTag(CACHE_TAGS.songs);
   revalidateTag(CACHE_TAGS.homepage);
 
+  // Strip raw upstream audio URL — clients use the proxy.
+  const { publicSong } = await import("@/lib/serializeSong");
   return NextResponse.json(
-    {
+    publicSong({
       ...song,
       licensePrice: Number(song.licensePrice),
       revenueSharePct: Number(song.revenueSharePct),
-    },
-    { status: 201 }
+    }),
+    { status: 201 },
   );
 }

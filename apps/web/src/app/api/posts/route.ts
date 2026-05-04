@@ -103,18 +103,23 @@ export async function POST(req: NextRequest) {
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??
     "unknown";
-  try {
-    await strictLimiter.consume(`post-create:${ip}`);
-  } catch {
-    return NextResponse.json(
-      { error: "Posting too quickly — slow down." },
-      { status: 429, headers: { "Retry-After": "60" } }
-    );
-  }
 
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Per-user rate limit (separate from per-IP) so a coffee shop full of
+  // users doesn't share one budget. Each user gets their own bucket; the IP
+  // bucket only kicks in if the same IP is hammering with multiple users.
+  try {
+    await strictLimiter.consume(`post-create:user:${session.user.id}`);
+    await strictLimiter.consume(`post-create:ip:${ip}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Posting too quickly — slow down." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
   }
 
   let raw: unknown;
