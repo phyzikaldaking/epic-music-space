@@ -10,6 +10,7 @@ import SongCard from "@/components/SongCard";
 import LicenseButton from "@/components/LicenseButton";
 import TrackActions from "@/components/TrackActions";
 import { getStreamUrl } from "@/lib/audioStream";
+import SaveTrackButton from "@/components/SaveTrackButton";
 import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
@@ -163,6 +164,12 @@ export default async function TrackPage({ params, searchParams }: Props) {
     !!session?.user?.id &&
     !!song.artist_?.id &&
     session.user.id === song.artist_.id;
+
+  const initialSaved = !song.isDemo && session?.user?.id
+    ? !!(await prisma.savedTrack.findUnique({
+        where: { userId_songId: { userId: session.user.id, songId: id } },
+      }).catch(() => null))
+    : false;
 
   const [related, userLicense, ownerStats] = await Promise.all([
     song.isDemo ? Promise.resolve([]) : getRelatedTracks(id, song.genre),
@@ -340,6 +347,13 @@ export default async function TrackPage({ params, searchParams }: Props) {
                   <>license below to download.</>
                 )}
               </span>
+            </div>
+          )}
+
+          {/* Save / wishlist (only for real songs, not demos) */}
+          {!song.isDemo && (
+            <div className="mt-3">
+              <SaveTrackButton songId={song.id} initiallySaved={initialSaved} />
             </div>
           )}
 

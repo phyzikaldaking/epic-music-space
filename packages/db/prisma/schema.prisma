@@ -1267,3 +1267,18 @@ enum SupportTicketStatus {
   RESOLVED
   SPAM
 }
+
+// ─────────────────────────────────────────
+// SAVED TRACKS (wishlist / liked but not licensed)
+// ─────────────────────────────────────────
+
+model SavedTrack {
+  id        String   @id @default(cuid())
+  userId    String
+  songId    String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, songId])
+  @@index([userId, createdAt])
+  @@index([songId])
+}

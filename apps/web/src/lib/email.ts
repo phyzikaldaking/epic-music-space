@@ -285,6 +285,72 @@ export async function sendSupportConfirmation(opts: {
   return { ok: true };
 }
 
+/** Weekly recap emailed to artists every Friday morning (cron-driven). */
+export interface WeeklyDigest {
+  to: string;
+  artistName: string;
+  newFollowers: number;
+  licensesSold: number;
+  grossDollars: number;
+  topTrackTitle: string | null;
+  topTrackPlays: number;
+  totalPlays: number;
+}
+
+export async function sendWeeklyDigestEmail(d: WeeklyDigest) {
+  if (!resend) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[email] weekly digest blocked — RESEND_API_KEY not set");
+      return { ok: false };
+    }
+    console.info("[email] (dev) weekly digest:", d);
+    return { ok: true, dev: true };
+  }
+  const base = getSiteUrl();
+  const noActivity = d.newFollowers === 0 && d.licensesSold === 0 && d.totalPlays === 0;
+
+  const html = `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#fff;font-family:-apple-system,sans-serif;padding:40px 16px">
+    <div style="max-width:560px;margin:0 auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:36px 32px">
+      <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.18em;color:#a78bfa">This week on EMS</p>
+      <h1 style="margin:0 0 12px;font-size:22px">Hi ${escapeHtml(d.artistName)} — your 7-day recap</h1>
+      ${noActivity
+        ? `<p style="color:rgba(255,255,255,0.7);line-height:1.6">No new activity this week. A new post or a freshly uploaded track is the fastest way to get the leaderboard moving — try /studio/new or /feed.</p>`
+        : `<table style="width:100%;border-collapse:collapse;margin:18px 0">
+            <tr>
+              <td style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08);font-size:13px;color:rgba(255,255,255,0.55)">New followers</td>
+              <td style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;font-size:18px;font-weight:800">${d.newFollowers}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08);font-size:13px;color:rgba(255,255,255,0.55)">Licenses sold</td>
+              <td style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;font-size:18px;font-weight:800">${d.licensesSold}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08);font-size:13px;color:rgba(255,255,255,0.55)">Gross</td>
+              <td style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;font-size:18px;font-weight:800;color:#34d399">$${d.grossDollars.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 0;font-size:13px;color:rgba(255,255,255,0.55)">Plays this week</td>
+              <td style="padding:10px 0;text-align:right;font-size:18px;font-weight:800">${d.totalPlays}</td>
+            </tr>
+          </table>
+          ${d.topTrackTitle ? `<p style="color:rgba(255,255,255,0.55);font-size:13px">Top track: <strong style="color:#fff">${escapeHtml(d.topTrackTitle)}</strong> · ${d.topTrackPlays} plays</p>` : ""}`}
+      <p style="margin:24px 0">
+        <a href="${base}/dashboard" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:700">Open dashboard →</a>
+      </p>
+      <p style="color:rgba(255,255,255,0.4);font-size:11px;margin-top:24px">You're getting this because you're an artist on Epic Music Space. <a style="color:rgba(255,255,255,0.55)" href="${base}/profile/edit">Manage email preferences</a>.</p>
+    </div></body></html>`;
+
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: d.to,
+    subject: `Your EMS week — ${d.licensesSold} sold, ${d.newFollowers} new followers`,
+    html,
+    text: `Hi ${d.artistName},\n\nThis week on Epic Music Space:\n  New followers: ${d.newFollowers}\n  Licenses sold: ${d.licensesSold}\n  Gross: $${d.grossDollars.toFixed(2)}\n  Plays: ${d.totalPlays}${d.topTrackTitle ? `\n  Top track: ${d.topTrackTitle} (${d.topTrackPlays} plays)` : ""}\n\nDashboard: ${base}/dashboard`,
+  });
+  if (error) return { ok: false, error };
+  return { ok: true };
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }
