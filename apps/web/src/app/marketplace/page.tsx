@@ -8,6 +8,7 @@ import SongCard from "@/components/SongCard";
 import { getDemoTracks } from "@/lib/demoTracks";
 import MarketplaceFilters from "@/components/MarketplaceFilters";
 import MarketplaceSearch from "@/components/MarketplaceSearch";
+import AdSlot from "@/components/ads/AdSlot";
 
 export const revalidate = 30;
 
@@ -161,6 +162,10 @@ export default async function MarketplacePage(props: {
               <div className="mt-4 rounded-2xl border border-cyan-200/10 bg-cyan-200/[0.045] p-4"><div className="flex items-center justify-between text-xs font-bold uppercase tracking-[0.18em] text-white/44"><span>License Supply</span><span>{formatCompactNumber(totalSupply)}</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-white to-gold-200 dyn-w" style={{ "--dyn-w": `${Math.min(100, totalSupply > 0 ? (claimedLicenses / totalSupply) * 100 : 0)}%` } as React.CSSProperties} /></div></div>
             </div>
           </div>
+        </section>
+
+        <section className="mt-8">
+          <Suspense><AdSlot location="MARKETPLACE_BANNER" className="mb-6" /></Suspense>
         </section>
 
         <section className="mt-8">

@@ -7,6 +7,7 @@ import { enqueueNotification } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { track } from "@/lib/analytics";
 import { CACHE_TAGS } from "@/lib/cacheTags";
+import { recordLicenseSale, recordTip, recordAdPurchase, recordRefund } from "@/lib/revenueShare";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -195,6 +196,20 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
     },
   });
 
+  // Mirror into revenue ledger (idempotent — RevenueEvent.transactionId is unique)
+  try {
+    await recordLicenseSale({
+      songId: song.id,
+      artistId: song.artistId,
+      transactionId: existing.id,
+      grossDollars: Number(existing.amount),
+    });
+  } catch (err) {
+    if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+      console.warn("[stripe-webhook] license ledger write failed", err);
+    }
+  }
+
   const revenueShare = Number(song.revenueSharePct) / 100;
   const payoutAmount = Number(existing.amount) * revenueShare;
 
@@ -283,6 +298,26 @@ async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
 }
 async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
   await prisma.transaction.updateMany({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
+
+  const txRow = await prisma.transaction.findUnique({
+    where: { stripeSessionId: session.id },
+    select: { id: true, amount: true, userId: true, metadata: true },
+  });
+  const artistId = (txRow?.metadata as { artistId?: string } | null | undefined)?.artistId
+    ?? session.metadata?.artistId;
+  if (txRow && artistId) {
+    try {
+      await recordTip({
+        artistId,
+        transactionId: txRow.id,
+        grossDollars: Number(txRow.amount),
+      });
+    } catch (err) {
+      if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+        console.warn("[stripe-webhook] tip ledger write failed", err);
+      }
+    }
+  }
 }
 async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Session) {
   await prisma.transaction.updateMany({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
@@ -303,6 +338,26 @@ async function handleAdPurchaseCompleted(session: Stripe.Checkout.Session) {
     if (result.count === 0) {
       console.warn(`[stripe-webhook] AD_PURCHASE: no matching ad found adId=${adId} userId=${userId}`);
       return;
+    }
+
+    // Mirror into revenue ledger
+    const txRow = await prisma.transaction.findUnique({
+      where: { stripeSessionId: session.id },
+      select: { id: true, amount: true },
+    });
+    if (txRow) {
+      try {
+        await recordAdPurchase({
+          buyerId: userId,
+          adPlacementId: adId,
+          transactionId: txRow.id,
+          grossDollars: Number(txRow.amount),
+        });
+      } catch (err) {
+        if (!String((err as Error)?.message ?? "").includes("Unique constraint")) {
+          console.warn("[stripe-webhook] ad ledger write failed", err);
+        }
+      }
     }
 
     console.log(`[stripe-webhook] AD_PURCHASE: activated ad ${adId} for user ${userId}`);
@@ -414,6 +469,17 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     });
     revalidateTag(CACHE_TAGS.songs);
     revalidateTag(CACHE_TAGS.homepage);
+  }
+
+  // Mirror clawback into the revenue ledger so the wallet view reflects the
+  // reversal (debit splits net the next payout).
+  try {
+    await recordRefund({
+      transactionId: transaction.id,
+      amountCents: charge.amount_refunded,
+    });
+  } catch (err) {
+    console.warn("[stripe-webhook] refund ledger clawback failed", err);
   }
 
   await enqueueNotification({

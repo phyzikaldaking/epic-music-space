@@ -72,6 +72,7 @@ model User {
   roomMessages       RoomMessage[]
   roomBans           RoomBan[]           @relation("RoomBanned")
   roomBansIssued     RoomBan[]           @relation("RoomBannedBy")
+  revenueSplits      RevenueSplit[]      @relation("RevenueSplits")
 }
 
 enum Role {
@@ -167,6 +168,7 @@ model Song {
   auctions       Auction[]
   behaviorEvents UserBehaviorEvent[]
   rooms          Room[]
+  revenueEvents  RevenueEvent[]
   @@index([artistId])
   @@index([district])
   @@index([isActive])
@@ -213,6 +215,7 @@ model Transaction {
   song   Song?   @relation(fields: [songId], references: [id])
   licenseTokenId String?
   licenseToken   LicenseToken? @relation(fields: [licenseTokenId], references: [id])
+  revenueEvent   RevenueEvent?
   @@index([userId])
   @@index([status])
   @@index([userId, createdAt])
@@ -249,6 +252,8 @@ model Payout {
   song   Song   @relation(fields: [songId], references: [id])
   licenseTokenId String?
   licenseToken   LicenseToken? @relation(fields: [licenseTokenId], references: [id])
+  splits         RevenueSplit[]
+  stripeTransferId String?    @unique
   @@index([userId])
   @@index([status])
   @@index([period])
@@ -360,6 +365,110 @@ model AdPlacement {
   endDate   DateTime
   isActive  Boolean    @default(true)
   createdAt DateTime   @default(now())
+  impressions AdImpression[]
+  clicks      AdClick[]
+  revenueEvents RevenueEvent[] @relation("AdPlacementRevenue")
+
+  @@index([location, isActive, startDate, endDate])
+  @@index([ownerId])
+}
+
+model AdImpression {
+  id          String   @id @default(cuid())
+  placementId String
+  placement   AdPlacement @relation(fields: [placementId], references: [id], onDelete: Cascade)
+  userId      String?
+  sessionId   String?      // anonymous client UUID stored in localStorage
+  ipHash      String?      // sha256(ip + daily salt) — privacy-preserving fraud guard
+  userAgent   String?      @db.Text
+  referrer    String?      @db.Text
+  createdAt   DateTime     @default(now())
+
+  @@index([placementId, createdAt])
+  @@index([userId, createdAt])
+  @@index([ipHash, placementId, createdAt])
+}
+
+model AdClick {
+  id          String   @id @default(cuid())
+  placementId String
+  placement   AdPlacement @relation(fields: [placementId], references: [id], onDelete: Cascade)
+  userId      String?
+  sessionId   String?
+  ipHash      String?
+  createdAt   DateTime @default(now())
+
+  @@index([placementId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Revenue share + payout ledger
+// ─────────────────────────────────────────────────────────────
+
+model RevenueEvent {
+  id           String           @id @default(cuid())
+  type         RevenueEventType
+  // Source pointers — at most one filled in (denormalized for fast filtering).
+  songId       String?
+  song         Song?            @relation(fields: [songId], references: [id], onDelete: SetNull)
+  transactionId String?         @unique
+  transaction  Transaction?     @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  adPlacementId String?
+  adPlacement   AdPlacement?    @relation("AdPlacementRevenue", fields: [adPlacementId], references: [id], onDelete: SetNull)
+  grossCents   Int              // gross revenue in cents (USD)
+  feeCents     Int              @default(0)  // Stripe / processor fees
+  currency     String           @default("usd")
+  occurredAt   DateTime         @default(now())
+  createdAt    DateTime         @default(now())
+  splits       RevenueSplit[]
+
+  @@index([type, occurredAt])
+  @@index([songId, occurredAt])
+}
+
+enum RevenueEventType {
+  LICENSE_SALE
+  TIP
+  AD_PURCHASE
+  STREAM_ROYALTY
+  AUCTION_WIN
+  REFUND        // negative gross — clawback
+}
+
+model RevenueSplit {
+  id        String           @id @default(cuid())
+  eventId   String
+  event     RevenueEvent     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User             @relation("RevenueSplits", fields: [userId], references: [id], onDelete: Cascade)
+  role      RevenueSplitRole
+  amountCents Int            // can be negative for clawbacks
+  status    RevenueSplitStatus @default(PENDING)
+  payoutId  String?
+  payout    Payout?          @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  paidAt    DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([userId, status])
+  @@index([eventId])
+  @@index([payoutId])
+}
+
+enum RevenueSplitRole {
+  ARTIST
+  HOLDER
+  LABEL
+  PLATFORM
+  HOST          // listening-session host
+}
+
+enum RevenueSplitStatus {
+  PENDING       // accrued, not yet paid
+  PAID          // included in a Payout that succeeded
+  CLAWED_BACK   // refund/dispute reversed it
+  EXCLUDED      // platform fee, not actually paid out
 }
 
 enum AdLocation {
