@@ -23,7 +23,7 @@ const securityHeaders = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https://*.amazonaws.com https://*.supabase.co https://lh3.googleusercontent.com",
+      "img-src 'self' data: blob: https://*.amazonaws.com https://*.supabase.co https://lh3.googleusercontent.com https://images.unsplash.com",
       "media-src 'self' blob: https://*.amazonaws.com https://*.supabase.co",
       "connect-src 'self' https://*.supabase.co https://api.openai.com https://api.stripe.com https://checkout.stripe.com",
       "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com",
@@ -61,6 +61,10 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "**.supabase.co",
+      },
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
       },
     ],
   },
