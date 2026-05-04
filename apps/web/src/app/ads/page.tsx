@@ -1,9 +1,10 @@
+import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import AdPurchaseForm from "@/components/AdPurchaseForm";
 import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Advertise | Epic Music Space",
@@ -190,12 +191,15 @@ export default async function AdsPage({
                   key={ad.id}
                   className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414] card-hover-neon"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={ad.mediaUrl}
-                    alt={ad.title}
-                    className="h-36 w-full object-cover opacity-80"
-                  />
+                  <div className="relative h-36 w-full">
+                    <Image
+                      src={ad.mediaUrl}
+                      alt={ad.title}
+                      fill
+                      sizes="(max-width: 640px) 100vw, 50vw"
+                      className="object-cover opacity-80"
+                    />
+                  </div>
                   <div className="p-4">
                     <p className="font-bold">{ad.title}</p>
                     <p className="text-xs text-white/35 mt-0.5">

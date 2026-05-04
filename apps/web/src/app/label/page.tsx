@@ -1,8 +1,9 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 export const metadata: Metadata = {
   title: "Labels",
@@ -132,13 +133,14 @@ export default async function LabelListPage() {
                 href={`/label/${label.id}`}
                 className="group grid gap-5 py-7 transition hover:bg-white/[0.025] md:grid-cols-[96px_1fr_0.55fr] md:items-center"
               >
-                <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] text-xl font-black text-white/50">
+                <div className="relative flex h-20 w-20 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] text-xl font-black text-white/50">
                   {label.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <Image
                       src={label.logoUrl}
                       alt={`${label.name} logo`}
-                      className="h-full w-full object-cover"
+                      fill
+                      sizes="80px"
+                      className="object-cover"
                     />
                   ) : (
                     String(index + 1).padStart(2, "0")

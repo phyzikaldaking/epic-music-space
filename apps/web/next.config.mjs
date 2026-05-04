@@ -44,6 +44,9 @@ const nextConfig = {
   },
   poweredByHeader: false,
   transpilePackages: ["@ems/utils"],
+  experimental: {
+    optimizePackageImports: ["@stripe/stripe-js", "openai"],
+  },
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 60 * 60 * 24 * 30,

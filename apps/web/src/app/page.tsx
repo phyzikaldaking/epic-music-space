@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
+import Image from "next/image";
 import AudioPlayer from "@/components/AudioPlayer";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { prisma } from "@/lib/prisma";
+import { formatPrice } from "@ems/utils";
 
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Epic Music Space - Premium Music Licensing Platform",
+  title: "Epic Music Space — Where Artists Get Heard, Get Paid, and Get Famous",
   description:
-    "License premium music, launch curated drops, and release tracks with clear terms, capped supply, and artist revenue participation.",
+    "Drop tracks, win Versus battles, sell licenses, and watch your fans hold a piece of your career. The artist platform built to make you the next one up.",
   alternates: { canonical: "/" },
 };
 
@@ -58,20 +60,20 @@ function mapDemoTracksToSampleSongs(tracks: Awaited<ReturnType<typeof getDemoTra
 }
 
 const marqueeItems = [
-  "Premium Licensing",
-  "Studio Drops",
-  "Verified Demand",
-  "Capped Licenses",
-  "Artist Revenue Share",
-  "Creator Catalog",
-  "AI Discovery",
-  "Premium Licensing",
-  "Studio Drops",
-  "Verified Demand",
-  "Capped Licenses",
-  "Artist Revenue Share",
-  "Creator Catalog",
-  "AI Discovery",
+  "Live Versus Battles",
+  "Real-Time Drops",
+  "90% to the Artist",
+  "Set Your Own Price",
+  "Fans Hold Your Catalog",
+  "Climb the Charts",
+  "Get Heard Tonight",
+  "Live Versus Battles",
+  "Real-Time Drops",
+  "90% to the Artist",
+  "Set Your Own Price",
+  "Fans Hold Your Catalog",
+  "Climb the Charts",
+  "Get Heard Tonight",
 ];
 
 const trackArtClasses = ["vc-track-art-1", "vc-track-art-2", "vc-track-art-3"];
@@ -421,14 +423,6 @@ function formatRevenue(n: number) {
   return `$${n}`;
 }
 
-function formatPrice(value: string) {
-  return Number(value).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
-}
-
 export default async function HomePage() {
   const { songCount, licenseCount, totalRevenue, sampleSongs } =
     await getHomeData();
@@ -455,26 +449,26 @@ export default async function HomePage() {
     mainEntity: [
       {
         "@type": "Question",
-        name: "How does licensing work on Epic Music Space?",
+        name: "How do artists make money on Epic Music Space?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Each track shows transparent terms, license price, usage rights, and remaining supply before checkout so buyers can purchase with confidence.",
+          text: "You set your license price and how many licenses to sell. Every license is a paid sale that hits your wallet — and you keep 90%. License holders share streaming revenue with you, so the more your song plays, the more everyone wins.",
         },
       },
       {
         "@type": "Question",
-        name: "Can artists control pricing and license supply?",
+        name: "What are Versus battles?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Yes. Artists set pricing, license counts, and release strategy from their studio dashboard while tracking discovery and sales performance.",
+          text: "Live track-versus-track showdowns. Drop your song into the ring against another artist, fans vote in real time, and winners climb the discovery charts overnight. It's how unknown artists go viral on EMS.",
         },
       },
       {
         "@type": "Question",
-        name: "Do fans and creators preview tracks before purchase?",
+        name: "Do I keep my rights?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Yes. The marketplace includes playable previews so listeners can evaluate tracks before licensing.",
+          text: "Yes. You own the master. Buyers receive a digital license to use the track under transparent terms — they don't own your music. Your catalog is yours forever.",
         },
       },
     ],
@@ -510,14 +504,14 @@ export default async function HomePage() {
 
       <section className="vc-hero">
         <div className="vc-stars" aria-hidden="true" />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           className="vc-studio-photo"
           src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=2600&q=90&auto=format&fit=crop&crop=center"
           alt=""
           aria-hidden="true"
-          loading="eager"
-          fetchPriority="high"
+          fill
+          sizes="100vw"
+          priority
         />
         <div className="vc-studio-tint" aria-hidden="true" />
         <div className="vc-studio-overlay" aria-hidden="true" />
@@ -527,25 +521,25 @@ export default async function HomePage() {
         <div className="vc-horizon" aria-hidden="true" />
 
         <div className="vc-hero-content">
-          <p className="vc-eyebrow">Premium music licensing for creators and artists</p>
+          <p className="vc-eyebrow">The artist platform built to make you the next one up</p>
           <h1 className="vc-hero-h1">
-            Epic
+            Drop it.
             <br />
-            Music
+            Battle it.
             <br />
-            Space
+            Get paid.
           </h1>
           <p className="vc-hero-tagline">
-            License <span className="accent">premium tracks</span>, back artists,
-            and watch releases rise through charts, curated drops, and verified
-            demand.
+            Upload your track, fight for the crown in <span className="accent">live Versus battles</span>,
+            and turn every fan into a paying license holder. Keep 90%. Own your masters.
+            Watch your name climb the charts in real time.
           </p>
           <div className="vc-hero-ctas">
-            <Link href="/marketplace" className="vc-btn vc-btn-pink">
-              Browse Catalog
+            <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
+              Open Your Studio →
             </Link>
-            <Link href="/auth/signup" className="vc-btn vc-btn-ghost">
-              Open Your Studio
+            <Link href="/versus" className="vc-btn vc-btn-ghost">
+              Watch a Battle
             </Link>
           </div>
         </div>
@@ -564,39 +558,42 @@ export default async function HomePage() {
 
       <section className="vc-section vc-platform-section">
         <div className="vc-container">
-          <p className="vc-section-eyebrow">The Platform</p>
+          <p className="vc-section-eyebrow">What you can do here</p>
           <h2 className="vc-section-title">
-            A premium studio layer for music licensing, release strategy, and
-            artist monetization.
+            Built so independent artists win — without a label, without
+            permission, without waiting.
           </h2>
           <p className="vc-section-sub">
-            Epic Music Space opens as a serious music-tech platform first. The
-            immersive world can return later after the product, catalog, and
-            creator economy are fully connected.
+            EMS gives you the tools the majors keep behind closed doors —
+            licensing, distribution, fan investment, real-time analytics,
+            and a stage to perform on every single night.
           </p>
           <div className="vc-platform-grid">
             <article className="vc-platform-card">
-              <span className="vc-platform-num">01 / License</span>
-              <h3>Clear rights before checkout.</h3>
+              <span className="vc-platform-num">01 / Drop</span>
+              <h3>Release on your terms.</h3>
               <p>
-                Creators preview tracks, review price, supply, and usage terms,
-                then license music with confidence instead of guessing.
+                Upload a track, set your license price, cap your supply, and
+                decide what your sound is worth. No A&amp;R gatekeeping. Your
+                drop goes live the second you click publish.
               </p>
             </article>
             <article className="vc-platform-card">
-              <span className="vc-platform-num">02 / Release</span>
-              <h3>Artists control the drop.</h3>
+              <span className="vc-platform-num">02 / Battle</span>
+              <h3>Live Versus is your stage.</h3>
               <p>
-                Artists set pricing, supply, and release strategy while tracking
-                demand, sales, and marketplace momentum from their studio.
+                Step in the ring against another artist. Fans vote in real time.
+                Winners climb the charts overnight. This is how unknown artists
+                go viral on EMS — and it happens every night.
               </p>
             </article>
             <article className="vc-platform-card">
-              <span className="vc-platform-num">03 / Grow</span>
-              <h3>Visibility follows demand.</h3>
+              <span className="vc-platform-num">03 / Get Paid</span>
+              <h3>Keep 90% of every license.</h3>
               <p>
-                Charts, battles, scores, and placements turn attention into a
-                measurable system artists can build around.
+                Every sale hits your wallet instantly. Your fans become license
+                holders who share in your streaming revenue — so they win when
+                you win, and they push your tracks harder than any marketing team.
               </p>
             </article>
           </div>
@@ -607,16 +604,17 @@ export default async function HomePage() {
         <div className="vc-container">
           <div className="vc-lb-grid">
             <div>
-              <p className="vc-section-eyebrow">Top Charts</p>
+              <p className="vc-section-eyebrow">Tonight&apos;s Charts</p>
               <h2 className="vc-section-title">
-                The <span className="pink">hottest</span> tracks on the platform
+                Your name <span className="pink">belongs up here</span>
               </h2>
               <p className="vc-section-sub">
-                Rankings move with plays, licenses, battle wins, and marketplace
-                momentum. Real demand drives real placement.
+                Charts move with battle wins, license sales, plays, and EMS score —
+                not playlist politics. Drop a track, win a battle, and watch
+                yourself climb past artists with ten times your followers.
               </p>
-              <Link href="/versus" className="vc-btn vc-btn-pink">
-                Enter Versus Battles
+              <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
+                Get on the Charts →
               </Link>
             </div>
             <div className="vc-lb-table">
@@ -647,19 +645,54 @@ export default async function HomePage() {
       <section className="vc-section vc-split-section">
         <div className="vc-container">
           <div className="vc-split-grid">
-            <div className="vc-split-card creators">
+            <div className="vc-split-card artists">
               <div>
                 <p className="vc-section-eyebrow vc-eyebrow-pink">
-                  For Creators
+                  For Artists
                 </p>
                 <h3>
-                  License <span className="high">premium</span>
+                  Get heard. <span className="high">Get paid.</span>
                   <br />
-                  music fast
+                  Get famous.
                 </h3>
                 <p>
-                  Find music that explains its price, rights, supply, and
-                  revenue split before you buy. No hidden terms.
+                  Drop tracks, fight in live battles, sell licenses, and turn
+                  your fans into co-owners of your career. Keep 90%, own your
+                  masters, and get notified the moment someone licenses your sound.
+                </p>
+                <div className="vc-split-stats">
+                  <div className="vc-stat">
+                    <div className="num">90%</div>
+                    <div className="label">Yours, Per License</div>
+                  </div>
+                  <div className="vc-stat">
+                    <div className="num">Live</div>
+                    <div className="label">Battles &amp; Drops</div>
+                  </div>
+                </div>
+              </div>
+              <Link
+                href="/auth/signup?role=ARTIST"
+                className="vc-btn vc-btn-pink vc-split-cta"
+              >
+                Open Your Studio →
+              </Link>
+            </div>
+
+            <div className="vc-split-card creators">
+              <div>
+                <p className="vc-section-eyebrow vc-eyebrow-cyan">
+                  For Fans &amp; Creators
+                </p>
+                <h3>
+                  Back the artist <span className="high">before</span>
+                  <br />
+                  the world catches on
+                </h3>
+                <p>
+                  License a track, share in its streaming revenue forever, and
+                  brag about discovering them first. Use the music in your videos,
+                  your podcast, your brand — with terms shown upfront.
                 </p>
                 <div className="vc-split-stats">
                   {displayStats.slice(0, 2).map((stat) => (
@@ -672,42 +705,9 @@ export default async function HomePage() {
               </div>
               <Link
                 href="/marketplace"
-                className="vc-btn vc-btn-pink vc-split-cta"
-              >
-                Browse the Catalog
-              </Link>
-            </div>
-
-            <div className="vc-split-card artists">
-              <div>
-                <p className="vc-section-eyebrow vc-eyebrow-cyan">
-                  For Artists
-                </p>
-                <h3>
-                  Release and <span className="high">earn</span>
-                  <br />
-                  on your terms
-                </h3>
-                <p>
-                  Set price and supply, keep 90% of sales, and let verified
-                  demand push your release through the platform.
-                </p>
-                <div className="vc-split-stats">
-                  <div className="vc-stat">
-                    <div className="num">90%</div>
-                    <div className="label">Artist Share</div>
-                  </div>
-                  <div className="vc-stat">
-                    <div className="num">Live</div>
-                    <div className="label">Studio Tools</div>
-                  </div>
-                </div>
-              </div>
-              <Link
-                href="/auth/signup"
                 className="vc-btn vc-btn-ghost-cyan vc-split-cta"
               >
-                Open Your Studio
+                Browse the Catalog
               </Link>
             </div>
           </div>
@@ -716,58 +716,63 @@ export default async function HomePage() {
 
       <section className="vc-section vc-feat-section">
         <div className="vc-container">
-          <p className="vc-section-eyebrow">Platform Features</p>
+          <p className="vc-section-eyebrow">How you win on EMS</p>
           <h2 className="vc-section-title">
-            Built for the <span className="glow">next wave</span> of music
+            Every tool you need to <span className="glow">break out</span> —
+            in one studio
           </h2>
           <div className="vc-feat-grid vc-feat-grid-top">
-            <div className="vc-feat-card">
-              <span className="vc-feat-tag">Marketplace</span>
-              <h3>Browse by genre, BPM &amp; score</h3>
-              <p>
-                Filter by genre, BPM, key, EMS score, price range, and
-                remaining license supply. Hear before you buy — every time.
-              </p>
-              <Link href="/marketplace" className="vc-feat-link">
-                Open Marketplace →
-              </Link>
-            </div>
             <div className="vc-feat-card versus">
-              <span className="vc-feat-tag">Versus Battles</span>
-              <h3>Put tracks head-to-head</h3>
+              <span className="vc-feat-tag">Live Versus Battles</span>
+              <h3>Step in the ring tonight</h3>
               <p>
-                Artists submit tracks for head-to-head battles. Community votes
-                push winners up the discovery ladder and into top placements.
+                Drop your track against another artist&apos;s. Fans watch live,
+                vote in real time, and the winner climbs the charts overnight.
+                The fastest way to go viral on EMS — no playlist gatekeepers,
+                no cosigns required.
               </p>
               <Link href="/versus" className="vc-feat-link vc-feat-link-pink">
-                Enter Battles →
+                Enter a Battle →
               </Link>
             </div>
             <div className="vc-feat-card">
-              <span className="vc-feat-tag">Studio Network</span>
-              <h3>Build your release hub</h3>
+              <span className="vc-feat-tag">Real-Time Drops</span>
+              <h3>Watch your fans buy in live</h3>
               <p>
-                Studio dashboards, rankings, and release momentum appear as
-                premium platform surfaces now. The immersive world returns when
-                the VR layer is ready.
+                Every license sale fires a live notification. Your fans see
+                the supply ticking down. The closer to sold-out, the more
+                momentum. Drops feel like a moment — because they are.
               </p>
-              <Link href="/studio" className="vc-feat-link">
-                Open Studio →
+              <Link href="/marketplace" className="vc-feat-link">
+                See the Marketplace →
+              </Link>
+            </div>
+            <div className="vc-feat-card">
+              <span className="vc-feat-tag">Your Studio. Your Brand.</span>
+              <h3>A page that proves you&apos;re moving</h3>
+              <p>
+                Your own profile, your followers, your district badge, your
+                sales numbers. Tip jar built in. Earn badges as you climb.
+                Send a single link and let the receipts speak for themselves.
+              </p>
+              <Link href="/auth/signup?role=ARTIST" className="vc-feat-link">
+                Build Your Studio →
               </Link>
             </div>
             <div className="vc-feat-card versus">
-              <span className="vc-feat-tag">AI Discovery</span>
-              <h3>EMS score informs placement</h3>
+              <span className="vc-feat-tag">EMS Score</span>
+              <h3>The AI scout in your corner</h3>
               <p>
-                Every track gets an AI-driven EMS score based on composition,
-                production quality, and market fit. Scores inform marketplace
-                placement.
+                Every track gets a score on composition, production, and market
+                fit. Higher scores get pushed into the marketplace, the charts,
+                and the &quot;tracks to watch&quot; rails. Make the song. Let
+                the AI be your A&amp;R.
               </p>
               <Link
-                href="/marketplace"
+                href="/leaderboard"
                 className="vc-feat-link vc-feat-link-pink"
               >
-                View Top Scores →
+                See Top Scores →
               </Link>
             </div>
           </div>
@@ -776,13 +781,14 @@ export default async function HomePage() {
 
       <section className="vc-section vc-tracks-section">
         <div className="vc-container">
-          <p className="vc-section-eyebrow">Featured Studio Drops</p>
+          <p className="vc-section-eyebrow">Tonight&apos;s Drops</p>
           <h2 className="vc-section-title">
-            Hear the cue. <span className="glow">See the terms.</span>
+            Tracks moving <span className="glow">right now</span>
           </h2>
           <p className="vc-section-sub">
-            Preview every track before you license it. Price, supply, and
-            revenue share are shown upfront.
+            Real artists, real licenses, real momentum. Hear the song,
+            see the terms, watch the supply tick down — your next favorite
+            artist is one of these.
           </p>
           <div className="vc-tracks-grid">
             {sampleSongs.map((song, i) => (
@@ -798,11 +804,12 @@ export default async function HomePage() {
                     }`}
                   >
                     {song.coverUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <Image
                         src={song.coverUrl}
                         alt={song.title}
-                        className="vc-track-cover-img"
+                        fill
+                        sizes="(max-width: 768px) 100vw, 33vw"
+                        className="vc-track-cover-img object-cover"
                       />
                     )}
                     <div className="vc-play" aria-hidden="true">
@@ -850,7 +857,7 @@ export default async function HomePage() {
           </div>
           <div className="vc-catalog-link">
             <Link href="/marketplace" className="vc-btn vc-btn-ghost">
-              View Full Catalog
+              See Every Track
             </Link>
           </div>
         </div>
@@ -858,20 +865,21 @@ export default async function HomePage() {
 
       <section className="vc-section vc-closing-section">
         <div className="vc-container vc-closing-inner">
-          <p className="vc-eyebrow">Ready to move?</p>
+          <p className="vc-eyebrow">Your move</p>
           <h2 className="vc-section-title vc-closing-title">
-            License a track or release your own before the next drop moves.
+            Stop waiting to be discovered. Drop a track tonight and let the
+            crowd decide.
           </h2>
           <p className="vc-section-sub vc-closing-sub">
-            Browsing is open. Checkout, releases, and payouts use account
-            access.
+            Sign-up is free. Uploads are free. You only get charged when you
+            sell — and when you sell, you keep 90%.
           </p>
           <div className="vc-hero-ctas">
-            <Link href="/marketplace" className="vc-btn vc-btn-pink">
-              Browse Tracks
+            <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
+              Open Your Studio →
             </Link>
-            <Link href="/auth/signup" className="vc-btn vc-btn-chrome">
-              Create Account
+            <Link href="/versus" className="vc-btn vc-btn-chrome">
+              Watch Tonight&apos;s Battles
             </Link>
           </div>
         </div>

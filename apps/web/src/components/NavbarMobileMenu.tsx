@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 
 interface NavLink {
   href: string;
@@ -9,14 +10,16 @@ interface NavLink {
 }
 
 interface Props {
-  navLinks: NavLink[];
-  isLoggedIn: boolean;
+  publicLinks: NavLink[];
+  authedLinks: NavLink[];
 }
 
-export default function NavbarMobileMenu({ navLinks, isLoggedIn }: Props) {
+export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
   const [open, setOpen] = useState(false);
+  const { data: session } = useSession();
+  const isLoggedIn = !!session;
+  const navLinks = isLoggedIn ? authedLinks : publicLinks;
 
-  // Close on route change / escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -25,7 +28,6 @@ export default function NavbarMobileMenu({ navLinks, isLoggedIn }: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Prevent body scroll while open
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
@@ -33,7 +35,6 @@ export default function NavbarMobileMenu({ navLinks, isLoggedIn }: Props) {
 
   return (
     <div className="md:hidden">
-      {/* Hamburger button */}
       <button
         type="button"
         aria-label={open ? "Close navigation menu" : "Open navigation menu"}
@@ -43,19 +44,16 @@ export default function NavbarMobileMenu({ navLinks, isLoggedIn }: Props) {
         className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/12 text-white/60 transition hover:border-white/24 hover:bg-white/6 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
       >
         {open ? (
-          /* X icon */
           <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         ) : (
-          /* Hamburger icon */
           <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
           </svg>
         )}
       </button>
 
-      {/* Backdrop */}
       {open && (
         <div
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
@@ -64,7 +62,6 @@ export default function NavbarMobileMenu({ navLinks, isLoggedIn }: Props) {
         />
       )}
 
-      {/* Slide-down drawer */}
       <nav
         id="mobile-nav"
         aria-label="Mobile navigation"

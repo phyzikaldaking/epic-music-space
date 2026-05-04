@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import LiveLeaderboard from "@/components/LiveLeaderboard";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function LeaderboardPage({
   searchParams,

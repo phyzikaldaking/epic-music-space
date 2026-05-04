@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 interface ProfileData {
   name: string | null;
@@ -138,8 +139,13 @@ export default function ProfileEditPage() {
       <div className="mb-6 flex items-center gap-4">
         <div className="relative h-16 w-16 overflow-hidden rounded-2xl border border-white/15 bg-brand-500/20 flex items-center justify-center text-2xl flex-shrink-0">
           {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={imageUrl} alt="Avatar" className="h-full w-full object-cover" />
+            <Image
+              src={imageUrl}
+              alt="Avatar"
+              fill
+              sizes="64px"
+              className="object-cover"
+            />
           ) : (
             <span>{name?.[0]?.toUpperCase() ?? "?"}</span>
           )}

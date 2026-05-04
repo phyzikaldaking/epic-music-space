@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from "next";
+import dynamic from "next/dynamic";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
-import GlobalAudioPlayer from "@/components/GlobalAudioPlayer";
 import { getSiteUrl } from "@/lib/site";
 
 const siteUrl = getSiteUrl();
+const GlobalAudioPlayer = dynamic(() => import("@/components/GlobalAudioPlayer"));
 
 export const viewport: Viewport = {
   width: "device-width",

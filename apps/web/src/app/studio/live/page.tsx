@@ -6,7 +6,7 @@ import Image from "next/image";
 import { DISTRICT_META } from "@/lib/scoring";
 import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export const metadata: Metadata = {
   title: "Virtual Studio — Epic Music Space",

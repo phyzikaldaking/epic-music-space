@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
 
 interface FeedItem {
@@ -71,17 +72,14 @@ export default function LiveMarketplaceFeed() {
           }`}
         >
           {/* Cover thumbnail */}
-          <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-lg bg-white/10 flex items-center justify-center text-base">
+          <div className="relative h-9 w-9 flex-shrink-0 overflow-hidden rounded-lg bg-white/10 flex items-center justify-center text-base">
             {item.coverUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={item.coverUrl}
                 alt={`${item.title} cover art`}
-                width={72}
-                height={72}
-                loading="lazy"
-                decoding="async"
-                className="h-full w-full object-cover"
+                fill
+                sizes="36px"
+                className="object-cover"
               />
             ) : item.type === "license_sold" ? (
               "🎟️"

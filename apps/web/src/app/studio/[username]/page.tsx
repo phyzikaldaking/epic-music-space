@@ -1,3 +1,5 @@
+import { cache } from "react";
+import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notFound } from "next/navigation";
@@ -13,15 +15,38 @@ interface Props {
   params: Promise<{ username: string }>;
 }
 
+const getStudioByUsername = cache(async (username: string) =>
+  prisma.studio.findUnique({
+    where: { username },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          role: true,
+          songs: {
+            where: { isActive: true },
+            orderBy: { aiScore: "desc" },
+            take: 20,
+          },
+          licenses: {
+            where: { status: "ACTIVE" },
+            include: { song: { select: { title: true, artist: true } } },
+            take: 10,
+          },
+          ownedLabel: { select: { id: true, name: true, slug: true } },
+          _count: { select: { followers: true, following: true, songs: true } },
+          badges: { orderBy: { awardedAt: "asc" } },
+        },
+      },
+    },
+  }),
+);
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { username } = await params;
-  const studio = await prisma.studio.findUnique({
-    where: { username },
-    select: {
-      bio: true,
-      user: { select: { name: true, image: true, _count: { select: { songs: true } } } },
-    },
-  });
+  const studio = await getStudioByUsername(username);
   if (!studio) return { title: "Studio Not Found" };
 
   const artistName = studio.user.name ?? username;
@@ -49,54 +74,28 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function StudioProfilePage({ params }: Props) {
   const { username } = await params;
-  const session = await auth();
-
-  const studio = await prisma.studio.findUnique({
-    where: { username },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          image: true,
-          role: true,
-          songs: {
-            where: { isActive: true },
-            orderBy: { aiScore: "desc" },
-            take: 20,
-          },
-          licenses: {
-            where: { status: "ACTIVE" },
-            include: { song: { select: { title: true, artist: true } } },
-            take: 10,
-          },
-          ownedLabel: { select: { id: true, name: true, slug: true } },
-          _count: { select: { followers: true, following: true } },
-          badges: { orderBy: { awardedAt: "asc" } },
-        },
-      },
-    },
-  });
+  const [session, studio] = await Promise.all([
+    auth(),
+    getStudioByUsername(username),
+  ]);
 
   if (!studio) notFound();
 
   const { user } = studio;
-
   const isOwner = session?.user?.id === user.id;
 
-  // Is the current user following this artist?
-  let isFollowing = false;
-  if (session?.user?.id && !isOwner) {
-    const follow = await prisma.userFollow.findUnique({
-      where: {
-        followerId_followingId: {
-          followerId: session.user.id,
-          followingId: user.id,
-        },
-      },
-    });
-    isFollowing = !!follow;
-  }
+  const follow =
+    session?.user?.id && !isOwner
+      ? await prisma.userFollow.findUnique({
+          where: {
+            followerId_followingId: {
+              followerId: session.user.id,
+              followingId: user.id,
+            },
+          },
+        })
+      : null;
+  const isFollowing = !!follow;
 
   const avgScore =
     user.songs.length > 0
@@ -108,23 +107,29 @@ export default async function StudioProfilePage({ params }: Props) {
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
       {/* Banner */}
-      <div
-        className="mb-8 h-48 w-full overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 via-accent-600 to-brand-900"
-        style={studio.bannerUrl ? { backgroundImage: `url(${studio.bannerUrl})`, backgroundSize: "cover" } : {}}
-      />
+      <div className="relative mb-8 h-48 w-full overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 via-accent-600 to-brand-900">
+        {studio.bannerUrl && (
+          <Image
+            src={studio.bannerUrl}
+            alt=""
+            fill
+            sizes="(max-width: 1024px) 100vw, 1024px"
+            className="object-cover"
+            priority
+          />
+        )}
+      </div>
 
       {/* Profile header */}
       <div className="-mt-16 flex items-end gap-5 px-4">
         <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-2xl border-4 border-[#0a0a0f] bg-gradient-to-br from-brand-500 to-accent-500 flex items-center justify-center text-3xl">
           {user.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={user.image}
               alt={user.name ?? ""}
               width={192}
               height={192}
-              loading="eager"
-              decoding="async"
+              priority
               className="h-full w-full object-cover"
             />
           ) : (

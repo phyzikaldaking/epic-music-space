@@ -1,16 +1,63 @@
 import { prisma } from "@/lib/prisma";
+import { unstable_cache } from "next/cache";
 import { auth } from "@/lib/auth";
 import { getDemoTracks } from "@/lib/demoTracks";
 import VersusCard from "@/components/VersusCard";
 import BattleRoyaleCard from "@/components/BattleRoyaleCard";
 import CreateBattleForm from "@/components/CreateBattleForm";
 
-export const dynamic = "force-dynamic";
-
 export const metadata = {
   title: "Versus Battles | Epic Music Space",
   description: "Vote on 1v1 track battles and Battle Royale showdowns. Discover the hottest music and help crown the next champion on Epic Music Space.",
 };
+
+const getActiveBattles = unstable_cache(
+  async () => {
+    const [matches, royales] = await Promise.all([
+      prisma.versusMatch.findMany({
+        where: { status: "ACTIVE" },
+        include: {
+          songA: {
+            select: {
+              id: true, title: true, artist: true,
+              coverUrl: true, audioUrl: true, aiScore: true,
+            },
+          },
+          songB: {
+            select: {
+              id: true, title: true, artist: true,
+              coverUrl: true, audioUrl: true, aiScore: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
+      prisma.battleRoyale.findMany({
+        where: { status: "ACTIVE" },
+        include: {
+          entries: {
+            include: {
+              song: {
+                select: {
+                  id: true, title: true, artist: true,
+                  coverUrl: true, audioUrl: true, aiScore: true,
+                },
+              },
+            },
+            orderBy: { position: "asc" },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
+    ]);
+
+    return { matches, royales };
+  },
+  ["versus-active-battles"],
+  { revalidate: 30 },
+);
 
 export default async function VersusPage() {
   const session = await auth();
@@ -21,44 +68,8 @@ export default async function VersusPage() {
   const isArtist =
     Boolean(session?.user?.id) && session!.user.role !== "LISTENER";
 
-  const [matches, royales, artistSongs] = await Promise.all([
-    prisma.versusMatch.findMany({
-      where: { status: "ACTIVE" },
-      include: {
-        songA: {
-          select: {
-            id: true, title: true, artist: true,
-            coverUrl: true, audioUrl: true, aiScore: true,
-          },
-        },
-        songB: {
-          select: {
-            id: true, title: true, artist: true,
-            coverUrl: true, audioUrl: true, aiScore: true,
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    }),
-    prisma.battleRoyale.findMany({
-      where: { status: "ACTIVE" },
-      include: {
-        entries: {
-          include: {
-            song: {
-              select: {
-                id: true, title: true, artist: true,
-                coverUrl: true, audioUrl: true, aiScore: true,
-              },
-            },
-          },
-          orderBy: { position: "asc" },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    }),
+  const [{ matches, royales }, artistSongs] = await Promise.all([
+    getActiveBattles(),
     isArtist
       ? prisma.song.findMany({
           where: { artistId: session?.user?.id ?? "", isActive: true },

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import Image from "next/image";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { formatPrice } from "@ems/utils";
@@ -37,48 +39,80 @@ type TrackDetail = {
   isDemo: boolean;
 };
 
-async function getTrack(id: string): Promise<TrackDetail | null> {
-  try {
-    const song = await prisma.song.findUnique({
-      where: { id },
-      include: {
-        artist_: { select: { id: true, name: true, image: true } },
-        _count: { select: { licenses: true } },
-      },
-    });
-    if (song) return { ...song, isDemo: false };
-  } catch {
-    // DB unavailable — fall through to demo check
-  }
+const getTrack = unstable_cache(
+  async (id: string): Promise<TrackDetail | null> => {
+    try {
+      const song = await prisma.song.findUnique({
+        where: { id },
+        include: {
+          artist_: { select: { id: true, name: true, image: true } },
+          _count: { select: { licenses: true } },
+        },
+      });
+      if (song) return { ...song, isDemo: false };
+    } catch {
+      // DB unavailable — fall through to demo check
+    }
 
-  const demoTracks = await getDemoTracks();
-  const demo = demoTracks.find((d) => d.id === id);
-  if (demo) {
-    return {
-      id: demo.id,
-      title: demo.title,
-      artist: demo.artist,
-      description: demo.description,
-      coverUrl: demo.coverUrl,
-      audioUrl: demo.audioUrl,
-      genre: demo.genre,
-      bpm: demo.bpm,
-      key: demo.key,
-      licensePrice: { toString: () => demo.licensePrice },
-      revenueSharePct: { toString: () => demo.revenueSharePct },
-      soldLicenses: demo.soldLicenses,
-      totalLicenses: demo.totalLicenses,
-      aiScore: demo.aiScore,
-      isActive: true,
-      hasStems: false,
-      artist_: null,
-      _count: { licenses: demo.soldLicenses },
-      isDemo: true,
-    };
-  }
+    const demoTracks = await getDemoTracks();
+    const demo = demoTracks.find((d) => d.id === id);
+    if (demo) {
+      return {
+        id: demo.id,
+        title: demo.title,
+        artist: demo.artist,
+        description: demo.description,
+        coverUrl: demo.coverUrl,
+        audioUrl: demo.audioUrl,
+        genre: demo.genre,
+        bpm: demo.bpm,
+        key: demo.key,
+        licensePrice: { toString: () => demo.licensePrice },
+        revenueSharePct: { toString: () => demo.revenueSharePct },
+        soldLicenses: demo.soldLicenses,
+        totalLicenses: demo.totalLicenses,
+        aiScore: demo.aiScore,
+        isActive: true,
+        hasStems: false,
+        artist_: null,
+        _count: { licenses: demo.soldLicenses },
+        isDemo: true,
+      };
+    }
 
-  return null;
-}
+    return null;
+  },
+  ["track-detail"],
+  { revalidate: 300 },
+);
+
+const getRelatedTracks = unstable_cache(
+  async (id: string, genre: string | null): Promise<TrackDetail[]> => {
+    if (!genre) return [];
+
+    try {
+      const rows = await prisma.song.findMany({
+        where: {
+          isActive: true,
+          id: { not: id },
+          genre: { equals: genre, mode: "insensitive" },
+        },
+        orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
+        take: 4,
+        include: {
+          artist_: { select: { id: true, name: true, image: true } },
+          _count: { select: { licenses: true } },
+        },
+      });
+
+      return rows.map((row) => ({ ...row, isDemo: false }));
+    } catch {
+      return [];
+    }
+  },
+  ["track-related"],
+  { revalidate: 300 },
+);
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
@@ -112,49 +146,22 @@ export default async function TrackPage({ params, searchParams }: Props) {
   const { id } = await params;
   const { checkout } = await searchParams;
 
-  const song = await getTrack(id);
+  const [song, session] = await Promise.all([getTrack(id), auth()]);
   if (!song) notFound();
-
-  const session = await auth();
-
-  // Related tracks (skip for demo tracks)
-  const related: TrackDetail[] = [];
-  if (!song.isDemo) {
-    try {
-      const rows = await prisma.song.findMany({
-        where: {
-          isActive: true,
-          id: { not: id },
-          ...(song.genre ? { genre: { equals: song.genre, mode: "insensitive" as const } } : {}),
-        },
-        orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
-        take: 4,
-        include: {
-          artist_: { select: { id: true, name: true, image: true } },
-          _count: { select: { licenses: true } },
-        },
-      });
-      related.push(...rows.map((r) => ({ ...r, isDemo: false })));
-    } catch {
-      // non-fatal
-    }
-  }
 
   const remaining = song.totalLicenses - song.soldLicenses;
   const soldOutPct = song.totalLicenses > 0
     ? Math.round((song.soldLicenses / song.totalLicenses) * 100)
     : 0;
 
-  let userLicense = null;
-  if (!song.isDemo && session?.user?.id) {
-    try {
-      userLicense = await prisma.licenseToken.findFirst({
-        where: { songId: id, holderId: session.user.id, status: "ACTIVE" },
-      });
-    } catch {
-      // non-fatal
-    }
-  }
+  const [related, userLicense] = await Promise.all([
+    song.isDemo ? Promise.resolve([]) : getRelatedTracks(id, song.genre),
+    !song.isDemo && session?.user?.id
+      ? prisma.licenseToken.findFirst({
+          where: { songId: id, holderId: session.user.id, status: "ACTIVE" },
+        }).catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
@@ -201,15 +208,13 @@ export default async function TrackPage({ params, searchParams }: Props) {
         {/* Cover */}
         <div className="relative aspect-square overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 to-accent-600">
           {song.coverUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={song.coverUrl}
               alt={`${song.title} cover`}
-              width={900}
-              height={900}
-              loading="eager"
-              decoding="async"
-              className="h-full w-full object-cover"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              priority
+              className="object-cover"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-8xl">

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 
 type District = "INDIE_BLOCKS" | "DOWNTOWN_PRIME" | "LABEL_ROW";
 
@@ -155,9 +156,14 @@ export default function StudioSetupForm({ studio }: { studio: StudioData | null 
             className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60"
           />
           {bannerUrl && (
-            <div className="mt-3 h-24 w-full overflow-hidden rounded-xl border border-white/10">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={bannerUrl} alt="Banner preview" className="h-full w-full object-cover" />
+            <div className="relative mt-3 h-24 w-full overflow-hidden rounded-xl border border-white/10">
+              <Image
+                src={bannerUrl}
+                alt="Banner preview"
+                fill
+                sizes="(max-width: 768px) 100vw, 672px"
+                className="object-cover"
+              />
             </div>
           )}
         </div>

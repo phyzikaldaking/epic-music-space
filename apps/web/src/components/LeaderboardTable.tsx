@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 interface LeaderboardEntry {
   rank?: number;
   id: string;
@@ -70,17 +72,14 @@ export default function LeaderboardTable({ entries, type }: LeaderboardTableProp
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-brand-900 to-accent-600 flex items-center justify-center text-lg">
+                  <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-brand-900 to-accent-600 flex items-center justify-center text-lg">
                     {(entry.coverUrl ?? entry.image) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <Image
                         src={(entry.coverUrl ?? entry.image)!}
                         alt={entry.title ?? entry.name ?? ""}
-                        width={80}
-                        height={80}
-                        loading="lazy"
-                        decoding="async"
-                        className="h-full w-full object-cover"
+                        fill
+                        sizes="40px"
+                        className="object-cover"
                       />
                     ) : (
                       type === "songs" ? "🎵" : "👤"
