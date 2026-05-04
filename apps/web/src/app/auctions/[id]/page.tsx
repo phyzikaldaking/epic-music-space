@@ -148,6 +148,10 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
     session?.user?.id != null &&
     (isSeller || isWinner || hasPlacedBid || session.user.role === "ADMIN");
   const currentBid = auction.currentBid ?? auction.startingBid;
+  // Reserve price status — shown to bidders so they understand auction outcome
+  const reserveExists = auction.reservePrice != null;
+  const reserveMet =
+    !reserveExists || Number(currentBid) >= Number(auction.reservePrice);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
@@ -277,6 +281,21 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                 Starting bid: ${Number(auction.startingBid).toFixed(2)} · {auction._count.bids}{" "}
                 bids
               </p>
+              {reserveExists && (
+                <div
+                  className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ${
+                    reserveMet
+                      ? "bg-green-500/15 text-green-400"
+                      : "bg-amber-500/15 text-amber-400"
+                  }`}
+                >
+                  {reserveMet ? (
+                    <>✓ Reserve price met</>
+                  ) : (
+                    <>⚠ Reserve price not yet met</>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="mb-6 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
@@ -343,6 +362,9 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                     </button>
                     <p className="text-[10px] text-white/30 text-center">
                       Minimum bid: ${minBid}. If you win, you will be sent a payment link.
+                      {reserveExists && !reserveMet && (
+                        <> The reserve price has not been met — the auction will expire unless it is reached before closing.</>
+                      )}
                     </p>
                   </>
                 )}
