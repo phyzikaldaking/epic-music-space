@@ -65,7 +65,7 @@ export default async function VirtualStudioPage({
   // Fetch the current user's own studio username so "My Studio" links correctly
   const myStudio = await prisma.studio.findFirst({
     where: { userId: session.user.id },
-    select: { username: true },
+    select: { username: true, bio: true },
   });
 
   // Fetch studios with recently active songs — these are the "live sessions"
@@ -205,6 +205,14 @@ export default async function VirtualStudioPage({
               )}
             </div>
           </div>
+          {myStudio && !myStudio.bio && (
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-400/8 px-4 py-2">
+              <p className="text-xs text-amber-300/80">Your studio profile is incomplete — add a bio and choose your district so fans can find you.</p>
+              <Link href="/studio/setup" className="shrink-0 text-xs font-bold text-amber-300 hover:text-amber-200 transition">
+                Complete Profile →
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* ── Genre / mood filter ────────────────────────────────────────── */}

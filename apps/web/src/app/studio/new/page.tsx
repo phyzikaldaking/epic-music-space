@@ -163,7 +163,7 @@ export default function StudioNewPage() {
     }
 
     setSubmitState("done");
-    router.push(`/track/${data.id}`);
+    router.push("/studio");
   }
 
   const uploading = audioUploadState === "uploading" || coverUploadState === "uploading" || stemUploadState === "uploading";
@@ -264,6 +264,7 @@ export default function StudioNewPage() {
             ref={coverRef}
             type="file"
             accept="image/jpeg,image/jpg,image/png,image/webp"
+            aria-label="Cover art image file"
             className="hidden"
             onChange={handleCoverChange}
           />
@@ -307,6 +308,7 @@ export default function StudioNewPage() {
             ref={audioRef}
             type="file"
             accept="audio/*"
+            aria-label="Audio track file"
             className="hidden"
             onChange={handleAudioChange}
           />
@@ -471,6 +473,8 @@ export default function StudioNewPage() {
                   step="0.01"
                   value={licensePrice}
                   onChange={(e) => setLicensePrice(e.target.value)}
+                  aria-label="License price in USD"
+                  placeholder="9.99"
                   className="w-full rounded-lg bg-white/5 pl-7 pr-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60"
                 />
               </div>
@@ -488,6 +492,7 @@ export default function StudioNewPage() {
                   step="0.01"
                   value={revenueSharePct}
                   onChange={(e) => setRevenueSharePct(e.target.value)}
+                  aria-label="Revenue share percentage"
                   className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60 pr-7"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 text-sm">%</span>
@@ -504,6 +509,8 @@ export default function StudioNewPage() {
                 max="10000"
                 value={totalLicenses}
                 onChange={(e) => setTotalLicenses(e.target.value)}
+                aria-label="Total number of licenses"
+                placeholder="100"
                 className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60"
               />
             </div>

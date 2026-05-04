@@ -106,6 +106,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Auto-create Studio profile for artists so /studio works from day one
+    if (role === "ARTIST" || role === "LABEL") {
+      const baseSlug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 28) || "artist";
+      const takenStudio = await prisma.studio.findFirst({
+        where: { username: baseSlug },
+        select: { id: true },
+      });
+      const studioUsername = takenStudio ? `${baseSlug}-${user.id.slice(-4)}` : baseSlug;
+      await prisma.studio.create({
+        data: { userId: user.id, username: studioUsername },
+      }).catch(() => { /* ignore race condition */ });
+    }
+
     // Create email verification token and send welcome email
     const verifyToken = randomBytes(32).toString("hex");
     await prisma.verificationToken.create({

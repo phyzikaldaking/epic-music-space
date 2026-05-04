@@ -84,8 +84,8 @@ export default function GlobalAudioPlayer() {
           }}
         >
           <div
-            className="h-full bg-gradient-to-r from-brand-500 to-accent-400 transition-all"
-            style={{ width: `${progress}%` }}
+            className="h-full bg-gradient-to-r from-brand-500 to-accent-400 transition-all dyn-w"
+            style={{ "--dyn-w": `${progress}%` } as React.CSSProperties}
           />
         </div>
 
@@ -212,8 +212,7 @@ export default function GlobalAudioPlayer() {
                     step="0.05"
                     value={volume}
                     onChange={(e) => setVolume(Number(e.target.value))}
-                    className="h-20 cursor-pointer appearance-none rounded-full"
-                    style={{ writingMode: "vertical-lr", direction: "rtl" }}
+                    className="h-20 cursor-pointer appearance-none rounded-full volume-slider-vertical"
                     aria-label="Volume"
                   />
                   <span className="text-[10px] text-white/40">{Math.round(volume * 100)}%</span>

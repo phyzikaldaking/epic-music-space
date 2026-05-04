@@ -11,6 +11,7 @@ const upsertSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/, "Username can only contain letters, numbers, - and _"),
   bio: z.string().max(500).optional(),
   bannerUrl: z.string().url().optional(),
+  district: z.enum(["INDIE_BLOCKS", "DOWNTOWN_PRIME", "LABEL_ROW"]).optional(),
   socialLinks: z
     .object({
       twitter: z.string().url().optional(),
@@ -73,7 +74,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 400 });
   }
 
-  const { username, bio, bannerUrl, socialLinks } = parsed.data;
+  const { username, bio, bannerUrl, district, socialLinks } = parsed.data;
 
   // Check username uniqueness (excluding current user)
   const existing = await prisma.studio.findFirst({
@@ -85,8 +86,8 @@ export async function PUT(req: NextRequest) {
 
   const studio = await prisma.studio.upsert({
     where: { userId: session.user.id },
-    create: { userId: session.user.id, username, bio, bannerUrl, socialLinks },
-    update: { username, bio, bannerUrl, socialLinks },
+    create: { userId: session.user.id, username, bio, bannerUrl, socialLinks, ...(district && { district }) },
+    update: { username, bio, bannerUrl, socialLinks, ...(district && { district }) },
   });
 
   return NextResponse.json(studio);

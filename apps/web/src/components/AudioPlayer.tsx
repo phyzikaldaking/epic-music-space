@@ -206,7 +206,7 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
                 }}
               >
                 <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,rgba(255,255,255,0.08)_0_2px,transparent_2px_10px)]" />
-                <div className="absolute inset-y-2 left-0 rounded-r-xl bg-gradient-to-r from-brand-500/80 to-accent-400/80 transition-all" style={{ width: `${progress}%` }} />
+                <div className="absolute inset-y-2 left-0 rounded-r-xl bg-gradient-to-r from-brand-500/80 to-accent-400/80 transition-all dyn-w" style={{ "--dyn-w": `${progress}%` } as React.CSSProperties} />
                 <div className="absolute inset-x-0 top-1/2 h-px bg-white/15" />
                 <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/10" />
               </div>
