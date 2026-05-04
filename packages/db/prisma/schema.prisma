@@ -67,6 +67,9 @@ model User {
   auctionBids     AuctionBid[] @relation("AuctionBidder")
   behaviorEvents  UserBehaviorEvent[]
   tasteProfile    UserTasteProfile?
+  roomsHosted        Room[]              @relation("RoomHost")
+  roomParticipations RoomParticipant[]
+  roomMessages       RoomMessage[]
 }
 
 enum Role {
@@ -161,6 +164,7 @@ model Song {
   royaleEntries  BattleRoyaleEntry[] @relation("BattleRoyaleEntries")
   auctions       Auction[]
   behaviorEvents UserBehaviorEvent[]
+  rooms          Room[]
   @@index([artistId])
   @@index([district])
   @@index([isActive])
@@ -695,4 +699,70 @@ model UserTasteProfile {
   updatedAt         DateTime @updatedAt
 
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Listening sessions (live audio rooms via LiveKit)
+// ─────────────────────────────────────────────────────────────
+
+model Room {
+  id            String     @id @default(cuid())
+  hostId        String
+  title         String
+  description   String?    @db.Text
+  status        RoomStatus @default(LIVE)
+  maxCapacity   Int        // resolved at create time from host's tier
+  currentSongId String?    // optional: track currently playing
+  startedAt     DateTime   @default(now())
+  endedAt       DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  host          User              @relation("RoomHost", fields: [hostId], references: [id], onDelete: Cascade)
+  currentSong   Song?             @relation(fields: [currentSongId], references: [id], onDelete: SetNull)
+  participants  RoomParticipant[]
+  messages      RoomMessage[]
+
+  @@index([status, startedAt])
+  @@index([hostId, status])
+}
+
+enum RoomStatus {
+  LIVE
+  ENDED
+}
+
+model RoomParticipant {
+  id        String                @id @default(cuid())
+  roomId    String
+  userId    String
+  role      RoomParticipantRole   @default(LISTENER)
+  handRaised Boolean              @default(false)
+  joinedAt  DateTime              @default(now())
+  leftAt    DateTime?
+
+  room      Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([roomId, role])
+}
+
+enum RoomParticipantRole {
+  HOST
+  SPEAKER   // host has granted the floor; can publish audio
+  LISTENER
+}
+
+model RoomMessage {
+  id        String   @id @default(cuid())
+  roomId    String
+  userId    String
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  room      Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
 }

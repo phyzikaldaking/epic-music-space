@@ -40,4 +40,5 @@ export const CHANNELS = {
   leaderboard: "ems:leaderboard",
   versus: (matchId: string) => `ems:versus:${matchId}`,
   notifications: (userId: string) => `ems:notifications:${userId}`,
+  room: (roomId: string) => `ems:room:${roomId}`,
 } as const;

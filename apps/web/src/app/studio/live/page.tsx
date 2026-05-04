@@ -68,6 +68,18 @@ export default async function VirtualStudioPage({
     select: { username: true, bio: true },
   });
 
+  // Active live rooms (LiveKit-backed listening sessions)
+  const liveRooms = await prisma.room.findMany({
+    where: { status: "LIVE" },
+    orderBy: { startedAt: "desc" },
+    take: 12,
+    include: {
+      host: { select: { id: true, name: true, image: true, username: true } },
+      currentSong: { select: { title: true, artist: true, coverUrl: true } },
+      _count: { select: { participants: { where: { leftAt: null } } } },
+    },
+  });
+
   // Fetch studios with recently active songs — these are the "live sessions"
   const studios = await prisma.studio.findMany({
     where: {
@@ -180,15 +192,62 @@ export default async function VirtualStudioPage({
           </div>
         </div>
 
-        {/* ── Realtime audio status banner ──────────────────────────────── */}
-        <div className="mb-6 rounded-2xl border border-amber-400/25 bg-amber-400/8 px-5 py-3 text-sm text-amber-200">
-          <span className="font-bold">Live audio rooms are rolling out.</span>{" "}
-          <span className="text-amber-200/80">
-            Hand-raising, host mic, and live chat go live tier-by-tier in the
-            coming weeks. Today, every studio below is a live room directory —
-            join an artist&apos;s page to listen, react, and license.
-          </span>
-        </div>
+        {/* ── Live rooms (LiveKit-backed) ─────────────────────────────────── */}
+        {liveRooms.length > 0 && (
+          <div className="mb-10">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white/80">
+                🔴 Live Right Now
+                <span className="ml-2 text-sm font-normal text-white/30">
+                  {liveRooms.length} room{liveRooms.length === 1 ? "" : "s"} open
+                </span>
+              </h2>
+              <Link href="/rooms/new" className="text-sm font-bold text-brand-300 hover:text-brand-200">
+                + Host yours
+              </Link>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {liveRooms.map((r) => (
+                <Link
+                  key={r.id}
+                  href={`/rooms/${r.id}`}
+                  className="flex flex-col gap-3 rounded-2xl border border-brand-500/25 bg-brand-500/5 p-4 transition hover:border-brand-500/50 hover:bg-brand-500/10"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-brand-500/20">
+                      {r.host.image ? (
+                        <Image src={r.host.image} alt={r.host.name ?? ""} fill sizes="40px" className="object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-sm font-bold text-brand-300">
+                          {(r.host.name ?? "?")[0]?.toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold">{r.title}</p>
+                      <p className="truncate text-xs text-white/45">
+                        Hosted by {r.host.name ?? r.host.username ?? "Artist"}
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-red-500/40 bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+                      LIVE
+                    </span>
+                  </div>
+                  {r.currentSong && (
+                    <p className="truncate text-xs text-white/55">
+                      🎵 Now playing: <span className="text-white/80">{r.currentSong.title}</span>
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between text-xs text-white/35">
+                    <span>{r._count.participants} in the room</span>
+                    <span className="font-semibold text-brand-300">Drop in →</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Host your own session CTA ──────────────────────────────────── */}
         <div className="mb-10 overflow-hidden rounded-3xl border border-brand-500/25 bg-gradient-to-r from-brand-500/10 via-accent-500/6 to-transparent p-6">
@@ -203,10 +262,10 @@ export default async function VirtualStudioPage({
             </div>
             <div className="flex gap-3 flex-shrink-0">
               <Link
-                href="/studio/new"
+                href="/rooms/new"
                 className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-brand-600 glow-purple-sm"
               >
-                + Upload Track
+                🎙️ Open a Room
               </Link>
               {session.user && (
                 <Link

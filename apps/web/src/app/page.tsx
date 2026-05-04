@@ -544,8 +544,8 @@ export default async function HomePage() {
             Every listener is one click from licensing your music.
           </p>
           <div className="vc-hero-ctas">
-            <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
-              Host Your First Session →
+            <Link href="/rooms/new" className="vc-btn vc-btn-pink">
+              Open a Room →
             </Link>
             <Link href="/studio/live" className="vc-btn vc-btn-ghost">
               Drop Into a Room
@@ -685,8 +685,8 @@ export default async function HomePage() {
             </article>
           </div>
           <div className="vc-catalog-link mt-8">
-            <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
-              Host Your First Session →
+            <Link href="/rooms/new" className="vc-btn vc-btn-pink">
+              Open a Room →
             </Link>
           </div>
         </div>
@@ -971,8 +971,8 @@ export default async function HomePage() {
             you sell, you keep 90%.
           </p>
           <div className="vc-hero-ctas">
-            <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
-              Host Your First Session →
+            <Link href="/rooms/new" className="vc-btn vc-btn-pink">
+              Open a Room →
             </Link>
             <Link href="/studio/live" className="vc-btn vc-btn-chrome">
               Drop Into a Live Room
