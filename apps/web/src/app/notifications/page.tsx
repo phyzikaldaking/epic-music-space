@@ -25,6 +25,9 @@ const TYPE_ICON: Record<string, string> = {
   AUCTION_WIN: "🏆",
   AUCTION_OUTBID: "📣",
   FOLLOW: "👤",
+  POST_LIKED: "♥",
+  POST_COMMENTED: "💬",
+  FOLLOWED_POST: "📣",
 };
 
 function timeAgo(iso: string) {
@@ -142,7 +145,14 @@ export default function NotificationsPage() {
           {notifications.map((n) => (
             <li
               key={n.id}
-              onClick={() => !n.read && markOneRead(n.id)}
+              onClick={() => {
+                if (!n.read) markOneRead(n.id);
+                // Route post-related notifications to the post detail page.
+                const meta = n.metadata as { postId?: string } | null;
+                if (meta?.postId && (n.type === "POST_LIKED" || n.type === "POST_COMMENTED" || n.type === "FOLLOWED_POST")) {
+                  router.push(`/post/${meta.postId}`);
+                }
+              }}
               className={`flex cursor-pointer gap-4 rounded-2xl border p-4 transition ${
                 n.read
                   ? "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]"

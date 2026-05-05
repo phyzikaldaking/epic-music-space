@@ -69,6 +69,11 @@ export default function NotificationBell() {
     if (type.includes("PAYMENT")) return "💳";
     if (type.includes("SUBSCRIPTION")) return "⭐";
     if (type.includes("BADGE")) return "🏅";
+    if (type === "POST_LIKED") return "♥";
+    if (type === "POST_COMMENTED") return "💬";
+    if (type === "FOLLOWED_POST") return "📣";
+    if (type.includes("FOLLOW")) return "👤";
+    if (type.includes("VERSUS") || type.includes("CHALLENGE")) return "⚔️";
     return "🔔";
   }
 

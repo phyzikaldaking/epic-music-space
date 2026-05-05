@@ -23,12 +23,17 @@ export async function GET(
 
   const { id } = await params;
   const url = new URL(req.url);
-  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
+  // Cursor-based pagination on createdAt asc. Page size capped at 100,
+  // default 25 — small enough that the first paint stays fast on long
+  // threads, large enough that most posts fit in a single page.
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 25)));
+  const cursor = url.searchParams.get("cursor");
 
   const comments = await prisma.postComment.findMany({
     where: { postId: id },
     orderBy: { createdAt: "asc" },
-    take: limit,
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: {
       author: {
         select: {
@@ -41,7 +46,13 @@ export async function GET(
     },
   });
 
-  return NextResponse.json({ comments });
+  let nextCursor: string | null = null;
+  if (comments.length > limit) {
+    const last = comments.pop()!;
+    nextCursor = last.id;
+  }
+
+  return NextResponse.json({ comments, nextCursor });
 }
 
 export async function POST(

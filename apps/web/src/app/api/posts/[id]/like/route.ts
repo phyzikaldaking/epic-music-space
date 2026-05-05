@@ -49,6 +49,24 @@ export async function POST(
   if (post.authorId !== session.user.id) {
     void (async () => {
       try {
+        // Dedupe: drop a POST_LIKED notif if the author already received
+        // any POST_LIKED for this post in the last 30 minutes (regardless
+        // of who liked it). Stops the notification feed from drowning when
+        // a post catches a wave. The author still sees the like count
+        // update on the post itself.
+        const DEDUPE_WINDOW_MS = 30 * 60 * 1000;
+        const recent = await prisma.notification.findFirst({
+          where: {
+            userId: post.authorId,
+            type: "POST_LIKED",
+            createdAt: { gt: new Date(Date.now() - DEDUPE_WINDOW_MS) },
+            // metadata is JSON; Prisma supports path query for Postgres.
+            metadata: { path: ["postId"], equals: post.id },
+          },
+          select: { id: true },
+        });
+        if (recent) return;
+
         const liker = await prisma.user.findUnique({
           where: { id: session.user.id },
           select: { name: true },

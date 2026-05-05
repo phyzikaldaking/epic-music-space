@@ -28,6 +28,8 @@ export default function CommentThread({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,8 +37,11 @@ export default function CommentThread({
       try {
         const res = await fetch(`/api/posts/${postId}/comments`);
         if (!res.ok) throw new Error();
-        const data = (await res.json()) as { comments: Comment[] };
-        if (!cancelled) setComments(data.comments);
+        const data = (await res.json()) as { comments: Comment[]; nextCursor: string | null };
+        if (!cancelled) {
+          setComments(data.comments);
+          setCursor(data.nextCursor);
+        }
       } catch {
         if (!cancelled) setError("Could not load comments.");
       } finally {
@@ -47,6 +52,22 @@ export default function CommentThread({
       cancelled = true;
     };
   }, [postId]);
+
+  async function loadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/posts/${postId}/comments?cursor=${cursor}`);
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as { comments: Comment[]; nextCursor: string | null };
+      setComments((prev) => [...prev, ...data.comments]);
+      setCursor(data.nextCursor);
+    } catch {
+      setError("Could not load more comments.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   async function submit() {
     const trimmed = body.trim();
@@ -121,6 +142,17 @@ export default function CommentThread({
             );
           })}
         </ul>
+      )}
+
+      {cursor && !loading && (
+        <button
+          type="button"
+          onClick={loadMore}
+          disabled={loadingMore}
+          className="mt-3 w-full rounded-xl border border-white/10 bg-white/4 py-2 text-xs font-semibold text-white/60 hover:bg-white/8 disabled:opacity-50"
+        >
+          {loadingMore ? "Loading…" : "Load more comments"}
+        </button>
       )}
 
       {viewerId ? (
