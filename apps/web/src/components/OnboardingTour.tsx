@@ -20,7 +20,7 @@ const STEPS: Step[] = [
   {
     emoji: "🎧",
     title: "Listen & discover",
-    body: "Tracks live in /marketplace and /trending. The bottom-right player keeps playing as you navigate. Hit / on your keyboard to search any time.",
+    body: "Tracks live in /marketplace and /trending. The bottom-right player keeps playing as you navigate. Hit / on your keyboard to search any time. Bookmark anything you like — your /library keeps it organized.",
   },
   {
     emoji: "🎤",
@@ -31,6 +31,16 @@ const STEPS: Step[] = [
     emoji: "💸",
     title: "Get paid",
     body: "Connect Stripe in /dashboard to receive payouts. License sales settle weekly every Monday. /investors shows live platform GMV.",
+  },
+  {
+    emoji: "💬",
+    title: "Talk to anyone",
+    body: "Tap an artist's profile → Message to start a thread. /messages shows your inbox with an unread badge on the bottom-nav DMs tab. Block + report controls live in the ⋯ menu of every post.",
+  },
+  {
+    emoji: "⚙️",
+    title: "Tune your inbox",
+    body: "Don't want a buzz for every like? /settings/notifications has per-type toggles for both in-app and email. /settings/privacy lets you export your data or delete your account anytime.",
   },
 ];
 

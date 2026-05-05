@@ -25,6 +25,7 @@ const AUTHED_LINKS = [
   { href: "/services", label: "Services" },
   { href: "/leaderboard", label: "Charts" },
   { href: "/auctions", label: "Auctions" },
+  { href: "/library", label: "Library" },
   { href: "/messages", label: "Messages" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dashboard/wallet", label: "Wallet" },
