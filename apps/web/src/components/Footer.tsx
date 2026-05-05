@@ -31,6 +31,15 @@ const footerNav = [
     ],
   },
   {
+    heading: "Account",
+    links: [
+      { label: "Profile", href: "/profile/edit" },
+      { label: "Notifications", href: "/settings/notifications" },
+      { label: "Privacy & data", href: "/settings/privacy" },
+      { label: "Support", href: "/support" },
+    ],
+  },
+  {
     heading: "Legal",
     links: [
       { label: "Terms of Service", href: "/terms" },

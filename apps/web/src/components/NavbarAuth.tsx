@@ -50,6 +50,14 @@ export default function NavbarAuth() {
       >
         Profile
       </Link>
+      <Link
+        href="/settings/notifications"
+        aria-label="Notification settings"
+        title="Notifications"
+        className="hidden rounded-lg border border-white/15 px-2 py-1.5 text-sm text-white/55 transition hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 sm:inline-flex"
+      >
+        ⚙
+      </Link>
       <SignOutButton />
     </div>
   );
