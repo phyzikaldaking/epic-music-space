@@ -1,16 +1,17 @@
 import { Context, Next } from 'hono';
 import { nanoid } from 'nanoid';
+import { getCookie, setCookie } from 'hono/cookie';
 
 const CSRF_COOKIE = process.env.CSRF_COOKIE_NAME ?? 'ems_csrf';
 
 export async function csrfMiddleware(ctx: Context, next: Next) {
   const safe = ['GET', 'HEAD', 'OPTIONS'];
-  const cookie = ctx.req.cookie(CSRF_COOKIE);
+  const cookie = getCookie(ctx, CSRF_COOKIE);
 
   if (safe.includes(ctx.req.method)) {
     let token = cookie;
     if (!token) token = nanoid(32);
-    ctx.cookie(CSRF_COOKIE, token, {
+    setCookie(ctx, CSRF_COOKIE, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'Strict',

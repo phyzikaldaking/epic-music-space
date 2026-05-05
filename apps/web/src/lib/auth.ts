@@ -10,7 +10,14 @@ import { emitAuthEvent } from "@/lib/authObservability";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z
+    .string()
+    .min(12, "Password must be at least 12 characters")
+    .max(128)
+    .regex(/[A-Z]/, "Password must include at least one uppercase letter")
+    .regex(/[a-z]/, "Password must include at least one lowercase letter")
+    .regex(/[0-9]/, "Password must include at least one number")
+    .regex(/[^A-Za-z0-9]/, "Password must include at least one symbol"),
 });
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
@@ -19,7 +26,11 @@ const googleEnabled = Boolean(googleClientId && googleClientSecret);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 }, // 30 days — persistent across browser restarts
+  session: {
+    strategy: "jwt",
+    maxAge: 12 * 60 * 60,
+    updateAge: 30 * 60,
+  },
   pages: {
     signIn: "/auth/signin",
     error: "/auth/signin",
@@ -30,10 +41,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           GoogleProvider({
             clientId: googleClientId!,
             clientSecret: googleClientSecret!,
-            // Allow users who registered with email+password to sign in with
-            // Google using the same email without getting OAuthAccountNotLinked.
-            // Safe: Google verifies email ownership before returning the token.
-            allowDangerousEmailAccountLinking: true,
           }),
         ]
       : []),

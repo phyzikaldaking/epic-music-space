@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { rateLimit, strictLimiter } from "../middleware/rateLimit";
 import { authMiddleware } from "../middleware/auth";
-import { fromBuffer } from "file-type";
+import { fileTypeFromBuffer } from "file-type";
 
 const uploadSchema = z.object({
   title: z.string().min(1).max(200),
@@ -32,7 +32,7 @@ songsRouter.post("/upload", rateLimit(strictLimiter), authMiddleware, async (c) 
   // 🔒 REAL FILE VALIDATION
   if (fileBuffer) {
     const buffer = Buffer.from(fileBuffer, "base64");
-    const type = await fromBuffer(buffer);
+    const type = await fileTypeFromBuffer(buffer);
 
     const allowed = ["audio/mpeg","audio/wav","audio/flac","audio/mp4"];
     if (!type || !allowed.includes(type.mime)) {

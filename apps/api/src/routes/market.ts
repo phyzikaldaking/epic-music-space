@@ -72,9 +72,9 @@ marketRouter.get("/listings", rateLimit(lenientLimiter), async (c) => {
 
   // Keep only listings that still have licenses available
   const result = allActive
-    .filter((s) => s.soldLicenses < s.totalLicenses)
+    .filter((s: (typeof allActive)[number]) => s.soldLicenses < s.totalLicenses)
     .slice(0, 100)
-    .map((s) => ({
+    .map((s: (typeof allActive)[number]) => ({
       ...s,
       availableLicenses: s.totalLicenses - s.soldLicenses,
       licensePrice: Number(s.licensePrice),

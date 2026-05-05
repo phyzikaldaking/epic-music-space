@@ -17,7 +17,14 @@ function generateCode(): string {
 const registerSchema = z.object({
   name:       z.string().min(1).max(100),
   email:      z.string().email(),
-  password:   z.string().min(8).max(128),
+  password:   z
+    .string()
+    .min(12, "Password must be at least 12 characters")
+    .max(128)
+    .regex(/[A-Z]/, "Password must include at least one uppercase letter")
+    .regex(/[a-z]/, "Password must include at least one lowercase letter")
+    .regex(/[0-9]/, "Password must include at least one number")
+    .regex(/[^A-Za-z0-9]/, "Password must include at least one symbol"),
   role:       z.enum(["LISTENER", "ARTIST", "PRODUCER", "ENGINEER", "LABEL"]).default("LISTENER"),
   inviteCode: z.string().max(20).optional(),
   callbackUrl: z.string().max(500).optional(),
