@@ -9,12 +9,25 @@ interface ConnectedAccount {
 
 export default function ConnectedAccounts() {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/social/list")
-      .then((r) => r.json() as Promise<ConnectedAccount[]>)
-      .then(setAccounts)
-      .catch(() => setAccounts([]));
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = (await r.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(body?.error ?? "Unable to load connected accounts");
+        }
+        return r.json() as Promise<ConnectedAccount[]>;
+      })
+      .then((data) => {
+        setAccounts(Array.isArray(data) ? data : []);
+        setError(null);
+      })
+      .catch((err: Error) => {
+        setAccounts([]);
+        setError(err.message);
+      });
   }, []);
 
   // These targets are API routes that redirect to the OAuth provider — they
@@ -23,6 +36,8 @@ export default function ConnectedAccounts() {
   return (
     <div>
       <h3 className="text-lg font-semibold">Connected accounts</h3>
+      {error ? <p className="mt-2 text-sm text-rose-300">{error}</p> : null}
+      {!error && accounts.length === 0 ? <p className="mt-2 text-sm text-white/55">No connected social accounts yet.</p> : null}
       <ul className="space-y-2 mt-3">
         {accounts.map((a) => (
           <li key={a.id} className="flex items-center justify-between">

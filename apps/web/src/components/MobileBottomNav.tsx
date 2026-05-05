@@ -14,7 +14,7 @@ interface NavItem {
 const ITEMS: NavItem[] = [
   { href: "/feed", label: "Feed", icon: "🏠", match: (p) => p === "/feed" || p.startsWith("/post/") },
   { href: "/marketplace", label: "Tracks", icon: "🎵", match: (p) => p.startsWith("/marketplace") || p.startsWith("/track/") },
-  { href: "/search", label: "Search", icon: "🔍" },
+  { href: "/messages", label: "DMs", icon: "💬", match: (p) => p.startsWith("/messages") },
   { href: "/notifications", label: "Alerts", icon: "🔔" },
   { href: "/dashboard", label: "Me", icon: "👤", match: (p) => p.startsWith("/dashboard") || p.startsWith("/profile") || p.startsWith("/settings") },
 ];

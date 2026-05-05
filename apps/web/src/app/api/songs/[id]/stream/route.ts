@@ -4,9 +4,11 @@ import { lenientLimiter, moderateLimiter } from "@/lib/rateLimit";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { getSiteUrl } from "@/lib/site";
 import { classifyAudioSource } from "@/lib/audioSource";
+import { getRedis } from "@/lib/redis";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const localPlayDedupe = new Map<string, number>();
 
 /**
  * GET /api/songs/[id]/stream
@@ -210,6 +212,37 @@ export async function POST(
   } catch {
     return NextResponse.json({ ok: true });
   }
+
+  const dedupeKey = `ems:play-dedupe:${id}:${ip}`;
+  let shouldCount = true;
+  const redis = getRedis();
+  if (redis) {
+    try {
+      // Count at most once per 30 seconds per (song, listener IP).
+      const set = await redis.set(dedupeKey, "1", "EX", 30, "NX");
+      shouldCount = set === "OK";
+    } catch {
+      // If Redis fails, fall back to local memory map below.
+      shouldCount = true;
+    }
+  }
+  if (!redis) {
+    const now = Date.now();
+    const expiresAt = localPlayDedupe.get(dedupeKey) ?? 0;
+    if (expiresAt > now) {
+      shouldCount = false;
+    } else {
+      localPlayDedupe.set(dedupeKey, now + 30_000);
+    }
+    // Tiny opportunistic cleanup to cap memory growth.
+    if (localPlayDedupe.size > 5_000) {
+      for (const [k, exp] of localPlayDedupe.entries()) {
+        if (exp <= now) localPlayDedupe.delete(k);
+      }
+    }
+  }
+
+  if (!shouldCount) return NextResponse.json({ ok: true });
 
   await prisma.song.updateMany({
     where: { id, isActive: true },

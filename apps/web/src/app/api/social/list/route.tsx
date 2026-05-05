@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { listConnectedAccounts } from "@/lib/social";
 
 export async function GET() {
-  // TODO: use actual NextAuth server session to get userId.
-  const demoUserId = process.env.DEMO_USER_ID;
-  if (!demoUserId) return NextResponse.json([]);
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  const accounts = await listConnectedAccounts(demoUserId);
+  const accounts = await listConnectedAccounts(session.user.id);
   return NextResponse.json(accounts);
 }

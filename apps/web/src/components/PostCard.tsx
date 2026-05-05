@@ -62,6 +62,8 @@ export default function PostCard(props: PostCardProps) {
   const [body, setBody] = useState(props.body);
   const [showMenu, setShowMenu] = useState(false);
   const [moderationMsg, setModerationMsg] = useState<string | null>(null);
+  const [confirmingBlock, setConfirmingBlock] = useState(false);
+  const [reportPickerOpen, setReportPickerOpen] = useState(false);
   const [videoStatus, setVideoStatus] = useState(props.videoStatus);
   const [muxPlaybackId, setMuxPlaybackId] = useState(props.muxPlaybackId);
   const [videoAspectRatio, setVideoAspectRatio] = useState(props.videoAspectRatio);
@@ -173,9 +175,8 @@ export default function PostCard(props: PostCardProps) {
     }
   }
 
-  async function handleBlock() {
-    setShowMenu(false);
-    if (!confirm(`Block ${props.author.name ?? "this user"}? You won't see their posts and they can't interact with yours.`)) return;
+  async function confirmBlock() {
+    setConfirmingBlock(false);
     try {
       const res = await fetch(`/api/users/${props.author.id}/block`, { method: "POST" });
       if (!res.ok) throw new Error();
@@ -186,23 +187,13 @@ export default function PostCard(props: PostCardProps) {
     }
   }
 
-  async function handleReport() {
-    setShowMenu(false);
-    const reason = window.prompt(
-      "Reason: SPAM, ABUSE, IMPERSONATION, NSFW, or OTHER",
-      "SPAM",
-    );
-    if (!reason) return;
-    const normalized = reason.trim().toUpperCase();
-    if (!["SPAM", "ABUSE", "IMPERSONATION", "NSFW", "OTHER"].includes(normalized)) {
-      setModerationMsg("Unknown reason — pick SPAM / ABUSE / IMPERSONATION / NSFW / OTHER.");
-      return;
-    }
+  async function submitReport(reason: "SPAM" | "ABUSE" | "IMPERSONATION" | "NSFW" | "OTHER") {
+    setReportPickerOpen(false);
     try {
       const res = await fetch(`/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postId: props.id, reportedUserId: props.author.id, reason: normalized }),
+        body: JSON.stringify({ postId: props.id, reportedUserId: props.author.id, reason }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Report failed");
@@ -286,7 +277,7 @@ export default function PostCard(props: PostCardProps) {
               className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/80"
               aria-label="Post actions"
               aria-haspopup="menu"
-              aria-expanded={showMenu ? "true" : "false"}
+              aria-expanded={showMenu}
             >
               ⋯
             </button>
@@ -299,7 +290,10 @@ export default function PostCard(props: PostCardProps) {
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={handleReport}
+                  onClick={() => {
+                    setShowMenu(false);
+                    setReportPickerOpen(true);
+                  }}
                   className="block w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/5"
                 >
                   🚩 Report post
@@ -307,7 +301,10 @@ export default function PostCard(props: PostCardProps) {
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={handleBlock}
+                  onClick={() => {
+                    setShowMenu(false);
+                    setConfirmingBlock(true);
+                  }}
                   className="block w-full px-3 py-2 text-left text-xs text-red-300 hover:bg-red-500/10"
                 >
                   🚫 Block {props.author.name ?? "user"}
@@ -487,6 +484,64 @@ export default function PostCard(props: PostCardProps) {
           <span className="text-xs">{shared ? "Copied" : "Share"}</span>
         </button>
       </footer>
+
+      {confirmingBlock && (
+        <div
+          role="alertdialog"
+          aria-label="Confirm block"
+          className="mt-3 rounded-xl border border-red-500/30 bg-red-500/8 p-3"
+        >
+          <p className="text-xs text-white/85">
+            Block <strong>{props.author.name ?? "this user"}</strong>? You won&apos;t see
+            their posts and they can&apos;t interact with yours.
+          </p>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmingBlock(false)}
+              className="rounded-lg border border-white/15 px-3 py-1 text-xs text-white/65 hover:bg-white/5"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmBlock}
+              className="rounded-lg border border-red-500/40 bg-red-500/15 px-3 py-1 text-xs font-bold text-red-200 hover:bg-red-500/25"
+            >
+              Block
+            </button>
+          </div>
+        </div>
+      )}
+
+      {reportPickerOpen && (
+        <div
+          role="dialog"
+          aria-label="Report post"
+          className="mt-3 rounded-xl border border-white/10 bg-[#15151c] p-3"
+        >
+          <p className="mb-2 text-xs font-semibold text-white/80">Why are you reporting this?</p>
+          <div className="flex flex-wrap gap-2">
+            {(["SPAM", "ABUSE", "IMPERSONATION", "NSFW", "OTHER"] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => submitReport(r)}
+                className="rounded-full border border-white/15 bg-white/4 px-3 py-1 text-[11px] font-bold text-white/80 hover:bg-white/8"
+              >
+                {r}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setReportPickerOpen(false)}
+              className="ml-auto rounded-full border border-transparent px-3 py-1 text-[11px] text-white/45 hover:text-white/80"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {moderationMsg && (
         <p

@@ -6,50 +6,60 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = partial
 
 ## 🔴 CRITICAL (blocking production)
 
-- [ ] **C1 — Cron jobs never run:** `vercel.json` cron entries are missing the `Authorization` header, so Vercel's own scheduler gets 401'd every 5 min. Auctions and battles never auto-settle.
-- [ ] **C2 — Ad payments never activate:** `POST /api/ads` creates a Stripe checkout but the webhook has no `AD_PURCHASE` handler — `AdPlacement.isActive` is never flipped to `true`.
-- [ ] **C3 — `streamCount` always 0:** `AudioPlayer.tsx` never calls an API when a track plays. Every scoring and analytics metric that reads `streamCount` is permanently zero.
-- [ ] **C4 — No subscription tier enforcement:** Nothing on the `User` model tracks the active plan tier. Every "requires Prime" UI hint is cosmetic — the API never blocks a Starter user from exceeding their limit.
-- [ ] **C5 — Workers have no deployment:** `src/workers/` (notifications, analytics, aiScoring) require a long-running process. Without the notifications worker, every `enqueueNotification()` call across ~12 routes silently drops — users get zero in-app notifications.
+- [x] **C1 — Cron jobs:** All cron routes use timing-safe `requireCronRequest`. `weekly-digest` added to `vercel.json`. Vercel auto-injects `Authorization: Bearer ${CRON_SECRET}` — set that env var in Vercel dashboard to activate.
+- [x] **C2 — Ad payments:** `handleAdPurchaseCompleted` in Stripe webhook flips `isActive: true` and mirrors to revenue ledger.
+- [x] **C3 — `streamCount`:** `AudioPlayer.tsx` calls `POST /api/songs/${songId}/stream` on every play.
+- [x] **C4 — Subscription tier enforcement:** `subscriptionTier` on User model + `getTierLimits` enforced in songs/create, market/buy, checkout, boost, versus, and analytics routes.
+- [ ] **C5 — Workers have no deployment:** `src/workers/` (notifications, analytics, aiScoring) require a long-running process (BullMQ + Redis). Set `REDIS_URL` in Vercel env and wire a Render/Railway worker dyno pointing to `apps/api`. Until then, notifications silently drop.
 
 ---
 
 ## 🟠 HIGH (broken features / wrong data)
 
-- [ ] **H1 — Pricing page price mismatch:** `/pricing` shows Prime at **$49/mo**; `/api/subscriptions/route.ts` charges **$79/mo**. User sees one price and gets charged another.
-- [ ] **H2 — Label owner signing UI is a dev note:** `/label/[id]/page.tsx` lines 164–173 literally tells users to "use the API directly." No form exists to invite artists.
-- [ ] **H3 — Profile avatar is a URL text field, not an upload:** `/profile/edit` has a text input for avatar URL. The upload API (`/api/upload`) exists but isn't wired to this form.
-- [ ] **H4 — Supabase storage buckets not created:** `/api/upload` uses `supabase.storage.from("audio")` and `.from("covers")` — these buckets must be manually created in Supabase or all uploads 500.
-- [ ] **H5 — `next.config.mjs` silences all TypeScript and ESLint errors:** `ignoreBuildErrors: true` and `ignoreDuringBuilds: true` mean broken code ships silently. Remove once build is clean.
-- [ ] **H6 — Signout may fail CSRF check:** `Navbar.tsx` POSTs directly to `/api/auth/signout` with no CSRF token. Replace with NextAuth `signOut()` client action.
-- [ ] **H7 — `AUCTION_BID_RECEIVED` notification type not in icon map:** Seller bid notifications enqueue type `AUCTION_BID_RECEIVED` but `/notifications/page.tsx` icon map has `AUCTION_BID`. Seller sees a plain 🔔 instead of the hammer icon.
-- [ ] **H8 — Demo audio files missing:** `src/lib/demoTracks.ts` references `/demo/audio/*.wav` which don't exist in `/public/`. AudioPlayer will 404 on an empty DB (first-run experience broken).
-- [ ] **H9 — No ADMIN panel or way to elevate users:** `Role.ADMIN` is referenced in API guards but there is no `/admin` route, page, or UI to manage users/content.
+- [x] **H1 — Pricing page price mismatch:** `/pricing` and subscription checkout both use `$79/mo` for Prime. Pricing uses Stripe price IDs from env vars — no hardcoded mismatch.
+- [x] **H2 — Label owner signing UI:** Label `[id]` page has a full invite-artist form.
+- [x] **H3 — Profile avatar upload:** `/profile/edit` has a file-picker wired to `/api/upload` (Supabase signed URL flow) with MIME + size validation.
+- [ ] **H4 — Supabase storage buckets not created:** `/api/upload` uses `supabase.storage.from("audio")` and `.from("covers")` — create these buckets in Supabase dashboard (set public read, service-role write). **(external — one-time setup)**
+- [x] **H5 — `next.config.mjs` `ignoreBuildErrors`:** Removed. Build will fail on TS/ESLint errors.
+- [x] **H6 — Signout CSRF:** `NavbarAuth` uses `<SignOutButton>` which calls `signOut()` from `next-auth/react`.
+- [x] **H7 — `AUCTION_BID_RECEIVED` icon:** Notifications page icon map has `AUCTION_BID_RECEIVED: "🔨"`.
+- [x] **H8 — Demo audio files:** Files exist in `/public/demo/audio/`. `demoTracks.ts` falls back to local slugified paths when Supabase bucket is empty.
+- [ ] **H9 — No ADMIN panel:** `/admin` routes and UI exist (with ADMIN role guard + IP allowlist). First admin promoted via `POST /api/admin/bootstrap` using `ADMIN_BOOTSTRAP_SECRET`. **(env var setup required)**
 
 ---
 
 ## 🟡 MEDIUM (polish / edge cases)
 
-- [ ] **M1 — Missing `loading.tsx` on most pages:** Only `/dashboard`, `/leaderboard`, `/marketplace` have skeleton loaders. All others show a blank screen while fetching.
-  - Add to: `/auctions`, `/auctions/[id]`, `/ai`, `/analytics`, `/ads`, `/boost`, `/city`, `/invite`, `/label`, `/label/[id]`, `/label/new`, `/notifications`, `/pricing`, `/profile/edit`, `/studio/[username]`, `/track/[id]`, `/versus`, `/versus/[id]`
-- [ ] **M2 — Missing per-route `error.tsx`:** A DB timeout on any dynamic page surfaces the generic root error with no context. Add route-level error boundaries to all dynamic pages.
-- [ ] **M3 — Email verification not implemented:** Credential signups never verify email. `User.emailVerified` is only set by OAuth providers.
-- [ ] **M4 — Analytics page is ungated:** `/analytics` is accessible to all tiers. Pricing page promises analytics is a Prime-only feature.
-- [ ] **M5 — Invite milestone rewards are text-only:** Milestones (5/10/50 invites) promise "ad credit" and "Prime plan upgrade credit" — no code actually issues these.
-- [ ] **M6 — `city/page.tsx` missing `<Suspense>` around 3D canvas:** Three.js bundle is heavy; no fallback means the whole page blocks while it loads.
-- [ ] **M7 — Middleware protects `/payouts` but the real path is `/dashboard/payouts`:** The middleware redirect is a no-op for this route (the page itself redirects server-side, but it's an extra round-trip).
-- [ ] **M8 — `<img>` used everywhere instead of `<Image>`:** Multiple pages use raw `<img>` with eslint-disable suppression. Switch to `next/image` for optimization and LCP improvement.
-- [ ] **M9 — Analytics worker TODO not connected:** `src/workers/analytics.ts` line 36 — events are `console.info`'d only. No real PostHog / Mixpanel / BigQuery sink wired.
+- [x] **M1 — Missing `loading.tsx` on most pages:** All dynamic routes now have skeleton loaders.
+- [x] **M2 — Missing per-route `error.tsx`:** Route-level error boundaries added to all dynamic pages.
+- [ ] **M3 — Email verification not implemented:** Credential signups never verify email. `User.emailVerified` is only set by OAuth providers. **(requires Resend + email template)**
+- [x] **M4 — Analytics page is ungated:** `/analytics` checks `getActiveLimits(user).canAccessAnalytics` and redirects to `/pricing?reason=analytics` for non-qualifying tiers.
+- [ ] **M5 — Invite milestone rewards are text-only:** Milestones (5/10/50 invites) display correctly; actual ad credit / plan upgrade credit issuance not yet wired.
+- [x] **M6 — `city/page.tsx` missing `<Suspense>`:** City route has been reorganized; no `CityScene3DClient` found — city is a standard page.
+- [ ] **M7 — Middleware protects `/payouts` but the real path is `/dashboard/payouts`:** Minor double-redirect; low priority.
+- [ ] **M8 — `<img>` used in OG image routes instead of `<Image>`:** OG image routes (`opengraph-image.tsx`) must use plain `<img>` — satori/Vercel OG doesn't support `next/image`. Other pages already use `<Image>`.
+- [ ] **M9 — Analytics worker TODO not connected:** `src/workers/analytics.ts` — events are `console.info`'d only. Wire PostHog via `POSTHOG_API_KEY` env var.
 
 ---
 
 ## 🟢 LOW (SEO, cleanup, polish)
 
-- [ ] **L1 — `sitemap.ts` and `robots.ts` missing:** `/app/sitemap.ts` and `/app/robots.ts` don't exist. Easy SEO wins.
-- [ ] **L2 — `/legal/licensing#ai-score` anchor missing:** Footer links to this anchor but the page likely has no `id="ai-score"` element — silently scrolls to top.
+- [x] **L1 — `sitemap.ts` and `robots.ts` missing:** Both files exist at `app/sitemap.ts` and `app/robots.ts`.
+- [x] **L2 — `/legal/licensing#ai-score` anchor:** Anchor `id="ai-score"` exists on the licensing page.
 - [ ] **L3 — `HeroCityCanvas.tsx` is dead code:** Component exists in `/components` but is imported nowhere. Remove it.
-- [ ] **L4 — `analytics/page.tsx` needs `dynamic = "force-dynamic"`:** Without it, stream count data may be stale-cached on the first render.
-- [ ] **L5 — 3D city page has no loading state:** `CityScene3DClient` (Three.js) loads without a `<Suspense>` fallback spinner.
+- [x] **L4 — `analytics/page.tsx` needs `dynamic = "force-dynamic"`:** Added.
+- [x] **L5 — 3D city page has no loading state:** City route has a `<Suspense>` fallback.
+
+---
+
+## ✅ Phase 2 Viral Growth — Complete
+
+- [x] Invite engine: `InviteCode` schema, `/invite` page, referral link generation, sign-up flow wires `usedById`
+- [x] Badge system: `UserBadge` schema, `awardBadge()` helper, 8 badge types wired to real events
+- [x] WHO WON page (`/versus/[id]`): real-time vote bars, countdown timer, X/Twitter share intent, copy link, embed code, tip-with-vote Stripe Checkout, signup CTA for logged-out users
+- [x] Dashboard: invite widget showing referral link + milestone progress
+- [x] Studio page: badge display with `BADGE_META` icons + dates
+- [x] Weekly digest cron: `api/cron/weekly-digest` + `vercel.json` schedule (Fridays 14:00 UTC)
 
 ---
 

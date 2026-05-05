@@ -45,20 +45,24 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  // Per-row unread count (messages not authored by viewer, not read).
-  const unread = await Promise.all(
-    conversations.map((c) =>
-      prisma.message.count({
+  // Single grouped query for all unread counts — replaces the N+1
+  // Promise.all(prisma.message.count(...)) loop. groupBy is a single
+  // round-trip; the loop above scales O(N) connections per request.
+  const ids = conversations.map((c) => c.id);
+  const unreadGrouped = ids.length
+    ? await prisma.message.groupBy({
+        by: ["conversationId"],
         where: {
-          conversationId: c.id,
+          conversationId: { in: ids },
           NOT: { senderId: me },
           readAt: null,
         },
-      }),
-    ),
-  );
+        _count: { _all: true },
+      })
+    : [];
+  const unreadByConv = new Map(unreadGrouped.map((u) => [u.conversationId, u._count._all]));
 
-  const data = conversations.map((c, i) => {
+  const data = conversations.map((c) => {
     const peer = c.userAId === me ? c.userB : c.userA;
     const last = c.messages[0] ?? null;
     return {
@@ -67,7 +71,7 @@ export async function GET(req: NextRequest) {
       lastMessageAt: c.lastMessageAt,
       lastMessage: last?.body ?? null,
       lastMessageMine: last ? last.senderId === me : false,
-      unreadCount: unread[i],
+      unreadCount: unreadByConv.get(c.id) ?? 0,
     };
   });
 

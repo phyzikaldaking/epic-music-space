@@ -29,8 +29,33 @@ export async function GET(
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 25)));
   const cursor = url.searchParams.get("cursor");
 
+  // Filter blocked authors out of the thread for the viewer (and viewers
+  // who have been blocked never see the blocker's comments either).
+  const session = await auth();
+  const viewerId = session?.user?.id ?? null;
+  let blockedAuthorIds: string[] = [];
+  if (viewerId) {
+    const [outgoing, incoming] = await Promise.all([
+      prisma.userBlock.findMany({
+        where: { blockerId: viewerId },
+        select: { blockedId: true },
+      }),
+      prisma.userBlock.findMany({
+        where: { blockedId: viewerId },
+        select: { blockerId: true },
+      }),
+    ]);
+    blockedAuthorIds = [
+      ...outgoing.map((b) => b.blockedId),
+      ...incoming.map((b) => b.blockerId),
+    ];
+  }
+
   const comments = await prisma.postComment.findMany({
-    where: { postId: id },
+    where: {
+      postId: id,
+      ...(blockedAuthorIds.length ? { authorId: { notIn: blockedAuthorIds } } : {}),
+    },
     orderBy: { createdAt: "asc" },
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -94,6 +119,28 @@ export async function POST(
   });
   if (!post || !post.isPublished) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Refuse comments if a block is in place between the commenter and the
+  // post author. Either direction blocks — the commenter shouldn't be able
+  // to ping someone who blocked them, and a viewer who blocked the author
+  // shouldn't expect their reply to be a friendly conversation.
+  if (post.authorId !== session.user.id) {
+    const block = await prisma.userBlock.findFirst({
+      where: {
+        OR: [
+          { blockerId: session.user.id, blockedId: post.authorId },
+          { blockerId: post.authorId, blockedId: session.user.id },
+        ],
+      },
+      select: { id: true },
+    });
+    if (block) {
+      return NextResponse.json(
+        { error: "You can't comment on this post." },
+        { status: 403 },
+      );
+    }
   }
 
   let raw: unknown;

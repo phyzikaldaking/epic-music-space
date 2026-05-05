@@ -40,6 +40,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
+  // Refuse follows in either direction if a block is in place. Unfollows
+  // are still allowed (they only tear down state, never create it) so a
+  // user who blocks you can't trap a stale follow row.
+  if (action === "follow") {
+    const block = await prisma.userBlock.findFirst({
+      where: {
+        OR: [
+          { blockerId: session.user.id, blockedId: targetUserId },
+          { blockerId: targetUserId, blockedId: session.user.id },
+        ],
+      },
+      select: { id: true },
+    });
+    if (block) {
+      return NextResponse.json(
+        { error: "You can't follow this user." },
+        { status: 403 },
+      );
+    }
+  }
+
   if (action === "follow") {
     const priorCount = await prisma.userFollow.count({
       where: { followingId: targetUserId },
