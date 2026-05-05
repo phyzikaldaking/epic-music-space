@@ -119,6 +119,9 @@ model User {
   conversationsAsA   Conversation[]     @relation("ConversationUserA")
   conversationsAsB   Conversation[]     @relation("ConversationUserB")
   messagesSent       Message[]          @relation("MessageSender")
+  verzuzAsArtistA    VerzuzMatch[]      @relation("VerzuzArtistA")
+  verzuzAsArtistB    VerzuzMatch[]      @relation("VerzuzArtistB")
+  verzuzVotes        VerzuzVote[]
 }
 
 enum Role {
@@ -254,6 +257,8 @@ model Song {
   payouts        Payout[]
   versusMatchesA VersusMatch[]       @relation("VersusA")
   versusMatchesB VersusMatch[]       @relation("VersusB")
+  verzuzRoundsA  VerzuzRound[]       @relation("VerzuzRoundSongA")
+  verzuzRoundsB  VerzuzRound[]       @relation("VerzuzRoundSongB")
   royaleEntries  BattleRoyaleEntry[] @relation("BattleRoyaleEntries")
   auctions       Auction[]
   behaviorEvents UserBehaviorEvent[]
@@ -1558,4 +1563,79 @@ model PromoCodeFreeze {
 
   @@index([couponId])
   @@index([frozenAt])
+}
+
+// ── Verzuz: head-to-head artist-vs-artist with up to 10 song rounds ──
+// Modelled after Swizz Beatz / Timbaland Verzuz: two artists pick a
+// curated setlist (up to 10 songs each), and fans vote round-by-round
+// on which song wins that head-to-head. Whoever takes the most rounds
+// wins the match. Auto-advances on timer; voting on a future round is
+// rejected so the experience is paced like a real DJ set.
+model VerzuzMatch {
+  id            String       @id @default(cuid())
+  artistAId     String
+  artistBId     String
+  artistA       User         @relation("VerzuzArtistA", fields: [artistAId], references: [id], onDelete: Cascade)
+  artistB       User         @relation("VerzuzArtistB", fields: [artistBId], references: [id], onDelete: Cascade)
+  // Display fields cached at create-time so a profile-rename doesn't
+  // change the headline mid-match.
+  artistAName   String
+  artistBName   String
+  // Optional theme — "Hip-hop legends," "Reggaeton kings" etc. Just
+  // copy on the stage page; never affects voting eligibility.
+  theme         String?
+  totalRounds   Int          @default(10)
+  currentRound  Int          @default(1)
+  // Each round runs `roundDurationSec`. When the round timer expires
+  // the cron auto-advances; the artists can never advance early.
+  roundDurationSec Int       @default(180)
+  status        VerzuzStatus @default(SCHEDULED)
+  startsAt      DateTime
+  endsAt        DateTime?
+  rounds        VerzuzRound[]
+  votes         VerzuzVote[]
+  createdAt     DateTime     @default(now())
+  @@index([status, startsAt])
+  @@index([artistAId])
+  @@index([artistBId])
+}
+
+enum VerzuzStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+}
+
+model VerzuzRound {
+  id            String   @id @default(cuid())
+  matchId       String
+  match         VerzuzMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  roundNumber   Int
+  songAId       String
+  songBId       String
+  songA         Song     @relation("VerzuzRoundSongA", fields: [songAId], references: [id], onDelete: Cascade)
+  songB         Song     @relation("VerzuzRoundSongB", fields: [songBId], references: [id], onDelete: Cascade)
+  votesA        Int      @default(0)
+  votesB        Int      @default(0)
+  // Set when the round closes (timer expires or moderator advances).
+  // Null while live; "A" / "B" / "TIE" when locked.
+  winner        String?
+  createdAt     DateTime @default(now())
+  @@unique([matchId, roundNumber])
+  @@index([matchId, roundNumber])
+}
+
+model VerzuzVote {
+  id            String   @id @default(cuid())
+  matchId       String
+  match         VerzuzMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  roundNumber   Int
+  voterId       String
+  voter         User     @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  votedSongId   String
+  createdAt     DateTime @default(now())
+  // One vote per (match, round, voter). Voter can change their pick
+  // until the round closes, but the unique constraint forces upsert.
+  @@unique([matchId, roundNumber, voterId])
+  @@index([matchId, roundNumber])
 }

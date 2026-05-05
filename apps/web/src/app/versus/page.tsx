@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { unstable_cache } from "next/cache";
 import { auth } from "@/lib/auth";
@@ -143,6 +144,14 @@ export default async function VersusPage() {
           <p className="mt-2 text-white/50">
             Vote for your favorites. Winners rise in the discovery algorithm.
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/verzuz/new"
+              className="inline-flex items-center gap-2 rounded-xl border border-gold-500/35 bg-gold-500/10 px-4 py-2 text-xs font-black uppercase tracking-widest text-gold-200 transition hover:bg-gold-500/20"
+            >
+              🏆 Verzuz · 10-round artist showdown
+            </Link>
+          </div>
         </div>
         {isArtist && <CreateBattleForm songs={artistSongs} />}
       </div>
