@@ -6,25 +6,28 @@ import NavbarSearch from "@/components/NavbarSearch";
 import NotificationBell from "@/components/NotificationBell";
 
 const PUBLIC_LINKS = [
-  { href: "/feed", label: "Feed", icon: "🏠", description: "Posts from artists you follow" },
-  { href: "/trending", label: "Trending", icon: "🔥", description: "What's hot right now" },
-  { href: "/studio/live", label: "Sessions", icon: "🎙️", description: "Drop into a live audio room" },
+  { href: "/", label: "Home", icon: "🏠", description: "Back to the front page" },
   { href: "/versus", label: "Battles", icon: "⚔️", description: "1v1, Royale, and Verzuz showdowns" },
+  { href: "/vault", label: "Vault", icon: "📼", description: "Legacy catalogs from working artists" },
   { href: "/marketplace", label: "Tracks", icon: "🎵", description: "License music with clear rights" },
-  { href: "/services", label: "Services", icon: "🛠️", description: "Producers, engineers, mixers" },
+  { href: "/studio/live", label: "Sessions", icon: "🎙️", description: "Drop into a live audio room" },
+  { href: "/trending", label: "Trending", icon: "🔥", description: "What's hot right now" },
   { href: "/leaderboard", label: "Charts", icon: "📊", description: "AI rankings + boost meter" },
+  { href: "/services", label: "Services", icon: "🛠️", description: "Producers, engineers, mixers" },
   { href: "/pricing", label: "Pricing", icon: "💎", description: "Plans for fans + artists" },
   { href: "/get-the-app", label: "Get App", icon: "📲", description: "Download for iOS & Android" },
 ];
 
 const AUTHED_LINKS = [
-  { href: "/feed", label: "Feed", icon: "🏠", description: "Posts from artists you follow" },
-  { href: "/trending", label: "Trending", icon: "🔥", description: "What's hot right now" },
-  { href: "/studio/live", label: "Sessions", icon: "🎙️", description: "Drop into a live audio room" },
+  { href: "/", label: "Home", icon: "🏠", description: "Back to the front page" },
   { href: "/versus", label: "Battles", icon: "⚔️", description: "Vote on track battles" },
+  { href: "/vault", label: "Vault", icon: "📼", description: "Legacy catalogs from working artists" },
   { href: "/marketplace", label: "Tracks", icon: "🎵", description: "License music with clear rights" },
-  { href: "/services", label: "Services", icon: "🛠️", description: "Producers, engineers, mixers" },
+  { href: "/studio/live", label: "Sessions", icon: "🎙️", description: "Drop into a live audio room" },
+  { href: "/feed", label: "Feed", icon: "📰", description: "Posts from artists you follow" },
+  { href: "/trending", label: "Trending", icon: "🔥", description: "What's hot right now" },
   { href: "/leaderboard", label: "Charts", icon: "📊", description: "AI rankings + boost meter" },
+  { href: "/services", label: "Services", icon: "🛠️", description: "Producers, engineers, mixers" },
   { href: "/auctions", label: "Auctions", icon: "🔨", description: "Bid on placement" },
   { href: "/library", label: "Library", icon: "📀", description: "Saved tracks" },
   { href: "/messages", label: "Messages", icon: "💬", description: "DMs with other artists + fans" },
@@ -34,12 +37,24 @@ const AUTHED_LINKS = [
 
 const ADMIN_LINK = { href: "/admin", label: "Admin", icon: "🛡️", description: "Moderation + ops" };
 
+// Inline desktop nav stays focused — Home + the four flagship destinations
+// users complained were buried (Battles, Vault, Tracks, Sessions). Everything
+// else lives in the mobile menu and the user's dashboard.
+const PRIMARY_PUBLIC_LINKS = PUBLIC_LINKS.filter((l) =>
+  ["/", "/versus", "/vault", "/marketplace", "/studio/live", "/pricing"].includes(l.href),
+);
+const PRIMARY_AUTHED_LINKS = AUTHED_LINKS.filter((l) =>
+  ["/", "/versus", "/vault", "/marketplace", "/studio/live", "/dashboard"].includes(l.href),
+);
+
 export default function Navbar() {
   return (
     <nav className="sticky top-0 z-50 border-b border-white/8 bg-[#0a0a0a]/85 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
         <Link
           href="/"
+          aria-label="Epic Music Space — Home"
+          title="Home"
           className="flex min-w-0 items-center gap-2.5 text-xl font-extrabold tracking-tight focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
         >
           <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-brand-500/30 bg-brand-500/20 glow-purple-sm">
@@ -58,8 +73,8 @@ export default function Navbar() {
         </Link>
 
         <NavbarLinks
-          publicLinks={PUBLIC_LINKS}
-          authedLinks={AUTHED_LINKS}
+          publicLinks={PRIMARY_PUBLIC_LINKS}
+          authedLinks={PRIMARY_AUTHED_LINKS}
           adminLink={ADMIN_LINK}
         />
 
