@@ -50,7 +50,6 @@ export default async function OgImage({ params }: { params: { id: string } }) {
         }}
       >
         {coverUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={coverUrl}
             alt=""

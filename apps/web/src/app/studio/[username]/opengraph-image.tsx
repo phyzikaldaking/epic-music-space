@@ -58,7 +58,6 @@ export default async function OgImage({ params }: { params: { username: string }
         }}
       >
         {bannerUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={bannerUrl}
             alt=""
@@ -120,7 +119,6 @@ export default async function OgImage({ params }: { params: { username: string }
 
           <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
             {avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={avatarUrl}
                 alt=""

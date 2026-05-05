@@ -101,7 +101,6 @@ export default async function VersusOgImage({ params }: { params: { id: string }
             }}
           >
             {match.songA.coverUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={match.songA.coverUrl}
                 alt=""
@@ -138,7 +137,6 @@ export default async function VersusOgImage({ params }: { params: { id: string }
             }}
           >
             {match.songB.coverUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={match.songB.coverUrl}
                 alt=""

@@ -71,7 +71,6 @@ export default async function OgImage({ params }: { params: { id: string } }) {
         }}
       >
         {mediaThumb && (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={mediaThumb}
             alt=""
@@ -111,7 +110,6 @@ export default async function OgImage({ params }: { params: { id: string } }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               {authorAvatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={authorAvatar}
                   alt=""

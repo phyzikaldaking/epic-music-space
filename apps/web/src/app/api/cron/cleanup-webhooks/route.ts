@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireCronRequest } from "@/lib/routeAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,12 +11,8 @@ export const maxDuration = 60;
  * keeps the dedupe table from growing unbounded.
  */
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const authed =
-    secret && req.headers.get("authorization") === `Bearer ${secret}`;
-  if (!authed) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const access = requireCronRequest(req);
+  if (!access.ok) return access.response;
 
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const result = await prisma.processedWebhook.deleteMany({

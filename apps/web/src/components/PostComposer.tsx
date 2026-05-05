@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Image from "next/image";
+import Link from "next/link";
 
 interface MySong {
   id: string;
@@ -317,7 +318,7 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
             <p className="px-2 py-3 text-center text-xs text-white/40">Loading your tracks…</p>
           ) : mySongs.length === 0 ? (
             <p className="px-2 py-3 text-center text-xs text-white/40">
-              You haven&apos;t uploaded any tracks yet. <a href="/studio/new" className="text-brand-400 hover:underline">Upload one →</a>
+              You haven&apos;t uploaded any tracks yet. <Link href="/studio/new" className="text-brand-400 hover:underline">Upload one →</Link>
             </p>
           ) : (
             <ul className="space-y-1">

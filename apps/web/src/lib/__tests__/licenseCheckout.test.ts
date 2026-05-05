@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createLicenseCheckoutSession, LicenseCheckoutError } from "@/lib/payments/licenseCheckout";
+import { createLicenseCheckoutSession } from "@/lib/payments/licenseCheckout";
 
 const prismaMock = vi.hoisted(() => ({
   user: { findUnique: vi.fn() },

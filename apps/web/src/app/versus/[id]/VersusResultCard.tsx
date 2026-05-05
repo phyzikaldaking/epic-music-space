@@ -246,6 +246,29 @@ export default function VersusResultCard({ match }: { match: Match }) {
         </div>
       )}
 
+      {/* Signup CTA for logged-out visitors */}
+      {!session && (
+        <div className="mb-6 rounded-2xl border border-brand-500/30 bg-brand-500/10 px-6 py-5 text-center">
+          <p className="mb-3 text-sm font-semibold text-white/80">
+            {isCompleted ? "Want to vote on the next battle?" : "Join to vote and support your favourite artist."}
+          </p>
+          <div className="flex justify-center gap-3">
+            <Link
+              href={`/auth/signup?callbackUrl=/versus/${match.id}`}
+              className="rounded-xl bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600 transition"
+            >
+              Sign up free
+            </Link>
+            <Link
+              href={`/auth/signin?callbackUrl=/versus/${match.id}`}
+              className="rounded-xl border border-white/15 px-5 py-2 text-sm font-semibold text-white/70 hover:bg-white/8 hover:text-white transition"
+            >
+              Sign in
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Share row */}
       <div className="glass-card rounded-2xl p-6">
         <p className="text-xs font-semibold uppercase tracking-widest text-white/30 mb-4">Share this battle</p>
