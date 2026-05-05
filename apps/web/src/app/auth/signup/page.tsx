@@ -66,6 +66,8 @@ function SignUpContent() {
   const searchParams = useSearchParams();
   const [selectedRole, setSelectedRole] = useState<RoleValue>("LISTENER");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [buyerGuide, setBuyerGuide] = useState({
     mood: "Cinematic",
     useCase: "Trailer",
@@ -129,6 +131,14 @@ function SignUpContent() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!ageConfirmed) {
+      setError("You must confirm you are at least 13 years old.");
+      return;
+    }
+    if (!termsAccepted) {
+      setError("You must accept the Terms of Service and Privacy Policy.");
+      return;
+    }
     setLoading(true);
     setError("");
 
@@ -140,6 +150,8 @@ function SignUpContent() {
         role: selectedRole,
         inviteCode: inviteCode || undefined,
         callbackUrl,
+        ageConfirmed,
+        termsAccepted,
       }),
     });
 
@@ -384,9 +396,40 @@ function SignUpContent() {
               />
             </div>
 
+            <label className="flex items-start gap-2 text-xs text-white/65">
+              <input
+                type="checkbox"
+                checked={ageConfirmed}
+                onChange={(e) => setAgeConfirmed(e.target.checked)}
+                className="mt-0.5"
+                required
+              />
+              <span>I&apos;m at least 13 years old.</span>
+            </label>
+            <label className="flex items-start gap-2 text-xs text-white/65">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="mt-0.5"
+                required
+              />
+              <span>
+                I&apos;ve read and agree to the{" "}
+                <Link href="/terms" target="_blank" className="text-brand-400 hover:underline">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" target="_blank" className="text-brand-400 hover:underline">
+                  Privacy Policy
+                </Link>
+                .
+              </span>
+            </label>
+
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !ageConfirmed || !termsAccepted}
               className="rounded-xl bg-brand-500 py-3 font-bold text-white transition hover:bg-brand-600 disabled:opacity-50 glow-purple-sm"
             >
               {loading ? "Creating account…" : "Create account →"}

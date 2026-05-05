@@ -21,6 +21,16 @@ const registerSchema = z.object({
   role:       z.enum(["LISTENER", "ARTIST", "PRODUCER", "ENGINEER", "LABEL"]).default("LISTENER"),
   inviteCode: z.string().max(20).optional(),
   callbackUrl: z.string().max(500).optional(),
+  // COPPA + ToS gates. Both are required to register; the schema rejects
+  // anything that isn't literally `true` so a missing checkbox in the
+  // form is a 400 with a clear field-level error rather than a silent
+  // signup. We don't store the underage user at all.
+  ageConfirmed: z.literal(true, {
+    errorMap: () => ({ message: "You must confirm you are at least 13 years old." }),
+  }),
+  termsAccepted: z.literal(true, {
+    errorMap: () => ({ message: "You must accept the Terms of Service and Privacy Policy." }),
+  }),
 });
 
 export async function POST(req: NextRequest) {

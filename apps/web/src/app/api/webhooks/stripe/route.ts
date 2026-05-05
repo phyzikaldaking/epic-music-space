@@ -250,6 +250,53 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
     })();
   }
 
+  // Buyer receipt email — fires whenever a license is successfully issued.
+  // Same fire-and-forget pattern as the artist milestone above so a slow
+  // Resend response never delays Stripe's webhook ack.
+  if (reservation) {
+    void (async () => {
+      try {
+        const buyer = await prisma.user.findUnique({
+          where: { id: existing.userId },
+          select: { email: true, name: true, emailVerified: true },
+        });
+        if (!buyer?.email) return;
+        const { sendNotificationEmail } = await import("@/lib/email");
+        const siteUrl = (await import("@/lib/site")).getSiteUrl();
+        const amount = Number(existing.amount).toFixed(2);
+        const subject = `Your license for "${song.title}" — receipt`;
+        const html = `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#fff;font-family:-apple-system,sans-serif;padding:40px 16px">
+  <div style="max-width:540px;margin:0 auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px 32px">
+    <h1 style="margin:0 0 12px;font-size:22px">Thanks for your license 🎟️</h1>
+    <p style="color:rgba(255,255,255,0.7);line-height:1.6">
+      You licensed <strong>${escapeHtml(song.title)}</strong> by <strong>${escapeHtml(song.artist)}</strong>
+      for <strong>$${amount}</strong>.
+    </p>
+    <p style="color:rgba(255,255,255,0.7);line-height:1.6">
+      Your license + download is available on your dashboard. The standard
+      non-exclusive terms apply — see the agreement linked from the receipt page.
+    </p>
+    <p style="margin:24px 0">
+      <a href="${siteUrl}/licenses/${reservation.id}" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:700">Open receipt →</a>
+    </p>
+    <p style="color:rgba(255,255,255,0.4);font-size:11px;margin-top:32px">
+      Transaction ID: ${existing.id}<br>
+      License ID: ${reservation.id}<br>
+      Questions? Reply to this email or visit ${siteUrl}/support.
+    </p>
+  </div></body></html>`;
+        await sendNotificationEmail({
+          to: buyer.email,
+          subject,
+          html,
+          text: `Thanks for your license! "${song.title}" by ${song.artist} for $${amount}. Receipt: ${siteUrl}/licenses/${reservation.id}`,
+        });
+      } catch (err) {
+        console.warn("[stripe-webhook] buyer receipt email failed", err);
+      }
+    })();
+  }
+
   if (!reservation) {
     console.warn(
       "[stripe-webhook] license issuance refused — song sold out",
@@ -1206,4 +1253,12 @@ async function handleVersusTipCompleted(session: Stripe.Checkout.Session) {
       metadata: { matchId: tip.matchId, tipId },
     }),
   ]);
+}
+
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
