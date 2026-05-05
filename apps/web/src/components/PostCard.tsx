@@ -271,16 +271,29 @@ export default function PostCard(props: PostCardProps) {
         </Link>
         {!props.isOwner && (
           <div className="relative ml-auto">
-            <button
-              type="button"
-              onClick={() => setShowMenu((v) => !v)}
-              className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/80"
-              aria-label="Post actions"
-              aria-haspopup="menu"
-              aria-expanded={showMenu ? "true" : "false"}
-            >
-              ⋯
-            </button>
+            {showMenu ? (
+              <button
+                type="button"
+                onClick={() => setShowMenu(false)}
+                className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/80"
+                aria-label="Post actions"
+                aria-haspopup="menu"
+                aria-expanded="true"
+              >
+                ⋯
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowMenu(true)}
+                className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/80"
+                aria-label="Post actions"
+                aria-haspopup="menu"
+                aria-expanded="false"
+              >
+                ⋯
+              </button>
+            )}
             {showMenu && (
               <div
                 role="menu"

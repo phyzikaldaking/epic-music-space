@@ -169,12 +169,12 @@ export default async function BoostPage() {
                     <span>Boost</span>
                     <span>{song.boostScore.toFixed(0)}/100</span>
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-white/10">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-500"
-                      style={{ width: `${song.boostScore}%` }}
-                    />
-                  </div>
+                  <progress
+                    max={100}
+                    value={song.boostScore}
+                    className="ems-progress ems-progress-brand h-1.5 w-full"
+                    aria-label={`${song.title} boost score`}
+                  />
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-white/40">AI Score</p>

@@ -372,12 +372,12 @@ function SongResultCard({
           <span className="tabular-nums">{votes.toLocaleString()} votes</span>
           <span className="font-bold text-white tabular-nums">{pct}%</span>
         </div>
-        <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ${side === "A" ? "bg-brand-500" : "bg-accent-500"}`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
+        <progress
+          max={100}
+          value={pct}
+          className={`ems-progress h-2 w-full ${side === "A" ? "ems-progress-a" : "ems-progress-b"}`}
+          aria-label={`${side} vote share`}
+        />
       </div>
 
       {canVote && (

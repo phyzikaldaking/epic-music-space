@@ -1362,3 +1362,57 @@ select:-moz-autofill {
 .dyn-w { width: var(--dyn-w); }
 .dyn-h { height: var(--dyn-h); }
 .volume-slider-vertical { writing-mode: vertical-lr; direction: rtl; }
+
+.ems-progress {
+  appearance: none;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #6c5ce7;
+}
+
+.ems-progress::-webkit-progress-bar {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ems-progress::-webkit-progress-value {
+  background: var(--ems-progress-fill, linear-gradient(90deg, #6c5ce7 0%, #00f5ff 100%));
+  border-radius: 9999px;
+}
+
+.ems-progress::-moz-progress-bar {
+  background: var(--ems-progress-fill, linear-gradient(90deg, #6c5ce7 0%, #00f5ff 100%));
+  border-radius: 9999px;
+}
+
+.ems-progress-brand {
+  --ems-progress-fill: linear-gradient(90deg, #6c5ce7 0%, #00f5ff 100%);
+}
+
+.ems-progress-gold {
+  --ems-progress-fill: linear-gradient(90deg, #fde047 0%, #ffffff 55%, #22d3ee 100%);
+}
+
+.ems-progress-a {
+  --ems-progress-fill: #6c5ce7;
+}
+
+.ems-progress-b {
+  --ems-progress-fill: #00f5ff;
+}
+
+.ems-progress-muted {
+  --ems-progress-fill: rgba(255, 255, 255, 0.25);
+}
+
+.ems-progress-wave {
+  background: transparent;
+  --ems-progress-fill: linear-gradient(90deg, rgba(108, 92, 231, 0.8) 0%, rgba(0, 245, 255, 0.8) 100%);
+}
+
+.ems-progress-wave::-webkit-progress-bar {
+  background: transparent;
+}

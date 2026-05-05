@@ -179,14 +179,14 @@ export default function BattleRoyaleCard({
               {(voted ?? isExpired) && (
                 <div className="w-full mt-1 space-y-0.5">
                   <p className="text-[11px] font-bold text-white text-center">{pct}%</p>
-                  <div className="h-1 w-full rounded-full bg-white/10">
-                    <div
-                      className={`h-full rounded-full transition-all ${
-                        isVoted ? "bg-brand-500" : isLeader ? "bg-amber-400" : "bg-white/25"
-                      }`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
+                  <progress
+                    max={100}
+                    value={pct}
+                    className={`ems-progress h-1 w-full ${
+                      isVoted ? "ems-progress-a" : isLeader ? "ems-progress-gold" : "ems-progress-muted"
+                    }`}
+                    aria-label={`${entry.song.title} vote share`}
+                  />
                   <p className="text-[10px] text-white/30 text-center">{entry.votes}</p>
                 </div>
               )}

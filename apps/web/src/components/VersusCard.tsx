@@ -208,14 +208,12 @@ export default function VersusCard({
                 <span>{votes} votes</span>
                 <span className="font-bold text-white">{pct}%</span>
               </div>
-              <div className="h-1.5 w-full rounded-full bg-white/10">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    side === "A" ? "bg-brand-500" : "bg-accent-500"
-                  }`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
+              <progress
+                max={100}
+                value={pct}
+                className={`ems-progress h-1.5 w-full ${side === "A" ? "ems-progress-a" : "ems-progress-b"}`}
+                aria-label={`${side} live vote share`}
+              />
             </div>
           )}
         </button>

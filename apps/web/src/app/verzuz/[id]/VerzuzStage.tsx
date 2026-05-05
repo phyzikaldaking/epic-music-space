@@ -244,12 +244,12 @@ export default function VerzuzStage(props: Props) {
             {props.status === "LIVE" && (
               <>
                 <span className="font-mono text-2xl font-black text-white">{fmt(secondsLeft)}</span>
-                <div className="mt-1 h-1.5 w-32 overflow-hidden rounded-full bg-white/8">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-400 transition-[width] duration-1000"
-                    style={{ width: `${tickPct}%` }}
-                  />
-                </div>
+                <progress
+                  max={100}
+                  value={tickPct}
+                  className="ems-progress ems-progress-brand mt-1 h-1.5 w-32"
+                  aria-label="Round timer"
+                />
               </>
             )}
             {props.status === "SCHEDULED" && (
@@ -471,12 +471,12 @@ function SongSide({
           <span>{votes} {votes === 1 ? "vote" : "votes"}</span>
           <span className="font-black text-white">{pct}%</span>
         </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-white/8">
-          <div
-            className={`h-full rounded-full bg-gradient-to-r from-${accent}-500 to-${accent === "brand" ? "accent" : "brand"}-400 transition-all duration-500`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
+        <progress
+          max={100}
+          value={pct}
+          className={`ems-progress h-2 w-full ${accent === "brand" ? "ems-progress-a" : "ems-progress-b"}`}
+          aria-label={`Side ${side} vote share`}
+        />
       </div>
 
       <button

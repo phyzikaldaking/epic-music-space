@@ -19,20 +19,7 @@ export default async function VersusOgImage({ params }: { params: { id: string }
   if (!match) {
     return new ImageResponse(
       (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            background: "#0a0a14",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "system-ui, sans-serif",
-            fontSize: 64,
-            fontWeight: 900,
-          }}
-        >
+        <div tw="flex h-full w-full items-center justify-center bg-[#0a0a14] text-[64px] font-black text-white">
           ⚔️ Battle not found
         </div>
       ),
@@ -48,116 +35,68 @@ export default async function VersusOgImage({ params }: { params: { id: string }
 
   return new ImageResponse(
     (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          background: "linear-gradient(135deg,#0a0a14 0%,#1a0f2e 50%,#14091e 100%)",
-          color: "#fff",
-          display: "flex",
-          flexDirection: "column",
-          fontFamily: "system-ui, -apple-system, sans-serif",
-          padding: 40,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: "rgba(108,92,231,0.25)",
-              border: "1px solid rgba(108,92,231,0.5)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 18,
-              color: "#00F5FF",
-            }}
-          >
+      <div tw="flex h-full w-full flex-col bg-[linear-gradient(135deg,#0a0a14_0%,#1a0f2e_50%,#14091e_100%)] p-10 text-white">
+        <div tw="mb-4 flex items-center gap-3">
+          <div tw="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#6c5ce780] bg-[#6c5ce740] text-[18px] text-cyan-300">
             ⚔
           </div>
-          <span style={{ fontSize: 22, fontWeight: 800, color: "#a78bfa" }}>
+          <span tw="text-[22px] font-extrabold text-violet-300">
             Epic Music Space — Versus
           </span>
-          <span style={{ marginLeft: "auto", fontSize: 14, color: "rgba(255,255,255,0.5)" }}>
+          <span tw="ml-auto text-[14px] text-white/50">
             {isCompleted ? "FINAL" : "LIVE"}
           </span>
         </div>
 
-        <div style={{ display: "flex", flex: 1, gap: 32, alignItems: "center" }}>
+        <div tw="flex flex-1 items-center gap-8">
           {/* Side A */}
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 14,
-              padding: 24,
-              border: winner === "A" ? "3px solid #ffd76b" : "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 24,
-              background: winner === "A" ? "rgba(255,215,0,0.08)" : "rgba(255,255,255,0.03)",
-            }}
-          >
+          <div tw={`flex flex-1 flex-col items-center gap-[14px] rounded-[24px] p-6 ${winner === "A" ? "border-[3px] border-[#ffd76b] bg-[#ffd70014]" : "border border-white/12 bg-white/3"}`}>
             {match.songA.coverUrl ? (
               <img
                 src={match.songA.coverUrl}
                 alt=""
                 width={220}
                 height={220}
-                style={{ borderRadius: 18, objectFit: "cover" }}
+                tw="rounded-[18px] object-cover"
               />
             ) : (
-              <div style={{ width: 220, height: 220, background: "#222", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 64 }}>🎵</div>
+              <div tw="flex h-[220px] w-[220px] items-center justify-center rounded-[18px] bg-[#222222] text-[64px]">🎵</div>
             )}
-            <div style={{ fontSize: 28, fontWeight: 900, textAlign: "center", lineHeight: 1.1 }}>
+            <div tw="text-center text-[28px] font-black leading-[1.1]">
               {match.songA.title}
             </div>
-            <div style={{ fontSize: 18, color: "rgba(255,255,255,0.6)" }}>{match.songA.artist}</div>
-            <div style={{ fontSize: 36, fontWeight: 900, color: winner === "A" ? "#ffd76b" : "#a78bfa" }}>
+            <div tw="text-[18px] text-white/60">{match.songA.artist}</div>
+            <div tw={`text-[36px] font-black ${winner === "A" ? "text-[#ffd76b]" : "text-violet-300"}`}>
               {pctA}%
             </div>
           </div>
 
-          <div style={{ fontSize: 64, fontWeight: 900, color: "rgba(255,255,255,0.25)" }}>VS</div>
+          <div tw="text-[64px] font-black text-white/25">VS</div>
 
           {/* Side B */}
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 14,
-              padding: 24,
-              border: winner === "B" ? "3px solid #ffd76b" : "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 24,
-              background: winner === "B" ? "rgba(255,215,0,0.08)" : "rgba(255,255,255,0.03)",
-            }}
-          >
+          <div tw={`flex flex-1 flex-col items-center gap-[14px] rounded-[24px] p-6 ${winner === "B" ? "border-[3px] border-[#ffd76b] bg-[#ffd70014]" : "border border-white/12 bg-white/3"}`}>
             {match.songB.coverUrl ? (
               <img
                 src={match.songB.coverUrl}
                 alt=""
                 width={220}
                 height={220}
-                style={{ borderRadius: 18, objectFit: "cover" }}
+                tw="rounded-[18px] object-cover"
               />
             ) : (
-              <div style={{ width: 220, height: 220, background: "#222", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 64 }}>🎵</div>
+              <div tw="flex h-[220px] w-[220px] items-center justify-center rounded-[18px] bg-[#222222] text-[64px]">🎵</div>
             )}
-            <div style={{ fontSize: 28, fontWeight: 900, textAlign: "center", lineHeight: 1.1 }}>
+            <div tw="text-center text-[28px] font-black leading-[1.1]">
               {match.songB.title}
             </div>
-            <div style={{ fontSize: 18, color: "rgba(255,255,255,0.6)" }}>{match.songB.artist}</div>
-            <div style={{ fontSize: 36, fontWeight: 900, color: winner === "B" ? "#ffd76b" : "#00F5FF" }}>
+            <div tw="text-[18px] text-white/60">{match.songB.artist}</div>
+            <div tw={`text-[36px] font-black ${winner === "B" ? "text-[#ffd76b]" : "text-cyan-300"}`}>
               {pctB}%
             </div>
           </div>
         </div>
 
-        <div style={{ marginTop: 12, fontSize: 16, color: "rgba(255,255,255,0.45)", textAlign: "center" }}>
+        <div tw="mt-3 text-center text-[16px] text-white/45">
           Vote at epicmusicspace.com/versus/{params.id.slice(0, 8)}…
         </div>
       </div>

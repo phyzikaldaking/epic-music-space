@@ -180,13 +180,14 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
     setProgress(ratio * 100);
   }
 
-  function handleSeek(e: React.MouseEvent<HTMLDivElement>) {
-    seekToX(e.clientX, e.currentTarget);
-  }
-
-  function handleSeekTouch(e: React.TouchEvent<HTMLDivElement>) {
-    const touch = e.touches[0];
-    if (touch) seekToX(touch.clientX, e.currentTarget);
+  function handleProgressChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const audio = audioRef.current;
+    if (!audio || !audio.duration) return;
+    const nextProgress = Number(e.target.value);
+    const nextTime = (nextProgress / 100) * audio.duration;
+    audio.currentTime = nextTime;
+    setCurrentTime(nextTime);
+    setProgress(nextProgress);
   }
 
   function seekBy(seconds: number) {
@@ -286,27 +287,24 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
 
             {/* Screen-style waveform / seek bar */}
             <div className="flex flex-1 flex-col gap-2">
-              <div
-                className="relative h-12 w-full cursor-pointer overflow-hidden rounded-xl border border-white/10 bg-black/50"
-                onClick={handleSeek}
-                onTouchStart={handleSeekTouch}
-                onTouchMove={handleSeekTouch}
-                role="slider"
-                aria-label={`Seek position in ${title}`}
-                aria-valuenow={Math.round(progress)}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuetext={`${fmt(currentTime)} of ${fmt(duration)}`}
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  const audio = audioRef.current;
-                  if (!audio) return;
-                  if (e.key === "ArrowRight") seekBy(5);
-                  if (e.key === "ArrowLeft") seekBy(-5);
-                }}
-              >
+              <div className="relative h-12 w-full overflow-hidden rounded-xl border border-white/10 bg-black/50">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round(progress)}
+                  onChange={handleProgressChange}
+                  aria-label={`Seek position in ${title}`}
+                  className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+                />
                 <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,rgba(255,255,255,0.08)_0_2px,transparent_2px_10px)]" />
-                <div className="absolute inset-y-2 left-0 rounded-r-xl bg-gradient-to-r from-brand-500/80 to-accent-400/80 transition-all dyn-w" style={{ "--dyn-w": `${progress}%` } as React.CSSProperties} />
+                <progress
+                  max={100}
+                  value={Math.round(progress)}
+                  className="ems-progress ems-progress-wave absolute inset-y-2 left-0 right-0 h-8 w-full"
+                  aria-hidden="true"
+                />
                 <div className="absolute inset-x-0 top-1/2 h-px bg-white/15" />
                 <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/10" />
               </div>

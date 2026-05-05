@@ -38,71 +38,38 @@ export default async function OgImage({ params }: { params: { id: string } }) {
 
   return new ImageResponse(
     (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          background: "linear-gradient(135deg, #0a0a14 0%, #1a0f2e 50%, #0a0a14 100%)",
-          display: "flex",
-          color: "#fff",
-          fontFamily: "system-ui, -apple-system, sans-serif",
-          padding: 60,
-        }}
-      >
+      <div tw="flex h-full w-full bg-[linear-gradient(135deg,#0a0a14_0%,#1a0f2e_50%,#0a0a14_100%)] p-[60px] text-white">
         {coverUrl && (
           <img
             src={coverUrl}
             alt=""
             width={500}
             height={500}
-            style={{ borderRadius: 32, marginRight: 60, boxShadow: "0 20px 60px rgba(0,0,0,0.6)", objectFit: "cover" }}
+            tw="mr-[60px] rounded-[32px] object-cover shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
           />
         )}
-        <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                background: "rgba(108,92,231,0.25)",
-                border: "1px solid rgba(108,92,231,0.5)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 20,
-                color: "#00F5FF",
-              }}
-            >
+        <div tw="flex flex-1 flex-col justify-between">
+          <div tw="flex items-center gap-3">
+            <div tw="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#6c5ce780] bg-[#6c5ce740] text-[20px] text-cyan-300">
               ♫
             </div>
-            <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.4, color: "#a78bfa" }}>
+            <span tw="text-[22px] font-extrabold tracking-[-0.4px] text-violet-300">
               Epic Music Space
             </span>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 64, fontWeight: 900, lineHeight: 1.05, marginBottom: 16 }}>{title}</div>
-            <div style={{ fontSize: 32, color: "rgba(255,255,255,0.65)" }}>by {artist}</div>
+          <div tw="flex flex-col">
+            <div tw="mb-4 text-[64px] font-black leading-[1.05] tracking-[-2px]">{title}</div>
+            <div tw="text-[32px] text-white/65">by {artist}</div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div tw="flex items-center gap-4">
             {licensePrice !== null && (
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 700,
-                  padding: "10px 18px",
-                  borderRadius: 999,
-                  background: "rgba(108,92,231,0.18)",
-                  border: "1px solid rgba(108,92,231,0.45)",
-                  color: "#a78bfa",
-                }}
-              >
+              <div tw="rounded-full border border-[#6c5ce773] bg-[#6c5ce72e] px-[18px] py-[10px] text-[22px] font-bold text-violet-300">
                 License from ${licensePrice.toFixed(0)}
               </div>
             )}
-            <div style={{ fontSize: 18, color: "rgba(255,255,255,0.45)" }}>
+            <div tw="text-[18px] text-white/45">
               Listen, license, and own — epicmusicspace.com
             </div>
           </div>

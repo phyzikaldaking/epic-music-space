@@ -354,12 +354,12 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
 
       {mode === "uploading" && (
         <div className="mt-3">
-          <div className="h-1.5 w-full rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-500 transition-all"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+          <progress
+            max={100}
+            value={progress}
+            className="ems-progress ems-progress-brand h-1.5 w-full"
+            aria-label="Upload progress"
+          />
           <p className="mt-1 text-xs text-white/50">Uploading… {progress}%</p>
         </div>
       )}

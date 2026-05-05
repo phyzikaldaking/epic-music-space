@@ -203,7 +203,7 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
               <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">Current Leader</p>
               <h2 className="mt-2 line-clamp-2 break-words text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl md:line-clamp-1 md:text-4xl">{leader?.title ?? "Leader Pending"}</h2>
               <p className="mt-1 line-clamp-1 text-sm text-white/45">{leader?.artist ?? "Finalist"}</p>
-              <div className="mt-5 rounded-2xl border border-gold-200/15 bg-gold-200/10 p-4"><div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-white/40"><span>Crowd Energy</span><span>{crowdEnergy}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-gold-300 via-white to-cyan-300" style={{ width: `${crowdEnergy}%` }} /></div></div>
+              <div className="mt-5 rounded-2xl border border-gold-200/15 bg-gold-200/10 p-4"><div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-white/40"><span>Crowd Energy</span><span>{crowdEnergy}%</span></div><progress max={100} value={crowdEnergy} className="ems-progress ems-progress-gold h-2 w-full" aria-label="Crowd energy" /></div>
               <p className="mt-4 text-sm leading-6 text-white/55">{event.message}</p>
             </div>
           </div>
@@ -222,7 +222,7 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
                       <div className="flex items-center justify-between"><span className="text-3xl font-black tracking-[-0.06em] text-white sm:text-4xl">#{index + 1}</span><span className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/50">{index === 0 ? "Leader" : "Finalist"}</span></div>
                       <div className="relative mt-5 aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black/50">{track.coverUrl ? <Image src={track.coverUrl} alt="" fill className="object-cover opacity-80" /> : <div className="grid h-full place-items-center text-xs font-black uppercase tracking-[0.18em] text-white/35">Live Screen</div>}</div>
                       <h3 className="mt-4 line-clamp-1 text-xl font-black tracking-[-0.04em] text-white">{track.title}</h3><p className="mt-1 line-clamp-1 text-sm text-white/45">{track.artist}</p>
-                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-gold-300 via-white to-cyan-300" style={{ width: `${Math.max(8, Math.min(100, score / 12))}%` }} /></div>
+                      <progress max={100} value={Math.max(8, Math.min(100, score / 12))} className="ems-progress ems-progress-gold mt-4 h-2 w-full" aria-label={`${track.title} power`} />
                       <div className="mt-3 flex justify-between text-[11px] font-bold uppercase tracking-[0.14em] text-white/40"><span>Power</span><span>{score.toFixed(1)}</span></div>
                       <div className="mt-4 grid grid-cols-3 gap-2">{[5, 10, 25].map((amount) => <button key={amount} type="button" onClick={() => sendTip(track, amount)} className="rounded-xl border border-gold-200/20 bg-gold-200/10 px-2 py-2 text-xs font-black text-gold-100 transition hover:bg-gold-200/20">Tip ${amount}</button>)}</div>
                     </div>

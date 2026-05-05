@@ -548,9 +548,11 @@ export default async function DashboardPage() {
                 <span className="text-sm font-semibold text-white/55">{pct}%</span>
               </div>
               <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-white/8">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-400 transition-all"
-                  style={{ width: `${pct}%` }}
+                <progress
+                  max={100}
+                  value={pct}
+                  className="ems-progress ems-progress-brand h-1.5 w-full"
+                  aria-label="Profile completion"
                 />
               </div>
               <ul className="space-y-2">
@@ -1038,20 +1040,18 @@ export default async function DashboardPage() {
                      inviteData.usedCount < 50 ? `${50 - inviteData.usedCount} to go` : "All milestones done! 🎉"}
                   </span>
                 </div>
-                <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-500"
-                    style={{
-                      width: `${inviteData.usedCount < 5
-                        ? (inviteData.usedCount / 5) * 100
-                        : inviteData.usedCount < 10
-                        ? ((inviteData.usedCount - 5) / 5) * 100
-                        : inviteData.usedCount < 50
-                        ? ((inviteData.usedCount - 10) / 40) * 100
-                        : 100}%`
-                    }}
-                  />
-                </div>
+                <progress
+                  max={100}
+                  value={inviteData.usedCount < 5
+                    ? (inviteData.usedCount / 5) * 100
+                    : inviteData.usedCount < 10
+                    ? ((inviteData.usedCount - 5) / 5) * 100
+                    : inviteData.usedCount < 50
+                    ? ((inviteData.usedCount - 10) / 40) * 100
+                    : 100}
+                  className="ems-progress ems-progress-brand h-2 w-full"
+                  aria-label="Invite milestone progress"
+                />
               </div>
             </div>
           ) : (
