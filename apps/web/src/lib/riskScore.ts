@@ -27,14 +27,30 @@ export interface RiskVerdict {
   blocked: boolean; // true when isSuspended or score ≥ HARD_BLOCK
 }
 
-const THRESHOLD_MEDIUM = 30;
-const THRESHOLD_HIGH = 60;
-const HARD_BLOCK = 80;
+type RiskContext = {
+  action?: "CHECKOUT" | "PAYOUT" | "ADS" | string;
+  checkoutAmountUsd?: number;
+};
+
+function readNumberEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+const THRESHOLD_MEDIUM = readNumberEnv("RISK_THRESHOLD_MEDIUM", 30);
+const THRESHOLD_HIGH = readNumberEnv("RISK_THRESHOLD_HIGH", 60);
+const HARD_BLOCK = readNumberEnv("RISK_THRESHOLD_HARD", 80);
+const MAX_CHECKOUT_USD = readNumberEnv("RISK_MAX_CHECKOUT_USD", 500);
 
 const _NOW = () => new Date();
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
 
-export async function computeRiskScore(userId: string): Promise<RiskVerdict> {
+export async function computeRiskScore(
+  userId: string,
+  context: RiskContext = {},
+): Promise<RiskVerdict> {
   const reasons: string[] = [];
   let score = 0;
 
@@ -99,6 +115,24 @@ export async function computeRiskScore(userId: string): Promise<RiskVerdict> {
   if (payoutFailures > 1) {
     score += 15;
     reasons.push(`payout-failures:${payoutFailures}`);
+  }
+
+  // Checkout-specific controls
+  if (context.action === "CHECKOUT") {
+    const checkoutAmountUsd = context.checkoutAmountUsd ?? 0;
+    if (checkoutAmountUsd >= MAX_CHECKOUT_USD * 0.8) {
+      score += 15;
+      reasons.push(`high-checkout-amount:${checkoutAmountUsd}`);
+    }
+    if (checkoutAmountUsd > MAX_CHECKOUT_USD) {
+      reasons.push(`checkout-limit-exceeded:${checkoutAmountUsd}>${MAX_CHECKOUT_USD}`);
+      return {
+        level: "HIGH",
+        score: Math.max(score, THRESHOLD_HIGH),
+        reasons,
+        blocked: true,
+      };
+    }
   }
 
   const level: RiskLevel =

@@ -5,6 +5,7 @@ import { getTierLimits } from "@/lib/tierLimits";
 import { enqueueAnalytics } from "@/lib/queues";
 import { track } from "@/lib/analytics";
 import { fireAndForget, retry, withCircuitBreaker, withTimeout } from "@/lib/resilience";
+import { computeRiskScore } from "@/lib/riskScore";
 
 export class LicenseCheckoutError extends Error {
   constructor(
@@ -65,6 +66,18 @@ export async function createLicenseCheckoutSession(
   const song = await prisma.song.findUnique({ where: { id: input.songId } });
   if (!song || !song.isActive) {
     throw new LicenseCheckoutError("Song not found", 404);
+  }
+
+  const checkoutAmountUsd = Number(song.licensePrice) * input.quantity;
+  const risk = await computeRiskScore(input.userId, {
+    action: "CHECKOUT",
+    checkoutAmountUsd,
+  });
+  if (risk.blocked || risk.level === "HIGH") {
+    throw new LicenseCheckoutError(
+      `Checkout blocked by fraud safeguards (${risk.reasons.join(", ") || "risk-high"}).`,
+      403,
+    );
   }
 
   const available = song.totalLicenses - song.soldLicenses;
