@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { getAuctionCycle } from "@/lib/auctionCycle";
 import { CHANNELS, createServerSupabaseClient } from "@/lib/supabase";
 import { enqueueNotification } from "@/lib/queues";
 import { track } from "@/lib/analytics";
+import { requireAdminOrCron } from "@/lib/routeAuth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  // Allow either: (a) authorized cron via CRON_SECRET bearer, or (b) ADMIN session.
-  const cronSecret = process.env.CRON_SECRET;
-  const cronAuthed =
-    !!cronSecret && req.headers.get("authorization") === `Bearer ${cronSecret}`;
-
-  if (!cronAuthed) {
-    const session = await auth();
-    if (!session?.user?.id || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
+  const access = await requireAdminOrCron(req);
+  if (!access.ok) return access.response;
 
   const cycle = getAuctionCycle();
 

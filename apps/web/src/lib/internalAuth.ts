@@ -1,4 +1,12 @@
+import { timingSafeEqual } from "node:crypto";
 import { auth } from "@/lib/auth";
+
+function safeEquals(a: string, b: string) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
 
 /**
  * Authorize a request as either a logged-in user OR an internal route-to-route
@@ -13,7 +21,7 @@ export async function requireInternalOrAuth(req: Request): Promise<
 > {
   const token = process.env.INTERNAL_API_TOKEN;
   const supplied = req.headers.get("x-internal-token");
-  if (token && supplied && supplied === token) {
+  if (token && supplied && safeEquals(supplied, token)) {
     return { ok: true, userId: null };
   }
 

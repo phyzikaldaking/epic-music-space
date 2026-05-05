@@ -30,6 +30,7 @@ interface HealthResponse {
 }
 
 const LABELS: Record<string, string> = {
+  configuration: "Runtime configuration",
   database: "Database (Postgres)",
   redis: "Redis (caching + queues)",
   supabase_storage: "Supabase Storage",

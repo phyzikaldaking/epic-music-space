@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { strictLimiter, lenientLimiter } from "@/lib/rateLimit";
 import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
-import { enqueueAnalytics } from "@/lib/queues";
-import { getSiteUrl } from "@/lib/site";
+import { buildIdempotencyKey } from "@/lib/idempotency";
+import { createLicenseCheckoutSession, LicenseCheckoutError } from "@/lib/payments/licenseCheckout";
 
 // ─────────────────────────────────────────────────────────
 // Zod schemas
@@ -112,84 +111,27 @@ export async function POST(req: NextRequest) {
   }
 
   const { songId, quantity } = parsed.data;
-
-  // Fetch song
-  const song = await prisma.song.findUnique({ where: { id: songId } });
-  if (!song || !song.isActive) {
-    return NextResponse.json({ error: "Song not found" }, { status: 404 });
-  }
-
-  // Check availability
-  const available = song.totalLicenses - song.soldLicenses;
-  if (available <= 0) {
-    return NextResponse.json({ error: "This song is sold out" }, { status: 409 });
-  }
-  if (quantity > available) {
-    return NextResponse.json(
-      { error: `Only ${available} license(s) available` },
-      { status: 409 }
-    );
-  }
-
-  // Duplicate ownership check
-  if (quantity === 1) {
-    const existing = await prisma.licenseToken.findFirst({
-      where: { songId, holderId: session.user.id, status: "ACTIVE" },
-    });
-    if (existing) {
-      return NextResponse.json(
-        { error: "You already hold a license for this song" },
-        { status: 409 }
-      );
-    }
-  }
-
-  const baseUrl = getSiteUrl();
-
-  // Create Stripe checkout session
-  const stripeSession = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          unit_amount: Math.round(Number(song.licensePrice) * 100),
-          product_data: {
-            name: `License: ${song.title} by ${song.artist}`,
-            description: `Digital music license — ${String(song.revenueSharePct)}% revenue share per license`,
-            images: song.coverUrl ? [song.coverUrl] : [],
-          },
-        },
-        quantity,
-      },
-    ],
-    metadata: { songId, userId: session.user.id, quantity: String(quantity) },
-    success_url: `${baseUrl}/track/${songId}?checkout=success`,
-    cancel_url: `${baseUrl}/track/${songId}?checkout=cancelled`,
-  });
-
-  // Record pending transaction
-  await prisma.transaction.create({
-    data: {
-      userId: session.user.id,
-      songId,
-      amount: Number(song.licensePrice) * quantity,
-      type: "LICENSE_PURCHASE",
-      status: "PENDING",
-      stripeSessionId: stripeSession.id,
-      metadata: { quantity },
-    },
-  });
-
-  // Track analytics
-  await enqueueAnalytics({
-    event: "market_buy_initiated",
-    userId: session.user.id,
+  const idempotencyKey = buildIdempotencyKey(req, "market-route-checkout", [
+    session.user.id,
     songId,
-    metadata: { quantity },
-    timestamp: new Date().toISOString(),
-  });
+    quantity,
+  ]);
 
-  return NextResponse.json({ checkoutUrl: stripeSession.url }, { status: 201 });
+  try {
+    const checkout = await createLicenseCheckoutSession({
+      analytics: { event: "market_buy_initiated" },
+      idempotencyKey,
+      quantity,
+      requestSource: "api/market",
+      songId,
+      userId: session.user.id,
+      userEmail: session.user.email,
+    });
+    return NextResponse.json({ checkoutUrl: checkout.checkoutUrl }, { status: 201 });
+  } catch (error) {
+    if (error instanceof LicenseCheckoutError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
 }

@@ -39,7 +39,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      include: { studio: { select: { username: true } } },
+      include: { studio: { select: { username: true, bio: true } } },
     }),
     prisma.licenseToken.findMany({
       where: { holderId: userId },
@@ -340,6 +340,88 @@ export default async function DashboardPage() {
             />
           </div>
         )}
+
+        {/* ── Profile completeness checklist (artists) ──────────────────── */}
+        {isArtist && (() => {
+          const items = [
+            {
+              key: "avatar",
+              label: "Add a profile photo",
+              done: !!user.image,
+              href: "/profile/edit",
+            },
+            {
+              key: "studio",
+              label: "Claim your studio username",
+              done: !!user.studio,
+              href: "/profile/edit",
+            },
+            {
+              key: "bio",
+              label: "Write a bio so fans know your sound",
+              done: !!user.studio?.bio && user.studio.bio.trim().length > 0,
+              href: "/studio/setup",
+            },
+            {
+              key: "track",
+              label: "Upload your first track",
+              done: user.songs.length > 0,
+              href: "/studio/new",
+            },
+            {
+              key: "payouts",
+              label: "Connect Stripe to receive payouts",
+              done: connectStatus.onboardingComplete,
+              href: "/dashboard/payouts",
+            },
+          ];
+          const doneCount = items.filter((i) => i.done).length;
+          const allDone = doneCount === items.length;
+          if (allDone) return null;
+          const pct = Math.round((doneCount / items.length) * 100);
+          return (
+            <div className="mb-8 rounded-2xl border border-white/10 bg-[#141420] p-5">
+              <div className="mb-4 flex items-baseline justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-brand-400">
+                    Profile setup
+                  </p>
+                  <p className="mt-0.5 text-base font-bold">
+                    {doneCount} of {items.length} steps complete
+                  </p>
+                </div>
+                <span className="text-sm font-semibold text-white/55">{pct}%</span>
+              </div>
+              <div className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-white/8">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-400 transition-all"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <ul className="space-y-2">
+                {items.map((item) => (
+                  <li key={item.key}>
+                    {item.done ? (
+                      <div className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-white/45">
+                        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-green-500/20 text-[11px] text-green-300">✓</span>
+                        <span className="line-through">{item.label}</span>
+                      </div>
+                    ) : (
+                      <Link
+                        href={item.href}
+                        className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-white/85 transition hover:bg-white/5"
+                      >
+                        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-white/15 text-[11px] text-white/35" />
+                        <span>{item.label}</span>
+                        <span className="ml-auto text-xs text-brand-400">→</span>
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
 
         {/* ── Studio setup prompt (artists without a studio) ─────────────── */}
         {isArtist && !user.studio && (

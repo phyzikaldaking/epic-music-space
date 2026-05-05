@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@ems/db";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
 import { enqueueNotification } from "@/lib/queues";
-import type Stripe from "stripe";
+import { requireCronRequest } from "@/lib/routeAuth";
 
 // Stripe error subclasses that are never worth retrying (invalid input,
 // auth, or account-level rejections). Anything else (connection, rate-limit,
@@ -50,11 +49,8 @@ function nextRetryAtIso(now: Date, retryCount: number) {
 }
 
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const isAuthorized = secret && req.headers.get("authorization") === `Bearer ${secret}`;
-  if (!isAuthorized) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const access = requireCronRequest(req);
+  if (!access.ok) return access.response;
 
   const now = new Date();
   const baseUrl = getSiteUrl();

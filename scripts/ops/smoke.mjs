@@ -8,6 +8,7 @@ const checks = [
   { name: "signup", method: "GET", path: "/auth/signup", expected: [200] },
   { name: "marketplace", method: "GET", path: "/marketplace", expected: [200] },
   { name: "health", method: "GET", path: "/api/health", expected: [200] },
+  { name: "stripe_health", method: "GET", path: "/api/health/stripe", expected: [200] },
   { name: "listings", method: "GET", path: "/api/market/listings", expected: [200] },
   { name: "leaderboard", method: "GET", path: "/api/leaderboard", expected: [200] },
   {

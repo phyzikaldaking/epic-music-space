@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
-import { getSiteUrl } from "@/lib/site";
+import { buildIdempotencyKey } from "@/lib/idempotency";
+import { createLicenseCheckoutSession, LicenseCheckoutError } from "@/lib/payments/licenseCheckout";
 
 const checkoutSchema = z.object({
   songId: z.string().min(1),
@@ -20,78 +19,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid checkout request" }, { status: 400 });
   }
 
-  const song = await prisma.song.findUnique({
-    where: { id: parsed.data.songId },
-    include: { artist_: true },
-  });
+  const idempotencyKey = buildIdempotencyKey(request, "api-stripe-checkout", [
+    session.user.id,
+    parsed.data.songId,
+    1,
+  ]);
 
-  if (!song || !song.isActive) {
-    return NextResponse.json({ error: "Song not found" }, { status: 404 });
-  }
-
-  if (song.soldLicenses >= song.totalLicenses) {
-    return NextResponse.json({ error: "This track is sold out" }, { status: 409 });
-  }
-
-  const siteUrl = getSiteUrl();
-  const amountCents = Math.round(Number(song.licensePrice) * 100);
-  if (!Number.isFinite(amountCents) || amountCents < 50) {
-    return NextResponse.json({ error: "Invalid license price" }, { status: 400 });
-  }
-
-  const transaction = await prisma.transaction.create({
-    data: {
-      amount: song.licensePrice,
-      currency: "usd",
-      type: "LICENSE_PURCHASE",
-      status: "PENDING",
+  try {
+    const checkout = await createLicenseCheckoutSession({
+      analytics: { event: "checkout_created" },
+      idempotencyKey,
+      quantity: 1,
+      requestSource: "api/stripe/checkout",
+      songId: parsed.data.songId,
       userId: session.user.id,
-      songId: song.id,
-      metadata: {
-        artistId: song.artistId,
-        artistStripeConnectId: song.artist_.stripeConnectId,
-        revenueSharePct: song.revenueSharePct.toString(),
-      },
-    },
-  });
-
-  const stripeSession = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: "usd",
-          unit_amount: amountCents,
-          product_data: {
-            name: `${song.title} License`,
-            description: `${song.artist} · Epic Music Space license`,
-            images: song.coverUrl ? [song.coverUrl] : undefined,
-            metadata: {
-              songId: song.id,
-              artistId: song.artistId,
-            },
-          },
-        },
-      },
-    ],
-    customer_email: session.user.email ?? undefined,
-    success_url: `${siteUrl}/track/${song.id}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${siteUrl}/track/${song.id}?checkout=cancelled`,
-    metadata: {
-      emsType: "LICENSE_PURCHASE",
-      transactionId: transaction.id,
-      songId: song.id,
-      buyerId: session.user.id,
-      artistId: song.artistId,
-    },
-  });
-
-  await prisma.transaction.update({
-    where: { id: transaction.id },
-    data: { stripeSessionId: stripeSession.id },
-  });
-
-  return NextResponse.json({ url: stripeSession.url });
+      userEmail: session.user.email,
+    });
+    return NextResponse.json({ url: checkout.checkoutUrl });
+  } catch (error) {
+    if (error instanceof LicenseCheckoutError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
 }

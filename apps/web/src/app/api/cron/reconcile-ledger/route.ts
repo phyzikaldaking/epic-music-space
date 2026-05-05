@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { requireCronRequest } from "@/lib/routeAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -13,11 +14,8 @@ export const maxDuration = 120;
  * In production wire this to PagerDuty / Slack via AUTH_ALERT_WEBHOOK_URL.
  */
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const isAuthorized = secret && req.headers.get("authorization") === `Bearer ${secret}`;
-  if (!isAuthorized) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const access = requireCronRequest(req);
+  if (!access.ok) return access.response;
 
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 

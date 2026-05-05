@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { enqueueNotification } from "@/lib/queues";
+import { requireCronRequest } from "@/lib/routeAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -11,11 +12,8 @@ export const maxDuration = 60;
  * a paper trail of the auto-acceptance.
  */
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const isAuthorized = secret && req.headers.get("authorization") === `Bearer ${secret}`;
-  if (!isAuthorized) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const access = requireCronRequest(req);
+  if (!access.ok) return access.response;
 
   const now = new Date();
   const candidates = await prisma.serviceOrder.findMany({

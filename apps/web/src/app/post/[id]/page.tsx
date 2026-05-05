@@ -17,9 +17,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   });
   if (!post) return { title: "Post not found" };
   const snippet = post.body.slice(0, 140);
+  const title = `${post.author.name ?? "Post"} — Epic Music Space`;
   return {
-    title: `${post.author.name ?? "Post"} — Epic Music Space`,
+    title,
     description: snippet,
+    openGraph: { title, description: snippet, type: "article" },
+    twitter: { card: "summary_large_image", title, description: snippet },
   };
 }
 

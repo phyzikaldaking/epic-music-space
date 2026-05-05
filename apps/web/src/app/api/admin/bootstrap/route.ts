@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAdminAction, ipFromRequest } from "@/lib/adminAudit";
+import { requireBearerEnvSecret } from "@/lib/routeAuth";
 
 /**
  * POST /api/admin/bootstrap
@@ -15,15 +16,8 @@ import { logAdminAction, ipFromRequest } from "@/lib/adminAudit";
  * Remove or unset the env var after use to disable this endpoint.
  */
 export async function POST(req: NextRequest) {
-  const secret = process.env.ADMIN_BOOTSTRAP_SECRET;
-  if (!secret) {
-    return NextResponse.json({ error: "Bootstrap is disabled" }, { status: 403 });
-  }
-
-  const provided = req.headers.get("authorization");
-  if (provided !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Invalid secret" }, { status: 403 });
-  }
+  const guard = requireBearerEnvSecret(req, "ADMIN_BOOTSTRAP_SECRET", "Bootstrap is disabled");
+  if (!guard.ok) return guard.response;
 
   const session = await auth();
   if (!session?.user?.id) {

@@ -30,6 +30,9 @@ Set in Vercel → Project → Settings → Environment Variables, for **Preview 
 | Variable | Where to get it | Why |
 | --- | --- | --- |
 | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`, `MUX_WEBHOOK_SIGNING_SECRET` | https://dashboard.mux.com → Settings → Access Tokens (and webhook config) | Video uploads on posts |
+| `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET` | https://developer.twitter.com | OAuth for posting on behalf of artists (X/Twitter) |
+| `IG_CLIENT_ID`, `IG_CLIENT_SECRET`, `IG_USER_ID` | https://developers.facebook.com | Instagram Graph API credentials for posting |
+| `SOCIAL_ENCRYPTION_KEY` | Generate: `openssl rand -base64 32` | Key used to encrypt third-party tokens in the database |
 | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL` | https://cloud.livekit.io | Live listening rooms |
 | `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` | https://sentry.io → Project Settings → Client Keys | Error tracking |
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | Sentry → Settings → Auth Tokens | Source-map upload at build |

@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
 import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
-import { enqueueAnalytics } from "@/lib/queues";
-import { getSiteUrl } from "@/lib/site";
 import { getTierLimits } from "@/lib/tierLimits";
 import { buildIdempotencyKey } from "@/lib/idempotency";
-import { fireAndForget, retry, withCircuitBreaker, withTimeout } from "@/lib/resilience";
+import { createLicenseCheckoutSession, LicenseCheckoutError } from "@/lib/payments/licenseCheckout";
 
 const checkoutSchema = z.object({
   songId: z.string().cuid(),
@@ -56,26 +53,6 @@ export async function POST(req: NextRequest) {
     songId,
   ]);
 
-  const song = await prisma.song.findUnique({ where: { id: songId } });
-  if (!song || !song.isActive) {
-    return NextResponse.json({ error: "Song not found" }, { status: 404 });
-  }
-
-  if (song.soldLicenses >= song.totalLicenses) {
-    return NextResponse.json({ error: "Sold out" }, { status: 409 });
-  }
-
-  // Check for existing license
-  const existingLicense = await prisma.licenseToken.findFirst({
-    where: { songId, holderId: session.user.id, status: "ACTIVE" },
-  });
-  if (existingLicense) {
-    return NextResponse.json(
-      { error: "You already hold a license for this song." },
-      { status: 409 }
-    );
-  }
-
   // Enforce subscription tier license cap
   const buyer = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -98,81 +75,21 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const baseUrl = getSiteUrl();
-
-  // Create Stripe checkout session
-  const stripeSession = await withCircuitBreaker(
-    "stripe.checkout.sessions.create",
-    () =>
-      retry(
-        () =>
-          withTimeout(
-            () =>
-              stripe.checkout.sessions.create(
-            {
-              mode: "payment",
-              payment_method_types: ["card"],
-              line_items: [
-                {
-                  price_data: {
-                    currency: "usd",
-                    unit_amount: Math.round(Number(song.licensePrice) * 100),
-                    product_data: {
-                      name: `License: ${song.title} by ${song.artist}`,
-                      description: `Digital music license #${song.soldLicenses + 1} of ${song.totalLicenses} — ${String(song.revenueSharePct)}% revenue share per license`,
-                      images: song.coverUrl ? [song.coverUrl] : [],
-                    },
-                  },
-                  quantity: 1,
-                },
-              ],
-              metadata: {
-                songId,
-                userId: session.user.id,
-                idempotencyKey,
-              },
-              success_url: `${baseUrl}/track/${songId}?checkout=success`,
-              cancel_url: `${baseUrl}/track/${songId}?checkout=cancelled`,
-            },
-              { idempotencyKey },
-            ),
-          8000,
-          "stripe.checkout.sessions.create",
-        ),
-        { retries: 1, baseDelayMs: 300 },
-      ),
-    { failureThreshold: 4, cooldownMs: 15_000 },
-  );
-
-  // Record pending transaction
   try {
-    await prisma.transaction.create({
-      data: {
-        userId: session.user.id,
-        songId,
-        amount: song.licensePrice,
-        type: "LICENSE_PURCHASE",
-        status: "PENDING",
-        stripeSessionId: stripeSession.id,
-        metadata: { idempotencyKey },
-      },
-    });
-  } catch (error) {
-    const known = error as { code?: string };
-    if (known.code !== "P2002") throw error;
-  }
-
-  // Enqueue analytics
-  fireAndForget(
-    enqueueAnalytics({
-      event: "checkout_initiated",
-      userId: session.user.id,
+    const checkout = await createLicenseCheckoutSession({
+      analytics: { event: "checkout_initiated" },
+      idempotencyKey,
+      quantity: 1,
+      requestSource: "api/checkout",
       songId,
-      metadata: { idempotencyKey },
-      timestamp: new Date().toISOString(),
-    }),
-    "enqueueAnalytics checkout_initiated",
-  );
-
-  return NextResponse.redirect(stripeSession.url!, { status: 303 });
+      userId: session.user.id,
+      userEmail: session.user.email,
+    });
+    return NextResponse.redirect(checkout.checkoutUrl, { status: 303 });
+  } catch (error) {
+    if (error instanceof LicenseCheckoutError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
 }

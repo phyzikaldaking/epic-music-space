@@ -1,11 +1,11 @@
 import type { SubscriptionTier } from "@ems/db";
 
 export const subscriptionPriceEnv: Record<Exclude<SubscriptionTier, "FREE" | "TRIAL">, string> = {
-  STARTER: "STRIPE_PRICE_STARTER",
-  PRO: "STRIPE_PRICE_PRO",
-  PRIME: "STRIPE_PRICE_PRIME",
-  TEAM: "STRIPE_PRICE_TEAM",
-  LABEL_TIER: "STRIPE_PRICE_LABEL_TIER",
+  STARTER: "STRIPE_PRICE_ID_STARTER",
+  PRO: "STRIPE_PRICE_ID_PRO",
+  PRIME: "STRIPE_PRICE_ID_PRIME",
+  TEAM: "STRIPE_PRICE_ID_TEAM",
+  LABEL_TIER: "STRIPE_PRICE_ID_LABEL",
 };
 
 export const subscriptionTiers: Array<{

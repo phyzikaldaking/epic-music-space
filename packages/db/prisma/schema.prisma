@@ -126,6 +126,26 @@ model Account {
   @@unique([provider, providerAccountId])
 }
 
+// Connected third-party social accounts that can be used to post on behalf
+// of a user. Tokens are stored encrypted in the application DB.
+model ConnectedAccount {
+  id                 String   @id @default(cuid())
+  userId             String
+  provider           String
+  providerAccountId  String
+  accessToken        String?  @db.Text
+  refreshToken       String?  @db.Text
+  expiresAt          Int?
+  scope              String?
+  meta               Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
 model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique

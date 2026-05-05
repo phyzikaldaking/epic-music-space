@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rateLimitInline";
-import * as Sentry from "@sentry/nextjs";
 
 export const runtime = "nodejs";
 
@@ -36,6 +35,7 @@ export async function POST(req: Request) {
     try {
       const err = new Error(body.message ?? "client global-error");
       if (body.stack) err.stack = body.stack;
+      const Sentry = await import("@sentry/core");
       Sentry.captureException(err, {
         tags: { source: "client-global-error" },
         extra: { digest: body.digest, href: body.href },

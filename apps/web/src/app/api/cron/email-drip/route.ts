@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendDripEmail, type DripStep } from "@/lib/email";
+import { requireCronRequest } from "@/lib/routeAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -26,12 +27,8 @@ const STEPS: { step: DripStep; afterHours: number; artistOnly: boolean }[] = [
 const BATCH_SIZE = 200;
 
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const authed =
-    secret && req.headers.get("authorization") === `Bearer ${secret}`;
-  if (!authed) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const access = requireCronRequest(req);
+  if (!access.ok) return access.response;
 
   const now = Date.now();
   const stats: Record<string, { sent: number; skipped: number; failed: number }> = {};

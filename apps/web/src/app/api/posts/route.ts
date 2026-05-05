@@ -40,6 +40,10 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit") ?? 20)));
   const authorId = url.searchParams.get("authorId") ?? undefined;
   const followingMode = url.searchParams.get("following") === "1";
+  // ?tag=hiphop — filter posts whose body contains the hashtag (case-insensitive).
+  // Trimmed and length-capped so a noisy client can't ship a 10KB regex.
+  const tagRaw = url.searchParams.get("tag")?.trim().toLowerCase().slice(0, 50) ?? "";
+  const tag = /^[a-z0-9_]+$/.test(tagRaw) ? tagRaw : "";
 
   let authorFilter: { in: string[] } | undefined;
   if (followingMode) {
@@ -62,6 +66,7 @@ export async function GET(req: NextRequest) {
       isPublished: true,
       ...(authorId ? { authorId } : {}),
       ...(authorFilter ? { authorId: authorFilter } : {}),
+      ...(tag ? { body: { contains: `#${tag}`, mode: "insensitive" } } : {}),
     },
     orderBy: { createdAt: "desc" },
     take: limit + 1,

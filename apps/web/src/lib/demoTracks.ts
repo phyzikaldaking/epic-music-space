@@ -130,13 +130,18 @@ function buildPublicUrl(path: string) {
     .join("/")}`;
 }
 
+/** Local /public fallback — used when the Supabase bucket is empty or unavailable. */
+function buildLocalUrl(seed: TrackSeed): string {
+  return `/demo/audio/${slugify(seed.fileName)}.wav`;
+}
+
 function toDemoTrack(seed: TrackSeed, path: string): DemoTrack {
   return {
     id: `demo-${slugify(seed.title)}`,
     title: seed.title,
     artist: seed.artist,
     genre: seed.genre,
-    audioUrl: buildPublicUrl(path),
+    audioUrl: buildPublicUrl(path) || buildLocalUrl(seed),
     coverUrl: null,
     bpm: seed.bpm,
     key: seed.key,

@@ -1,12 +1,10 @@
 import { createHash } from "crypto";
-import { NextRequest } from "next/server";
-
 function sha256(input: string) {
   return createHash("sha256").update(input).digest("hex").slice(0, 32);
 }
 
 export function buildIdempotencyKey(
-  req: NextRequest,
+  req: { headers: Headers },
   prefix: string,
   stableParts: Array<string | number | undefined | null>,
 ) {

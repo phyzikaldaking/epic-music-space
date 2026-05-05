@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runPayoutCycle, isoWeekPeriod, tryAcquirePayoutLock, releasePayoutLock } from "@/lib/payouts";
+import { requireCronRequest } from "@/lib/routeAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const isAuthorized = secret && req.headers.get("authorization") === `Bearer ${secret}`;
-  if (!isAuthorized) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const access = requireCronRequest(req);
+  if (!access.ok) return access.response;
 
   const periodParam = req.nextUrl.searchParams.get("period");
   const period = periodParam ?? isoWeekPeriod();

@@ -1,97 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
-import { getSiteUrl } from "@/lib/site";
-
-// ─────────────────────────────────────────────────────────
-// Subscription tier config
-// Each STRIPE_PRICE_ID_* env var must point to a recurring
-// price in your Stripe dashboard.
-// ─────────────────────────────────────────────────────────
-
-const SUBSCRIPTION_TIERS = [
-  {
-    key: "starter",
-    name: "Starter",
-    description: "For listeners who want to participate in the EMS economy.",
-    priceId: process.env.STRIPE_PRICE_ID_STARTER ?? "",
-    monthlyUsd: 9,
-    features: [
-      "Unlimited song streaming",
-      "Up to 5 active licenses",
-      "Versus voting",
-      "Basic leaderboard access",
-    ],
-  },
-  {
-    key: "pro",
-    name: "Pro",
-    description: "For serious fans and emerging artists.",
-    priceId: process.env.STRIPE_PRICE_ID_PRO ?? "",
-    monthlyUsd: 29,
-    features: [
-      "Everything in Starter",
-      "Up to 25 active licenses",
-      "Song upload (up to 10 songs)",
-      "AI score insights",
-      "Studio profile + district badge",
-    ],
-  },
-  {
-    key: "prime",
-    name: "Prime",
-    description: "For professional artists building their brand.",
-    priceId: process.env.STRIPE_PRICE_ID_PRIME ?? "",
-    monthlyUsd: 79,
-    features: [
-      "Everything in Pro",
-      "Unlimited licenses",
-      "Unlimited song uploads",
-      "Priority AI scoring",
-      "Versus match creation",
-      "Mainstage Circuit access",
-      "Analytics dashboard",
-    ],
-  },
-  {
-    key: "team",
-    name: "Team",
-    description: "For creative teams managing releases together.",
-    priceId: process.env.STRIPE_PRICE_ID_TEAM ?? "",
-    monthlyUsd: 99,
-    features: [
-      "Everything in Prime",
-      "Team-ready release operations",
-      "Shared artist workflow support",
-      "Priority AI scoring queue",
-      "Analytics dashboard",
-      "Priority support",
-    ],
-  },
-  {
-    key: "label",
-    name: "Label",
-    description: "Run your own music label and sign artists.",
-    priceId: process.env.STRIPE_PRICE_ID_LABEL ?? "",
-    monthlyUsd: 199,
-    features: [
-      "Everything in Prime",
-      "Create & manage a label",
-      "Sign up to 20 artists",
-      "Platinum Heights access",
-      "Studio billboard ad slots",
-      "Stripe Connect payout dashboard",
-      "Priority support",
-    ],
-  },
-] as const;
+import { createSubscriptionCheckoutSession, SubscriptionCheckoutError } from "@/lib/payments/subscriptionCheckout";
+import type { SubscriptionTier } from "@ems/db";
 
 const subscribeSchema = z.object({
   tier: z.enum(["starter", "pro", "prime", "team", "label"]),
 });
+
+const TIER_MAP: Record<z.infer<typeof subscribeSchema>["tier"], SubscriptionTier> = {
+  starter: "STARTER",
+  pro: "PRO",
+  prime: "PRIME",
+  team: "TEAM",
+  label: "LABEL_TIER",
+};
 
 // POST /api/subscriptions — create Stripe Checkout session for a subscription
 export async function POST(req: NextRequest) {
@@ -120,30 +45,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid tier" }, { status: 400 });
   }
 
-  const tier = SUBSCRIPTION_TIERS.find((t) => t.key === parsed.data.tier);
-  if (!tier?.priceId) {
-    return NextResponse.json(
-      {
-        error:
-          "Subscription tier not configured. Set STRIPE_PRICE_ID_* env vars.",
-      },
-      { status: 503 },
-    );
+  try {
+    const checkout = await createSubscriptionCheckoutSession({
+      cancelPath: "/pricing",
+      successPath: `/pricing?subscribed=${parsed.data.tier}`,
+      tier: TIER_MAP[parsed.data.tier],
+      userId: session.user.id,
+    });
+    return NextResponse.json({ checkoutUrl: checkout.checkoutUrl });
+  } catch (error) {
+    if (error instanceof SubscriptionCheckoutError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
   }
-
-  const baseUrl = getSiteUrl();
-
-  const checkoutSession = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    payment_method_types: ["card"],
-    line_items: [{ price: tier.priceId, quantity: 1 }],
-    metadata: { userId: session.user.id, tier: tier.key },
-    success_url: `${baseUrl}/pricing?subscribed=${tier.key}`,
-    cancel_url: `${baseUrl}/pricing`,
-    allow_promotion_codes: true,
-  });
-
-  return NextResponse.json({ checkoutUrl: checkoutSession.url });
 }
 
 // GET /api/subscriptions — get Stripe billing portal URL for current user
@@ -197,8 +112,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const baseUrl = getSiteUrl();
+  const baseUrl =
+    (process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
+  const { stripe } = await import("@/lib/stripe");
   const portal = await stripe.billingPortal.sessions.create({
     customer: customerId,
     return_url: `${baseUrl}/dashboard`,

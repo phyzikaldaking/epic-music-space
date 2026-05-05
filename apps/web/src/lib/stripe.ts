@@ -1,9 +1,12 @@
 import Stripe from "stripe";
+import { assertStripeEnvironment } from "@/lib/stripeEnv";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 let stripeClient: Stripe | null = null;
 
 export function getStripe() {
+  assertStripeEnvironment(process.env, { productionOnly: true });
+
   if (!stripeSecretKey) {
     throw new Error("STRIPE_SECRET_KEY environment variable is not set");
   }
@@ -17,6 +20,8 @@ export function getStripe() {
 }
 
 export function getStripeWebhookSecret() {
+  assertStripeEnvironment(process.env, { productionOnly: true });
+
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!webhookSecret) {
