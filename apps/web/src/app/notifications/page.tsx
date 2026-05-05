@@ -16,7 +16,9 @@ interface Notification {
 
 const TYPE_ICON: Record<string, string> = {
   LICENSE_SOLD: "🎟️",
+  VERSUS_VOTE: "⚔️",
   VERSUS_RESULT: "⚔️",
+  VERZUZ_RESULT: "🏆",
   LABEL_OFFER: "🏷️",
   PAYOUT: "💸",
   TIP: "💛",
@@ -24,11 +26,33 @@ const TYPE_ICON: Record<string, string> = {
   AUCTION_BID_RECEIVED: "🔨",
   AUCTION_WIN: "🏆",
   AUCTION_OUTBID: "📣",
+  IDENTITY_VERIFIED: "✅",
+  DM: "✉️",
   FOLLOW: "👤",
   POST_LIKED: "♥",
   POST_COMMENTED: "💬",
   FOLLOWED_POST: "📣",
 };
+
+function notifHref(type: string, metadata: Record<string, unknown> | null): string | null {
+  const meta = metadata ?? {};
+  const matchId = typeof meta.matchId === "string" ? meta.matchId : null;
+  const conversationId = typeof meta.conversationId === "string" ? meta.conversationId : null;
+  const postId = typeof meta.postId === "string" ? meta.postId : null;
+  const songId = typeof meta.songId === "string" ? meta.songId : null;
+  if (type.startsWith("VERZUZ") && matchId) return `/verzuz/${matchId}`;
+  if (type === "VERSUS_VOTE" && matchId) return `/versus/${matchId}`;
+  if (type === "VERSUS_RESULT" && matchId) return `/versus/${matchId}`;
+  if (type === "DM" && conversationId) return `/messages/${conversationId}`;
+  if (type === "IDENTITY_VERIFIED") return "/dashboard/identity";
+  if ((type === "POST_LIKED" || type === "POST_COMMENTED" || type === "FOLLOWED_POST") && postId)
+    return `/post/${postId}`;
+  if (type.includes("LICENSE") && songId) return `/song/${songId}`;
+  if (type.includes("PAYOUT") || type.includes("CONNECT") || type.includes("PAYMENT") || type === "TIP")
+    return "/dashboard/earnings";
+  if (type.includes("AUCTION") && songId) return `/song/${songId}`;
+  return null;
+}
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -147,11 +171,8 @@ export default function NotificationsPage() {
               key={n.id}
               onClick={() => {
                 if (!n.read) markOneRead(n.id);
-                // Route post-related notifications to the post detail page.
-                const meta = n.metadata as { postId?: string } | null;
-                if (meta?.postId && (n.type === "POST_LIKED" || n.type === "POST_COMMENTED" || n.type === "FOLLOWED_POST")) {
-                  router.push(`/post/${meta.postId}`);
-                }
+                const href = notifHref(n.type, n.metadata);
+                if (href) router.push(href);
               }}
               className={`flex cursor-pointer gap-4 rounded-2xl border p-4 transition ${
                 n.read

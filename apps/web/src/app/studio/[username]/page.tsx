@@ -13,6 +13,8 @@ import MessageButton from "@/components/MessageButton";
 import ReportUserButton from "@/components/ReportUserButton";
 import PostCard from "@/components/PostCard";
 import { BADGE_META } from "@/lib/badges";
+import { tallyRounds } from "@/lib/verzuz";
+import Link from "next/link";
 import type { Metadata } from "next";
 
 interface Props {
@@ -119,11 +121,49 @@ export default async function StudioProfilePage({ params }: Props) {
 
   // Legacy / vault catalog — fetched separately so the main catalog query
   // stays small and indexed by the (artistId, isLegacy) compound index.
-  const legacySongs = await prisma.song.findMany({
-    where: { artistId: user.id, isActive: true, isLegacy: true },
-    orderBy: [{ originalReleaseYear: "desc" }, { createdAt: "desc" }],
-    take: 50,
-  }).catch(() => [] as Awaited<ReturnType<typeof prisma.song.findMany>>);
+  const [legacySongs, verzuzMatches] = await Promise.all([
+    prisma.song.findMany({
+      where: { artistId: user.id, isActive: true, isLegacy: true },
+      orderBy: [{ originalReleaseYear: "desc" }, { createdAt: "desc" }],
+      take: 50,
+    }).catch(() => [] as Awaited<ReturnType<typeof prisma.song.findMany>>),
+    prisma.verzuzMatch.findMany({
+      where: { OR: [{ artistAId: user.id }, { artistBId: user.id }] },
+      orderBy: [{ status: "asc" }, { startsAt: "desc" }],
+      take: 12,
+      select: {
+        id: true,
+        status: true,
+        startsAt: true,
+        artistAId: true,
+        artistAName: true,
+        artistBName: true,
+        theme: true,
+        rounds: { select: { winner: true } },
+      },
+    }).catch(() => [] as Array<{
+      id: string;
+      status: string;
+      startsAt: Date;
+      artistAId: string;
+      artistAName: string;
+      artistBName: string;
+      theme: string | null;
+      rounds: { winner: string | null }[];
+    }>),
+  ]);
+
+  let verzuzWins = 0;
+  let verzuzLosses = 0;
+  let verzuzTies = 0;
+  for (const m of verzuzMatches) {
+    if (m.status !== "COMPLETED") continue;
+    const score = tallyRounds(m.rounds);
+    const userIsA = m.artistAId === user.id;
+    if (score.aWins === score.bWins) verzuzTies++;
+    else if ((score.aWins > score.bWins) === userIsA) verzuzWins++;
+    else verzuzLosses++;
+  }
 
   const follow =
     session?.user?.id && !isOwner
@@ -301,6 +341,65 @@ export default async function StudioProfilePage({ params }: Props) {
       <div className="mt-6">
         <AiScoreBar score={avgScore} />
       </div>
+
+      {/* Verzuz history */}
+      {verzuzMatches.length > 0 && (
+        <section className="mt-10">
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">
+                🏆 Verzuz history
+              </h2>
+              <p className="text-xs text-white/45">
+                {verzuzWins}W · {verzuzLosses}L{verzuzTies > 0 ? ` · ${verzuzTies}T` : ""}
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {verzuzMatches.slice(0, 6).map((m) => {
+              const score = tallyRounds(m.rounds);
+              const userIsA = m.artistAId === user.id;
+              const userScore = userIsA ? score.aWins : score.bWins;
+              const opponentScore = userIsA ? score.bWins : score.aWins;
+              const opponentName = userIsA ? m.artistBName : m.artistAName;
+              const completed = m.status === "COMPLETED";
+              const won = completed && userScore > opponentScore;
+              const lost = completed && userScore < opponentScore;
+              const tone = m.status === "LIVE"
+                ? "border-red-500/45 bg-red-500/8"
+                : won
+                  ? "border-emerald-500/35 bg-emerald-500/8"
+                  : lost
+                    ? "border-white/10 bg-white/4"
+                    : "border-gold-400/25 bg-gold-400/5";
+              return (
+                <Link
+                  key={m.id}
+                  href={`/verzuz/${m.id}`}
+                  className={`flex items-center justify-between gap-3 rounded-2xl border p-4 transition hover:bg-white/8 ${tone}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">vs {opponentName}</p>
+                    {m.theme && (
+                      <p className="mt-0.5 truncate text-xs text-white/45">{m.theme}</p>
+                    )}
+                    <p className="mt-1 text-[11px] uppercase tracking-widest text-white/35">
+                      {completed
+                        ? won ? "Won" : lost ? "Lost" : "Tied"
+                        : m.status === "LIVE"
+                          ? "Live now"
+                          : new Date(m.startsAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className="text-2xl font-black tabular-nums">
+                    {userScore}-{opponentScore}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Replay drops — saved listening sessions */}
       {user.roomsHosted.length > 0 && (

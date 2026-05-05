@@ -38,6 +38,11 @@ const STEPS: Step[] = [
     body: "Tap an artist's profile → Message to start a thread. /messages shows your inbox with an unread badge on the bottom-nav DMs tab. Block + report controls live in the ⋯ menu of every post.",
   },
   {
+    emoji: "🏆",
+    title: "Verzuz battles",
+    body: "/verzuz hosts 10-round, head-to-head artist showdowns — two artists, ten songs each, fans vote round-by-round. /versus surfaces 1v1 + Battle Royale matches. Stage your own from /verzuz/new.",
+  },
+  {
     emoji: "⚙️",
     title: "Tune your inbox",
     body: "Don't want a buzz for every like? /settings/notifications has per-type toggles for both in-app and email. /settings/privacy lets you export your data or delete your account anytime.",
