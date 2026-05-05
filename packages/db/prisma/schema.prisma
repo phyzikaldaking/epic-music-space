@@ -33,6 +33,11 @@ model User {
   trialExpiresAt   DateTime?
   stripeConnectId  String?          @unique
 
+  // ── Identity / verification ────────────────────────────────
+  // Verified-artist badge. Set by an admin via /api/admin/users/[id]/verify.
+  isVerified         Boolean  @default(false)
+  verifiedAt         DateTime?
+
   // ── Stripe Connect compliance ──────────────────────────────
   connectChargesEnabled Boolean  @default(false)
   connectPayoutsEnabled Boolean  @default(false)

@@ -25,21 +25,27 @@ export async function POST(
 
   const room = await prisma.room.findUnique({
     where: { id },
-    select: { hostId: true },
+    select: { hostId: true, status: true },
   });
   if (!room) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (room.hostId !== session.user.id) {
     return NextResponse.json({ error: "Only host can ban" }, { status: 403 });
   }
+  if (room.status !== "LIVE") {
+    return NextResponse.json({ error: "Room has ended" }, { status: 410 });
+  }
+  if (body.userId === room.hostId) {
+    return NextResponse.json({ error: "Cannot ban the host" }, { status: 400 });
+  }
 
   await prisma.roomBan.upsert({
     where: { roomId_userId: { roomId: id, userId: body.userId } },
-    update: { reason: body.reason ?? null, bannedById: session.user.id },
+    update: { reason: body.reason?.slice(0, 240) ?? null, bannedById: session.user.id },
     create: {
       roomId: id,
       userId: body.userId,
       bannedById: session.user.id,
-      reason: body.reason ?? null,
+      reason: body.reason?.slice(0, 240) ?? null,
     },
   });
 

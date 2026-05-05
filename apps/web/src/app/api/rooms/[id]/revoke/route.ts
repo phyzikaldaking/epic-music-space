@@ -20,20 +20,32 @@ export async function POST(
   if (!body.userId) {
     return NextResponse.json({ error: "userId required" }, { status: 400 });
   }
+  if (body.userId === session.user.id) {
+    return NextResponse.json({ error: "Host cannot revoke themselves" }, { status: 400 });
+  }
 
   const room = await prisma.room.findUnique({
     where: { id },
-    select: { hostId: true },
+    select: { hostId: true, status: true },
   });
   if (!room) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (room.hostId !== session.user.id) {
     return NextResponse.json({ error: "Only host can revoke the floor" }, { status: 403 });
   }
+  if (room.status !== "LIVE") {
+    return NextResponse.json({ error: "Room has ended" }, { status: 410 });
+  }
 
-  await prisma.roomParticipant.update({
-    where: { roomId_userId: { roomId: id, userId: body.userId } },
+  const updated = await prisma.roomParticipant.updateMany({
+    where: { roomId: id, userId: body.userId, leftAt: null, role: "SPEAKER" },
     data: { role: "LISTENER", handRaised: false },
   });
+  if (updated.count === 0) {
+    return NextResponse.json(
+      { error: "Speaker is no longer on the floor" },
+      { status: 409 },
+    );
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { DISTRICT_META } from "@/lib/scoring";
+import { isRoomExpired } from "@/lib/roomTier";
 import type { Metadata } from "next";
 
 export const revalidate = 30;
@@ -69,16 +70,27 @@ export default async function VirtualStudioPage({
   });
 
   // Active live rooms (LiveKit-backed listening sessions)
-  const liveRooms = await prisma.room.findMany({
+  const liveRoomRows = await prisma.room.findMany({
     where: { status: "LIVE" },
     orderBy: { startedAt: "desc" },
     take: 12,
     include: {
-      host: { select: { id: true, name: true, image: true, username: true } },
+      host: { select: { id: true, name: true, image: true, username: true, subscriptionTier: true } },
       currentSong: { select: { title: true, artist: true, coverUrl: true } },
       _count: { select: { participants: { where: { leftAt: null } } } },
     },
   });
+  const now = new Date();
+  const expiredRoomIds = liveRoomRows
+    .filter((room) => isRoomExpired(room.startedAt, room.host.subscriptionTier, now))
+    .map((room) => room.id);
+  if (expiredRoomIds.length > 0) {
+    await prisma.room.updateMany({
+      where: { id: { in: expiredRoomIds }, status: "LIVE" },
+      data: { status: "ENDED", endedAt: now },
+    });
+  }
+  const liveRooms = liveRoomRows.filter((room) => !expiredRoomIds.includes(room.id));
 
   // Fetch studios with recently active songs — these are the "live sessions"
   const studios = await prisma.studio.findMany({

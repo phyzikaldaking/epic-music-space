@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@ems/db";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getRoomLimitsForTier } from "@/lib/roomTier";
-import { isLiveKitConfigured } from "@/lib/livekit";
 import { notifyFollowersOfNewRoom } from "@/lib/roomNotifications";
 import { rateLimit } from "@/lib/rateLimitInline";
 
@@ -16,20 +16,13 @@ export async function GET() {
     include: {
       host: { select: { id: true, name: true, image: true, username: true } },
       currentSong: { select: { id: true, title: true, artist: true, coverUrl: true } },
-      _count: { select: { participants: true } },
+      _count: { select: { participants: { where: { leftAt: null } } } },
     },
   });
   return NextResponse.json({ rooms });
 }
 
 export async function POST(req: Request) {
-  if (!isLiveKitConfigured()) {
-    return NextResponse.json(
-      { error: "Live audio is not configured on this deployment yet." },
-      { status: 503 },
-    );
-  }
-
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -56,6 +49,7 @@ export async function POST(req: Request) {
   if (body.songId && (typeof body.songId !== "string" || body.songId.length > 64)) {
     return NextResponse.json({ error: "Invalid songId" }, { status: 400 });
   }
+  const description = body.description?.trim() || null;
 
   const host = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -65,41 +59,85 @@ export async function POST(req: Request) {
 
   const limits = getRoomLimitsForTier(host.subscriptionTier);
 
-  const existing = await prisma.room.findFirst({
-    where: { hostId: host.id, status: "LIVE" },
-    select: { id: true },
-  });
-  if (existing) {
+  try {
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.room.findFirst({
+          where: { hostId: host.id, status: "LIVE" },
+          select: { id: true },
+        });
+        if (existing) {
+          return { kind: "existing" as const, id: existing.id };
+        }
+
+        if (body.songId) {
+          const song = await tx.song.findFirst({
+            where: { id: body.songId, artistId: host.id, isActive: true },
+            select: { id: true },
+          });
+          if (!song) {
+            return { kind: "invalid-song" as const };
+          }
+        }
+
+        const room = await tx.room.create({
+          data: {
+            hostId: host.id,
+            title,
+            description,
+            currentSongId: body.songId ?? null,
+            maxCapacity: limits.maxCapacity,
+            participants: {
+              create: {
+                userId: host.id,
+                role: "HOST",
+              },
+            },
+          },
+          select: { id: true },
+        });
+
+        return { kind: "created" as const, id: room.id };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    if (result.kind === "existing") {
+      return NextResponse.json(
+        { error: "You already have a live room.", roomId: result.id },
+        { status: 409 },
+      );
+    }
+    if (result.kind === "invalid-song") {
+      return NextResponse.json(
+        { error: "Featured track must be one of your active tracks." },
+        { status: 403 },
+      );
+    }
+
+    // Fire-and-forget: notify followers that the host went live.
+    void notifyFollowersOfNewRoom({
+      roomId: result.id,
+      hostId: host.id,
+      hostName: host.name ?? "An artist",
+      title,
+    });
+
+    return NextResponse.json({ id: result.id }, { status: 201 });
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2034"
+    ) {
+      return NextResponse.json(
+        { error: "Room creation conflicted with another request. Please try again." },
+        { status: 409 },
+      );
+    }
+    console.error("[rooms.create]", err);
     return NextResponse.json(
-      { error: "You already have a live room.", roomId: existing.id },
-      { status: 409 },
+      { error: "Could not open the room. Please try again." },
+      { status: 500 },
     );
   }
-
-  const room = await prisma.room.create({
-    data: {
-      hostId: host.id,
-      title,
-      description: body.description?.trim() || null,
-      currentSongId: body.songId ?? null,
-      maxCapacity: limits.maxCapacity,
-      participants: {
-        create: {
-          userId: host.id,
-          role: "HOST",
-        },
-      },
-    },
-    select: { id: true },
-  });
-
-  // Fire-and-forget: notify followers that the host went live.
-  void notifyFollowersOfNewRoom({
-    roomId: room.id,
-    hostId: host.id,
-    hostName: host.name ?? "An artist",
-    title,
-  });
-
-  return NextResponse.json({ id: room.id }, { status: 201 });
 }

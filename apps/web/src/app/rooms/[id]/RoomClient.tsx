@@ -57,6 +57,14 @@ type Message = {
   createdAt: string;
 };
 
+type ApiMessage = {
+  id: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+  user: { name: string | null; image: string | null };
+};
+
 type HostSong = { id: string; title: string; artist: string; coverUrl: string | null; audioUrl: string };
 
 interface Props {
@@ -92,6 +100,39 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
 
   const lkRoomRef = useRef<Room | null>(null);
   const audioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+  async function roomAction(
+    path: string,
+    init?: RequestInit,
+  ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+    const res = await fetch(path, init);
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      return { ok: false, error: data.error ?? "Action failed. Please try again." };
+    }
+    return { ok: true, data };
+  }
+
+  async function broadcast(event: string, payload: Record<string, unknown>) {
+    const supabase = createBrowserSupabaseClient();
+    if (!supabase) return;
+    await supabase.channel(CHANNELS.room(room.id)).send({
+      type: "broadcast",
+      event,
+      payload,
+    });
+  }
+
+  function mapMessage(message: ApiMessage): Message {
+    return {
+      id: message.id,
+      userId: message.userId,
+      name: message.user.name ?? "Guest",
+      image: message.user.image,
+      body: message.body,
+      createdAt: message.createdAt,
+    };
+  }
 
   // ── Connect to LiveKit ─────────────────────────────────────────────
   const connect = useCallback(async () => {
@@ -154,7 +195,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     setTrackPlaying(false);
   }, []);
 
-  const disconnect = useCallback(async () => {
+  const disconnect = useCallback(async (markLeft = true) => {
     await stopTrackPlayback();
     const lkRoom = lkRoomRef.current;
     if (lkRoom) {
@@ -165,7 +206,10 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     audioElsRef.current.clear();
     setConnected(false);
     setMuted(true);
-  }, [stopTrackPlayback]);
+    if (markLeft && !isHost) {
+      await fetch(`/api/rooms/${room.id}/leave`, { method: "POST" }).catch(() => null);
+    }
+  }, [isHost, room.id, stopTrackPlayback]);
 
   useEffect(() => {
     return () => {
@@ -250,94 +294,85 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   async function toggleHand() {
     const next = !handRaised;
     setHandRaised(next);
-    await fetch(`/api/rooms/${room.id}/raise`, {
+    const result = await roomAction(`/api/rooms/${room.id}/raise`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ raised: next }),
     });
-    const supabase = createBrowserSupabaseClient();
-    if (supabase) {
-      await supabase.channel(CHANNELS.room(room.id)).send({
-        type: "broadcast",
-        event: next ? "hand_raised" : "hand_lowered",
-        payload: { userId: currentUserId },
-      });
+    if (!result.ok) {
+      setHandRaised(!next);
+      setError(result.error);
+      return;
     }
+    await broadcast(next ? "hand_raised" : "hand_lowered", { userId: currentUserId });
   }
 
   // ── Host: grant / revoke / kick / ban ───────────────────────────────
   async function grantFloor(userId: string) {
-    await fetch(`/api/rooms/${room.id}/grant`, {
+    const result = await roomAction(`/api/rooms/${room.id}/grant`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId }),
     });
-    const supabase = createBrowserSupabaseClient();
-    if (supabase) {
-      await supabase.channel(CHANNELS.room(room.id)).send({
-        type: "broadcast",
-        event: "floor_granted",
-        payload: { userId },
-      });
+    if (!result.ok) {
+      setError(result.error);
+      return;
     }
+    await broadcast("floor_granted", { userId });
   }
 
   async function revokeFloor(userId: string) {
-    await fetch(`/api/rooms/${room.id}/revoke`, {
+    const result = await roomAction(`/api/rooms/${room.id}/revoke`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId }),
     });
-    const supabase = createBrowserSupabaseClient();
-    if (supabase) {
-      await supabase.channel(CHANNELS.room(room.id)).send({
-        type: "broadcast",
-        event: "floor_revoked",
-        payload: { userId },
-      });
+    if (!result.ok) {
+      setError(result.error);
+      return;
     }
+    await broadcast("floor_revoked", { userId });
   }
 
   async function kickUser(userId: string) {
     if (!confirm("Kick this listener from the room?")) return;
-    await fetch(`/api/rooms/${room.id}/kick`, {
+    const result = await roomAction(`/api/rooms/${room.id}/kick`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId }),
     });
-    const supabase = createBrowserSupabaseClient();
-    if (supabase) {
-      await supabase.channel(CHANNELS.room(room.id)).send({
-        type: "broadcast",
-        event: "user_kicked",
-        payload: { userId },
-      });
+    if (!result.ok) {
+      setError(result.error);
+      return;
     }
+    await broadcast("user_kicked", { userId });
   }
 
   async function banUser(userId: string) {
     const reason = prompt("Reason for ban (optional):", "");
     if (reason === null) return; // cancelled
-    await fetch(`/api/rooms/${room.id}/ban`, {
+    const result = await roomAction(`/api/rooms/${room.id}/ban`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, reason }),
     });
-    const supabase = createBrowserSupabaseClient();
-    if (supabase) {
-      await supabase.channel(CHANNELS.room(room.id)).send({
-        type: "broadcast",
-        event: "user_banned",
-        payload: { userId },
-      });
+    if (!result.ok) {
+      setError(result.error);
+      return;
     }
+    await broadcast("user_banned", { userId });
   }
 
   async function endRoom() {
     if (!confirm("End this listening session for everyone?")) return;
-    await fetch(`/api/rooms/${room.id}/end`, { method: "POST" });
+    const result = await roomAction(`/api/rooms/${room.id}/end`, { method: "POST" });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
     setEnded(true);
     await disconnect();
+    await broadcast("room_ended", {});
   }
 
   // ── Host: change current track ──────────────────────────────────────
@@ -355,26 +390,19 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   async function setCurrent(songId: string | null) {
     setPickerOpen(false);
     await stopTrackPlayback();
-    const res = await fetch(`/api/rooms/${room.id}/track`, {
+    const result = await roomAction(`/api/rooms/${room.id}/track`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ songId }),
     });
-    if (!res.ok) {
-      setError("Couldn't set track");
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
-    const data = (await res.json()) as { song: Song | null };
+    const data = result.data as { song: Song | null };
     setCurrentSong(data.song);
 
-    const supabase = createBrowserSupabaseClient();
-    if (supabase) {
-      await supabase.channel(CHANNELS.room(room.id)).send({
-        type: "broadcast",
-        event: "track_changed",
-        payload: { song: data.song },
-      });
-    }
+    await broadcast("track_changed", { song: data.song });
   }
 
   // ── Host: recording ─────────────────────────────────────────────────
@@ -393,7 +421,12 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
 
   async function stopRecording() {
     setRecordingStatus("STOPPING");
-    await fetch(`/api/rooms/${room.id}/record/stop`, { method: "POST" });
+    const result = await roomAction(`/api/rooms/${room.id}/record/stop`, { method: "POST" });
+    if (!result.ok) {
+      setRecordingStatus("RECORDING");
+      setError(result.error);
+      return;
+    }
     setRecordingId(null);
     setRecordingStatus("IDLE");
   }
@@ -403,25 +436,21 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     const text = draft.trim();
     if (!text) return;
     setDraft("");
-    const res = await fetch(`/api/rooms/${room.id}/messages`, {
+    const result = await roomAction(`/api/rooms/${room.id}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ body: text }),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      setError((err as { error?: string }).error ?? "Couldn't send message");
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
-    const supabase = createBrowserSupabaseClient();
-    if (supabase) {
-      const { message } = (await res.json()) as { message: Message };
-      await supabase.channel(CHANNELS.room(room.id)).send({
-        type: "broadcast",
-        event: "message",
-        payload: { message },
-      });
-    }
+    const { message: apiMessage } = result.data as { message: ApiMessage };
+    const message = mapMessage(apiMessage);
+    setMessages((prev) => (
+      prev.some((existing) => existing.id === message.id) ? prev : [...prev, message]
+    ));
+    await broadcast("message", { message });
   }
 
   // ── Bootstrap participants + messages ───────────────────────────────
@@ -454,18 +483,9 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       }
       if (!cancelled && msgRes.ok) {
         const data = (await msgRes.json()) as {
-          messages: { id: string; userId: string; body: string; createdAt: string; user: { name: string | null; image: string | null } }[];
+          messages: ApiMessage[];
         };
-        setMessages(
-          data.messages.map((m) => ({
-            id: m.id,
-            userId: m.userId,
-            name: m.user.name ?? "Guest",
-            image: m.user.image,
-            body: m.body,
-            createdAt: m.createdAt,
-          })),
-        );
+        setMessages(data.messages.map(mapMessage));
       }
     }
     void bootstrap();
@@ -508,7 +528,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           return next;
         });
         if (userId === currentUserId) {
-          void disconnect().then(() => connect());
+          void disconnect(false).then(() => connect());
         }
       })
       .on("broadcast", { event: "floor_revoked" }, ({ payload }) => {
@@ -520,7 +540,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           return next;
         });
         if (userId === currentUserId) {
-          void disconnect().then(() => connect());
+          void disconnect(false).then(() => connect());
         }
       })
       .on("broadcast", { event: "user_kicked" }, ({ payload }) => {
@@ -553,7 +573,13 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       })
       .on("broadcast", { event: "message" }, ({ payload }) => {
         const { message } = payload as { message: Message };
-        setMessages((prev) => [...prev, message]);
+        setMessages((prev) => (
+          prev.some((existing) => existing.id === message.id) ? prev : [...prev, message]
+        ));
+      })
+      .on("broadcast", { event: "room_ended" }, () => {
+        setEnded(true);
+        void disconnect();
       })
       .subscribe();
 

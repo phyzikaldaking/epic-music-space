@@ -30,6 +30,7 @@ export interface PostCardProps {
     name: string | null;
     image: string | null;
     role?: string;
+    isVerified?: boolean;
     studio?: { username: string } | null;
   };
   likeCount: number;
@@ -257,8 +258,19 @@ export default function PostCard(props: PostCardProps) {
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold group-hover:underline">
-              {props.author.name ?? "User"}
+            <p className="flex items-center gap-1 text-sm font-bold group-hover:underline">
+              <span>{props.author.name ?? "User"}</span>
+              {props.author.isVerified && (
+                <svg
+                  aria-label="Verified"
+                  role="img"
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4 flex-shrink-0 text-cyan-300"
+                  fill="currentColor"
+                >
+                  <path d="M12 2 9.4 4.5 6 4l-.5 3.4L2 9.5l1.7 3-1.7 3L5.5 17l.5 3.4L9.4 20 12 22l2.6-2.5 3.4.5.5-3.4 3.5-1.5-1.7-3 1.7-3-3.5-2 -.5-3.4-3.4.5L12 2Zm-1.2 13.5L7 11.7l1.4-1.4 2.4 2.4 5-5L17.2 9l-6.4 6.5Z" />
+                </svg>
+              )}
             </p>
             <p className="text-xs text-white/40">
               {props.author.studio?.username ? `@${props.author.studio.username} · ` : ""}

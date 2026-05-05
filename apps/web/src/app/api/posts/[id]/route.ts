@@ -22,6 +22,7 @@ export async function GET(
           name: true,
           image: true,
           role: true,
+          isVerified: true,
           studio: { select: { username: true } },
         },
       },

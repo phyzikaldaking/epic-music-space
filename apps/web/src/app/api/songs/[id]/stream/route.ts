@@ -164,7 +164,17 @@ export async function GET(
   const contentRange = upstream.headers.get("content-range");
   if (contentRange) responseHeaders.set("Content-Range", contentRange);
   responseHeaders.set("Accept-Ranges", "bytes");
-  responseHeaders.set("Cache-Control", "private, max-age=60");
+  // Edge-cacheable: songs are immutable per id (a re-upload mints a new id),
+  // so we let Vercel's edge serve the bytes for an hour and revalidate
+  // weekly. The browser still keeps a short private copy. Origin/Referer
+  // is enforced upstream of the cache via the strict 403 above, so a
+  // cached response can't be served to an unauthenticated origin —
+  // varying on Origin keeps that property tight.
+  responseHeaders.set(
+    "Cache-Control",
+    "private, max-age=60, s-maxage=3600, stale-while-revalidate=604800",
+  );
+  responseHeaders.set("Vary", "Origin, Range");
   responseHeaders.set("Content-Disposition", "inline");
   responseHeaders.set("X-Content-Type-Options", "nosniff");
   // Block cross-origin <audio>/<video>/fetch from other sites — they can't

@@ -17,6 +17,9 @@ export async function POST(
 
   const { id } = await params;
   const body = (await req.json().catch(() => ({}))) as { songId?: string | null };
+  if (body.songId && (typeof body.songId !== "string" || body.songId.length > 64)) {
+    return NextResponse.json({ error: "Invalid songId" }, { status: 400 });
+  }
 
   const room = await prisma.room.findUnique({
     where: { id },
@@ -32,8 +35,8 @@ export async function POST(
 
   // Verify host owns the song (if a song is being set)
   if (body.songId) {
-    const song = await prisma.song.findUnique({
-      where: { id: body.songId },
+    const song = await prisma.song.findFirst({
+      where: { id: body.songId, isActive: true },
       select: { artistId: true },
     });
     if (!song || song.artistId !== session.user.id) {

@@ -25,18 +25,27 @@ export async function POST(
 
   const room = await prisma.room.findUnique({
     where: { id },
-    select: { hostId: true },
+    select: { hostId: true, status: true },
   });
   if (!room) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (room.hostId !== session.user.id) {
     return NextResponse.json({ error: "Only host can kick" }, { status: 403 });
   }
+  if (room.status !== "LIVE") {
+    return NextResponse.json({ error: "Room has ended" }, { status: 410 });
+  }
+  if (body.userId === room.hostId) {
+    return NextResponse.json({ error: "Cannot kick the host" }, { status: 400 });
+  }
 
   // Mark left + drop them from LiveKit room.
-  await prisma.roomParticipant.updateMany({
-    where: { roomId: id, userId: body.userId },
+  const updated = await prisma.roomParticipant.updateMany({
+    where: { roomId: id, userId: body.userId, leftAt: null },
     data: { leftAt: new Date(), role: "LISTENER", handRaised: false },
   });
+  if (updated.count === 0) {
+    return NextResponse.json({ error: "Listener is no longer in this room" }, { status: 409 });
+  }
 
   await removeRoomParticipant(id, body.userId);
 

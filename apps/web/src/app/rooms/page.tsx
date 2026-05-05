@@ -3,6 +3,7 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isRoomExpired } from "@/lib/roomTier";
 
 export const revalidate = 30;
 
@@ -15,16 +16,27 @@ export default async function RoomsIndexPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin?callbackUrl=/rooms");
 
-  const liveRooms = await prisma.room.findMany({
+  const roomRows = await prisma.room.findMany({
     where: { status: "LIVE" },
     orderBy: { startedAt: "desc" },
     take: 24,
     include: {
-      host: { select: { name: true, image: true, username: true } },
+      host: { select: { name: true, image: true, username: true, subscriptionTier: true } },
       currentSong: { select: { title: true, artist: true, coverUrl: true } },
       _count: { select: { participants: { where: { leftAt: null } } } },
     },
   });
+  const now = new Date();
+  const expiredRoomIds = roomRows
+    .filter((room) => isRoomExpired(room.startedAt, room.host.subscriptionTier, now))
+    .map((room) => room.id);
+  if (expiredRoomIds.length > 0) {
+    await prisma.room.updateMany({
+      where: { id: { in: expiredRoomIds }, status: "LIVE" },
+      data: { status: "ENDED", endedAt: now },
+    });
+  }
+  const liveRooms = roomRows.filter((room) => !expiredRoomIds.includes(room.id));
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12">

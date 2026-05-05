@@ -66,10 +66,31 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const updated = await prisma.userReport.update({
+  // ACTIONED is the "we agree, it's bad" terminal state — also unpublish
+  // the reported post (if any) so it stops showing up in feeds. We don't
+  // hard-delete so the audit trail and the moderator's decision survive.
+  const existing = await prisma.userReport.findUnique({
     where: { id: parsed.data.id },
-    data: { status: parsed.data.status, reviewedAt: new Date() },
-    select: { id: true, status: true, reviewedAt: true },
+    select: { postId: true },
   });
+  if (!existing) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const r = await tx.userReport.update({
+      where: { id: parsed.data.id },
+      data: { status: parsed.data.status, reviewedAt: new Date() },
+      select: { id: true, status: true, reviewedAt: true, postId: true },
+    });
+    if (parsed.data.status === "ACTIONED" && existing.postId) {
+      await tx.post.updateMany({
+        where: { id: existing.postId, isPublished: true },
+        data: { isPublished: false },
+      });
+    }
+    return r;
+  });
+
   return NextResponse.json({ report: updated });
 }

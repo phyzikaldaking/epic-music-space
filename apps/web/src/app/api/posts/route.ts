@@ -100,6 +100,7 @@ export async function GET(req: NextRequest) {
           name: true,
           image: true,
           role: true,
+          isVerified: true,
           studio: { select: { username: true } },
         },
       },
@@ -287,35 +288,46 @@ export async function POST(req: NextRequest) {
   };
 
   // Fan out a notification to every follower. Best-effort — never blocks the
-  // post create response. Capped so a 100k-follower account doesn't trigger
-  // a 100k-row insert in the request hot path; the cap is generous enough
-  // for v1 and we can move to a queued worker once we hit it regularly.
+  // post create response. Streamed in 1k-row pages so an artist with
+  // 100k+ followers is no longer silently capped at 5k; each batch's
+  // enqueues hit the BullMQ notification queue which a worker drains.
   void (async () => {
     try {
-      const FANOUT_CAP = 5000;
-      const followers = await prisma.userFollow.findMany({
-        where: { followingId: session.user.id },
-        select: { followerId: true },
-        take: FANOUT_CAP,
-      });
+      const PAGE = 1000;
       const authorName = post.author.name ?? "An artist you follow";
       const snippet = post.body.length > 140 ? `${post.body.slice(0, 140)}…` : post.body;
       const studioUsername = post.author.studio?.username;
-      await Promise.all(
-        followers.map((f) =>
-          enqueueNotification({
-            userId: f.followerId,
-            type: "FOLLOWED_POST",
-            title: `${authorName} posted`,
-            body: snippet,
-            metadata: {
-              postId: post.id,
-              authorId: post.author.id,
-              authorStudio: studioUsername,
-            },
-          }),
-        ),
-      );
+      let cursor: string | null = null;
+      // Hard upper bound on iterations as a defensive break — 100 pages of
+      // 1k = 100k followers per post, which is generous; any artist hitting
+      // that ceiling can move to a true streaming worker.
+      for (let page = 0; page < 100; page++) {
+        const followers: { followerId: string }[] = await prisma.userFollow.findMany({
+          where: { followingId: session.user.id },
+          select: { followerId: true },
+          orderBy: { followerId: "asc" },
+          take: PAGE,
+          ...(cursor ? { cursor: { followerId_followingId: { followerId: cursor, followingId: session.user.id } }, skip: 1 } : {}),
+        });
+        if (followers.length === 0) break;
+        await Promise.all(
+          followers.map((f) =>
+            enqueueNotification({
+              userId: f.followerId,
+              type: "FOLLOWED_POST",
+              title: `${authorName} posted`,
+              body: snippet,
+              metadata: {
+                postId: post.id,
+                authorId: post.author.id,
+                authorStudio: studioUsername,
+              },
+            }),
+          ),
+        );
+        if (followers.length < PAGE) break;
+        cursor = followers[followers.length - 1].followerId;
+      }
     } catch (err) {
       console.warn("[posts:create] follower fanout failed", err);
     }

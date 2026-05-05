@@ -11,6 +11,7 @@ const siteUrl = getSiteUrl();
 const GlobalAudioPlayer = dynamic(() => import("@/components/GlobalAudioPlayer"));
 const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"));
 const KeyboardShortcuts = dynamic(() => import("@/components/KeyboardShortcuts"));
+const MobileBottomNav = dynamic(() => import("@/components/MobileBottomNav"));
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -127,12 +128,14 @@ export default function RootLayout({
         />
         <Providers>
           <Navbar />
-          <main id="main-content" className="pb-20">{children}</main>
+          {/* Bottom-nav adds 56px on mobile so we pad <main> a bit more there. */}
+          <main id="main-content" className="pb-32 md:pb-20">{children}</main>
           <Footer />
           <GlobalAudioPlayer />
           <OnboardingTour />
           <KeyboardShortcuts />
           <CookieConsent />
+          <MobileBottomNav />
         </Providers>
       </body>
     </html>

@@ -40,6 +40,7 @@ export default async function PostDetailPage({ params }: Props) {
           name: true,
           image: true,
           role: true,
+          isVerified: true,
           studio: { select: { username: true } },
         },
       },

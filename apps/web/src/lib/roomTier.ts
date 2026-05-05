@@ -24,3 +24,16 @@ export function getRoomLimitsForTier(tier: SubscriptionTier): RoomTierLimits {
 export function tierAllowsRecording(tier: SubscriptionTier): boolean {
   return getRoomLimitsForTier(tier).canRecord;
 }
+
+export function getRoomEndsAt(startedAt: Date, tier: SubscriptionTier): Date {
+  const { maxDurationMinutes } = getRoomLimitsForTier(tier);
+  return new Date(startedAt.getTime() + maxDurationMinutes * 60_000);
+}
+
+export function isRoomExpired(
+  startedAt: Date,
+  tier: SubscriptionTier,
+  now = new Date(),
+): boolean {
+  return getRoomEndsAt(startedAt, tier) <= now;
+}
