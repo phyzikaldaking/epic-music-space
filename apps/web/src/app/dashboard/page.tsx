@@ -539,9 +539,30 @@ export default async function DashboardPage() {
               </Link>
             </div>
             {user.songs.length === 0 ? (
-              <div className="rounded-2xl border border-white/8 bg-[#141414] p-10 text-center text-white/40">
-                <p className="mb-2 text-4xl">🎙️</p>
-                <p className="font-semibold">No songs uploaded yet.</p>
+              <div className="rounded-2xl border border-white/8 bg-[#141414] p-10 text-center">
+                <p className="mb-3 text-4xl">🎙️</p>
+                <p className="text-lg font-semibold text-white/85">
+                  Upload your first track to start earning
+                </p>
+                <p className="mx-auto mt-2 max-w-md text-sm text-white/45">
+                  Set a license price and revenue share — fans license your
+                  track on the marketplace and you get paid out via Stripe.
+                  Stats appear here once a track is live.
+                </p>
+                <div className="mt-5 flex flex-wrap justify-center gap-2">
+                  <Link
+                    href="/studio/new"
+                    className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-600"
+                  >
+                    + Upload your first song
+                  </Link>
+                  <Link
+                    href="/marketplace"
+                    className="rounded-xl border border-white/12 px-5 py-2.5 text-sm font-bold text-white/75 hover:bg-white/5"
+                  >
+                    See examples
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">

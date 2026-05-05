@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import MuxPlayer from "@mux/mux-player-react/lazy";
+import type MuxPlayerElement from "@mux/mux-player";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { getStreamUrl } from "@/lib/audioStream";
 
@@ -255,14 +256,9 @@ export default function PostCard(props: PostCardProps) {
       {videoStatus !== "NONE" && (
         <div className="mt-3 overflow-hidden rounded-xl border border-white/8 bg-black">
           {videoStatus === "READY" && muxPlaybackId ? (
-            <MuxPlayer
+            <AutoplayingMuxPlayer
               playbackId={muxPlaybackId}
-              streamType="on-demand"
-              accentColor="#6C5CE7"
-              style={{
-                aspectRatio: videoAspectRatio?.replace(":", "/") ?? "16/9",
-                width: "100%",
-              }}
+              aspectRatio={videoAspectRatio?.replace(":", "/") ?? "16/9"}
             />
           ) : videoStatus === "FAILED" ? (
             <div className="flex aspect-video items-center justify-center text-sm text-red-300">
@@ -398,5 +394,81 @@ function AttachedSongCard({
         )}
       </button>
     </Link>
+  );
+}
+
+/**
+ * MuxPlayer wrapper that mutes + autoplays when the video scrolls into the
+ * viewport, and pauses when it leaves. Only one autoplaying player runs at
+ * a time across the page (controlled by a window-scoped registry) so a
+ * fast-scrolling user doesn't end up with three videos racing each other.
+ */
+function AutoplayingMuxPlayer({
+  playbackId,
+  aspectRatio,
+}: {
+  playbackId: string;
+  aspectRatio: string;
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef<MuxPlayerElement | null>(null);
+  const [hasInteracted, setHasInteracted] = useState(false);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        const player = playerRef.current;
+        if (!player) return;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          // Pause any other autoplaying player on the page first so we
+          // never run two simultaneously.
+          const w = window as unknown as { __emsActiveVideo?: MuxPlayerElement };
+          if (w.__emsActiveVideo && w.__emsActiveVideo !== player) {
+            try {
+              w.__emsActiveVideo.pause();
+            } catch {
+              /* ignore */
+            }
+          }
+          w.__emsActiveVideo = player;
+          if (!hasInteracted) player.muted = true;
+          void Promise.resolve(player.play()).catch(() => {
+            /* autoplay blocked — surface no error, user can tap play */
+          });
+        } else {
+          try {
+            player.pause();
+          } catch {
+            /* ignore */
+          }
+        }
+      },
+      { threshold: [0, 0.6, 1] },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasInteracted]);
+
+  return (
+    <div ref={wrapRef} onPointerDown={() => setHasInteracted(true)}>
+      <MuxPlayer
+        ref={playerRef}
+        playbackId={playbackId}
+        streamType="on-demand"
+        accentColor="#6C5CE7"
+        // Start muted so autoplay is allowed; users tap to unmute. preload
+        // metadata only so we don't start downloading bytes for cards the
+        // user scrolls past quickly.
+        muted
+        playsInline
+        preload="metadata"
+        style={{
+          aspectRatio,
+          width: "100%",
+        }}
+      />
+    </div>
   );
 }
