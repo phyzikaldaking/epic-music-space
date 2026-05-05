@@ -1,16 +1,25 @@
 import Mux from "@mux/mux-node";
 
-const tokenId = process.env.MUX_TOKEN_ID;
-const tokenSecret = process.env.MUX_TOKEN_SECRET;
-
 let client: Mux | null = null;
+let lastConfigKey: string | null = null;
 
 export function getMuxClient(): Mux | null {
+  // Read env at call-time (not module init) so runtime env changes (or
+  // build-time inlining quirks) can't lock us into an "unconfigured" state.
+  const tokenId = process.env.MUX_TOKEN_ID?.trim();
+  const tokenSecret = process.env.MUX_TOKEN_SECRET?.trim();
   if (!tokenId || !tokenSecret) return null;
-  if (!client) {
+
+  const configKey = `${tokenId}:${tokenSecret}`;
+  if (!client || lastConfigKey !== configKey) {
+    lastConfigKey = configKey;
     client = new Mux({ tokenId, tokenSecret });
   }
+
   return client;
 }
 
-export const MUX_WEBHOOK_SECRET = process.env.MUX_WEBHOOK_SIGNING_SECRET;
+export function getMuxWebhookSecret(): string | null {
+  const secret = process.env.MUX_WEBHOOK_SIGNING_SECRET?.trim() ?? "";
+  return secret ? secret : null;
+}

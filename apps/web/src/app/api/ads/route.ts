@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe";
 import { rateLimit } from "@/lib/rateLimitInline";
 import { z } from "zod";
 import { getSiteUrl } from "@/lib/site";
+import { validateTrustSafetyInput } from "@/lib/trustSafety";
 
 const createAdSchema = z.object({
   location: z.enum([
@@ -52,6 +53,14 @@ export async function POST(req: NextRequest) {
   }
 
   const { location, title, mediaUrl, linkUrl, startDate, endDate } = parsed.data;
+
+  const trustSafety = validateTrustSafetyInput(title, mediaUrl, linkUrl);
+  if (!trustSafety.ok) {
+    return NextResponse.json(
+      { error: trustSafety.message, code: trustSafety.code },
+      { status: 400 },
+    );
+  }
 
   const start = new Date(startDate);
   const end = new Date(endDate);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stopRoomRecording } from "@/lib/livekitAdmin";
+import { rateLimit } from "@/lib/rateLimitInline";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,9 @@ export async function POST(
   }
 
   const { id } = await params;
+  const blocked = await rateLimit("moderate", `room:end:${session.user.id}:${id}`);
+  if (blocked) return blocked;
+
   const room = await prisma.room.findUnique({
     where: { id },
     select: { hostId: true, status: true },

@@ -93,6 +93,80 @@ export default async function DashboardPage() {
 
   if (!userRow) redirect("/auth/signin");
 
+  // ── "Since you last visited" summary ─────────────────────────────────
+  // Captures the timestamp of the previous load BEFORE we update it, then
+  // computes how much activity landed in that window. If lastSeenAt is
+  // null (fresh account or first dashboard hit) we fall back to the past
+  // 7 days so the card has something to show. We do this best-effort —
+  // nothing here blocks the dashboard render if the bump fails.
+  const previousVisit = userRow.lastSeenAt ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const wasFirstVisit = !userRow.lastSeenAt;
+  void prisma.user
+    .update({ where: { id: userId }, data: { lastSeenAt: new Date() } })
+    .catch(() => {
+      /* ignore — purely cosmetic */
+    });
+
+  const songIdsForUser = await prisma.song.findMany({
+    where: { artistId: userId },
+    select: { id: true },
+  }).then((rows) => rows.map((r) => r.id));
+
+  const [
+    sinceLastVisitFollowers,
+    sinceLastVisitLicenseSales,
+    sinceLastVisitTipUsd,
+    sinceLastVisitNewLikes,
+    sinceLastVisitNewComments,
+  ] = await Promise.all([
+    prisma.userFollow.count({
+      where: { followingId: userId, createdAt: { gt: previousVisit } },
+    }),
+    songIdsForUser.length
+      ? prisma.licenseToken.count({
+          where: {
+            songId: { in: songIdsForUser },
+            purchasedAt: { gt: previousVisit },
+            status: "ACTIVE",
+          },
+        })
+      : Promise.resolve(0),
+    prisma.transaction
+      .aggregate({
+        where: {
+          userId,
+          type: "TIP",
+          status: "SUCCEEDED",
+          createdAt: { gt: previousVisit },
+        },
+        _sum: { amount: true },
+      })
+      .then((r) => Number(r._sum?.amount ?? 0))
+      .catch(() => 0),
+    songIdsForUser.length
+      ? prisma.postLike.count({
+          where: {
+            createdAt: { gt: previousVisit },
+            post: { authorId: userId },
+          },
+        }).catch(() => 0)
+      : Promise.resolve(0),
+    prisma.postComment.count({
+      where: {
+        createdAt: { gt: previousVisit },
+        post: { authorId: userId },
+        NOT: { authorId: userId },
+      },
+    }).catch(() => 0),
+  ]);
+
+  const sinceLastVisitTotal =
+    sinceLastVisitFollowers +
+    sinceLastVisitLicenseSales +
+    sinceLastVisitNewLikes +
+    sinceLastVisitNewComments +
+    (sinceLastVisitTipUsd > 0 ? 1 : 0);
+
   // Provider stats — only fetched for PRODUCER / ENGINEER / LABEL.
   const isProvider = userRow.role === "PRODUCER" || userRow.role === "ENGINEER" || userRow.role === "LABEL";
   const providerStats = isProvider
@@ -339,6 +413,68 @@ export default async function DashboardPage() {
               pendingDollars={artistEarnings}
               payoutsReady={connectStatus.onboardingComplete}
             />
+          </div>
+        )}
+
+        {/* ── "Since you last visited" summary ────────────────────────────
+            The come-back hook — first thing an artist sees on a fresh load
+            is what changed since their last session. Hidden on the first
+            visit (nothing to compare against) and when there's literally
+            nothing new (silence is louder than zeros). */}
+        {!wasFirstVisit && sinceLastVisitTotal > 0 && (
+          <div className="mb-8 rounded-2xl border border-brand-500/30 bg-gradient-to-br from-brand-500/8 to-accent-500/4 p-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-brand-400">
+              Since you last visited
+            </p>
+            <p className="mt-1 text-base font-bold text-white/90">
+              {previousVisit.toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}{" "}
+              → now
+            </p>
+            <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {sinceLastVisitFollowers > 0 && (
+                <li className="rounded-xl border border-white/10 bg-white/4 p-3">
+                  <p className="text-2xl font-extrabold text-cyan-300">+{sinceLastVisitFollowers}</p>
+                  <p className="text-[11px] uppercase tracking-widest text-white/45">
+                    {sinceLastVisitFollowers === 1 ? "follower" : "followers"}
+                  </p>
+                </li>
+              )}
+              {sinceLastVisitLicenseSales > 0 && (
+                <li className="rounded-xl border border-white/10 bg-white/4 p-3">
+                  <p className="text-2xl font-extrabold text-emerald-300">+{sinceLastVisitLicenseSales}</p>
+                  <p className="text-[11px] uppercase tracking-widest text-white/45">
+                    {sinceLastVisitLicenseSales === 1 ? "license sale" : "license sales"}
+                  </p>
+                </li>
+              )}
+              {sinceLastVisitTipUsd > 0 && (
+                <li className="rounded-xl border border-white/10 bg-white/4 p-3">
+                  <p className="text-2xl font-extrabold text-pink-300">${sinceLastVisitTipUsd.toFixed(2)}</p>
+                  <p className="text-[11px] uppercase tracking-widest text-white/45">in tips</p>
+                </li>
+              )}
+              {sinceLastVisitNewLikes > 0 && (
+                <li className="rounded-xl border border-white/10 bg-white/4 p-3">
+                  <p className="text-2xl font-extrabold text-rose-300">+{sinceLastVisitNewLikes}</p>
+                  <p className="text-[11px] uppercase tracking-widest text-white/45">
+                    {sinceLastVisitNewLikes === 1 ? "like" : "likes"}
+                  </p>
+                </li>
+              )}
+              {sinceLastVisitNewComments > 0 && (
+                <li className="rounded-xl border border-white/10 bg-white/4 p-3">
+                  <p className="text-2xl font-extrabold text-amber-300">+{sinceLastVisitNewComments}</p>
+                  <p className="text-[11px] uppercase tracking-widest text-white/45">
+                    {sinceLastVisitNewComments === 1 ? "comment" : "comments"}
+                  </p>
+                </li>
+              )}
+            </ul>
           </div>
         )}
 

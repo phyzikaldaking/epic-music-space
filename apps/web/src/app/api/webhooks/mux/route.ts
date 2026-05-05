@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { MUX_WEBHOOK_SECRET } from "@/lib/mux";
+import { getMuxWebhookSecret } from "@/lib/mux";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -39,13 +39,14 @@ function verifySignature(rawBody: string, header: string | null, secret: string)
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
+  const secret = getMuxWebhookSecret();
 
   // ── Hard-require signature verification ────────────────────────────────
   // Previous code skipped verification entirely if MUX_WEBHOOK_SECRET was
   // unset, which let any caller forge READY/FAILED events. We now refuse
   // to process the webhook at all unless the secret is configured AND the
   // signature checks out — fail closed.
-  if (!MUX_WEBHOOK_SECRET) {
+  if (!secret) {
     console.error("[mux:webhook] MUX_WEBHOOK_SIGNING_SECRET not configured — refusing webhook");
     return NextResponse.json(
       { error: "Webhook receiver not configured" },
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
     );
   }
   const sig = req.headers.get("mux-signature");
-  if (!verifySignature(rawBody, sig, MUX_WEBHOOK_SECRET)) {
+  if (!verifySignature(rawBody, sig, secret)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 

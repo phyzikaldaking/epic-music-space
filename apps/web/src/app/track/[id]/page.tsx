@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import AudioPlayer from "@/components/AudioPlayer";
 import SongCard from "@/components/SongCard";
 import LicenseButton from "@/components/LicenseButton";
+import StickyLicenseBar from "@/components/StickyLicenseBar";
 import ReportUserButton from "@/components/ReportUserButton";
 import TrackActions from "@/components/TrackActions";
 import { getStreamUrl } from "@/lib/audioStream";
@@ -231,6 +232,17 @@ export default async function TrackPage({ params, searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
+      {!song.isDemo && (
+        <StickyLicenseBar
+          songId={song.id}
+          songTitle={song.title}
+          artistName={song.artist}
+          licensePrice={song.licensePrice.toString()}
+          isAuthed={!!session?.user?.id}
+          isSoldOut={remaining <= 0}
+          isOwner={isOwner}
+        />
+      )}
       <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2 text-xs text-white/45">
         <Link href="/marketplace" className="hover:text-white/75">
           Marketplace

@@ -6,6 +6,7 @@ import { moderateLimiter, strictLimiter } from "@/lib/rateLimit";
 import { isLikelyBot } from "@/lib/botCheck";
 import { getMuxClient } from "@/lib/mux";
 import { enqueueNotification } from "@/lib/queues";
+import { validateTrustSafetyInput } from "@/lib/trustSafety";
 
 // In-process cache for Mux upload ownership lookups. Keyed by uploadId,
 // value carries the passthrough (= userId) and expiry. Lives only for the
@@ -196,6 +197,14 @@ export async function POST(req: NextRequest) {
   }
 
   const { body, imageUrl, songId, muxUploadId } = parsed.data;
+
+  const trustSafety = validateTrustSafetyInput(body, imageUrl);
+  if (!trustSafety.ok) {
+    return NextResponse.json(
+      { error: trustSafety.message, code: trustSafety.code },
+      { status: 400 },
+    );
+  }
 
   // If a video upload is claimed, verify it actually belongs to the caller —
   // we set passthrough = userId when creating the upload. Without this check

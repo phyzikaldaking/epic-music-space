@@ -33,6 +33,11 @@ model User {
   trialExpiresAt   DateTime?
   stripeConnectId  String?          @unique
 
+  // ── Activity ───────────────────────────────────────────────
+  // Bumped whenever the user opens the dashboard. Powers the "since you
+  // last visited" summary that's shown on next dashboard load.
+  lastSeenAt         DateTime?
+
   // ── Identity / verification ────────────────────────────────
   // Verified-artist badge. Set by an admin via /api/admin/users/[id]/verify.
   isVerified         Boolean  @default(false)

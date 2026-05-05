@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { strictLimiter, moderateLimiter } from "@/lib/rateLimit";
 import { enqueueNotification } from "@/lib/queues";
+import { validateTrustSafetyInput } from "@/lib/trustSafety";
 
 const commentSchema = z.object({
   body: z.string().min(1).max(1000),
@@ -154,6 +155,14 @@ export async function POST(
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
       { status: 400 }
+    );
+  }
+
+  const trustSafety = validateTrustSafetyInput(parsed.data.body);
+  if (!trustSafety.ok) {
+    return NextResponse.json(
+      { error: trustSafety.message, code: trustSafety.code },
+      { status: 400 },
     );
   }
 

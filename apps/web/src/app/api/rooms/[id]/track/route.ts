@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rateLimitInline";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,9 @@ export async function POST(
   }
 
   const { id } = await params;
+  const blocked = await rateLimit("moderate", `room:track:${session.user.id}:${id}`);
+  if (blocked) return blocked;
+
   const body = (await req.json().catch(() => ({}))) as { songId?: string | null };
   if (body.songId && (typeof body.songId !== "string" || body.songId.length > 64)) {
     return NextResponse.json({ error: "Invalid songId" }, { status: 400 });
