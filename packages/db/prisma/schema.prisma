@@ -82,6 +82,10 @@ model User {
   postComments       PostComment[]      @relation("PostCommentAuthor")
   postLikes          PostLike[]         @relation("PostLikeUser")
   connectedAccounts  ConnectedAccount[]
+  blocking           UserBlock[]        @relation("Blocker")
+  blockedBy          UserBlock[]        @relation("Blocked")
+  reportsFiled       UserReport[]       @relation("Reporter")
+  reportsReceived    UserReport[]       @relation("Reported")
 }
 
 enum Role {
@@ -584,6 +588,39 @@ model UserFollow {
   following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   @@unique([followerId, followingId])
+}
+
+// One user blocking another. When A blocks B, B's posts are filtered out
+// of A's feed and B can't comment on or like A's posts. Mute is similar
+// but only hides — it doesn't prevent B's interactions.
+model UserBlock {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+// User-submitted moderation report — feeds the admin queue.
+model UserReport {
+  id          String   @id @default(cuid())
+  reporterId  String
+  reporter    User     @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  // The thing being reported. Exactly one of (reportedUserId, postId) is set.
+  reportedUserId String?
+  reportedUser   User?  @relation("Reported", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  postId      String?
+  reason      String   // "SPAM" | "ABUSE" | "IMPERSONATION" | "NSFW" | "OTHER"
+  details     String?  @db.Text
+  status      String   @default("PENDING") // PENDING | REVIEWED | DISMISSED | ACTIONED
+  createdAt   DateTime @default(now())
+  reviewedAt  DateTime?
+  @@index([status, createdAt])
+  @@index([reportedUserId])
+  @@index([postId])
 }
 
 model InviteCode {

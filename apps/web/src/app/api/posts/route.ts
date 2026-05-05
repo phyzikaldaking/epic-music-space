@@ -61,12 +61,34 @@ export async function GET(req: NextRequest) {
   const session = followingMode ? null : await auth();
   const viewerId = session?.user?.id;
 
+  // Filter out posts authored by anyone the viewer has blocked, plus anyone
+  // who has blocked the viewer (defense in depth — blocked users shouldn't
+  // be able to surface in either direction).
+  let blockedAuthorIds: string[] = [];
+  if (viewerId) {
+    const [outgoing, incoming] = await Promise.all([
+      prisma.userBlock.findMany({
+        where: { blockerId: viewerId },
+        select: { blockedId: true },
+      }),
+      prisma.userBlock.findMany({
+        where: { blockedId: viewerId },
+        select: { blockerId: true },
+      }),
+    ]);
+    blockedAuthorIds = [
+      ...outgoing.map((b) => b.blockedId),
+      ...incoming.map((b) => b.blockerId),
+    ];
+  }
+
   const posts = await prisma.post.findMany({
     where: {
       isPublished: true,
       ...(authorId ? { authorId } : {}),
       ...(authorFilter ? { authorId: authorFilter } : {}),
       ...(tag ? { body: { contains: `#${tag}`, mode: "insensitive" } } : {}),
+      ...(blockedAuthorIds.length ? { authorId: { notIn: blockedAuthorIds } } : {}),
     },
     orderBy: { createdAt: "desc" },
     take: limit + 1,

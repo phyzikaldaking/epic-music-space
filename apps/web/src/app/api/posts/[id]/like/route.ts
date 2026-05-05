@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { moderateLimiter } from "@/lib/rateLimit";
+import { moderateLimiter, strictLimiter } from "@/lib/rateLimit";
 import { enqueueNotification } from "@/lib/queues";
 
 export async function POST(
@@ -11,7 +11,7 @@ export async function POST(
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   try {
-    await moderateLimiter.consume(`post-like:${ip}`);
+    await moderateLimiter.consume(`post-like:ip:${ip}`);
   } catch {
     return NextResponse.json({ error: "Too many requests." }, { status: 429 });
   }
@@ -22,6 +22,19 @@ export async function POST(
   }
 
   const { id } = await params;
+
+  // Per-(user,post) burst limit — stops a bot from toggling the same like
+  // a hundred times a second to inflate the counter via the optimistic UI
+  // race. The IP limiter above caps overall traffic; this one caps the
+  // damage one identity can do to one post.
+  try {
+    await strictLimiter.consume(`post-like:user:${session.user.id}:${id}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Slow down on this post." },
+      { status: 429, headers: { "Retry-After": "30" } },
+    );
+  }
   const post = await prisma.post.findUnique({
     where: { id },
     select: { id: true, isPublished: true, authorId: true, body: true },

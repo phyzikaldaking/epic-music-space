@@ -56,6 +56,8 @@ export default function PostCard(props: PostCardProps) {
   const [deleted, setDeleted] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [shared, setShared] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [moderationMsg, setModerationMsg] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState(props.videoStatus);
   const [muxPlaybackId, setMuxPlaybackId] = useState(props.muxPlaybackId);
   const [videoAspectRatio, setVideoAspectRatio] = useState(props.videoAspectRatio);
@@ -144,6 +146,45 @@ export default function PostCard(props: PostCardProps) {
     }
   }
 
+  async function handleBlock() {
+    setShowMenu(false);
+    if (!confirm(`Block ${props.author.name ?? "this user"}? You won't see their posts and they can't interact with yours.`)) return;
+    try {
+      const res = await fetch(`/api/users/${props.author.id}/block`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      setDeleted(true); // sweep this card out optimistically
+      props.onDeleted?.(props.id);
+    } catch {
+      setModerationMsg("Couldn't block — try again.");
+    }
+  }
+
+  async function handleReport() {
+    setShowMenu(false);
+    const reason = window.prompt(
+      "Reason: SPAM, ABUSE, IMPERSONATION, NSFW, or OTHER",
+      "SPAM",
+    );
+    if (!reason) return;
+    const normalized = reason.trim().toUpperCase();
+    if (!["SPAM", "ABUSE", "IMPERSONATION", "NSFW", "OTHER"].includes(normalized)) {
+      setModerationMsg("Unknown reason — pick SPAM / ABUSE / IMPERSONATION / NSFW / OTHER.");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId: props.id, reportedUserId: props.author.id, reason: normalized }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Report failed");
+      setModerationMsg("Reported — thanks. Moderators will review it.");
+    } catch (err) {
+      setModerationMsg(err instanceof Error ? err.message : "Couldn't send report.");
+    }
+  }
+
   async function handleShare() {
     const url = `${typeof window !== "undefined" ? window.location.origin : ""}/post/${props.id}`;
     const shareData = {
@@ -199,6 +240,44 @@ export default function PostCard(props: PostCardProps) {
             </p>
           </div>
         </Link>
+        {!props.isOwner && (
+          <div className="relative ml-auto">
+            <button
+              type="button"
+              onClick={() => setShowMenu((v) => !v)}
+              className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/80"
+              aria-label="Post actions"
+              aria-haspopup="menu"
+              aria-expanded={showMenu ? "true" : "false"}
+            >
+              ⋯
+            </button>
+            {showMenu && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#15151c] shadow-xl"
+                onMouseLeave={() => setShowMenu(false)}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleReport}
+                  className="block w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/5"
+                >
+                  🚩 Report post
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleBlock}
+                  className="block w-full px-3 py-2 text-left text-xs text-red-300 hover:bg-red-500/10"
+                >
+                  🚫 Block {props.author.name ?? "user"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {props.isOwner && (
           <div className="ml-auto flex items-center gap-1.5">
             {confirmingDelete ? (
@@ -323,6 +402,15 @@ export default function PostCard(props: PostCardProps) {
           <span className="text-xs">{shared ? "Copied" : "Share"}</span>
         </button>
       </footer>
+
+      {moderationMsg && (
+        <p
+          role="status"
+          className="mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/65"
+        >
+          {moderationMsg}
+        </p>
+      )}
     </article>
   );
 }
@@ -415,6 +503,8 @@ function AutoplayingMuxPlayer({
   const playerRef = useRef<MuxPlayerElement | null>(null);
   const [hasInteracted, setHasInteracted] = useState(false);
   const [muted, setMuted] = useState(true);
+  // moderation menu state lives on the AutoplayingMuxPlayer's parent; see
+  // the non-owner ⋯ menu below for block/report wiring.
 
   function toggleMute(e: React.MouseEvent) {
     e.preventDefault();

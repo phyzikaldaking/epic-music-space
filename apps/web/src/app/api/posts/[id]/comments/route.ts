@@ -62,7 +62,7 @@ export async function POST(
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   try {
-    await strictLimiter.consume(`comment-create:${ip}`);
+    await strictLimiter.consume(`comment-create:ip:${ip}`);
   } catch {
     return NextResponse.json(
       { error: "Commenting too quickly." },
@@ -76,6 +76,18 @@ export async function POST(
   }
 
   const { id } = await params;
+
+  // Per-(user,post) limit — caps how fast one identity can flood one
+  // thread. The IP limiter above is the floor; this is the ceiling on
+  // any single account's blast radius.
+  try {
+    await strictLimiter.consume(`comment-create:user:${session.user.id}:${id}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Slow down on this thread." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
   const post = await prisma.post.findUnique({
     where: { id },
     select: { id: true, isPublished: true, authorId: true },
