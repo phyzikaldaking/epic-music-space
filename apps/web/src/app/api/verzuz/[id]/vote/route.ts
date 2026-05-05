@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { moderateLimiter } from "@/lib/rateLimit";
 import { advanceMatchIfNeeded } from "@/lib/verzuz";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
+import { getRedis } from "@/lib/redis";
 
 export const runtime = "nodejs";
 
@@ -103,34 +104,118 @@ export async function POST(
   }
 
   const updated = await prisma.$transaction(async (tx) => {
-    await tx.verzuzVote.upsert({
-      where: {
-        matchId_roundNumber_voterId: {
-          matchId,
-          roundNumber,
-          voterId: session.user.id,
-        },
+    function isUniqueViolation(err: unknown) {
+      return (
+        typeof err === "object" &&
+        err !== null &&
+        // PrismaClientKnownRequestError has `code`
+        "code" in err &&
+        (err as { code?: string }).code === "P2002"
+      );
+    }
+
+    const where = {
+      matchId_roundNumber_voterId: {
+        matchId,
+        roundNumber,
+        voterId: session.user.id,
       },
-      create: { matchId, roundNumber, voterId: session.user.id, votedSongId },
-      update: { votedSongId },
+    } as const;
+
+    const existing = await tx.verzuzVote.findUnique({
+      where,
+      select: { votedSongId: true },
     });
-    const [votesA, votesB] = await Promise.all([
-      tx.verzuzVote.count({ where: { matchId, roundNumber, votedSongId: round.songAId } }),
-      tx.verzuzVote.count({ where: { matchId, roundNumber, votedSongId: round.songBId } }),
-    ]);
+
+    // Fast path: user re-submits the same pick. No recount, no writes.
+    if (existing && existing.votedSongId === votedSongId) {
+      const snapshot = await tx.verzuzRound.findUnique({
+        where: { id: round.id },
+        select: { roundNumber: true, votesA: true, votesB: true },
+      });
+      // Should never be null, but keep the type honest.
+      return snapshot ?? { roundNumber, votesA: 0, votesB: 0 };
+    }
+
+    // Delta-based counter updates so we never do an O(n) recount per vote.
+    let deltaA = 0;
+    let deltaB = 0;
+    const newIsA = votedSongId === round.songAId;
+    if (!existing) {
+      // Race-safe create: if another request sneaks in and creates the row
+      // first, fall back to the update path.
+      try {
+        await tx.verzuzVote.create({
+          data: { matchId, roundNumber, voterId: session.user.id, votedSongId },
+        });
+        deltaA = newIsA ? 1 : 0;
+        deltaB = newIsA ? 0 : 1;
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        const nowExisting = await tx.verzuzVote.findUnique({
+          where,
+          select: { votedSongId: true },
+        });
+        if (nowExisting && nowExisting.votedSongId === votedSongId) {
+          const snapshot = await tx.verzuzRound.findUnique({
+            where: { id: round.id },
+            select: { roundNumber: true, votesA: true, votesB: true },
+          });
+          return snapshot ?? { roundNumber, votesA: 0, votesB: 0 };
+        }
+        // Treat as a flip from whatever the other request wrote.
+        await tx.verzuzVote.update({
+          where,
+          data: { votedSongId },
+        });
+        const oldIsA = nowExisting ? nowExisting.votedSongId === round.songAId : false;
+        deltaA = (newIsA ? 1 : 0) + (oldIsA ? -1 : 0);
+        deltaB = (newIsA ? 0 : 1) + (oldIsA ? 0 : -1);
+      }
+    } else {
+      await tx.verzuzVote.update({
+        where,
+        data: { votedSongId },
+      });
+      const oldIsA = existing.votedSongId === round.songAId;
+      // A->B or B->A.
+      deltaA = (newIsA ? 1 : 0) + (oldIsA ? -1 : 0);
+      deltaB = (newIsA ? 0 : 1) + (oldIsA ? 0 : -1);
+    }
+
+    const data: { votesA?: { increment?: number; decrement?: number }; votesB?: { increment?: number; decrement?: number } } = {};
+    if (deltaA > 0) data.votesA = { increment: deltaA };
+    else if (deltaA < 0) data.votesA = { decrement: -deltaA };
+    if (deltaB > 0) data.votesB = { increment: deltaB };
+    else if (deltaB < 0) data.votesB = { decrement: -deltaB };
+
     return tx.verzuzRound.update({
       where: { id: round.id },
-      data: { votesA, votesB },
+      data,
       select: { roundNumber: true, votesA: true, votesB: true },
     });
   });
 
   // Realtime broadcast — every open viewer sees the score move within
-  // ~50ms. Best-effort; a flaky channel never blocks the vote response.
+  // ~250ms. Best-effort; a flaky channel never blocks the vote response.
+  //
+  // NOTE: For very large events, broadcasting on every single vote can
+  // overwhelm realtime backends. We use Redis (when configured) as a
+  // lightweight cross-instance throttle so each (match, round) emits
+  // at most ~4 updates/second.
   void (async () => {
     try {
       const supabase = createServerSupabaseClient();
       if (!supabase) return;
+
+      const redis = getRedis();
+      if (redis) {
+        const throttleKey = `ems:verzuz:broadcast:${matchId}:${updated.roundNumber}`;
+        // Only one broadcaster per window across all instances.
+        const ok = await redis.set(throttleKey, "1", "PX", 250, "NX");
+        if (ok !== "OK") return;
+      }
+
       await supabase.channel(CHANNELS.versus(matchId)).send({
         type: "broadcast",
         event: "verzuz_vote",

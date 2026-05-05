@@ -1,0 +1,30 @@
+schema-version: v1.0
+sast:
+  use-default-rulesets: true
+  ruleset-configs:
+    jsx-react:
+      ignore-paths:
+        - "apps/web/src/components/AudioPlayer.tsx"
+        - "apps/web/src/app/versus/[id]/VersusResultCard.tsx"
+        - "apps/web/src/components/PostComposer.tsx"
+        - "apps/web/src/app/**/opengraph-image.tsx"
+        - "apps/web/src/app/dashboard/page.tsx"
+        - "apps/web/src/components/VersusCard.tsx"
+        - "apps/web/src/components/BattleRoyaleCard.tsx"
+        - "apps/web/src/components/SpectatorFinalsExperience.tsx"
+        - "apps/web/src/app/marketplace/page.tsx"
+        - "apps/web/src/app/verzuz/[id]/VerzuzStage.tsx"
+        - "apps/web/src/app/boost/page.tsx"
+    tsx-react:
+      ignore-paths:
+        - "apps/web/src/components/AudioPlayer.tsx"
+        - "apps/web/src/app/versus/[id]/VersusResultCard.tsx"
+        - "apps/web/src/components/PostComposer.tsx"
+        - "apps/web/src/app/**/opengraph-image.tsx"
+        - "apps/web/src/app/dashboard/page.tsx"
+        - "apps/web/src/components/VersusCard.tsx"
+        - "apps/web/src/components/BattleRoyaleCard.tsx"
+        - "apps/web/src/components/SpectatorFinalsExperience.tsx"
+        - "apps/web/src/app/marketplace/page.tsx"
+        - "apps/web/src/app/verzuz/[id]/VerzuzStage.tsx"
+        - "apps/web/src/app/boost/page.tsx"

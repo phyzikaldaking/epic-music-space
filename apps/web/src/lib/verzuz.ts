@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { CHANNELS, createServerSupabaseClient } from "./supabase";
 
 /**
  * Returns the round that should be active right now for the given match.
@@ -27,40 +28,56 @@ export async function advanceMatchIfNeeded(matchId: string) {
   }
 
   const elapsedSec = Math.floor((now - startMs) / 1000);
+  const expectedRoundRaw =
+    Math.floor(elapsedSec / match.roundDurationSec) + 1;
+  const matchEnded = expectedRoundRaw > match.totalRounds;
   const expectedRound = Math.min(
     match.totalRounds,
-    Math.floor(elapsedSec / match.roundDurationSec) + 1,
+    Math.max(1, expectedRoundRaw),
   );
 
   // Lock any rounds that should have closed by now.
-  const closing = match.rounds.filter(
-    (r) => r.roundNumber < expectedRound && r.winner === null,
-  );
+  const closing = match.rounds
+    .filter((r) => r.winner === null && r.roundNumber < expectedRoundRaw)
+    .map((r) => ({
+      id: r.id,
+      roundNumber: r.roundNumber,
+      winner:
+        r.votesA > r.votesB ? "A"
+        : r.votesB > r.votesA ? "B"
+        : "TIE",
+    }));
   for (const round of closing) {
-    const winner =
-      round.votesA > round.votesB ? "A"
-      : round.votesB > round.votesA ? "B"
-      : "TIE";
     await prisma.verzuzRound.update({
       where: { id: round.id },
-      data: { winner },
+      data: { winner: round.winner },
     });
+  }
+  if (closing.length > 0) {
+    // Keep the in-memory snapshot consistent for callers when we don't
+    // end up touching the parent match row below.
+    for (const c of closing) {
+      const local = match.rounds.find((r) => r.id === c.id);
+      if (local) (local as { winner: string | null }).winner = c.winner;
+    }
   }
 
   // Promote currentRound + flip status if needed.
-  const matchEnded = expectedRound > match.totalRounds;
   const newStatus = matchEnded
     ? "COMPLETED"
     : match.status === "SCHEDULED"
       ? "LIVE"
       : match.status;
 
-  if (
+  const shouldUpdateMatch =
     match.currentRound !== expectedRound ||
     match.status !== newStatus ||
-    (matchEnded && !match.endsAt)
+    (matchEnded && !match.endsAt);
+
+  if (
+    shouldUpdateMatch
   ) {
-    return prisma.verzuzMatch.update({
+    const updated = await prisma.verzuzMatch.update({
       where: { id: matchId },
       data: {
         currentRound: matchEnded ? match.totalRounds : expectedRound,
@@ -69,6 +86,57 @@ export async function advanceMatchIfNeeded(matchId: string) {
       },
       include: { rounds: { orderBy: { roundNumber: "asc" } } },
     });
+
+    // Best-effort realtime state update for every open viewer. This keeps
+    // scoreboards and ladders accurate without client polling.
+    if (closing.length > 0 || updated.currentRound !== match.currentRound || updated.status !== match.status) {
+      void (async () => {
+        try {
+          const supabase = createServerSupabaseClient();
+          if (!supabase) return;
+          await supabase.channel(CHANNELS.versus(matchId)).send({
+            type: "broadcast",
+            event: "verzuz_state",
+            payload: {
+              matchId,
+              currentRound: updated.currentRound,
+              status: updated.status,
+              endsAt: updated.endsAt ? updated.endsAt.toISOString() : null,
+              closedRounds: closing,
+            },
+          });
+        } catch {
+          /* ignore */
+        }
+      })();
+    }
+
+    return updated;
+  }
+
+  if (closing.length > 0) {
+    // Broadcast winner locks even when the match row didn't change (rare,
+    // but can happen if winners were missing while currentRound/status
+    // were already correct).
+    void (async () => {
+      try {
+        const supabase = createServerSupabaseClient();
+        if (!supabase) return;
+        await supabase.channel(CHANNELS.versus(matchId)).send({
+          type: "broadcast",
+          event: "verzuz_state",
+          payload: {
+            matchId,
+            currentRound: match.currentRound,
+            status: match.status,
+            endsAt: match.endsAt ? match.endsAt.toISOString() : null,
+            closedRounds: closing,
+          },
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
   }
 
   return match;

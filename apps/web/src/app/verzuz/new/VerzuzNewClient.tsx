@@ -29,6 +29,7 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
   const [songsA, setSongsA] = useState<string[]>([]);
   const [songsB, setSongsB] = useState<string[]>([]);
   const [roundDuration, setRoundDuration] = useState(180);
+  const [startsAtLocal, setStartsAtLocal] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -68,6 +69,32 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
     );
   }
 
+  function move(list: string[], from: number, to: number) {
+    if (from === to) return list;
+    if (from < 0 || from >= list.length) return list;
+    if (to < 0 || to >= list.length) return list;
+    const next = list.slice();
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  }
+
+  function bumpA(id: string, dir: -1 | 1) {
+    setSongsA((prev) => {
+      const idx = prev.indexOf(id);
+      if (idx < 0) return prev;
+      return move(prev, idx, idx + dir);
+    });
+  }
+
+  function bumpB(id: string, dir: -1 | 1) {
+    setSongsB((prev) => {
+      const idx = prev.indexOf(id);
+      if (idx < 0) return prev;
+      return move(prev, idx, idx + dir);
+    });
+  }
+
   const equalLength = songsA.length === songsB.length;
   const enoughSongs = songsA.length > 0 && songsB.length > 0;
 
@@ -76,6 +103,12 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
     setBusy(true);
     setError(null);
     try {
+      let startsAtIso: string | undefined;
+      if (startsAtLocal.trim()) {
+        const d = new Date(startsAtLocal);
+        if (Number.isNaN(d.getTime())) throw new Error("Invalid start time.");
+        startsAtIso = d.toISOString();
+      }
       const res = await fetch("/api/verzuz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -85,6 +118,7 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
           songsA,
           songsB,
           roundDurationSec: roundDuration,
+          startsAt: startsAtIso,
         }),
       });
       const data = (await res.json()) as { match?: { id: string }; error?: string };
@@ -141,6 +175,15 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
           className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
         />
         <label className="mt-3 block text-xs font-bold uppercase tracking-widest text-white/55">
+          Start time (optional)
+        </label>
+        <input
+          type="datetime-local"
+          value={startsAtLocal}
+          onChange={(e) => setStartsAtLocal(e.target.value)}
+          className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
+        />
+        <label className="mt-3 block text-xs font-bold uppercase tracking-widest text-white/55">
           Round duration
         </label>
         <select
@@ -168,19 +211,46 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
                 const idx = songsA.indexOf(s.id);
                 return (
                   <li key={s.id}>
-                    <button
-                      type="button"
-                      onClick={() => toggleA(s.id)}
-                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-white/5 ${
+                    <div
+                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition hover:bg-white/5 ${
                         idx >= 0 ? "bg-brand-500/15 text-white" : "text-white/65"
                       }`}
                     >
-                      <span className="w-5 text-center font-mono text-[10px] text-white/45">
-                        {idx >= 0 ? idx + 1 : "·"}
-                      </span>
-                      <span className="flex-1 truncate">{s.title}</span>
-                      {s.genre && <span className="text-[10px] text-white/35">{s.genre}</span>}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleA(s.id)}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                        aria-label={idx >= 0 ? `Remove ${s.title} from setlist A` : `Add ${s.title} to setlist A`}
+                      >
+                        <span className="w-5 text-center font-mono text-[10px] text-white/45">
+                          {idx >= 0 ? idx + 1 : "·"}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{s.title}</span>
+                        {s.genre && <span className="text-[10px] text-white/35">{s.genre}</span>}
+                      </button>
+                      {idx >= 0 && (
+                        <div className="flex flex-shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => bumpA(s.id, -1)}
+                            disabled={idx === 0}
+                            className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-black text-white/65 hover:bg-white/10 disabled:opacity-30"
+                            aria-label="Move up"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => bumpA(s.id, 1)}
+                            disabled={idx === songsA.length - 1}
+                            className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-black text-white/65 hover:bg-white/10 disabled:opacity-30"
+                            aria-label="Move down"
+                          >
+                            ↓
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </li>
                 );
               })}
@@ -201,18 +271,45 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
                   const idx = songsB.indexOf(s.id);
                   return (
                     <li key={s.id}>
-                      <button
-                        type="button"
-                        onClick={() => toggleB(s.id)}
-                        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-white/5 ${
+                      <div
+                        className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition hover:bg-white/5 ${
                           idx >= 0 ? "bg-accent-500/15 text-white" : "text-white/65"
                         }`}
                       >
-                        <span className="w-5 text-center font-mono text-[10px] text-white/45">
-                          {idx >= 0 ? idx + 1 : "·"}
-                        </span>
-                        <span className="flex-1 truncate">{s.title}</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleB(s.id)}
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                          aria-label={idx >= 0 ? `Remove ${s.title} from setlist B` : `Add ${s.title} to setlist B`}
+                        >
+                          <span className="w-5 text-center font-mono text-[10px] text-white/45">
+                            {idx >= 0 ? idx + 1 : "·"}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">{s.title}</span>
+                        </button>
+                        {idx >= 0 && (
+                          <div className="flex flex-shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => bumpB(s.id, -1)}
+                              disabled={idx === 0}
+                              className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-black text-white/65 hover:bg-white/10 disabled:opacity-30"
+                              aria-label="Move up"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => bumpB(s.id, 1)}
+                              disabled={idx === songsB.length - 1}
+                              className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-black text-white/65 hover:bg-white/10 disabled:opacity-30"
+                              aria-label="Move down"
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </li>
                   );
                 })}

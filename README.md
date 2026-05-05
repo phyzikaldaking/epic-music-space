@@ -17,6 +17,7 @@ epic-music-space/
 ├── apps/
 │   ├── web/                  # Next.js 15 app (App Router, TypeScript, Tailwind)
 │   ├── api/                  # Standalone Hono REST API (@ems/api)
+│   ├── mobile/               # Capacitor iOS/Android app shell (@ems/mobile)
 │   └── credit-care/          # Credit Care app workspace (@creditcare/app)
 ├── packages/
 │   ├── db/                   # Prisma schema + generated client (@ems/db)
@@ -96,6 +97,21 @@ npx prisma generate
 ```bash
 npm run dev
 # → http://localhost:3000
+```
+
+### 5. Build native mobile shells
+
+```bash
+npm run mobile:sync
+npm run mobile:add:ios
+npm run mobile:add:android
+```
+
+Open projects in native IDEs:
+
+```bash
+npm run mobile:open:ios
+npm run mobile:open:android
 ```
 
 ## 🚢 Deployment

@@ -86,6 +86,18 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  if (new Set(songsA).size !== songsA.length) {
+    return NextResponse.json(
+      { error: "Your setlist can't include the same song twice." },
+      { status: 400 },
+    );
+  }
+  if (new Set(songsB).size !== songsB.length) {
+    return NextResponse.json(
+      { error: "Opponent setlist can't include the same song twice." },
+      { status: 400 },
+    );
+  }
 
   // Verify ownership: every songsA must belong to artistA (caller),
   // every songsB to artistBId. Stops a bad actor from staging someone
@@ -124,7 +136,10 @@ export async function POST(req: NextRequest) {
     where: { id: session.user.id },
     select: { name: true },
   });
-  const start = startsAt ? new Date(startsAt) : new Date();
+  let start = startsAt ? new Date(startsAt) : new Date();
+  // If a creator picks a start time that's already in the past, treat
+  // it as "start now" so matches don't get stuck in a confusing state.
+  if (start.getTime() < Date.now() - 60_000) start = new Date();
 
   const created = await prisma.$transaction(async (tx) => {
     const match = await tx.verzuzMatch.create({

@@ -94,8 +94,36 @@
         min-height: 1.2em;
       }
 
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        padding: 0.25rem 0.6rem;
+        border-radius: 999px;
+        margin-bottom: 1rem;
+      }
+      .badge-maintenance {
+        background: rgba(234,179,8,0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(234,179,8,0.3);
+      }
+      .badge-offline {
+        background: rgba(239,68,68,0.15);
+        color: #f87171;
+        border: 1px solid rgba(239,68,68,0.3);
+      }
+
+      .countdown {
+        font-size: 0.78rem;
+        color: rgba(245,246,255,0.35);
+        margin-top: 0.5rem;
+      }
+
       @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
       .loading { animation: pulse 1.4s ease-in-out infinite; }
+      .hidden { display: none; }
     </style>
   </head>
   <body>
@@ -104,51 +132,123 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h6V3h-8Z"/></svg>
       </div>
       <h1>Epic Music Space</h1>
-      <p id="msg">Connecting to the platform&hellip;<br>Check your internet connection and try again.</p>
 
-      <button class="btn btn-primary" id="retryBtn" onclick="retry()">
+      <div id="badge-maintenance" class="badge badge-maintenance hidden">⚙ Scheduled Maintenance</div>
+      <div id="badge-offline" class="badge badge-offline">✕ No Connection</div>
+
+      <p id="msg">Can't reach the platform.<br>Check your internet connection and try again.</p>
+
+      <button class="btn btn-primary" id="retryBtn" onclick="manualRetry()">
         &#8635; Retry Connection
       </button>
       <a href="https://epicmusicspace.com" class="btn btn-ghost">Open in browser</a>
 
       <p class="status" id="status"></p>
+      <p class="countdown hidden" id="countdown"></p>
     </main>
 
     <script>
-      // Attempt to navigate to the live site as soon as we have connectivity.
+      const HEALTH_URL = 'https://epicmusicspace.com/api/health';
       let attempts = 0;
+      let autoTimer = null;
+      let countdownTimer = null;
+      // Exponential backoff: 8s, 16s, 32s, max 60s
+      let backoffMs = 8000;
 
       function setStatus(msg) {
         document.getElementById('status').textContent = msg;
       }
 
-      function retry() {
+      function showMaintenance() {
+        document.getElementById('badge-maintenance').classList.remove('hidden');
+        document.getElementById('badge-offline').classList.add('hidden');
+        document.getElementById('msg').textContent =
+          'We\'re doing a quick update to make Epic Music Space even better. Hang tight — we\'ll be back shortly.';
+        document.getElementById('retryBtn').textContent = '↻ Check Again';
+      }
+
+      function showOffline() {
+        document.getElementById('badge-maintenance').classList.add('hidden');
+        document.getElementById('badge-offline').classList.remove('hidden');
+        document.getElementById('msg').textContent =
+          'Can\'t reach the platform.\nCheck your internet connection and try again.';
+        document.getElementById('retryBtn').textContent = '↻ Retry Connection';
+      }
+
+      function startCountdown(seconds) {
+        const el = document.getElementById('countdown');
+        el.classList.remove('hidden');
+        let remaining = seconds;
+        clearInterval(countdownTimer);
+        countdownTimer = setInterval(() => {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearInterval(countdownTimer);
+            el.classList.add('hidden');
+          } else {
+            el.textContent = 'Auto-retry in ' + remaining + 's…';
+          }
+        }, 1000);
+      }
+
+      async function check() {
         attempts++;
         setStatus('Checking connection…');
         document.getElementById('retryBtn').classList.add('loading');
+        document.getElementById('countdown').classList.add('hidden');
+        clearInterval(countdownTimer);
 
-        fetch('https://epicmusicspace.com/api/health', { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(6000) })
-          .then(() => {
+        try {
+          const res = await fetch(HEALTH_URL, {
+            method: 'HEAD',
+            cache: 'no-store',
+            signal: AbortSignal.timeout(8000),
+          });
+
+          if (res.ok) {
             setStatus('Connected! Loading…');
             window.location.href = 'https://epicmusicspace.com';
-          })
-          .catch(() => {
-            document.getElementById('retryBtn').classList.remove('loading');
-            setStatus('Still offline. Attempt ' + attempts + '. Try again shortly.');
-          });
+            return;
+          }
+
+          if (res.status === 503) {
+            showMaintenance();
+            setStatus('Maintenance in progress (attempt ' + attempts + ').');
+          } else {
+            showOffline();
+            setStatus('Server error ' + res.status + ' (attempt ' + attempts + ').');
+          }
+        } catch {
+          showOffline();
+          setStatus('Still offline (attempt ' + attempts + ').');
+        }
+
+        document.getElementById('retryBtn').classList.remove('loading');
+
+        // Schedule next auto-retry with exponential backoff (max 60s).
+        clearTimeout(autoTimer);
+        const wait = Math.min(backoffMs, 60000);
+        backoffMs = Math.min(backoffMs * 2, 60000);
+        startCountdown(Math.round(wait / 1000));
+        autoTimer = setTimeout(check, wait);
       }
 
-      // Auto-retry every 8 seconds while visible.
-      function autoRetry() {
-        if (document.visibilityState === 'visible') retry();
+      function manualRetry() {
+        // Reset backoff on manual tap.
+        backoffMs = 8000;
+        clearTimeout(autoTimer);
+        check();
       }
-      const timer = setInterval(autoRetry, 8000);
 
-      // When the app resumes from background, immediately retry.
-      document.addEventListener('resume', () => { clearInterval(timer); retry(); }, { once: false });
+      // Resume from background → immediate retry.
+      document.addEventListener('resume', () => {
+        clearTimeout(autoTimer);
+        backoffMs = 8000;
+        check();
+      }, { once: false });
 
       // Try immediately on load.
-      window.addEventListener('load', () => setTimeout(retry, 800));
+      window.addEventListener('load', () => setTimeout(check, 800));
     </script>
   </body>
 </html>

@@ -122,6 +122,10 @@ model User {
   verzuzAsArtistA    VerzuzMatch[]      @relation("VerzuzArtistA")
   verzuzAsArtistB    VerzuzMatch[]      @relation("VerzuzArtistB")
   verzuzVotes        VerzuzVote[]
+  verzuzRSVPs        VerzuzRSVP[]
+  verzuzReactions    VerzuzReaction[]
+  verzuzMessages     VerzuzMessage[]
+  pushTokens         PushToken[]
 }
 
 enum Role {
@@ -1592,12 +1596,72 @@ model VerzuzMatch {
   status        VerzuzStatus @default(SCHEDULED)
   startsAt      DateTime
   endsAt        DateTime?
+  // Event-grade fields. A "MAIN_EVENT" is the planned 10-song-by-10-song
+  // showdown with hype reminders, RSVPs, and a host card. "SPEED" is the
+  // quick 1-song-vs-1-song format for a casual battle. Defaults to MAIN.
+  tier          String       @default("MAIN_EVENT")
+  hostNotes     String?
+  coverImageUrl String?
+  // Counters for cron-driven reminders so we don't double-send.
+  reminder24hSentAt DateTime?
+  reminder1hSentAt  DateTime?
+  reminder5mSentAt  DateTime?
+  liveStartSentAt   DateTime?
   rounds        VerzuzRound[]
   votes         VerzuzVote[]
+  rsvps         VerzuzRSVP[]
+  reactions     VerzuzReaction[]
+  messages      VerzuzMessage[]
   createdAt     DateTime     @default(now())
   @@index([status, startsAt])
   @@index([artistAId])
   @@index([artistBId])
+}
+
+// "Going" / "Interested" RSVPs drive the pre-event reminder cron and
+// give the audience a number to look forward to. One row per (match, user).
+model VerzuzRSVP {
+  id        String      @id @default(cuid())
+  matchId   String
+  match     VerzuzMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String      @default("GOING") // GOING | INTERESTED
+  createdAt DateTime    @default(now())
+  @@unique([matchId, userId])
+  @@index([matchId])
+  @@index([userId])
+}
+
+// Live-stream reactions ("🔥", "👏", "🐐"). Append-only; the UI counts
+// per-emoji on read. Cap server-side via rate-limit.
+model VerzuzReaction {
+  id          String      @id @default(cuid())
+  matchId     String
+  match       VerzuzMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roundNumber Int
+  emoji       String
+  createdAt   DateTime    @default(now())
+  @@index([matchId, roundNumber])
+  @@index([matchId, createdAt])
+}
+
+// Live audience chat — one row per message. Moderator (either artist)
+// can hide rows by flipping isHidden.
+model VerzuzMessage {
+  id          String      @id @default(cuid())
+  matchId     String
+  match       VerzuzMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roundNumber Int
+  body        String
+  isHidden    Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  @@index([matchId, createdAt])
+  @@index([matchId, roundNumber])
 }
 
 enum VerzuzStatus {
@@ -1638,4 +1702,35 @@ model VerzuzVote {
   // until the round closes, but the unique constraint forces upsert.
   @@unique([matchId, roundNumber, voterId])
   @@index([matchId, roundNumber])
+}
+
+// ─────────────────────────────────────────
+// PUSH NOTIFICATIONS
+// ─────────────────────────────────────────
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String   // "ios" | "android"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Lightweight daily session ping from native app shell.
+// Tracks real-world version distribution + platform mix without a 3P SDK.
+model NativeTelemetryEvent {
+  id         String   @id @default(cuid())
+  userId     String?  // null for unauthenticated sessions
+  platform   String   // "ios" | "android"
+  osVersion  String
+  appVersion String
+  appBuild   String
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
 }

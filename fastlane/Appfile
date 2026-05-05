@@ -1,0 +1,15 @@
+# fastlane/Appfile
+# App Store Connect configuration for Epic Music Space
+
+app_identifier("com.epicmusicspace.app")
+
+# Apple Developer credentials are provided via App Store Connect API key in the
+# Fastfile — no user/password needed with the API key approach.
+
+for_platform :ios do
+  app_identifier("com.epicmusicspace.app")
+end
+
+for_platform :android do
+  package_name("com.epicmusicspace.app")
+end

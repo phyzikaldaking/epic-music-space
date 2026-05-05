@@ -2,9 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { getStreamUrl } from "@/lib/audioStream";
+
+const StageBackdrop3D = dynamic(() => import("@/components/verzuz/StageBackdrop3D"), {
+  ssr: false,
+});
 
 interface ArtistSummary {
   id: string;
@@ -47,19 +52,53 @@ interface Props {
   isAuthed: boolean;
 }
 
+type ReactionBurst = {
+  id: number;
+  emoji: string;
+  xPct: number;
+  phase: "enter" | "exit";
+};
+
 function fmt(seconds: number) {
   const s = Math.max(0, Math.round(seconds));
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 }
 
+function fmtCalUtc(d: Date) {
+  // Google Calendar "dates" param expects UTC: YYYYMMDDTHHMMSSZ
+  return d
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
+}
+
 export default function VerzuzStage(props: Props) {
   const [rounds, setRounds] = useState<Round[]>(props.rounds);
   const [myVotes, setMyVotes] = useState<Record<number, string>>(props.myVotes);
+  const [serverRound, setServerRound] = useState(props.currentRound);
+  const [serverStatus, setServerStatus] = useState<Props["status"]>(props.status);
+  const [serverEndsAt, setServerEndsAt] = useState<string | null>(props.endsAt);
+  const [voteError, setVoteError] = useState<string | null>(null);
+  const [realtimeState, setRealtimeState] = useState<string>("INIT");
+  const [shareUrl, setShareUrl] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const audioARef = useRef<HTMLAudioElement | null>(null);
   const audioBRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [bursts, setBursts] = useState<ReactionBurst[]>([]);
+  const burstSeq = useRef(1);
+  const burstTimeouts = useRef<number[]>([]);
+
+  useEffect(() => {
+    // Avoid reading window during SSR. (This is a client component, but it can
+    // still render on the server during initial pass.)
+    try {
+      setShareUrl(window.location.href);
+    } catch {
+      setShareUrl("");
+    }
+  }, []);
 
   // 1Hz tick for the round timer + auto-pull on flip.
   useEffect(() => {
@@ -83,11 +122,85 @@ export default function VerzuzStage(props: Props) {
           ),
         );
       })
-      .subscribe();
+      .on("broadcast", { event: "verzuz_reaction" }, ({ payload }) => {
+        const p = payload as { emoji?: string };
+        if (p.emoji) spawnBurst(p.emoji);
+      })
+      .on("broadcast", { event: "verzuz_state" }, ({ payload }) => {
+        const p = payload as {
+          currentRound?: number;
+          status?: Props["status"];
+          endsAt?: string | null;
+          closedRounds?: { roundNumber: number; winner: "A" | "B" | "TIE" }[];
+        };
+        if (typeof p.currentRound === "number") setServerRound(p.currentRound);
+        if (p.status) setServerStatus(p.status);
+        if (p.endsAt !== undefined) setServerEndsAt(p.endsAt);
+        if (p.closedRounds && p.closedRounds.length > 0) {
+          setRounds((prev) =>
+            prev.map((r) => {
+              const closed = p.closedRounds?.find((c) => c.roundNumber === r.roundNumber);
+              return closed ? { ...r, winner: closed.winner } : r;
+            }),
+          );
+        }
+      })
+      .subscribe((status) => {
+        setRealtimeState(status);
+      });
     return () => {
       void supabase.removeChannel(ch);
     };
   }, [props.matchId]);
+
+  // Poll as a safety net so the stage stays correct even when realtime is
+  // down, misconfigured, or the viewer's connection drops.
+  useEffect(() => {
+    if (serverStatus === "COMPLETED") return;
+    let cancelled = false;
+
+    async function pollOnce() {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`/api/verzuz/${props.matchId}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          match: {
+            status: Props["status"];
+            currentRound: number;
+            endsAt: string | null;
+            rounds: {
+              roundNumber: number;
+              votesA: number;
+              votesB: number;
+              winner: "A" | "B" | "TIE" | null;
+            }[];
+          };
+          myVotes: { roundNumber: number; votedSongId: string }[];
+        };
+        setServerStatus(data.match.status);
+        setServerRound(data.match.currentRound);
+        setServerEndsAt(data.match.endsAt);
+        setRounds((prev) =>
+          prev.map((r) => {
+            const latest = data.match.rounds.find((x) => x.roundNumber === r.roundNumber);
+            return latest ? { ...r, votesA: latest.votesA, votesB: latest.votesB, winner: latest.winner } : r;
+          }),
+        );
+        setMyVotes(Object.fromEntries(data.myVotes.map((v) => [v.roundNumber, v.votedSongId])));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    void pollOnce();
+    const ms = realtimeState === "SUBSCRIBED" ? 30_000 : 6_000;
+    const interval = setInterval(pollOnce, ms);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [props.matchId, realtimeState, serverStatus]);
 
   // Cleanup audio on unmount.
   useEffect(() => {
@@ -99,6 +212,8 @@ export default function VerzuzStage(props: Props) {
           ref.current = null;
         }
       }
+      for (const t of burstTimeouts.current) clearTimeout(t);
+      burstTimeouts.current = [];
     };
   }, []);
 
@@ -108,12 +223,34 @@ export default function VerzuzStage(props: Props) {
     props.totalRounds,
     Math.max(1, Math.floor(elapsedSec / props.roundDurationSec) + 1),
   );
-  const liveRoundNumber = props.status === "LIVE" ? computedRound : props.currentRound;
+  const liveRoundNumber =
+    serverStatus === "LIVE"
+      ? Math.min(props.totalRounds, Math.max(1, serverRound || computedRound))
+      : serverRound;
   const secondsIntoRound = Math.max(0, elapsedSec - (liveRoundNumber - 1) * props.roundDurationSec);
   const secondsLeft = Math.max(0, props.roundDurationSec - secondsIntoRound);
   const tickPct = (secondsIntoRound / props.roundDurationSec) * 100;
   const matchStarted = now >= startMs;
   const liveRound = rounds.find((r) => r.roundNumber === liveRoundNumber) ?? null;
+
+  const calendarUrl = useMemo(() => {
+    const start = new Date(props.startsAt);
+    const end = new Date(start.getTime() + props.totalRounds * props.roundDurationSec * 1000);
+    const text = `Verzuz: ${props.artistA.name} vs ${props.artistB.name}`;
+    const details = [
+      props.theme ? `Theme: ${props.theme}` : null,
+      shareUrl ? `Watch: ${shareUrl}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const params = new URLSearchParams({
+      action: "TEMPLATE",
+      text,
+      dates: `${fmtCalUtc(start)}/${fmtCalUtc(end)}`,
+      details,
+    });
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  }, [props.startsAt, props.totalRounds, props.roundDurationSec, props.artistA.name, props.artistB.name, props.theme, shareUrl]);
 
   // Recompute score from the rounds we know about — keeps pace with realtime.
   const score = rounds.reduce(
@@ -154,27 +291,64 @@ export default function VerzuzStage(props: Props) {
     }
   }
 
+  function spawnBurst(emoji: string) {
+    const id = burstSeq.current++;
+    const xPct = 12 + Math.random() * 76;
+    const burst: ReactionBurst = { id, emoji, xPct, phase: "enter" };
+    setBursts((prev) => [...prev, burst].slice(-30));
+    // Kick the transition after paint.
+    const t1 = window.setTimeout(() => {
+      setBursts((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, phase: "exit" as const } : b)),
+      );
+    }, 20);
+    const t2 = window.setTimeout(() => {
+      setBursts((prev) => prev.filter((b) => b.id !== id));
+    }, 1100);
+    burstTimeouts.current.push(t1, t2);
+  }
+
+  async function sendReaction(emoji: string) {
+    if (!props.isAuthed || serverStatus !== "LIVE") return;
+    spawnBurst(emoji); // optimistic; feels instant
+    try {
+      await fetch(`/api/verzuz/${props.matchId}/reaction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji }),
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function vote(songId: string) {
     if (busy || !liveRound || props.isViewerArtist || !props.isAuthed) return;
-    if (props.status !== "LIVE") return;
+    if (serverStatus !== "LIVE") return;
     setBusy(true);
+    setVoteError(null);
     try {
       const res = await fetch(`/api/verzuz/${props.matchId}/vote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roundNumber: liveRound.roundNumber, votedSongId: songId }),
       });
-      if (res.ok) {
-        const data = (await res.json()) as { roundNumber: number; votesA: number; votesB: number };
-        setRounds((prev) =>
-          prev.map((r) =>
-            r.roundNumber === data.roundNumber
-              ? { ...r, votesA: data.votesA, votesB: data.votesB }
-              : r,
-          ),
-        );
-        setMyVotes((prev) => ({ ...prev, [data.roundNumber]: songId }));
+      const data = (await res.json().catch(() => ({}))) as
+        | { roundNumber: number; votesA: number; votesB: number }
+        | { error?: string };
+      if (!res.ok) {
+        setVoteError(("error" in data && data.error) ? data.error : "Vote failed. Try again.");
+        return;
       }
+      if (!("roundNumber" in data)) return;
+      setRounds((prev) =>
+        prev.map((r) =>
+          r.roundNumber === data.roundNumber
+            ? { ...r, votesA: data.votesA, votesB: data.votesB }
+            : r,
+        ),
+      );
+      setMyVotes((prev) => ({ ...prev, [data.roundNumber]: songId }));
     } finally {
       setBusy(false);
     }
@@ -193,7 +367,7 @@ export default function VerzuzStage(props: Props) {
           a fan scrolling through the round ladder always sees what's
           live and how much time is left. Hidden on md+ where the
           scoreboard is in view at the top of the page. */}
-      {props.status === "LIVE" && liveRound && (
+      {serverStatus === "LIVE" && liveRound && (
         <div className="sticky top-[57px] z-30 mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-white/15 bg-black/80 px-3 py-2 shadow-2xl backdrop-blur md:hidden">
           <span className="flex h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.85)]" aria-hidden />
           <span className="text-[10px] font-black uppercase tracking-widest text-white/55">
@@ -205,6 +379,14 @@ export default function VerzuzStage(props: Props) {
         </div>
       )}
       {/* Stage backdrop — gradient + animated lights */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <StageBackdrop3D
+          status={serverStatus}
+          artistA={props.artistA.name}
+          artistB={props.artistB.name}
+          theme={props.theme}
+        />
+      </div>
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(124,58,237,0.4),transparent_50%),radial-gradient(circle_at_80%_70%,rgba(0,245,255,0.35),transparent_55%),linear-gradient(180deg,#06060a_0%,#0c0a18_60%,#06060a_100%)]"
@@ -213,11 +395,27 @@ export default function VerzuzStage(props: Props) {
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-[60vh] bg-[repeating-linear-gradient(115deg,rgba(255,255,255,0.04)_0_2px,transparent_2px_30px)] mix-blend-screen"
       />
+      {/* Live reaction bursts */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 z-20">
+        {bursts.map((b) => (
+          <span
+            key={b.id}
+            className={`absolute bottom-[28%] text-3xl drop-shadow-[0_8px_18px_rgba(0,0,0,0.75)] transition-[transform,opacity] duration-[1100ms] ease-out transform-gpu ${
+              b.phase === "enter"
+                ? "translate-y-0 scale-100 opacity-100"
+                : "-translate-y-24 scale-125 opacity-0"
+            }`}
+            style={{ left: `${b.xPct}%` }}
+          >
+            {b.emoji}
+          </span>
+        ))}
+      </div>
       <div className="relative mx-auto max-w-6xl px-4 py-10">
         {/* Header */}
         <div className="mb-8 flex flex-col items-center text-center">
           <span className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[10px] font-black uppercase tracking-[0.32em] text-white/55 backdrop-blur">
-            {props.status === "LIVE" ? "🔴 Live Verzuz" : props.status === "SCHEDULED" ? "Verzuz · Scheduled" : "Verzuz · Ended"}
+            {serverStatus === "LIVE" ? "🔴 Live Verzuz" : serverStatus === "SCHEDULED" ? "Verzuz · Scheduled" : "Verzuz · Ended"}
           </span>
           <h1 className="mt-4 text-4xl font-black tracking-tight md:text-6xl">
             <span className="text-gradient-ems">{props.artistA.name}</span>
@@ -232,6 +430,35 @@ export default function VerzuzStage(props: Props) {
           <p className="mt-3 text-xs text-white/45">
             {props.totalRounds} rounds · {Math.round(props.roundDurationSec / 60)} min each
           </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (!shareUrl) return;
+                void (async () => {
+                  try {
+                    await navigator.clipboard.writeText(shareUrl);
+                  } catch {
+                    // Ignore; user can still use the address bar.
+                  }
+                })();
+              }}
+              disabled={!shareUrl}
+              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white/75 hover:bg-white/10 disabled:opacity-40"
+            >
+              Copy link
+            </button>
+            {serverStatus === "SCHEDULED" && (
+              <a
+                href={calendarUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-xl border border-gold-400/30 bg-gold-400/10 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-gold-200 hover:bg-gold-400/15"
+              >
+                Add to calendar
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Scoreboard + round timer */}
@@ -241,7 +468,7 @@ export default function VerzuzStage(props: Props) {
             <span className="text-[10px] font-bold uppercase tracking-widest text-white/45">
               Round {liveRound ? liveRound.roundNumber : props.currentRound} / {props.totalRounds}
             </span>
-            {props.status === "LIVE" && (
+            {serverStatus === "LIVE" && (
               <>
                 <span className="font-mono text-2xl font-black text-white">{fmt(secondsLeft)}</span>
                 <progress
@@ -252,17 +479,17 @@ export default function VerzuzStage(props: Props) {
                 />
               </>
             )}
-            {props.status === "SCHEDULED" && (
+            {serverStatus === "SCHEDULED" && (
               <span className="text-xs text-white/55">
                 Starts {new Date(props.startsAt).toLocaleString()}
               </span>
             )}
-            {props.status === "COMPLETED" && score.aWins !== score.bWins && (
+            {serverStatus === "COMPLETED" && score.aWins !== score.bWins && (
               <span className="rounded-full bg-gold-500/20 px-3 py-1 text-xs font-black text-gold-200">
                 {score.aWins > score.bWins ? props.artistA.name : props.artistB.name} took it
               </span>
             )}
-            {props.status === "COMPLETED" && score.aWins === score.bWins && (
+            {serverStatus === "COMPLETED" && score.aWins === score.bWins && (
               <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black text-white/75">
                 Tied {score.aWins}–{score.bWins}
               </span>
@@ -284,6 +511,27 @@ export default function VerzuzStage(props: Props) {
             Artists in the match can&apos;t vote — sit back, the audience decides.
           </p>
         )}
+        {voteError && (
+          <p className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-xs text-red-200">
+            {voteError}
+          </p>
+        )}
+
+        {serverStatus === "LIVE" && props.isAuthed && (
+          <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
+            {["🔥", "👏", "🐐", "💥", "😤"].map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => void sendReaction(e)}
+                className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-base hover:bg-white/10"
+                aria-label={`React ${e}`}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* The stage */}
         {liveRound ? (
@@ -298,7 +546,7 @@ export default function VerzuzStage(props: Props) {
               isPreviewing={playingId === liveRound.songA.id}
               onPreview={() => togglePreview("A", liveRound.songA)}
               onVote={() => vote(liveRound.songA.id)}
-              disabled={busy || props.isViewerArtist || !props.isAuthed || props.status !== "LIVE"}
+              disabled={busy || props.isViewerArtist || !props.isAuthed || serverStatus !== "LIVE"}
             />
             <SongSide
               side="B"
@@ -310,7 +558,7 @@ export default function VerzuzStage(props: Props) {
               isPreviewing={playingId === liveRound.songB.id}
               onPreview={() => togglePreview("B", liveRound.songB)}
               onVote={() => vote(liveRound.songB.id)}
-              disabled={busy || props.isViewerArtist || !props.isAuthed || props.status !== "LIVE"}
+              disabled={busy || props.isViewerArtist || !props.isAuthed || serverStatus !== "LIVE"}
             />
           </div>
         ) : (
@@ -326,7 +574,7 @@ export default function VerzuzStage(props: Props) {
           </p>
           <ol className="grid gap-2 sm:grid-cols-2">
             {rounds.map((r) => {
-              const isLive = props.status === "LIVE" && r.roundNumber === liveRoundNumber;
+              const isLive = serverStatus === "LIVE" && r.roundNumber === liveRoundNumber;
               const winnerLabel =
                 r.winner === "A" ? props.artistA.name
                 : r.winner === "B" ? props.artistB.name
@@ -418,10 +666,25 @@ function SongSide({
   disabled: boolean;
 }) {
   const accent = side === "A" ? "brand" : "accent";
+  const pickedBorder =
+    picked
+      ? side === "A"
+        ? "border-brand-400/55"
+        : "border-accent-400/55"
+      : "border-white/12";
+
+  const voteButton =
+    side === "A"
+      ? picked
+        ? "bg-brand-500 shadow-brand-500/35"
+        : "border border-brand-500/40 bg-brand-500/10 hover:bg-brand-500/20"
+      : picked
+        ? "bg-accent-500 shadow-accent-500/35"
+        : "border border-accent-500/40 bg-accent-500/10 hover:bg-accent-500/20";
   return (
     <div
       className={`relative overflow-hidden rounded-3xl border bg-gradient-to-b from-white/8 via-white/4 to-transparent p-5 shadow-2xl shadow-black/50 transition ${
-        picked ? `border-${accent}-400/55` : "border-white/12"
+        pickedBorder
       }`}
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 via-accent-400 to-gold-300 opacity-60" />
@@ -483,11 +746,7 @@ function SongSide({
         type="button"
         onClick={onVote}
         disabled={disabled}
-        className={`mt-4 w-full rounded-2xl py-3 text-sm font-black uppercase tracking-widest text-white shadow-lg transition disabled:opacity-50 ${
-          picked
-            ? `bg-${accent}-500 shadow-${accent}-500/35`
-            : `border border-${accent}-500/40 bg-${accent}-500/10 hover:bg-${accent}-500/20`
-        }`}
+        className={`mt-4 w-full rounded-2xl py-3 text-sm font-black uppercase tracking-widest text-white shadow-lg transition disabled:opacity-50 ${voteButton}`}
       >
         {picked ? "Your pick" : `Vote ${side}`}
       </button>

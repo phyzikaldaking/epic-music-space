@@ -1,0 +1,199 @@
+name: Native Release
+
+# Triggered by version tags: v1.0.0, v1.2.3-beta.1, etc.
+# - iOS beta  → TestFlight on every tag
+# - Android beta → Play Store internal track on every tag
+# - iOS/Android production → only on tags WITHOUT a pre-release suffix (e.g. v1.0.0)
+#
+# Required GitHub secrets:
+#   IOS:
+#     APP_STORE_CONNECT_API_KEY_KEY_ID
+#     APP_STORE_CONNECT_API_KEY_ISSUER_ID
+#     APP_STORE_CONNECT_API_KEY_KEY        (base64 .p8)
+#     MATCH_GIT_URL
+#     MATCH_PASSWORD
+#     KEYCHAIN_PASSWORD
+#   Android:
+#     ANDROID_KEYSTORE_BASE64
+#     ANDROID_KEYSTORE_PASSWORD
+#     ANDROID_KEY_ALIAS
+#     ANDROID_KEY_PASSWORD
+#     GOOGLE_PLAY_JSON_KEY_BASE64
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"          # production: v1.0.0
+      - "v[0-9]+.[0-9]+.[0-9]+-*"         # pre-release: v1.0.0-beta.1
+
+permissions:
+  contents: read
+
+# ─────────────────────────────────────────────────────────────────────────────
+# iOS — runs on macOS with Xcode
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  ios-beta:
+    name: iOS → TestFlight
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Capacitor sync (copy web assets to native)
+        working-directory: apps/mobile
+        run: npx cap sync ios --no-open
+
+      - name: Install CocoaPods
+        working-directory: apps/mobile/ios/App
+        run: pod install --repo-update
+
+      - name: Upload to TestFlight
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID:   ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY:       ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
+          MATCH_GIT_URL:                       ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD:                      ${{ secrets.MATCH_PASSWORD }}
+          KEYCHAIN_PASSWORD:                   ${{ secrets.KEYCHAIN_PASSWORD }}
+          GITHUB_REF_NAME:                     ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER:                   ${{ github.run_number }}
+        run: bundle exec fastlane ios beta
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-${{ github.ref_name }}
+          path: output/ios/EpicMusicSpace.ipa
+          retention-days: 30
+
+  ios-store:
+    name: iOS → App Store Review
+    runs-on: macos-15
+    timeout-minutes: 60
+    needs: ios-beta
+    # Only submit full release builds (no pre-release suffix).
+    if: ${{ !contains(github.ref_name, '-') }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Submit for App Store review
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID:   ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY:       ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
+          MATCH_GIT_URL:                       ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD:                      ${{ secrets.MATCH_PASSWORD }}
+          KEYCHAIN_PASSWORD:                   ${{ secrets.KEYCHAIN_PASSWORD }}
+          GITHUB_REF_NAME:                     ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER:                   ${{ github.run_number }}
+        # deliver re-uses the already-uploaded build from ios-beta
+        run: bundle exec fastlane ios release
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Android — runs on ubuntu (no macOS needed for AAB)
+# ─────────────────────────────────────────────────────────────────────────────
+  android-beta:
+    name: Android → Play (internal)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Capacitor sync (copy web assets to native)
+        working-directory: apps/mobile
+        run: npx cap sync android --no-open
+
+      - name: Upload to Play Store (internal track)
+        env:
+          ANDROID_KEYSTORE_BASE64:      ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD:    ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS:            ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD:         ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GOOGLE_PLAY_JSON_KEY_BASE64:  ${{ secrets.GOOGLE_PLAY_JSON_KEY_BASE64 }}
+          GITHUB_REF_NAME:              ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER:            ${{ github.run_number }}
+        run: bundle exec fastlane android beta
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab-${{ github.ref_name }}
+          path: apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 30
+
+  android-production:
+    name: Android → Play (production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: android-beta
+    if: ${{ !contains(github.ref_name, '-') }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Promote internal → production
+        env:
+          GOOGLE_PLAY_JSON_KEY_BASE64: ${{ secrets.GOOGLE_PLAY_JSON_KEY_BASE64 }}
+          GITHUB_REF_NAME:             ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER:           ${{ github.run_number }}
+        run: bundle exec fastlane android release
