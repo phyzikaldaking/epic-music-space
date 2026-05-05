@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#050509" />
+    <title>Epic Music Space</title>
+    <style>
+      :root { color-scheme: dark; }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at 30% 20%, #1f4bd8 0%, #050509 55%, #000 100%);
+        color: #f5f6ff;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
+
+      main {
+        max-width: 22rem;
+        padding: 2rem 1.5rem;
+        text-align: center;
+      }
+
+      .logo {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 1.25rem;
+        border-radius: 16px;
+        background: rgba(31,75,216,0.2);
+        border: 1px solid rgba(31,75,216,0.35);
+        display: grid;
+        place-items: center;
+      }
+
+      .logo svg { width: 32px; height: 32px; color: #87a7ff; fill: currentColor; }
+
+      h1 {
+        font-size: 1.35rem;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        background: linear-gradient(135deg, #87a7ff 0%, #c084fc 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 0.75rem;
+      }
+
+      p {
+        color: rgba(245,246,255,0.55);
+        line-height: 1.6;
+        font-size: 0.9rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.75rem 1.5rem;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+        border: none;
+        transition: opacity 0.15s;
+      }
+      .btn:active { opacity: 0.8; }
+
+      .btn-primary {
+        background: #1f4bd8;
+        color: #fff;
+        width: 100%;
+        justify-content: center;
+        margin-bottom: 0.75rem;
+      }
+
+      .btn-ghost {
+        background: rgba(255,255,255,0.08);
+        color: rgba(245,246,255,0.7);
+        font-size: 0.8rem;
+        padding: 0.5rem 1rem;
+      }
+
+      .status {
+        margin-top: 1.25rem;
+        font-size: 0.75rem;
+        color: rgba(245,246,255,0.3);
+        min-height: 1.2em;
+      }
+
+      @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+      .loading { animation: pulse 1.4s ease-in-out infinite; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="logo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h6V3h-8Z"/></svg>
+      </div>
+      <h1>Epic Music Space</h1>
+      <p id="msg">Connecting to the platform&hellip;<br>Check your internet connection and try again.</p>
+
+      <button class="btn btn-primary" id="retryBtn" onclick="retry()">
+        &#8635; Retry Connection
+      </button>
+      <a href="https://epicmusicspace.com" class="btn btn-ghost">Open in browser</a>
+
+      <p class="status" id="status"></p>
+    </main>
+
+    <script>
+      // Attempt to navigate to the live site as soon as we have connectivity.
+      let attempts = 0;
+
+      function setStatus(msg) {
+        document.getElementById('status').textContent = msg;
+      }
+
+      function retry() {
+        attempts++;
+        setStatus('Checking connection…');
+        document.getElementById('retryBtn').classList.add('loading');
+
+        fetch('https://epicmusicspace.com/api/health', { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(6000) })
+          .then(() => {
+            setStatus('Connected! Loading…');
+            window.location.href = 'https://epicmusicspace.com';
+          })
+          .catch(() => {
+            document.getElementById('retryBtn').classList.remove('loading');
+            setStatus('Still offline. Attempt ' + attempts + '. Try again shortly.');
+          });
+      }
+
+      // Auto-retry every 8 seconds while visible.
+      function autoRetry() {
+        if (document.visibilityState === 'visible') retry();
+      }
+      const timer = setInterval(autoRetry, 8000);
+
+      // When the app resumes from background, immediately retry.
+      document.addEventListener('resume', () => { clearInterval(timer); retry(); }, { once: false });
+
+      // Try immediately on load.
+      window.addEventListener('load', () => setTimeout(retry, 800));
+    </script>
+  </body>
+</html>

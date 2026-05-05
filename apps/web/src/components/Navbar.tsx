@@ -14,6 +14,7 @@ const PUBLIC_LINKS = [
   { href: "/services", label: "Services", icon: "🛠️", description: "Producers, engineers, mixers" },
   { href: "/leaderboard", label: "Charts", icon: "📊", description: "AI rankings + boost meter" },
   { href: "/pricing", label: "Pricing", icon: "💎", description: "Plans for fans + artists" },
+  { href: "/get-the-app", label: "Get App", icon: "📲", description: "Download for iOS & Android" },
 ];
 
 const AUTHED_LINKS = [

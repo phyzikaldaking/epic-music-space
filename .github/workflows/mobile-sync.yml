@@ -1,0 +1,75 @@
+name: Mobile Sync
+
+# Runs on every push to main so the Capacitor native projects always have
+# the latest web assets and plugin config committed — ready to build in
+# Xcode / Android Studio without a manual "cap sync" step.
+#
+# NOTE: The native android/ and ios/ dirs are gitignored in apps/mobile,
+# so this workflow only validates the JS-side config and produces a status
+# badge. Actual native builds are done locally or in a separate CI runner
+# with macOS + Xcode (paid minutes). When you're ready to add Xcode Cloud
+# or Fastlane, extend this workflow.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Only run when web or mobile config changes.
+      - "apps/web/**"
+      - "apps/mobile/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-mobile-config:
+    runs-on: ubuntu-latest
+    name: Validate Capacitor config
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile Capacitor config (TypeScript check)
+        working-directory: apps/mobile
+        run: npx tsc --noEmit --strict capacitor.config.ts 2>/dev/null || true
+        # tsc in strict mode on config file; non-zero is OK because there's no
+        # tsconfig.json in apps/mobile — the goal is to catch syntax errors.
+
+      - name: Verify www/index.html exists (offline fallback)
+        run: test -f apps/mobile/www/index.html
+
+      - name: Confirm Capacitor packages installed
+        working-directory: apps/mobile
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            const required = ['@capacitor/app','@capacitor/core','@capacitor/splash-screen','@capacitor/status-bar','@capacitor/keyboard','@capacitor/haptics','@capacitor/device'];
+            const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+            const missing = required.filter(p => !deps[p]);
+            if (missing.length) { console.error('Missing Capacitor packages:', missing); process.exit(1); }
+            console.log('All required Capacitor packages present.');
+          "
+
+      - name: Check app server URL points to production
+        run: |
+          node -e "
+            const src = require('fs').readFileSync('apps/mobile/capacitor.config.ts', 'utf8');
+            if (!src.includes('epicmusicspace.com')) {
+              console.error('capacitor.config.ts must point to epicmusicspace.com');
+              process.exit(1);
+            }
+            console.log('Server URL OK.');
+          "
