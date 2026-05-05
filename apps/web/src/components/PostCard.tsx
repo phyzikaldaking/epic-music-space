@@ -277,7 +277,7 @@ export default function PostCard(props: PostCardProps) {
               className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/80"
               aria-label="Post actions"
               aria-haspopup="menu"
-              aria-expanded={showMenu}
+              aria-expanded={showMenu ? "true" : "false"}
             >
               ⋯
             </button>

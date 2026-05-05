@@ -10,6 +10,7 @@ interface Notification {
   type: string;
   read: boolean;
   createdAt: string;
+  metadata?: Record<string, unknown> | null;
 }
 
 export default function NotificationBell() {
@@ -70,12 +71,38 @@ export default function NotificationBell() {
     if (type.includes("PAYMENT")) return "💳";
     if (type.includes("SUBSCRIPTION")) return "⭐";
     if (type.includes("BADGE")) return "🏅";
+    if (type === "IDENTITY_VERIFIED") return "✅";
+    if (type === "DM") return "✉️";
     if (type === "POST_LIKED") return "♥";
     if (type === "POST_COMMENTED") return "💬";
     if (type === "FOLLOWED_POST") return "📣";
     if (type.includes("FOLLOW")) return "👤";
+    if (type.startsWith("VERZUZ")) return "🏆";
     if (type.includes("VERSUS") || type.includes("CHALLENGE")) return "⚔️";
     return "🔔";
+  }
+
+  function notifHref(n: Notification): string | null {
+    const meta = (n.metadata ?? {}) as Record<string, unknown>;
+    const matchId = typeof meta.matchId === "string" ? meta.matchId : null;
+    const conversationId = typeof meta.conversationId === "string" ? meta.conversationId : null;
+    const postId = typeof meta.postId === "string" ? meta.postId : null;
+    const songId = typeof meta.songId === "string" ? meta.songId : null;
+    if (n.type.startsWith("VERZUZ") && matchId) return `/verzuz/${matchId}`;
+    if (n.type === "VERSUS_VOTE" && matchId) return `/versus/${matchId}`;
+    if (n.type === "DM" && conversationId) return `/messages/${conversationId}`;
+    if (n.type === "IDENTITY_VERIFIED") return "/dashboard/identity";
+    if (n.type === "POST_LIKED" || n.type === "POST_COMMENTED" || n.type === "FOLLOWED_POST") {
+      return postId ? `/timeline?post=${postId}` : "/timeline";
+    }
+    if (n.type.includes("LICENSE") && songId) return `/song/${songId}`;
+    if (n.type.includes("PAYOUT") || n.type.includes("CONNECT") || n.type.includes("PAYMENT")) {
+      return "/dashboard/earnings";
+    }
+    if (n.type.includes("SUBSCRIPTION")) return "/dashboard/subscriptions";
+    if (n.type.includes("BADGE")) return "/dashboard/badges";
+    if (n.type.includes("FOLLOW")) return "/timeline";
+    return null;
   }
 
   function timeAgo(dateStr: string) {
@@ -151,31 +178,41 @@ export default function NotificationBell() {
                   </p>
                 </div>
               ) : (
-                notifications.slice(0, 20).map((n) => (
-                  <div
-                    key={n.id}
-                    className={`flex gap-3 px-4 py-3 transition ${
-                      n.read ? "opacity-60" : "bg-brand-500/8"
-                    }`}
-                  >
-                    <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white/4 text-base ring-1 ring-white/10">
-                      {typeIcon(n.type)}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-white">{n.title}</p>
-                      <p className="mt-0.5 line-clamp-2 text-xs text-white/55">{n.body}</p>
-                      <p className="mt-1 text-[10px] uppercase tracking-widest text-white/30">
-                        {timeAgo(n.createdAt)}
-                      </p>
+                notifications.slice(0, 20).map((n) => {
+                  const href = notifHref(n);
+                  const inner = (
+                    <>
+                      <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white/4 text-base ring-1 ring-white/10">
+                        {typeIcon(n.type)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-white">{n.title}</p>
+                        <p className="mt-0.5 line-clamp-2 text-xs text-white/55">{n.body}</p>
+                        <p className="mt-1 text-[10px] uppercase tracking-widest text-white/30">
+                          {timeAgo(n.createdAt)}
+                        </p>
+                      </div>
+                      {!n.read && (
+                        <span
+                          aria-hidden
+                          className="ml-1 mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-accent-400 shadow-[0_0_8px_rgba(0,245,255,0.85)]"
+                        />
+                      )}
+                    </>
+                  );
+                  const cls = `flex gap-3 px-4 py-3 transition ${
+                    n.read ? "opacity-60" : "bg-brand-500/8"
+                  } ${href ? "hover:bg-white/5" : ""}`;
+                  return href ? (
+                    <Link key={n.id} href={href} onClick={() => setOpen(false)} className={cls}>
+                      {inner}
+                    </Link>
+                  ) : (
+                    <div key={n.id} className={cls}>
+                      {inner}
                     </div>
-                    {!n.read && (
-                      <span
-                        aria-hidden
-                        className="ml-1 mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-accent-400 shadow-[0_0_8px_rgba(0,245,255,0.85)]"
-                      />
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

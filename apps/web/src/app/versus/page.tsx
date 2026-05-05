@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import { unstable_cache } from "next/cache";
 import { auth } from "@/lib/auth";
@@ -9,6 +10,7 @@ import VersusCard from "@/components/VersusCard";
 import BattleRoyaleCard from "@/components/BattleRoyaleCard";
 import CreateBattleForm from "@/components/CreateBattleForm";
 import AdSlot from "@/components/ads/AdSlot";
+import { tallyRounds } from "@/lib/verzuz";
 
 export const metadata = {
   title: "Versus Battles | Epic Music Space",
@@ -72,7 +74,7 @@ export default async function VersusPage() {
   const isArtist =
     Boolean(session?.user?.id) && session!.user.role !== "LISTENER";
 
-  const [{ matches, royales }, artistSongs] = await Promise.all([
+  const [{ matches, royales }, artistSongs, verzuzMatches] = await Promise.all([
     getActiveBattles(),
     isArtist
       ? prisma.song.findMany({
@@ -82,6 +84,24 @@ export default async function VersusPage() {
           take: 50,
         })
       : Promise.resolve([]),
+    prisma.verzuzMatch.findMany({
+      where: { status: { in: ["LIVE", "SCHEDULED"] } },
+      orderBy: [{ status: "asc" }, { startsAt: "asc" }],
+      take: 4,
+      select: {
+        id: true,
+        status: true,
+        theme: true,
+        totalRounds: true,
+        startsAt: true,
+        artistAName: true,
+        artistBName: true,
+        artistA: { select: { image: true } },
+        artistB: { select: { image: true } },
+        rounds: { select: { winner: true } },
+        _count: { select: { votes: true } },
+      },
+    }),
   ]);
 
   // Get user votes for 1v1 and royale
@@ -181,6 +201,92 @@ export default async function VersusPage() {
             Sign in
           </a>
         </div>
+      )}
+
+      {verzuzMatches.length > 0 && (
+        <section className="mb-10">
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black uppercase tracking-[0.24em] text-gold-200">
+                🏆 Verzuz
+              </h2>
+              <p className="text-xs text-white/45">
+                10-round artist showdowns. Live + scheduled.
+              </p>
+            </div>
+            <Link
+              href="/verzuz"
+              className="rounded-lg border border-white/10 bg-white/4 px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-white/65 hover:bg-white/8"
+            >
+              See all →
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {verzuzMatches.map((m) => {
+              const score = tallyRounds(m.rounds);
+              return (
+                <Link
+                  key={m.id}
+                  href={`/verzuz/${m.id}`}
+                  className={`group relative overflow-hidden rounded-2xl border p-4 transition ${
+                    m.status === "LIVE"
+                      ? "border-red-500/45 bg-red-500/8 hover:bg-red-500/12"
+                      : "border-gold-400/25 bg-gold-400/5 hover:bg-gold-400/8"
+                  }`}
+                >
+                  {m.status === "LIVE" ? (
+                    <span className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-red-500/85 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-white">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                      Live · {score.aWins}-{score.bWins}
+                    </span>
+                  ) : (
+                    <span className="absolute right-3 top-3 rounded-full border border-gold-400/35 bg-gold-400/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-gold-200">
+                      Soon
+                    </span>
+                  )}
+                  <div className="flex items-center gap-3 pr-20">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <div className="relative h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-brand-500 to-accent-500">
+                        {m.artistA.image ? (
+                          <Image src={m.artistA.image} alt="" fill unoptimized className="object-cover" />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-sm">🎤</span>
+                        )}
+                      </div>
+                      <p className="min-w-0 flex-1 truncate text-sm font-bold">{m.artistAName}</p>
+                    </div>
+                    <span className="text-[10px] font-black text-white/35">vs</span>
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <div className="relative h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-pink-500 to-orange-500">
+                        {m.artistB.image ? (
+                          <Image src={m.artistB.image} alt="" fill unoptimized className="object-cover" />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-sm">🎤</span>
+                        )}
+                      </div>
+                      <p className="min-w-0 flex-1 truncate text-sm font-bold">{m.artistBName}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-[11px] text-white/45">
+                    <span>
+                      {m.totalRounds} rounds · {m._count.votes} {m._count.votes === 1 ? "vote" : "votes"}
+                    </span>
+                    <span className="font-bold text-white/65">
+                      {m.status === "LIVE"
+                        ? "Tap to watch"
+                        : new Date(m.startsAt).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {isEmpty ? (

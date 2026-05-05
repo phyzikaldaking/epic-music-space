@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getTierLimits } from "@/lib/tierLimits";
 import { redirect } from "next/navigation";
 import BoostPurchaseSection from "./BoostPurchaseSection";
+
+export const metadata: Metadata = {
+  title: "Boost Your Track | Epic Music Space",
+  description: "Amplify your music's reach with Boost — get your track featured in the marketplace, push notifications, and priority search placement on Epic Music Space.",
+  robots: { index: false },
+};
 
 export default async function BoostPage() {
   const session = await auth();

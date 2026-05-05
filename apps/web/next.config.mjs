@@ -57,7 +57,14 @@ const nextConfig = {
   poweredByHeader: false,
   transpilePackages: ["@ems/utils"],
   experimental: {
-    optimizePackageImports: ["@stripe/stripe-js", "openai"],
+    optimizePackageImports: [
+      "@stripe/stripe-js",
+      "openai",
+      "@mux/mux-player-react",
+      "livekit-client",
+      "@sentry/nextjs",
+      "@supabase/supabase-js",
+    ],
   },
   images: {
     formats: ["image/avif", "image/webp"],

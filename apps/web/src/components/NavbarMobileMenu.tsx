@@ -67,7 +67,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
       <button
         type="button"
         aria-label={open ? "Close navigation menu" : "Open navigation menu"}
-        aria-expanded={open ? "true" : "false"}
+        aria-expanded={open}
         aria-controls="mobile-nav"
         onClick={() => setOpen((v) => !v)}
         className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/12 text-white/60 transition hover:border-white/24 hover:bg-white/6 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"

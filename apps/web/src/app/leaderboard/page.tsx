@@ -1,9 +1,21 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import LiveLeaderboard from "@/components/LiveLeaderboard";
 import AdSlot from "@/components/ads/AdSlot";
 
 export const revalidate = 60;
+
+export const metadata: Metadata = {
+  title: "Leaderboard | Epic Music Space",
+  description: "Discover the top trending songs and most-played artists on Epic Music Space. Updated every minute with live fan vote data.",
+  openGraph: {
+    title: "Leaderboard | Epic Music Space",
+    description: "Top trending songs and artists, ranked by fan votes and streams in real time.",
+    url: "https://epicmusicspace.com/leaderboard",
+  },
+  alternates: { canonical: "https://epicmusicspace.com/leaderboard" },
+};
 
 export default async function LeaderboardPage({
   searchParams,
