@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
+import { isLikelyBot } from "@/lib/botCheck";
 
 export const runtime = "nodejs";
 
@@ -33,6 +34,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "Too many submissions. Email dmca@epicmusicspace.com directly." },
       { status: 429 },
+    );
+  }
+
+  // BotID — DMCA submissions are a high-leverage attack surface (false
+  // notices can trigger downstream takedowns + § 512(f) liability for the
+  // submitter). Reject obvious bot traffic before we forward to the agent
+  // inbox. Soft-fails open if BotID is misconfigured so a real user with
+  // a copyright claim is never locked out by infrastructure.
+  if (await isLikelyBot()) {
+    return NextResponse.json(
+      { error: "Couldn't verify the request. Email dmca@epicmusicspace.com directly." },
+      { status: 403 },
     );
   }
 

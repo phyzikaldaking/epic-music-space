@@ -92,14 +92,43 @@ export async function checkInviteMilestones(inviterId: string) {
   if (count >= 5) {
     const badge = await awardBadge(inviterId, "INVITE_5");
     if (badge) {
-      // New milestone — notify about ad credit reward
+      // Issue a real Stripe promo code for the inviter.
+      // Requires INVITE5_COUPON_ID (the parent Stripe coupon ID) to be set.
+      // If the env var is missing or Stripe fails, we still send the notification
+      // so the user isn't silently disappointed.
+      let promoCode: string | null = null;
+      const couponId = process.env.INVITE5_COUPON_ID;
+      if (couponId) {
+        try {
+          const inviter = await prisma.user.findUnique({
+            where: { id: inviterId },
+            select: { stripeCustomerId: true },
+          });
+          const { getStripe } = await import("./stripe");
+          const stripe = getStripe();
+          const promo = await stripe.promotionCodes.create({
+            coupon: couponId,
+            max_redemptions: 1,
+            ...(inviter?.stripeCustomerId
+              ? { restrictions: { first_time_transaction: false, minimum_amount: 0, minimum_amount_currency: "usd" } }
+              : {}),
+            metadata: { userId: inviterId, milestone: "INVITE_5" },
+          });
+          promoCode = promo.code;
+        } catch (err) {
+          console.error("[checkInviteMilestones] INVITE_5 promo code creation failed:", err);
+        }
+      }
+
       await prisma.notification.create({
         data: {
           userId: inviterId,
           type: "MILESTONE_REWARD",
           title: "5-invite milestone reached! 🎉",
-          body: "You've unlocked a free Studio Billboard ad slot. Visit /ads to claim your credit.",
-          metadata: { milestone: "INVITE_5", reward: "billboard_credit" },
+          body: promoCode
+            ? `You've unlocked a free Studio Billboard ad slot. Use code ${promoCode} at checkout.`
+            : "You've unlocked a free Studio Billboard ad slot. Visit /ads to claim your credit.",
+          metadata: { milestone: "INVITE_5", reward: "billboard_credit", ...(promoCode ? { promoCode } : {}) },
         },
       });
     }

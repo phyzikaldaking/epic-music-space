@@ -38,6 +38,12 @@ export async function POST(
   }
 
   const { id } = await params;
+  const adminUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { email: true },
+  });
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+
   const [updated] = await prisma.$transaction([
     prisma.user.update({
       where: { id },
@@ -52,6 +58,17 @@ export async function POST(
         actorId: session.user.id,
         subjectUserId: id,
         action: parsed.data.verified ? "USER_VERIFIED" : "USER_UNVERIFIED",
+      },
+    }),
+    // Dual-write into the pane /admin/audit reads from so verified-badge
+    // toggles surface alongside other admin actions.
+    prisma.adminActionLog.create({
+      data: {
+        adminId: session.user.id,
+        adminEmail: adminUser?.email ?? null,
+        action: parsed.data.verified ? "user.verify" : "user.unverify",
+        target: id,
+        ip,
       },
     }),
   ]);

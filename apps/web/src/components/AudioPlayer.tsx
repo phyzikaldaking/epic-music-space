@@ -83,6 +83,67 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
     setError(null);
   }, [audioUrl]);
 
+  // MediaSession — lock-screen / notification-shade controls for mobile.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist: "Epic Music Space",
+      artwork: [],
+    });
+
+    const seek = (offset: number) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + offset));
+    };
+
+    navigator.mediaSession.setActionHandler("play", () => {
+      void audioRef.current?.play().then(() => setPlaying(true));
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      audioRef.current?.pause();
+      setPlaying(false);
+    });
+    navigator.mediaSession.setActionHandler("seekbackward", () => seek(-10));
+    navigator.mediaSession.setActionHandler("seekforward", () => seek(10));
+    navigator.mediaSession.setActionHandler("stop", () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.pause();
+      audio.currentTime = 0;
+      setPlaying(false);
+      setProgress(0);
+      setCurrentTime(0);
+    });
+
+    return () => {
+      for (const action of ["play", "pause", "seekbackward", "seekforward", "stop"] as const) {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch { /* unsupported */ }
+      }
+    };
+  }, [title]);
+
+  // Sync playback state with MediaSession so the OS shows the right icon.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = playing ? "playing" : "paused";
+  }, [playing]);
+
+  // Sync seek position with MediaSession so the OS scrubber is accurate.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    if (!duration) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        playbackRate: 1,
+        position: currentTime,
+      });
+    } catch { /* older browsers */ }
+  }, [currentTime, duration]);
+
   function togglePlay() {
     const audio = audioRef.current;
     if (!audio || error) return;

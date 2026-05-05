@@ -393,8 +393,32 @@ function TaxComplianceCard({
     ? "border-yellow-500/30 bg-yellow-500/5"
     : "border-white/10 bg-white/[0.02]";
 
+  // Hard gate: payouts won't run until tax info is COLLECTED or EXEMPT
+  // (enforced server-side in lib/payouts.ts). Surface that contract in
+  // the UI with a clear CTA so artists aren't stuck wondering why money
+  // isn't moving.
+  const taxBlocked = taxFormStatus !== "COLLECTED" && taxFormStatus !== "EXEMPT";
+
   return (
-    <div className={`glass-card rounded-2xl border p-6 mb-8 ${borderColor}`}>
+    <div className={`glass-card rounded-2xl border p-6 mb-8 ${taxBlocked ? "border-yellow-500/45 bg-yellow-500/8" : borderColor}`}>
+      {taxBlocked && (
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/8 p-4 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <p className="font-semibold text-yellow-200">Tax info required before your first payout</p>
+            <p className="mt-0.5 text-xs text-yellow-100/65">
+              Stripe collects your W-9 (US) or W-8BEN (non-US) during onboarding. Until your tax form
+              is on file we hold your earnings — they don&apos;t go anywhere, but they won&apos;t pay
+              out on the weekly run.
+            </p>
+          </div>
+          <a
+            href="/api/stripe-connect/onboarding"
+            className="flex-shrink-0 rounded-xl bg-yellow-400 px-4 py-2 text-sm font-bold text-[#0a0a0a] hover:bg-yellow-300"
+          >
+            Complete tax info on Stripe →
+          </a>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h3 className="text-sm font-semibold text-white/70 mb-1">

@@ -32,13 +32,13 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = partial
 
 - [x] **M1 — Missing `loading.tsx` on most pages:** All dynamic routes now have skeleton loaders.
 - [x] **M2 — Missing per-route `error.tsx`:** Route-level error boundaries added to all dynamic pages.
-- [ ] **M3 — Email verification not implemented:** Credential signups never verify email. `User.emailVerified` is only set by OAuth providers. **(requires Resend + email template)**
+- [x] **M3 — Email verification:** `POST /api/auth/register` creates a `VerificationToken`, calls `sendVerificationEmail()` via Resend, and blocks sign-in for unverified credential accounts. Requires `RESEND_API_KEY` env var in Vercel dashboard.
 - [x] **M4 — Analytics page is ungated:** `/analytics` checks `getActiveLimits(user).canAccessAnalytics` and redirects to `/pricing?reason=analytics` for non-qualifying tiers.
-- [ ] **M5 — Invite milestone rewards are text-only:** Milestones (5/10/50 invites) display correctly; actual ad credit / plan upgrade credit issuance not yet wired.
+- [x] **M5 — Invite milestone rewards:** INVITE_5 creates a real Stripe promotion code (via `INVITE5_COUPON_ID` env var) and includes the code in the in-app notification. INVITE_10 increments `studio.level`. INVITE_50 upgrades `subscriptionTier` to `PRIME`.
 - [x] **M6 — `city/page.tsx` missing `<Suspense>`:** City route has been reorganized; no `CityScene3DClient` found — city is a standard page.
-- [ ] **M7 — Middleware protects `/payouts` but the real path is `/dashboard/payouts`:** Minor double-redirect; low priority.
+- [x] **M7 — Middleware path:** Middleware matcher covers `/dashboard/:path*` which includes `/dashboard/payouts`. No stray `/payouts` entry exists — non-issue.
 - [ ] **M8 — `<img>` used in OG image routes instead of `<Image>`:** OG image routes (`opengraph-image.tsx`) must use plain `<img>` — satori/Vercel OG doesn't support `next/image`. Other pages already use `<Image>`.
-- [ ] **M9 — Analytics worker TODO not connected:** `src/workers/analytics.ts` — events are `console.info`'d only. Wire PostHog via `POSTHOG_API_KEY` env var.
+- [x] **M9 — Analytics worker PostHog:** Worker initialises a real `PostHog` client when `POSTHOG_API_KEY` is set, falls back to stdout. Set `POSTHOG_API_KEY` + `POSTHOG_HOST` in the Render worker env (already wired in `render.yaml`).
 
 ---
 
@@ -46,7 +46,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = partial
 
 - [x] **L1 — `sitemap.ts` and `robots.ts` missing:** Both files exist at `app/sitemap.ts` and `app/robots.ts`.
 - [x] **L2 — `/legal/licensing#ai-score` anchor:** Anchor `id="ai-score"` exists on the licensing page.
-- [ ] **L3 — `HeroCityCanvas.tsx` is dead code:** Component exists in `/components` but is imported nowhere. Remove it.
+- [x] **L3 — `HeroCityCanvas.tsx` dead code:** File does not exist in the current tree — already removed.
 - [x] **L4 — `analytics/page.tsx` needs `dynamic = "force-dynamic"`:** Added.
 - [x] **L5 — 3D city page has no loading state:** City route has a `<Suspense>` fallback.
 
@@ -60,6 +60,37 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = partial
 - [x] Dashboard: invite widget showing referral link + milestone progress
 - [x] Studio page: badge display with `BADGE_META` icons + dates
 - [x] Weekly digest cron: `api/cron/weekly-digest` + `vercel.json` schedule (Fridays 14:00 UTC)
+
+---
+
+## 🚀 Phase 3 — Growth & Monetisation
+
+### Env vars required to activate already-built features
+
+| Env Var | Feature |
+| --------- | --------- |
+| `RESEND_API_KEY` | Email verification on credential signup |
+| `POSTHOG_API_KEY` + `POSTHOG_HOST` | Analytics worker → PostHog sink |
+| `REDIS_URL` (Upstash) | BullMQ — notifications, analytics, AI scoring workers |
+| `INVITE5_COUPON_ID` | Stripe promo code auto-issued at 5-invite milestone |
+| `ADMIN_BOOTSTRAP_SECRET` | Promote first ADMIN user via `POST /api/admin/bootstrap` |
+| `CRON_SECRET` | Authorize Vercel cron scheduler to hit all cron routes |
+
+### Deploy BullMQ workers
+
+`render.yaml` at root is ready to deploy. Connect the repo on Render, set env vars above, and all 3 workers start automatically.
+
+### Code improvements shipped this session
+
+- [x] **MediaSession API** — `AudioPlayer.tsx` now registers lock-screen / notification-shade controls (play, pause, seek ±10s, stop) and keeps the OS scrubber in sync via `setPositionState`. Works on Android Chrome, iOS Safari 15+, macOS.
+- [x] **INVITE_5 Stripe promo code** — `checkInviteMilestones` now calls `stripe.promotionCodes.create` when `INVITE5_COUPON_ID` is set. The promo code is embedded in the in-app notification body so the user can copy it immediately.
+
+### New features to build next
+
+- [ ] **Versus battle wager** — Allow artists to stake credits when creating a battle. Winner receives ~90% of the pool (10% platform fee). Requires `creditBalance Int @default(0)` on `User` schema + new migration.
+- [ ] **Pg_trgm full-text search** — Enable the `pg_trgm` extension in Supabase (`CREATE EXTENSION IF NOT EXISTS pg_trgm`) and add GIN indexes on `Song.title`, `Song.artist`, `Studio.username` for ranked trigram search.
+- [ ] **Mobile seek bar touch support** — AudioPlayer seek bar only handles `onClick` (mouse). Add `onTouchStart`/`onTouchMove`/`onTouchEnd` handlers for mobile.
+- [ ] **Notification promo code UI** — Surface the `promoCode` field from notification metadata on the `/notifications` page as a copyable badge rather than plain body text.
 
 ---
 

@@ -77,6 +77,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Snapshot admin email for the audit row before the transaction — if the
+  // admin user is later deleted we still want a useful audit trail.
+  const adminUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { email: true },
+  });
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+
   const updated = await prisma.$transaction(async (tx) => {
     const r = await tx.userReport.update({
       where: { id: parsed.data.id },
@@ -88,8 +97,9 @@ export async function PATCH(req: NextRequest) {
         where: { id: existing.postId, isPublished: true },
         data: { isPublished: false },
       });
-      // Audit row for the implicit unpublish — separate from the status
-      // change itself so each verb is independently filterable.
+      // Dual-write: ModerationAction (typed verb) + AdminActionLog (the
+      // pane /admin/audit reads from). Each verb is independently
+      // filterable on both surfaces.
       await tx.moderationAction.create({
         data: {
           actorId: session.user.id,
@@ -99,6 +109,16 @@ export async function PATCH(req: NextRequest) {
           metadata: { via: "report_actioned" },
         },
       });
+      await tx.adminActionLog.create({
+        data: {
+          adminId: session.user.id,
+          adminEmail: adminUser?.email ?? null,
+          action: "post.unpublish",
+          target: existing.postId,
+          ip,
+          metadata: { reportId: r.id, via: "report_actioned" },
+        },
+      });
     }
     await tx.moderationAction.create({
       data: {
@@ -106,6 +126,16 @@ export async function PATCH(req: NextRequest) {
         reportId: r.id,
         postId: existing.postId ?? null,
         action: `REPORT_${parsed.data.status}`,
+      },
+    });
+    await tx.adminActionLog.create({
+      data: {
+        adminId: session.user.id,
+        adminEmail: adminUser?.email ?? null,
+        action: `report.${parsed.data.status.toLowerCase()}`,
+        target: r.id,
+        ip,
+        metadata: { postId: existing.postId },
       },
     });
     return r;
