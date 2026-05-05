@@ -7,6 +7,10 @@
     "packages/*"
   ],
   "scripts": {
+    "test": "npm --workspace apps/web run test && npm --workspace apps/api run test && npm --workspace packages/db run test && npm --workspace packages/utils run test",
+    "test:web": "npm --workspace apps/web run test",
+    "test:api": "npm --workspace apps/api run test",
+    "test:watch": "vitest",
     "agent:setup": "node scripts/ops/agent-setup.mjs",
     "agent:doctor": "node scripts/ops/agent-doctor.mjs",
     "build": "npm run build:web && npm --workspace apps/api run build",
