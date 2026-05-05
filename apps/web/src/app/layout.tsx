@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
 import CookieConsent from "@/components/CookieConsent";
+import { ClientOnlyDynamics } from "@/components/ClientDynamics";
 import { getSiteUrl } from "@/lib/site";
 
 const siteUrl = getSiteUrl();
@@ -13,8 +14,6 @@ const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"));
 const KeyboardShortcuts = dynamic(() => import("@/components/KeyboardShortcuts"));
 const MobileBottomNav = dynamic(() => import("@/components/MobileBottomNav"));
 const OfflineBanner = dynamic(() => import("@/components/OfflineBanner"));
-const CapacitorBridge = dynamic(() => import("@/components/CapacitorBridge"), { ssr: false });
-const AppDownloadBanner = dynamic(() => import("@/components/AppDownloadBanner"), { ssr: false });
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -147,8 +146,7 @@ export default function RootLayout({
           <CookieConsent />
           <MobileBottomNav />
           <OfflineBanner />
-          <AppDownloadBanner />
-          <CapacitorBridge />
+          <ClientOnlyDynamics />
         </Providers>
       </body>
     </html>
