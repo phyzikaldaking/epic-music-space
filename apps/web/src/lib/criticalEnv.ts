@@ -96,6 +96,14 @@ export function validateCriticalEnvironment(env: EnvSource = process.env): Criti
     addIssue("warning", "partial_google_oauth_config", "Google OAuth configuration is only partially set.");
   }
 
+  if (isProductionLike && !readEnv(env, "SOCIAL_ENCRYPTION_KEY")) {
+    addIssue(
+      "warning",
+      "missing_social_encryption_key",
+      "SOCIAL_ENCRYPTION_KEY is not set; connected account tokens cannot be stored securely.",
+    );
+  }
+
   if (!readEnv(env, "REDIS_URL")) {
     addIssue(
       isProductionLike ? "warning" : "warning",

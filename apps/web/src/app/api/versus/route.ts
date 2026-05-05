@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getActiveLimits } from "@/lib/tierLimits";
+import { strictLimiter } from "@/lib/rateLimit";
 
 const createSchema = z.object({
   songAId: z.string().cuid(),
@@ -27,6 +28,21 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Battles light up live realtime + leaderboard channels and create a
+  // queue of write fan-out — strict per-user limit so a hostile session
+  // can't churn fresh matches faster than fans can vote.
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  try {
+    await strictLimiter.consume(`versus-create:user:${session.user.id}`);
+    await strictLimiter.consume(`versus-create:ip:${ip}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Slow down on battle creation — try again in a minute." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
   }
 
   const creator = await prisma.user.findUnique({

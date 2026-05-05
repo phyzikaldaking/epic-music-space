@@ -138,23 +138,50 @@ export async function enqueueNotification(data: NotificationJobData) {
   }
 
   // ── Email channel ───────────────────────────────────────────────────
-  // Best-effort, fire-and-forget. Pulls the recipient's address from the
-  // User row. Skipped silently when the type opts out of email or no
-  // companion email payload is provided.
+  // Write to the outbox table FIRST (guaranteed delivery), then attempt
+  // the live send. The flush-email-outbox cron picks up any PENDING rows
+  // that weren't confirmed sent within 5 minutes.
   if (emailAllowed && data.email) {
     void (async () => {
       try {
         const user = await prisma.user.findUnique({
           where: { id: data.userId },
-          select: { email: true, emailVerified: true },
+          select: { email: true, emailVerified: true, emailBounced: true },
         });
-        if (!user?.email || !user.emailVerified) return;
+        if (!user?.email || !user.emailVerified || user.emailBounced) return;
+
+        const { outboxMessageId } = await import("@/app/api/cron/flush-email-outbox/route");
+        const messageId = outboxMessageId(data.userId, data.type);
+
+        // Upsert so repeated calls are idempotent
+        const outboxRow = await prisma.emailOutbox.upsert({
+          where: { messageId },
+          create: {
+            messageId,
+            userId: data.userId,
+            to: user.email,
+            subject: data.email!.subject,
+            html: data.email!.html,
+            text: data.email?.text,
+            status: "PENDING",
+          },
+          update: {}, // already exists → leave it alone
+        });
+
+        // Only attempt live send when the row is still PENDING (not SENT already)
+        if (outboxRow.status !== "PENDING") return;
+
         const { sendNotificationEmail } = await import("@/lib/email");
         await sendNotificationEmail({
           to: user.email,
           subject: data.email!.subject,
           html: data.email!.html,
           text: data.email?.text,
+        });
+
+        await prisma.emailOutbox.update({
+          where: { id: outboxRow.id },
+          data: { status: "SENT", sentAt: new Date(), attempts: { increment: 1 } },
         });
       } catch (err) {
         console.warn("[enqueueNotification] email send failed", err);

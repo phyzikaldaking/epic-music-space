@@ -38,6 +38,19 @@ model User {
   // last visited" summary that's shown on next dashboard load.
   lastSeenAt         DateTime?
 
+  // ── Risk / trust ───────────────────────────────────────────
+  // suspicionScore: additive int bumped by webhooks and admin actions.
+  // flaggedAt: first time score exceeded threshold or admin manually flagged.
+  // isSuspended: hard block — all sensitive actions rejected.
+  // emailBounced: Resend bounce/complaint webhook sets this; suppresses future sends.
+  suspicionScore  Int       @default(0)
+  flaggedAt       DateTime?
+  isSuspended     Boolean   @default(false)
+  suspendedAt     DateTime?
+  suspendedReason String?   @db.Text
+  emailBounced    Boolean   @default(false)
+  emailBouncedAt  DateTime?
+
   // ── Identity / verification ────────────────────────────────
   // Verified-artist badge. Set by an admin via /api/admin/users/[id]/verify.
   isVerified         Boolean  @default(false)
@@ -1494,4 +1507,55 @@ model Message {
   createdAt      DateTime @default(now())
   @@index([conversationId, createdAt])
   @@index([senderId])
+}
+
+// ─────────────────────────────────────────
+// EMAIL OUTBOX — guaranteed delivery
+// Written BEFORE the Resend API call. A cron flushes PENDING rows that
+// weren't confirmed sent within 5 min (delivery gap). Idempotent on
+// messageId — prevents duplicates on retry.
+// ─────────────────────────────────────────
+
+model EmailOutbox {
+  id          String          @id @default(cuid())
+  messageId   String          @unique // deterministic — sha256(userId+type+day)
+  userId      String?
+  to          String
+  subject     String
+  html        String          @db.Text
+  text        String?         @db.Text
+  status      EmailOutboxStatus @default(PENDING)
+  attempts    Int             @default(0)
+  lastError   String?         @db.Text
+  sentAt      DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
+enum EmailOutboxStatus {
+  PENDING   // not yet sent
+  SENT      // Resend API confirmed
+  FAILED    // max retries exceeded
+  SUPPRESSED // recipient bounced / complained
+}
+
+// ─────────────────────────────────────────
+// PROMO CODE FREEZE — admin freeze control
+// Stripe coupon IDs can be frozen to stop all new redemptions.
+// ─────────────────────────────────────────
+
+model PromoCodeFreeze {
+  id         String   @id @default(cuid())
+  couponId   String   @unique // Stripe coupon ID
+  frozenBy   String   // admin userId
+  frozenAt   DateTime @default(now())
+  reason     String?  @db.Text
+  unfrozenAt DateTime?
+  unfrozenBy String?
+
+  @@index([couponId])
+  @@index([frozenAt])
 }

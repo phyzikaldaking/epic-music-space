@@ -34,13 +34,18 @@ export async function GET(req: NextRequest) {
   // scaffold until that's wired up.
   const providerAccountId = `id-${code.slice(0, 8)}`;
 
-  await upsertConnectedAccount({
-    userId: verified.userId,
-    provider,
-    providerAccountId,
-    accessToken: `token-${code}`,
-    meta: { needsRealOAuthExchange: true, linkedAt: new Date().toISOString() },
-  });
+  try {
+    await upsertConnectedAccount({
+      userId: verified.userId,
+      provider,
+      providerAccountId,
+      accessToken: `token-${code}`,
+      meta: { needsRealOAuthExchange: true, linkedAt: new Date().toISOString() },
+    });
+  } catch (err) {
+    console.error("[social.callback] failed to store connected account", err);
+    return new NextResponse("Social connections are not configured on this deployment.", { status: 503 });
+  }
 
   const response = NextResponse.redirect(new URL("/studio/settings?social=connected", getSiteUrl()));
   response.cookies.set(getSocialStateCookieName(), "", {

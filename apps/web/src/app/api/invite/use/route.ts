@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
+import { strictLimiter } from "@/lib/rateLimit";
 
 const schema = z.object({
   code: z.string().min(1).max(20).transform((s) => s.trim().toUpperCase()),
@@ -16,6 +17,22 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Strict per-(user, IP) limiter — guessing invite codes is a real
+  // attack surface (each one is worth referral credit + invite badges).
+  // Per-user caps churn from one hijacked session; per-IP catches
+  // distributed brute-forcing across logged-in accounts.
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  try {
+    await strictLimiter.consume(`invite-use:user:${session.user.id}`);
+    await strictLimiter.consume(`invite-use:ip:${ip}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many invite attempts. Try again in a minute." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
   }
 
   const body = await req.json().catch(() => ({}));

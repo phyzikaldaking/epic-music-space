@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+
+export const metadata: Metadata = {
+  title: "Your studio — Epic Music Space",
+  description: "Short-link to your own studio profile or dashboard.",
+  robots: { index: false, follow: false },
+};
 
 /**
  * Short-link to the current user's public studio (or to /dashboard if

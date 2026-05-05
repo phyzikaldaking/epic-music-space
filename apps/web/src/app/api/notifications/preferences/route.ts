@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { moderateLimiter } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -49,6 +50,16 @@ export async function PATCH(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Cap per-user write throughput so a runaway client (or a hostile
+  // session) can't churn the prefs table or drown the audit trail.
+  try {
+    await moderateLimiter.consume(`notif-prefs:${session.user.id}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many preference updates — try again in a minute." },
+      { status: 429 },
+    );
   }
   let raw: unknown;
   try {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isSocialEncryptionConfigured } from "@/lib/crypto";
 import { getSiteUrl } from "@/lib/site";
 import {
   buildSocialOAuthState,
@@ -19,6 +20,15 @@ export async function GET(
   if (provider !== "twitter" && provider !== "instagram") {
     return new NextResponse("Unknown provider", { status: 400 });
   }
+
+  // Fail closed on Vercel deployments: never let OAuth flows proceed if we'd
+  // have to store tokens without encryption.
+  const vercelEnv = process.env.VERCEL_ENV?.trim();
+  const prodLike = vercelEnv === "production" || vercelEnv === "preview";
+  if (prodLike && !isSocialEncryptionConfigured()) {
+    return new NextResponse("Social connections are not configured (missing SOCIAL_ENCRYPTION_KEY).", { status: 503 });
+  }
+
   const { state, maxAgeSeconds } = buildSocialOAuthState(session.user.id, provider);
   const stateCookie = getSocialStateCookieName();
   const base = getSiteUrl();
