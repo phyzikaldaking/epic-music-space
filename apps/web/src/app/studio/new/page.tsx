@@ -36,7 +36,7 @@ export default async function StudioNewPage() {
           </div>
           <div className="mt-8 flex flex-col sm:flex-row justify-center gap-3">
             <Link
-              href="/auth/signup?role=ARTIST&callbackUrl=/studio/new"
+              href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew"
               className="rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white hover:bg-brand-600 transition"
             >
               Create Artist Account →

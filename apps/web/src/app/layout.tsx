@@ -26,22 +26,22 @@ export const metadata: Metadata = {
   creator: "Epic Music Space",
   publisher: "Epic Music Space",
   title: {
-    default: "Epic Music Space | Cinematic Music Licensing",
+    default: "Epic Music Space | Live Listening Rooms for Artists",
     template: "%s | Epic Music Space",
   },
   description:
-    "License cinematic space music, preview independent tracks, and review clear digital music licensing terms before checkout.",
+    "Host live listening rooms, upload independent music, and sell clear digital licenses from one artist studio.",
   keywords: [
-    "epic space music",
-    "cinematic music licensing",
-    "sci-fi trailer music",
+    "live listening rooms",
+    "artist listening party",
+    "independent music licensing",
     "independent music marketplace",
-    "game music licensing",
+    "artist studio platform",
   ],
   openGraph: {
-    title: "Epic Music Space | Cinematic Music Licensing",
+    title: "Epic Music Space | Live Listening Rooms for Artists",
     description:
-      "Preview and license cinematic independent music with clear digital rights terms.",
+      "Host listening sessions, upload tracks, and sell clear digital licenses from one artist studio.",
     url: siteUrl,
     siteName: "Epic Music Space",
     images: [
@@ -49,16 +49,16 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Epic Music Space cinematic music licensing",
+        alt: "Epic Music Space live listening rooms for artists",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Epic Music Space | Cinematic Music Licensing",
+    title: "Epic Music Space | Live Listening Rooms for Artists",
     description:
-      "Preview and license cinematic independent music with clear digital rights terms.",
+      "Host listening sessions, upload tracks, and sell clear digital licenses from one artist studio.",
     images: ["/opengraph-image"],
   },
   robots: {

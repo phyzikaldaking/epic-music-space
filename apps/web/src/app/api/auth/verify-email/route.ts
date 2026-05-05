@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSiteUrl } from "@/lib/site";
 import { emitAuthEvent } from "@/lib/authObservability";
+import { appendCallbackParam, sanitizeCallbackPath } from "@/lib/safeCallback";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const token = searchParams.get("token");
   const email = searchParams.get("email");
+  const callbackUrl = sanitizeCallbackPath(searchParams.get("callbackUrl"));
   const normalizedEmail = email?.trim().toLowerCase();
   const base = getSiteUrl();
   const ip =
@@ -61,5 +63,7 @@ export async function GET(req: NextRequest) {
     email: normalizedEmail,
   });
 
-  return NextResponse.redirect(`${base}/auth/signin?verified=true`);
+  return NextResponse.redirect(
+    `${base}${appendCallbackParam("/auth/signin?verified=true", callbackUrl)}`,
+  );
 }

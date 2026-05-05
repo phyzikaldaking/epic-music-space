@@ -4,12 +4,14 @@ import { Suspense, useState } from "react";
 import { useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { appendCallbackParam, sanitizeCallbackPath } from "@/lib/safeCallback";
 
 function VerifyEmailContent() {
   const params = useSearchParams();
   const error = params.get("error");
   const email = params.get("email") ?? "";
   const token = params.get("token") ?? "";
+  const callbackUrl = sanitizeCallbackPath(params.get("callbackUrl"));
   const emailFailed = params.get("emailFailed") === "1";
   const [resent, setResent] = useState(false);
   const [resending, setResending] = useState(false);
@@ -37,9 +39,9 @@ function VerifyEmailContent() {
 
   useEffect(() => {
     if (!token || !email) return;
-    const verifyUrl = `/api/auth/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+    const verifyUrl = `/api/auth/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`;
     window.location.replace(verifyUrl);
-  }, [token, email]);
+  }, [token, email, callbackUrl]);
 
   async function handleResend() {
     if (!resendEmail || resending || cooldownLeft > 0) return;
@@ -49,7 +51,7 @@ function VerifyEmailContent() {
       const res = await fetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: resendEmail }),
+        body: JSON.stringify({ email: resendEmail, callbackUrl }),
       });
 
       if (!res.ok) {
@@ -88,7 +90,7 @@ function VerifyEmailContent() {
         body="Please wait while we securely verify your account..."
         cta={
           <p className="text-sm text-white/45">
-            If this takes too long, click this direct link: <a className="text-brand-400 hover:underline" href={`/api/auth/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`}>verify now</a>
+            If this takes too long, click this direct link: <a className="text-brand-400 hover:underline" href={`/api/auth/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`}>verify now</a>
           </p>
         }
       />
@@ -166,7 +168,7 @@ function VerifyEmailContent() {
             Tip: check spam or promotions, and add <span className="text-white/60">noreply@epicmusicspace.com</span> to safe senders.
           </p>
           <p>
-            <Link href="/auth/signin" className="text-brand-400 hover:underline">
+            <Link href={appendCallbackParam("/auth/signin", callbackUrl)} className="text-brand-400 hover:underline">
               Back to sign in
             </Link>
           </p>

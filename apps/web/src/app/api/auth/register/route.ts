@@ -7,6 +7,7 @@ import { sendVerificationEmail } from "@/lib/email";
 import { randomBytes } from "crypto";
 import { strictLimiter } from "@/lib/rateLimit";
 import { emitAuthEvent } from "@/lib/authObservability";
+import { sanitizeCallbackPath } from "@/lib/safeCallback";
 
 function generateCode(): string {
   return randomBytes(5).toString("hex").toUpperCase(); // 10-char hex code
@@ -18,6 +19,7 @@ const registerSchema = z.object({
   password:   z.string().min(8).max(128),
   role:       z.enum(["LISTENER", "ARTIST", "PRODUCER", "ENGINEER", "LABEL"]).default("LISTENER"),
   inviteCode: z.string().max(20).optional(),
+  callbackUrl: z.string().max(500).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -51,8 +53,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, email, password, role, inviteCode } = parsed.data;
+    const { name, email, password, role, inviteCode, callbackUrl } = parsed.data;
     const normalizedEmail = email.trim().toLowerCase();
+    const safeCallbackUrl = sanitizeCallbackPath(callbackUrl);
 
     const passwordHash = await bcrypt.hash(password, 12);
 
@@ -139,7 +142,11 @@ export async function POST(req: NextRequest) {
         expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
     });
-    const verificationEmail = await sendVerificationEmail(normalizedEmail, verifyToken);
+    const verificationEmail = await sendVerificationEmail(
+      normalizedEmail,
+      verifyToken,
+      safeCallbackUrl,
+    );
 
     if (!verificationEmail.ok) {
       await emitAuthEvent("verification_email_send_failed", {
@@ -181,4 +188,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-

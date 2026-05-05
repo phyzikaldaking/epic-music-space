@@ -20,7 +20,13 @@ const DISTRICTS: { value: District; label: string; icon: string; desc: string }[
   { value: "LABEL_ROW", label: "Label Row", icon: "🏢", desc: "Label-backed artists and working professionals." },
 ];
 
-export default function StudioSetupForm({ studio }: { studio: StudioData | null }) {
+export default function StudioSetupForm({
+  studio,
+  nextPath = "/studio",
+}: {
+  studio: StudioData | null;
+  nextPath?: string;
+}) {
   const router = useRouter();
 
   const [username, setUsername] = useState(studio?.username ?? "");
@@ -105,7 +111,7 @@ export default function StudioSetupForm({ studio }: { studio: StudioData | null 
         return;
       }
 
-      router.push(`/studio/${data.username}`);
+      router.push(nextPath);
     } catch {
       setError("Network error — please try again.");
     } finally {

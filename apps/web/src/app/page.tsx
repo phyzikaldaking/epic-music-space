@@ -11,9 +11,9 @@ import { CACHE_TAGS } from "@/lib/cacheTags";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Epic Music Space — Live Listening Parties for Artists & Their Fans",
+  title: "Epic Music Space — Live Listening Rooms for Independent Artists",
   description:
-    "Host live listening sessions for your fans, family, and friends across the world. Play your album, talk between tracks, take live questions, and turn drops into events. Battles, licensing, and royalties built in.",
+    "Host live listening sessions, upload music, and sell clear digital licenses from one artist studio. Turn every drop into a room fans can join, hear, and support.",
   alternates: { canonical: "/" },
 };
 
@@ -159,7 +159,7 @@ const premiumHomeCss = `
   background: rgba(34,211,238,0.12);
   box-shadow: 0 18px 42px rgba(34,211,238,0.16);
 }
-.vc-hero { min-height: 100vh; background: #050507; }
+.vc-hero { min-height: calc(100svh - 65px); background: #050507; }
 .vc-studio-photo {
   opacity: 0;
   filter: brightness(0.28) contrast(1.28) saturate(0.65) hue-rotate(10deg);
@@ -491,26 +491,6 @@ export default async function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
       />
 
-      <nav className="vc-nav" aria-label="Primary">
-        <Link href="/" className="vc-logo" aria-label="Epic Music Space Home">
-          EPIC MUSIC SPACE <span className="vc-logo-mark">EMS</span>
-        </Link>
-        <div className="vc-nav-links">
-          <Link href="/marketplace">Marketplace</Link>
-          <Link href="/leaderboard">Charts</Link>
-          <Link href="/versus">Versus</Link>
-          <Link href="/pricing">Pricing</Link>
-        </div>
-        <div className="vc-nav-cta">
-          <Link href="/auth/signin" className="vc-btn vc-btn-ghost vc-btn-nav">
-            Sign In
-          </Link>
-          <Link href="/auth/signup" className="vc-btn vc-btn-pink vc-btn-nav">
-            Get Started
-          </Link>
-        </div>
-      </nav>
-
       <section className="vc-hero">
         <div className="vc-stars" aria-hidden="true" />
         <Image
@@ -530,26 +510,25 @@ export default async function HomePage() {
         <div className="vc-horizon" aria-hidden="true" />
 
         <div className="vc-hero-content">
-          <p className="vc-eyebrow">For artists, producers, engineers &amp; the fans who back them</p>
+          <p className="vc-eyebrow">For independent artists ready to host the room</p>
           <h1 className="vc-hero-h1">
-            Throw a
+            Host the room.
             <br />
-            listening party.
+            Upload the song.
             <br />
-            Anywhere.
+            Sell the license.
           </h1>
           <p className="vc-hero-tagline">
-            Press play on your <span className="accent">album, unreleased track, or whole catalog</span>,
-            and talk between songs while fans, family, and friends from across the world
-            sit in the same room with you. Hand them the mic when you&apos;re ready.
-            Every listener is one click from licensing your music.
+            Open a live listening session for your <span className="accent">album, unreleased track, or catalog</span>.
+            Talk between songs, bring fans into the moment, and turn every listener
+            into one click from licensing your music.
           </p>
           <div className="vc-hero-ctas">
             <Link href="/rooms/new" className="vc-btn vc-btn-pink">
               Open a Room →
             </Link>
-            <Link href="/studio/live" className="vc-btn vc-btn-ghost">
-              Drop Into a Room
+            <Link href="/studio/new" className="vc-btn vc-btn-ghost">
+              Upload Your First Track
             </Link>
           </div>
         </div>
@@ -615,50 +594,46 @@ export default async function HomePage() {
 
       <section className="vc-section vc-platform-section">
         <div className="vc-container">
-          <p className="vc-section-eyebrow">Built for everyone in the studio</p>
+          <p className="vc-section-eyebrow">Artist first journey</p>
           <h2 className="vc-section-title">
-            Artists, producers, engineers — <span className="glow">and the fans who pay them</span>
+            From first upload to first live room — <span className="glow">one clear path.</span>
           </h2>
           <p className="vc-section-sub">
-            Pick the lane that fits how you make money. Your storefront, your
-            audience, your cut. The fans get to discover you and support the
-            people who actually make the music.
+            EMS keeps the artist setup tight: claim your studio, publish a track,
+            set simple licensing terms, then invite fans into the room where the
+            music is already playing.
           </p>
           <div className="vc-platform-grid">
             <article className="vc-platform-card">
-              <span className="vc-platform-num">🎤 Artists</span>
-              <h3>Drop tracks. Host listening parties. Get paid.</h3>
+              <span className="vc-platform-num">01 / Studio</span>
+              <h3>Claim your artist room.</h3>
               <p>
-                Upload songs, set license prices, run live rooms, win Versus
-                battles, sell ad placements on your studio. Keep 90% of every
-                sale. <Link href="/auth/signup?role=ARTIST" className="vc-feat-link">Join as Artist →</Link>
+                Create your artist profile, choose your public studio URL, and
+                give fans one place to follow your music. <Link href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew" className="vc-feat-link">Start as Artist →</Link>
               </p>
             </article>
             <article className="vc-platform-card">
-              <span className="vc-platform-num">🎛️ Producers</span>
-              <h3>Sell beats, kits, templates, and project files.</h3>
+              <span className="vc-platform-num">02 / Upload</span>
+              <h3>Publish the track.</h3>
               <p>
-                List instant-download beats, drum kits, sample packs, and FL /
-                Logic / Ableton templates. Buyers download the second the
-                payment clears. <Link href="/auth/signup?role=PRODUCER" className="vc-feat-link">Join as Producer →</Link>
+                Upload audio, add cover art, set genre details, and preview the
+                song before it goes live. <Link href="/studio/new" className="vc-feat-link">Upload Track →</Link>
               </p>
             </article>
             <article className="vc-platform-card">
-              <span className="vc-platform-num">🎚️ Engineers</span>
-              <h3>Offer mixing, mastering, and lessons.</h3>
+              <span className="vc-platform-num">03 / License</span>
+              <h3>Set terms fans understand.</h3>
               <p>
-                List your mix, master, mix+master bundle, or 1:1 services.
-                Set your turnaround. Buyers brief you and pay through Stripe;
-                you deliver and get paid out weekly. <Link href="/auth/signup?role=ENGINEER" className="vc-feat-link">Join as Engineer →</Link>
+                Pick the license price, supply, and share shown on the track
+                page so supporters know exactly what they are backing.
               </p>
             </article>
             <article className="vc-platform-card">
-              <span className="vc-platform-num">🎧 Fans</span>
-              <h3>Discover the next wave first.</h3>
+              <span className="vc-platform-num">04 / Go Live</span>
+              <h3>Open the listening room.</h3>
               <p>
-                Drop into live rooms, vote in battles, license tracks, and
-                back artists with tips. Every fan in the room is one tap from
-                supporting the people they listen to. <Link href="/auth/signup?role=LISTENER" className="vc-feat-link">Join as Fan →</Link>
+                Host the drop, talk between songs, pass the mic, and keep the
+                license action one tap away while fans are still listening.
               </p>
             </article>
           </div>
@@ -758,7 +733,7 @@ export default async function HomePage() {
                 not playlist politics. Drop a track, win a battle, and watch
                 yourself climb past artists with ten times your followers.
               </p>
-              <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
+              <Link href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew" className="vc-btn vc-btn-pink">
                 Get on the Charts →
               </Link>
             </div>
@@ -818,7 +793,7 @@ export default async function HomePage() {
                 </div>
               </div>
               <Link
-                href="/auth/signup?role=ARTIST"
+                href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew"
                 className="vc-btn vc-btn-pink vc-split-cta"
               >
                 Open Your Studio →
@@ -879,8 +854,8 @@ export default async function HomePage() {
                 you, hearing it together. Subscription tier sets your room size,
                 from intimate listening parties to thousand-strong releases.
               </p>
-              <Link href="/studio/live" className="vc-feat-link vc-feat-link-pink">
-                See Live Rooms →
+              <Link href="/rooms/new" className="vc-feat-link vc-feat-link-pink">
+                Open a Room →
               </Link>
             </div>
             <div className="vc-feat-card">
@@ -1027,8 +1002,8 @@ export default async function HomePage() {
             <Link href="/rooms/new" className="vc-btn vc-btn-pink">
               Open a Room →
             </Link>
-            <Link href="/studio/live" className="vc-btn vc-btn-chrome">
-              Drop Into a Live Room
+            <Link href="/studio/new" className="vc-btn vc-btn-chrome">
+              Upload Your First Track
             </Link>
           </div>
         </div>

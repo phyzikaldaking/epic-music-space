@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { sanitizeCallbackPath } from "@/lib/safeCallback";
 
 const ROLES = [
   {
@@ -77,6 +78,7 @@ function SignUpContent() {
 
   // Read invite code from URL param
   const inviteCode = searchParams.get("invite") ?? "";
+  const callbackUrl = sanitizeCallbackPath(searchParams.get("callbackUrl"));
 
   // Pre-select role from query param (e.g. ?role=ARTIST from homepage CTA)
   useEffect(() => {
@@ -133,7 +135,12 @@ function SignUpContent() {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, role: selectedRole, inviteCode: inviteCode || undefined }),
+      body: JSON.stringify({
+        ...form,
+        role: selectedRole,
+        inviteCode: inviteCode || undefined,
+        callbackUrl,
+      }),
     });
 
     const data = await res.json();
@@ -146,11 +153,11 @@ function SignUpContent() {
 
     if (data.verificationEmailSent === false) {
       // Email not sent — redirect to verify page with flag so user can resend
-      router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}&emailFailed=1`);
+      router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}&emailFailed=1&callbackUrl=${encodeURIComponent(callbackUrl)}`);
       return;
     }
 
-    router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}`);
+    router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
   }
 
   return (
@@ -423,4 +430,3 @@ export default function SignUpPage() {
     </Suspense>
   );
 }
-

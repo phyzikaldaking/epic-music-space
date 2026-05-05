@@ -10,7 +10,7 @@ export default async function StudioIndexPage() {
   const session = await auth();
 
   if (!session?.user?.id) {
-    redirect("/auth/signup?callbackUrl=/studio");
+    redirect("/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew");
   }
 
   const studio = await prisma.studio.findFirst({

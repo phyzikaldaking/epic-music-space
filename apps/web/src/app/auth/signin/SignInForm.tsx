@@ -4,12 +4,13 @@ import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { appendCallbackParam, sanitizeCallbackPath } from "@/lib/safeCallback";
 
 function SignInContent({ googleEnabled }: { googleEnabled: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
   const verified = params.get("verified") === "true";
-  const callbackUrl = params.get("callbackUrl") ?? "/dashboard";
+  const callbackUrl = sanitizeCallbackPath(params.get("callbackUrl"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -60,7 +61,7 @@ function SignInContent({ googleEnabled }: { googleEnabled: boolean }) {
               {error.includes("verify your email") && (
                 <div className="mt-2">
                   <Link
-                    href={`/auth/verify-email?email=${encodeURIComponent(email)}`}
+                    href={`/auth/verify-email?email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`}
                     className="underline hover:text-red-300"
                   >
                     Resend link
@@ -136,7 +137,7 @@ function SignInContent({ googleEnabled }: { googleEnabled: boolean }) {
 
           <p className="mt-6 text-center text-sm text-white/40">
             Don&apos;t have an account?{" "}
-            <Link href="/auth/signup" className="text-brand-400 hover:underline">
+            <Link href={appendCallbackParam("/auth/signup", callbackUrl)} className="text-brand-400 hover:underline">
               Sign up
             </Link>
           </p>

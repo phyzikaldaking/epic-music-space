@@ -1,7 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(req: Request, { params }: { params: { provider: string } }) {
-  const provider = params.provider;
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ provider: string }> },
+) {
+  const { provider } = await params;
 
   if (provider === "twitter") {
     const clientId = process.env.TWITTER_CLIENT_ID;

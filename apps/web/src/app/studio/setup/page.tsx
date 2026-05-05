@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import StudioSetupForm from "./StudioSetupForm";
 import type { Metadata } from "next";
+import { sanitizeCallbackPath } from "@/lib/safeCallback";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +12,17 @@ export const metadata: Metadata = {
   description: "Complete your artist profile so fans can discover your music.",
 };
 
-export default async function StudioSetupPage() {
+export default async function StudioSetupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = await searchParams;
+  const nextPath = sanitizeCallbackPath(next, "/studio");
   const session = await auth();
   if (!session?.user?.id) {
-    redirect("/auth/signin?callbackUrl=/studio/setup");
+    const setupPath = `/studio/setup?next=${encodeURIComponent(nextPath)}`;
+    redirect(`/auth/signin?callbackUrl=${encodeURIComponent(setupPath)}`);
   }
 
   const studio = await prisma.studio.findFirst({
@@ -22,5 +30,5 @@ export default async function StudioSetupPage() {
     select: { username: true, bio: true, district: true, bannerUrl: true },
   });
 
-  return <StudioSetupForm studio={studio} />;
+  return <StudioSetupForm studio={studio} nextPath={nextPath} />;
 }

@@ -274,6 +274,19 @@ export default function UploadTrackForm() {
         <p className="mt-1 text-sm text-white/50">
           Publish your music to the EMS marketplace and start earning license royalties.
         </p>
+        <div className="mt-5 grid gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-xs font-bold uppercase tracking-[0.14em] text-white/55 sm:grid-cols-4">
+          {["Upload audio", "Set licensing", "Publish", "Open a room"].map((step, index) => (
+            <div
+              key={step}
+              className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2"
+            >
+              <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-500/20 text-[10px] text-brand-200">
+                {index + 1}
+              </span>
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

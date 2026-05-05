@@ -43,9 +43,16 @@ export async function sendPasswordResetEmail(email: string, token: string) {
   return { ok: true };
 }
 
-export async function sendVerificationEmail(email: string, token: string) {
+export async function sendVerificationEmail(
+  email: string,
+  token: string,
+  callbackUrl?: string,
+) {
   const base = getSiteUrl();
-  const url = `${base}/api/auth/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  const callbackParam = callbackUrl
+    ? `&callbackUrl=${encodeURIComponent(callbackUrl)}`
+    : "";
+  const url = `${base}/api/auth/verify-email?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}${callbackParam}`;
 
   if (!resend) {
     const missingProviderError = {

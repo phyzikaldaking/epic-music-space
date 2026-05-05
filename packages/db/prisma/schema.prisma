@@ -81,6 +81,7 @@ model User {
   posts              Post[]             @relation("PostAuthor")
   postComments       PostComment[]      @relation("PostCommentAuthor")
   postLikes          PostLike[]         @relation("PostLikeUser")
+  connectedAccounts  ConnectedAccount[]
 }
 
 enum Role {

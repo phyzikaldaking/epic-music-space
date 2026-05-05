@@ -4,6 +4,7 @@ import { sendVerificationEmail } from "@/lib/email";
 import { randomBytes } from "crypto";
 import { strictLimiter } from "@/lib/rateLimit";
 import { emitAuthEvent } from "@/lib/authObservability";
+import { sanitizeCallbackPath } from "@/lib/safeCallback";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,9 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : null;
+  const callbackUrl = sanitizeCallbackPath(
+    typeof body.callbackUrl === "string" ? body.callbackUrl : undefined,
+  );
   if (!email) {
     return NextResponse.json({ error: "Email is required." }, { status: 400 });
   }
@@ -54,7 +58,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  const sent = await sendVerificationEmail(email, token);
+  const sent = await sendVerificationEmail(email, token, callbackUrl);
 
   if (!sent.ok) {
     await emitAuthEvent("resend_email_send_failed", {

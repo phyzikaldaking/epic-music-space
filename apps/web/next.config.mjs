@@ -29,7 +29,7 @@ const securityHeaders = [
       // img-src: data: needed for inline SVGs/posters; blob: for in-page
       // preview of files the user just selected (cover/avatar previews).
       // Mux poster thumbnails live on image.mux.com.
-      "img-src 'self' data: blob: https://*.amazonaws.com https://*.supabase.co https://lh3.googleusercontent.com https://images.unsplash.com https://image.mux.com",
+      "img-src 'self' data: blob: https://epicmusicspace.com https://www.epicmusicspace.com https://*.amazonaws.com https://*.supabase.co https://lh3.googleusercontent.com https://images.unsplash.com https://image.mux.com",
       // media-src: blob: required by Mux player's MSE-based HLS playback.
       // Stream proxies: own origin (audio proxy) + Mux video CDN.
       "media-src 'self' blob: https://*.amazonaws.com https://*.supabase.co https://stream.mux.com https://*.mux.com",
@@ -72,6 +72,14 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "lh3.googleusercontent.com",
+      },
+      {
+        protocol: "https",
+        hostname: "epicmusicspace.com",
+      },
+      {
+        protocol: "https",
+        hostname: "www.epicmusicspace.com",
       },
       {
         protocol: "https",

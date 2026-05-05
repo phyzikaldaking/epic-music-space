@@ -14,7 +14,7 @@ export const metadata = {
 export default async function NewRoomPage() {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect("/auth/signin?callbackUrl=/rooms/new");
+    redirect("/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Frooms%2Fnew");
   }
 
   const [user, songs] = await Promise.all([
