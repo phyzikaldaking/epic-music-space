@@ -20,8 +20,6 @@ const config: CapacitorConfig = {
     allowsLinkPreview: false,
     scrollEnabled: true,
     contentInset: "automatic",
-    // Hardcoded build number; bump this with each App Store submission.
-    buildVersion: "1",
     // Use native scroll (bouncy rubber-band feel on iOS).
     preferredContentMode: "mobile",
   },

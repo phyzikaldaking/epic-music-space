@@ -61,7 +61,7 @@ jobs:
 
       - name: Capacitor sync (copy web assets to native)
         working-directory: apps/mobile
-        run: npx cap sync ios --no-open
+        run: npx cap sync ios
 
       - name: Install CocoaPods
         working-directory: apps/mobile/ios/App
@@ -154,7 +154,7 @@ jobs:
 
       - name: Capacitor sync (copy web assets to native)
         working-directory: apps/mobile
-        run: npx cap sync android --no-open
+        run: npx cap sync android
 
       - name: Upload to Play Store (internal track)
         env:

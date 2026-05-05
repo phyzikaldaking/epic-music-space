@@ -1,4 +1,5 @@
 node_modules
-android
-ios
 .DS_Store
+
+# Native iOS / Android projects are tracked. Build output and per-user
+# state are filtered by the platform .gitignore files inside each folder.
