@@ -15,12 +15,14 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [volume, setVolumeState] = useState(0.8);
   const [showVolume, setShowVolume] = useState(false);
 
   useEffect(() => {
-    const audio = new Audio(audioUrl);
+    // Assign the ref BEFORE attaching listeners so a fast unmount during
+    // listener-attachment can't leave a dangling Audio without our cleanup.
+    const audio = new Audio();
     audioRef.current = audio;
     audio.preload = "metadata";
     try {
@@ -30,35 +32,55 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
       /* older browsers — non-fatal */
     }
 
-    audio.addEventListener("loadedmetadata", () => {
-      setDuration(audio.duration);
-    });
-
-    audio.addEventListener("timeupdate", () => {
+    const onLoadedMeta = () => setDuration(audio.duration);
+    const onTime = () => {
       setCurrentTime(audio.currentTime);
-      if (audio.duration) {
-        setProgress((audio.currentTime / audio.duration) * 100);
-      }
-    });
-
-    audio.addEventListener("ended", () => {
+      if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
+    };
+    const onEnded = () => {
       setPlaying(false);
       setProgress(0);
       setCurrentTime(0);
       audio.currentTime = 0;
-    });
-
-    audio.addEventListener("waiting", () => setLoading(true));
-    audio.addEventListener("canplay", () => setLoading(false));
-    audio.addEventListener("error", () => {
-      setError(true);
+    };
+    const onWaiting = () => setLoading(true);
+    const onCanPlay = () => setLoading(false);
+    const onError = () => {
+      // MediaError codes: 1 ABORTED, 2 NETWORK, 3 DECODE, 4 SRC_NOT_SUPPORTED
+      const code = audio.error?.code;
+      const msg =
+        code === 2 ? "Network error — couldn't reach the audio."
+        : code === 3 ? "Audio file is corrupted or unsupported."
+        : code === 4 ? "This audio format isn't supported in your browser."
+        : "Preview unavailable.";
+      setError(msg);
       setLoading(false);
-    });
+    };
+
+    audio.addEventListener("loadedmetadata", onLoadedMeta);
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("waiting", onWaiting);
+    audio.addEventListener("canplay", onCanPlay);
+    audio.addEventListener("error", onError);
+
+    audio.src = audioUrl;
 
     return () => {
       audio.pause();
+      audio.removeEventListener("loadedmetadata", onLoadedMeta);
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("waiting", onWaiting);
+      audio.removeEventListener("canplay", onCanPlay);
+      audio.removeEventListener("error", onError);
       audio.src = "";
     };
+  }, [audioUrl]);
+
+  // Reset error state when a fresh src is requested.
+  useEffect(() => {
+    setError(null);
   }, [audioUrl]);
 
   function togglePlay() {
@@ -82,7 +104,7 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
         .catch(() => {
           setPlaying(false);
           setLoading(false);
-          setError(true);
+          setError("Couldn't start playback. Click again to retry.");
         });
     }
   }
@@ -127,8 +149,8 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
   if (error) {
     return (
       <div className="relative rounded-2xl bg-[#05070d] p-2 shadow-2xl shadow-black/40 ring-1 ring-white/10">
-        <div className="rounded-xl border border-red-400/20 bg-black px-5 py-8 text-center text-sm text-red-300/80 shadow-inner">
-          Preview unavailable
+        <div className="rounded-xl border border-red-400/20 bg-black px-5 py-8 text-center text-sm text-red-300/80 shadow-inner" role="alert">
+          {error}
         </div>
         <div className="mx-auto h-3 w-20 rounded-b-xl bg-white/10" />
       </div>

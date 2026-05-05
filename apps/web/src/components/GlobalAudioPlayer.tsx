@@ -32,6 +32,11 @@ export default function GlobalAudioPlayer() {
   const [showQueue, setShowQueue] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
 
+  // Defensive clamp: progress can be NaN/undefined for an instant before
+  // the first timeupdate event fires, which renders "NaN%" in the CSS var
+  // and breaks the bar visually.
+  const safeProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0;
+
   if (!currentSong) return null;
 
   return (
@@ -85,7 +90,7 @@ export default function GlobalAudioPlayer() {
         >
           <div
             className="h-full bg-gradient-to-r from-brand-500 to-accent-400 transition-all dyn-w"
-            style={{ "--dyn-w": `${progress}%` } as React.CSSProperties}
+            style={{ "--dyn-w": `${safeProgress}%` } as React.CSSProperties}
           />
         </div>
 

@@ -6,6 +6,12 @@ import { moderateLimiter, strictLimiter } from "@/lib/rateLimit";
 import { getMuxClient } from "@/lib/mux";
 import { enqueueNotification } from "@/lib/queues";
 
+// In-process cache for Mux upload ownership lookups. Keyed by uploadId,
+// value carries the passthrough (= userId) and expiry. Lives only for the
+// node lifetime — Vercel functions reuse instances under Fluid Compute,
+// so this still meaningfully reduces Mux API calls under burst traffic.
+const muxUploadOwnerCache = new Map<string, { passthrough: string; expiresAt: number }>();
+
 const createPostSchema = z.object({
   body: z.string().min(1, "Post can't be empty").max(2000),
   imageUrl: z.string().url().optional(),
@@ -142,6 +148,10 @@ export async function POST(req: NextRequest) {
   // If a video upload is claimed, verify it actually belongs to the caller —
   // we set passthrough = userId when creating the upload. Without this check
   // someone could PUT a post with another user's uploadId and steal the video.
+  //
+  // The Mux retrieve() call is cached for 5 minutes per uploadId so that a
+  // burst of post-create attempts from a flaky client (or a malicious one
+  // probing random uploadIds) can't run up our Mux API quota.
   if (muxUploadId) {
     const mux = getMuxClient();
     if (!mux) {
@@ -151,8 +161,28 @@ export async function POST(req: NextRequest) {
       );
     }
     try {
-      const upload = await mux.video.uploads.retrieve(muxUploadId);
-      const passthrough = upload.new_asset_settings?.passthrough;
+      const cached = muxUploadOwnerCache.get(muxUploadId);
+      let passthrough: string | undefined;
+      if (cached && cached.expiresAt > Date.now()) {
+        passthrough = cached.passthrough;
+      } else {
+        const upload = await mux.video.uploads.retrieve(muxUploadId);
+        passthrough = upload.new_asset_settings?.passthrough as string | undefined;
+        muxUploadOwnerCache.set(muxUploadId, {
+          passthrough: passthrough ?? "",
+          expiresAt: Date.now() + 5 * 60 * 1000,
+        });
+        // Cap memory: when the map grows past 5k entries, drop the oldest
+        // half. Map iteration order is insertion order, so this is FIFO.
+        if (muxUploadOwnerCache.size > 5000) {
+          const drop = Math.floor(muxUploadOwnerCache.size / 2);
+          let i = 0;
+          for (const k of muxUploadOwnerCache.keys()) {
+            if (i++ >= drop) break;
+            muxUploadOwnerCache.delete(k);
+          }
+        }
+      }
       if (passthrough !== session.user.id) {
         return NextResponse.json(
           { error: "Upload does not belong to you" },

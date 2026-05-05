@@ -21,16 +21,28 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      // 'unsafe-inline'/'unsafe-eval' kept for Next.js dev + framework hydration.
+      // Worth migrating to a nonce-based CSP in a follow-up; for now we keep
+      // them consistent with current Next.js + Stripe.js requirements.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https://*.amazonaws.com https://*.supabase.co https://lh3.googleusercontent.com https://images.unsplash.com",
-      "media-src 'self' blob: https://*.amazonaws.com https://*.supabase.co",
-      "connect-src 'self' https://*.supabase.co https://api.openai.com https://api.stripe.com https://checkout.stripe.com",
-      "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com",
+      // img-src: data: needed for inline SVGs/posters; blob: for in-page
+      // preview of files the user just selected (cover/avatar previews).
+      // Mux poster thumbnails live on image.mux.com.
+      "img-src 'self' data: blob: https://*.amazonaws.com https://*.supabase.co https://lh3.googleusercontent.com https://images.unsplash.com https://image.mux.com",
+      // media-src: blob: required by Mux player's MSE-based HLS playback.
+      // Stream proxies: own origin (audio proxy) + Mux video CDN.
+      "media-src 'self' blob: https://*.amazonaws.com https://*.supabase.co https://stream.mux.com https://*.mux.com",
+      // connect-src: add Mux stream + Mux Data analytics (litix.io).
+      "connect-src 'self' https://*.supabase.co https://api.openai.com https://api.stripe.com https://checkout.stripe.com https://stream.mux.com https://*.mux.com https://*.litix.io",
+      // frame-src: Stripe Checkout/Elements + Mux player iframe + supported
+      // embeds we render via EmbeddedAudioPreview (YouTube/Vimeo/SoundCloud/Spotify).
+      "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com https://*.mux.com https://www.youtube.com https://player.vimeo.com https://w.soundcloud.com https://open.spotify.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "object-src 'none'",
       "font-src 'self' https://fonts.gstatic.com",
+      "worker-src 'self' blob:",
     ].join("; "),
   },
 ];

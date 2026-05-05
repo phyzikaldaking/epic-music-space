@@ -1,27 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
+import { lenientLimiter } from "@/lib/rateLimit";
+import { publicSongs, type SongLike } from "@/lib/serializeSong";
 import { prisma } from "@/lib/prisma";
-import { z } from "zod";
-import { enqueueAiScoring, enqueueAnalytics } from "@/lib/queues";
-import { cacheGet, cacheSet, cacheDel, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
-import { strictLimiter, lenientLimiter } from "@/lib/rateLimit";
-import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
-import { getActiveLimits } from "@/lib/tierLimits";
-import { publicSong, publicSongs, type SongLike } from "@/lib/serializeSong";
-
-const createSongSchema = z.object({
-  title: z.string().min(1).max(200),
-  artist: z.string().min(1).max(200),
-  genre: z.string().max(100).optional(),
-  description: z.string().max(2000).optional(),
-  audioUrl: z.string().url(),
-  coverUrl: z.string().url().optional(),
-  bpm: z.coerce.number().int().min(20).max(999).optional(),
-  key: z.string().max(10).optional(),
-  licensePrice: z.coerce.number().min(0.5).max(100000),
-  revenueSharePct: z.coerce.number().min(0.01).max(100),
-  totalLicenses: z.coerce.number().int().min(1).max(10000).default(100),
-});
 
 export async function GET(req: NextRequest) {
   const ip =
@@ -54,129 +35,13 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(publicSongs(songs));
 }
 
-export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "unknown";
-
-  try {
-    await strictLimiter.consume(ip);
-  } catch {
-    return NextResponse.json(
-      { error: "Too many requests. Please slow down." },
-      { status: 429, headers: { "Retry-After": "60" } }
-    );
-  }
-
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, subscriptionTier: true, trialExpiresAt: true },
-  });
-  if (!user || user.role === "LISTENER") {
-    return NextResponse.json(
-      { error: "Only artists can upload songs." },
-      { status: 403 }
-    );
-  }
-
-  // Enforce tier song upload limits
-  const limits = getActiveLimits(user);
-  if (limits.maxSongs < 999_999) {
-    const songCount = await prisma.song.count({
-      where: { artistId: session.user.id, isActive: true },
-    });
-    if (songCount >= limits.maxSongs) {
-      return NextResponse.json(
-        {
-          error: `Your ${user.subscriptionTier} plan allows up to ${limits.maxSongs} active song${limits.maxSongs === 1 ? "" : "s"}. Upgrade at /pricing to upload more.`,
-        },
-        { status: 403 }
-      );
-    }
-  }
-
-  const body = await req.json();
-  const parsed = createSongSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid input" },
-      { status: 400 }
-    );
-  }
-
-  const song = await prisma.song.create({
-    data: {
-      ...parsed.data,
-      artistId: session.user.id,
-    },
-  });
-
-  // Auto-create a Studio for the artist if they don't have one yet
-  const existingStudio = await prisma.studio.findFirst({
-    where: { userId: session.user.id },
-    select: { id: true },
-  });
-  if (!existingStudio) {
-    const baseSlug = (parsed.data.artist ?? "artist")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 28) || "artist";
-    const taken = await prisma.studio.findFirst({ where: { username: baseSlug }, select: { id: true } });
-    const username = taken ? `${baseSlug}-${session.user.id.slice(-4)}` : baseSlug;
-    await prisma.studio.create({
-      data: { userId: session.user.id, username },
-    }).catch(() => { /* race condition — another request already created it */ });
-  }
-
-  // Invalidate trending cache
-  await cacheDel(CACHE_KEYS.trendingSongs);
-
-  // Enqueue background AI scoring job
-  await enqueueAiScoring(song.id);
-
-  // Enqueue analytics
-  await enqueueAnalytics({
-    event: "song_uploaded",
-    userId: session.user.id,
-    songId: song.id,
-    timestamp: new Date().toISOString(),
-  });
-
-  // Broadcast new song to realtime listeners
-  const supabase = createServerSupabaseClient();
-  if (supabase) {
-    await supabase.channel(CHANNELS.songs).send({
-      type: "broadcast",
-      event: "new_song",
-      payload: {
-        id: song.id,
-        title: song.title,
-        artist: song.artist,
-        coverUrl: song.coverUrl ?? null,
-        licensePrice: Number(song.licensePrice),
-        genre: song.genre ?? null,
-      },
-    });
-    await supabase.channel(CHANNELS.marketplace).send({
-      type: "broadcast",
-      event: "new_song",
-      payload: {
-        id: song.id,
-        title: song.title,
-        artist: song.artist,
-        coverUrl: song.coverUrl ?? null,
-      },
-    });
-  }
-
-  return NextResponse.json(publicSong(song), { status: 201 });
+/**
+ * POST /api/songs is deprecated. The canonical create endpoint is
+ * `/api/songs/create` (richer schema: stems, legacy, free downloads).
+ * Redirect with 308 so any straggler clients get auto-forwarded with
+ * their request body intact.
+ */
+export function POST() {
+  return NextResponse.redirect(new URL("/api/songs/create", "https://epicmusicspace.com"), 308);
 }
 

@@ -45,14 +45,17 @@ export default function PostCard(props: PostCardProps) {
   const [videoStatus, setVideoStatus] = useState(props.videoStatus);
   const [muxPlaybackId, setMuxPlaybackId] = useState(props.muxPlaybackId);
   const [videoAspectRatio, setVideoAspectRatio] = useState(props.videoAspectRatio);
+  const [pollExhausted, setPollExhausted] = useState(false);
+  const [pollEpoch, setPollEpoch] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Poll the post API while the video is uploading/processing so the user
   // sees the player auto-appear without having to refresh. Stops once the
-  // video is READY/FAILED or the component unmounts. Backs off after 5
-  // minutes of polling (Mux usually finishes well under a minute).
+  // video is READY/FAILED or the component unmounts. Gives up after 5
+  // minutes; the user can hit "Check again" to start a fresh poll cycle.
   useEffect(() => {
     if (videoStatus !== "UPLOADING" && videoStatus !== "PROCESSING") return;
+    setPollExhausted(false);
     let elapsedMs = 0;
     const intervalMs = 4000;
     const giveUpAfterMs = 5 * 60 * 1000;
@@ -60,6 +63,7 @@ export default function PostCard(props: PostCardProps) {
       elapsedMs += intervalMs;
       if (elapsedMs > giveUpAfterMs) {
         if (pollRef.current) clearInterval(pollRef.current);
+        setPollExhausted(true);
         return;
       }
       try {
@@ -83,7 +87,7 @@ export default function PostCard(props: PostCardProps) {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [props.id, videoStatus]);
+  }, [props.id, videoStatus, pollEpoch]);
 
   const profileHref = props.author.studio?.username
     ? `/studio/${props.author.studio.username}`
@@ -204,9 +208,25 @@ export default function PostCard(props: PostCardProps) {
           ) : (
             <div className="flex aspect-video items-center justify-center text-sm text-white/50">
               <div className="text-center">
-                <div className="mb-2 inline-block h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                <p>Encoding video…</p>
-                <p className="mt-1 text-xs text-white/30">It&apos;ll appear here automatically when ready.</p>
+                {pollExhausted ? (
+                  <>
+                    <div className="mb-2 text-2xl" aria-hidden>⏱️</div>
+                    <p>Still encoding — taking longer than usual.</p>
+                    <button
+                      type="button"
+                      onClick={() => setPollEpoch((n) => n + 1)}
+                      className="mt-3 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10"
+                    >
+                      Check again
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="mb-2 inline-block h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    <p>Encoding video…</p>
+                    <p className="mt-1 text-xs text-white/30">It&apos;ll appear here automatically when ready.</p>
+                  </>
+                )}
               </div>
             </div>
           )}
