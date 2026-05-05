@@ -48,6 +48,12 @@ export default async function AdminPage({
           >
             Songs
           </a>
+          <a
+            href="/admin/moderation"
+            className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20 transition"
+          >
+            Moderation Queue
+          </a>
         </div>
       </div>
 

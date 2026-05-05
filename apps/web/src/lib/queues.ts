@@ -4,6 +4,7 @@ import { QUEUE_NAMES } from "./queueNames";
 import { prisma } from "./prisma";
 import type { Prisma } from "@ems/db";
 import { retry } from "./resilience";
+import { outboxMessageId } from "./emailOutbox";
 
 const connection = getRedis();
 
@@ -150,7 +151,6 @@ export async function enqueueNotification(data: NotificationJobData) {
         });
         if (!user?.email || !user.emailVerified || user.emailBounced) return;
 
-        const { outboxMessageId } = await import("@/app/api/cron/flush-email-outbox/route");
         const messageId = outboxMessageId(data.userId, data.type);
 
         // Upsert so repeated calls are idempotent

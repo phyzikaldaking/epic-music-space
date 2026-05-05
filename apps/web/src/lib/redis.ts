@@ -23,7 +23,10 @@ function hasUsableRedisUrl(value: string): boolean {
  * All callers must handle the null case; Redis features degrade gracefully.
  */
 export function getRedis(): Redis | null {
-  const url = process.env.REDIS_URL;
+  // Vercel/CI env entries are sometimes pasted with wrapping quotes. Strip
+  // them so a valid `redis://` URL doesn't get rejected.
+  const raw = process.env.REDIS_URL ?? "";
+  const url = raw.trim().replace(/^['"]|['"]$/g, "");
   if (!url || !hasUsableRedisUrl(url)) return null;
 
   if (!redis || redisUrl !== url) {

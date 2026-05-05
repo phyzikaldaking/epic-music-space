@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCreatorWalletSummary } from "@/lib/wallet";
 import { stripe } from "@/lib/stripe";
 import { strictLimiter } from "@/lib/rateLimit";
+import { computeRiskScore, riskBlockResponse } from "@/lib/riskScore";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -27,6 +28,12 @@ export async function POST(req: NextRequest) {
   }
 
   const wallet = await getCreatorWalletSummary(userId);
+
+  // Risk scoring — block HIGH-risk / suspended accounts from withdrawing
+  const risk = await computeRiskScore(userId);
+  if (risk.blocked || risk.level === "HIGH") {
+    return NextResponse.json(riskBlockResponse(risk, "payout-request"), { status: 403 });
+  }
 
   if (!wallet.payoutReady) {
     return NextResponse.json({ error: "Minimum payout not reached" }, { status: 400 });

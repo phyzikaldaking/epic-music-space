@@ -6,6 +6,7 @@ import { rateLimit } from "@/lib/rateLimitInline";
 import { z } from "zod";
 import { getSiteUrl } from "@/lib/site";
 import { validateTrustSafetyInput } from "@/lib/trustSafety";
+import { computeRiskScore, riskBlockResponse } from "@/lib/riskScore";
 
 const createAdSchema = z.object({
   location: z.enum([
@@ -49,6 +50,12 @@ export async function POST(req: NextRequest) {
 
   const blocked = await rateLimit("strict", `ads:purchase:${session.user.id}`);
   if (blocked) return blocked;
+
+  // Risk scoring — block HIGH-risk / suspended accounts from buying ads
+  const risk = await computeRiskScore(session.user.id);
+  if (risk.blocked || risk.level === "HIGH") {
+    return NextResponse.json(riskBlockResponse(risk, "ad-purchase"), { status: 403 });
+  }
 
   const body = await req.json();
   const parsed = createAdSchema.safeParse(body);

@@ -1,4 +1,3 @@
-import { createHash } from "crypto";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -84,17 +83,4 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({ sent, failed, suppressed, total: pending.length });
-}
-
-/**
- * Deterministic messageId for deduplication.
- * Same userId + type + calendar day → same ID → safe to call multiple times.
- */
-export function outboxMessageId(
-  userId: string,
-  type: string,
-  date: Date = new Date(),
-): string {
-  const day = date.toISOString().slice(0, 10);
-  return createHash("sha256").update(`${userId}:${type}:${day}`).digest("hex");
 }
