@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { getStoreLink } from "@/lib/mobileApp";
 
 /**
  * Smart app download banner.
@@ -67,14 +68,11 @@ export default function AppDownloadBanner() {
 
   if (!visible) return null;
 
-  const storeHref =
-    platform === "ios"
-      ? "https://apps.apple.com/app/epic-music-space/id0000000000" // replace with real App Store ID
-      : platform === "android"
-        ? "https://play.google.com/store/apps/details?id=com.epicmusicspace.app" // replace with real Play Store ID
-        : "/get-the-app";
-
-  const storeLabel = platform === "ios" ? "App Store" : "Google Play";
+  const store = platform ? getStoreLink(platform) : null;
+  const storeHref = store?.available && store.href ? store.href : "/get-the-app";
+  const storeLabel = store?.available ? store.label : "release page";
+  const ctaLabel = store?.available ? "Get App" : "See Status";
+  const subcopy = store?.available ? `Free on the ${storeLabel}` : store?.statusText ?? "Release status";
 
   return (
     <div
@@ -97,21 +95,21 @@ export default function AppDownloadBanner() {
       {/* Copy */}
       <div className="min-w-0 flex-1">
         <p className="text-sm font-bold leading-none text-white">Epic Music Space</p>
-        <p className="mt-0.5 text-xs text-white/50">Free on the {storeLabel}</p>
+        <p className="mt-0.5 text-xs text-white/50">{subcopy}</p>
       </div>
 
       {/* CTA */}
       <Link
         href={storeHref}
-        target="_blank"
-        rel="noopener noreferrer"
+        target={store?.available ? "_blank" : undefined}
+        rel={store?.available ? "noopener noreferrer" : undefined}
         className="flex-shrink-0 rounded-lg bg-brand-500 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-brand-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
         onClick={() => {
           dismiss();
           setVisible(false);
         }}
       >
-        Get App
+        {ctaLabel}
       </Link>
 
       {/* Dismiss */}

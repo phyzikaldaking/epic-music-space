@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getMobileReleaseSummary, mobileStoreLinks } from "@/lib/mobileApp";
 
 export const metadata: Metadata = {
   title: "Get the App — Epic Music Space",
@@ -13,6 +14,8 @@ export const metadata: Metadata = {
 };
 
 export default function GetTheAppPage() {
+  const release = getMobileReleaseSummary();
+
   return (
     <main className="mx-auto max-w-2xl px-4 py-20 text-center">
       {/* Icon */}
@@ -35,33 +38,45 @@ export default function GetTheAppPage() {
         Every time the site updates, the app updates with it. Instantly. No App Store
         update required.
       </p>
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-white/45">
+        {release.available.map((item) => (
+          <span key={item.platform} className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-emerald-200">
+            {item.badge} live
+          </span>
+        ))}
+        {release.pending.map((item) => (
+          <span key={item.platform} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-white/55">
+            {item.badge} coming soon
+          </span>
+        ))}
+      </div>
 
       {/* Store buttons */}
       <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
         {/* App Store */}
         <a
-          href="https://apps.apple.com/app/epic-music-space/id0000000000"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex w-48 items-center gap-3 rounded-xl border border-white/15 bg-white/5 px-5 py-3.5 transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
-          aria-label="Download on the App Store"
+          href={mobileStoreLinks.ios.href ?? "/get-the-app"}
+          target={mobileStoreLinks.ios.available ? "_blank" : undefined}
+          rel={mobileStoreLinks.ios.available ? "noopener noreferrer" : undefined}
+          className={`flex w-48 items-center gap-3 rounded-xl border px-5 py-3.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${mobileStoreLinks.ios.available ? "border-white/15 bg-white/5 hover:bg-white/10" : "border-white/10 bg-white/3 opacity-70"}`}
+          aria-label={mobileStoreLinks.ios.available ? "Download on the App Store" : "iPhone release coming soon"}
         >
           <svg className="h-8 w-8 flex-shrink-0 text-white" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11Z"/>
           </svg>
           <div className="text-left">
-            <p className="text-[10px] text-white/50">Download on the</p>
-            <p className="text-sm font-bold text-white">App Store</p>
+            <p className="text-[10px] text-white/50">{mobileStoreLinks.ios.available ? "Download on the" : "Status"}</p>
+            <p className="text-sm font-bold text-white">{mobileStoreLinks.ios.available ? "App Store" : "iPhone coming soon"}</p>
           </div>
         </a>
 
         {/* Google Play */}
         <a
-          href="https://play.google.com/store/apps/details?id=com.epicmusicspace.app"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex w-48 items-center gap-3 rounded-xl border border-white/15 bg-white/5 px-5 py-3.5 transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
-          aria-label="Get it on Google Play"
+          href={mobileStoreLinks.android.href ?? "/get-the-app"}
+          target={mobileStoreLinks.android.available ? "_blank" : undefined}
+          rel={mobileStoreLinks.android.available ? "noopener noreferrer" : undefined}
+          className={`flex w-48 items-center gap-3 rounded-xl border px-5 py-3.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${mobileStoreLinks.android.available ? "border-white/15 bg-white/5 hover:bg-white/10" : "border-white/10 bg-white/3 opacity-70"}`}
+          aria-label={mobileStoreLinks.android.available ? "Get it on Google Play" : "Android release coming soon"}
         >
           <svg className="h-8 w-8 flex-shrink-0" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="#EA4335" d="m1.22 0 10.42 10.41L1.22 0Z"/>
@@ -72,8 +87,8 @@ export default function GetTheAppPage() {
             <path fill="#EA4335" d="M1.22 24a2.06 2.06 0 0 1-.95-.24L11.64 13.59.27.24A2.06 2.06 0 0 0 .22 1.26v21.48A2.06 2.06 0 0 0 1.22 24Z"/>
           </svg>
           <div className="text-left">
-            <p className="text-[10px] text-white/50">Get it on</p>
-            <p className="text-sm font-bold text-white">Google Play</p>
+            <p className="text-[10px] text-white/50">{mobileStoreLinks.android.available ? "Get it on" : "Status"}</p>
+            <p className="text-sm font-bold text-white">{mobileStoreLinks.android.available ? "Google Play" : "Android coming soon"}</p>
           </div>
         </a>
       </div>
@@ -102,7 +117,12 @@ export default function GetTheAppPage() {
       </ul>
 
       {/* Fallback web link */}
-      <p className="mt-12 text-sm text-white/30">
+      {release.pending.length > 0 && (
+        <p className="mt-12 text-sm text-white/30">
+          This page updates automatically as soon as the real store IDs are configured.
+        </p>
+      )}
+      <p className="mt-3 text-sm text-white/30">
         Already on desktop?{" "}
         <Link href="/" className="text-accent-300 hover:text-accent-200 underline">
           Use the web app
