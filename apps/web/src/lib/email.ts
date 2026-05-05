@@ -9,7 +9,7 @@ const FROM = process.env.EMAIL_FROM ?? "Epic Music Space <noreply@epicmusicspace
 
 export async function sendPasswordResetEmail(email: string, token: string) {
   const base = getSiteUrl();
-  const url = `${base}/auth/reset?token=${encodeURIComponent(token)}`;
+  const url = `${base}/auth/reset-password?token=${encodeURIComponent(token)}`;
 
   if (!resend) {
     if (process.env.NODE_ENV === "production") {
@@ -395,4 +395,36 @@ function buildVerificationHtml(url: string) {
   </table>
 </body>
 </html>`;
+}
+
+/**
+ * Generic transactional notification email — used by enqueueNotification's
+ * email channel for types like POST_LIKED / POST_COMMENTED / DM where the
+ * caller already has a fully-rendered subject + html body. Returns
+ * { ok, error? } and never throws so the queue worker can swallow.
+ */
+export async function sendNotificationEmail(opts: {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+}) {
+  if (!resend) {
+    if (process.env.NODE_ENV !== "production") {
+      console.info(`[email] Notification (skipped, no RESEND_API_KEY): ${opts.subject}`);
+    }
+    return { ok: false, error: { code: "EMAIL_PROVIDER_NOT_CONFIGURED" } };
+  }
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: opts.to,
+    subject: opts.subject,
+    html: opts.html,
+    text: opts.text,
+  });
+  if (error) {
+    console.error("[email] Notification send failed", error);
+    return { ok: false, error };
+  }
+  return { ok: true };
 }

@@ -37,6 +37,15 @@ export interface NotificationJobData {
   title: string;
   body: string;
   metadata?: Record<string, unknown>;
+  // Optional companion email. When present and the user hasn't opted out
+  // of the email channel for this type, we send it via the existing
+  // notification email transport. Falls through silently if email isn't
+  // configured (resend key missing) or the user opted out.
+  email?: {
+    subject: string;
+    html: string;
+    text?: string;
+  };
 }
 
 // Queue: record analytics events
@@ -110,20 +119,51 @@ export async function enqueueAiScoring(songId: string) {
 }
 
 export async function enqueueNotification(data: NotificationJobData) {
-  // Honor the recipient's per-type opt-out. Missing pref rows default to
-  // enabled (opt-out, not opt-in), so this only suppresses when the user
-  // has explicitly turned off the in-app channel for this type. If the
-  // lookup itself fails we deliver anyway — better noisy than silently
-  // dropped.
+  // Honor the recipient's per-channel opt-out. Missing pref rows default
+  // to enabled (opt-out, not opt-in). If the lookup itself fails we
+  // deliver anyway — better noisy than silently dropped.
+  let inAppAllowed = true;
+  let emailAllowed = true;
   try {
     const pref = await prisma.notificationPreference.findUnique({
       where: { userId_type: { userId: data.userId, type: data.type } },
-      select: { inApp: true },
+      select: { inApp: true, email: true },
     });
-    if (pref && pref.inApp === false) return;
+    if (pref) {
+      inAppAllowed = pref.inApp !== false;
+      emailAllowed = pref.email !== false;
+    }
   } catch (err) {
     console.warn("[enqueueNotification] pref lookup failed", err);
   }
+
+  // ── Email channel ───────────────────────────────────────────────────
+  // Best-effort, fire-and-forget. Pulls the recipient's address from the
+  // User row. Skipped silently when the type opts out of email or no
+  // companion email payload is provided.
+  if (emailAllowed && data.email) {
+    void (async () => {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: data.userId },
+          select: { email: true, emailVerified: true },
+        });
+        if (!user?.email || !user.emailVerified) return;
+        const { sendNotificationEmail } = await import("@/lib/email");
+        await sendNotificationEmail({
+          to: user.email,
+          subject: data.email!.subject,
+          html: data.email!.html,
+          text: data.email?.text,
+        });
+      } catch (err) {
+        console.warn("[enqueueNotification] email send failed", err);
+      }
+    })();
+  }
+
+  // ── In-app channel ──────────────────────────────────────────────────
+  if (!inAppAllowed) return;
 
   const queued = await enqueueWithRetry(
     QUEUE_NAMES.notifications,

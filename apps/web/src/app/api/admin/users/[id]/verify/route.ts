@@ -38,14 +38,23 @@ export async function POST(
   }
 
   const { id } = await params;
-  const updated = await prisma.user.update({
-    where: { id },
-    data: {
-      isVerified: parsed.data.verified,
-      verifiedAt: parsed.data.verified ? new Date() : null,
-    },
-    select: { id: true, isVerified: true, verifiedAt: true },
-  });
+  const [updated] = await prisma.$transaction([
+    prisma.user.update({
+      where: { id },
+      data: {
+        isVerified: parsed.data.verified,
+        verifiedAt: parsed.data.verified ? new Date() : null,
+      },
+      select: { id: true, isVerified: true, verifiedAt: true },
+    }),
+    prisma.moderationAction.create({
+      data: {
+        actorId: session.user.id,
+        subjectUserId: id,
+        action: parsed.data.verified ? "USER_VERIFIED" : "USER_UNVERIFIED",
+      },
+    }),
+  ]);
 
   return NextResponse.json({ user: updated });
 }

@@ -88,7 +88,26 @@ export async function PATCH(req: NextRequest) {
         where: { id: existing.postId, isPublished: true },
         data: { isPublished: false },
       });
+      // Audit row for the implicit unpublish — separate from the status
+      // change itself so each verb is independently filterable.
+      await tx.moderationAction.create({
+        data: {
+          actorId: session.user.id,
+          reportId: r.id,
+          postId: existing.postId,
+          action: "POST_UNPUBLISHED",
+          metadata: { via: "report_actioned" },
+        },
+      });
     }
+    await tx.moderationAction.create({
+      data: {
+        actorId: session.user.id,
+        reportId: r.id,
+        postId: existing.postId ?? null,
+        action: `REPORT_${parsed.data.status}`,
+      },
+    });
     return r;
   });
 

@@ -628,6 +628,29 @@ model UserBlock {
   @@index([blockedId])
 }
 
+// Append-only record of every admin moderation action. Lets us answer
+// "who actioned what, when, why?" forever — even after the underlying
+// report row is gone or the offending content is hard-deleted.
+model ModerationAction {
+  id          String   @id @default(cuid())
+  actorId     String   // user who took the action (admin)
+  // Subject of the action — exactly one will be set.
+  reportId    String?
+  postId      String?
+  subjectUserId String?
+  // Verb — small enum so we can render filters and trends.
+  action      String   // REPORT_DISMISSED | REPORT_REVIEWED | REPORT_ACTIONED |
+                       // POST_UNPUBLISHED | USER_VERIFIED | USER_UNVERIFIED |
+                       // SONG_DELETED | USER_BANNED | …
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  @@index([actorId, createdAt])
+  @@index([reportId])
+  @@index([postId])
+  @@index([subjectUserId])
+  @@index([action, createdAt])
+}
+
 // User-submitted moderation report — feeds the admin queue.
 model UserReport {
   id          String   @id @default(cuid())
