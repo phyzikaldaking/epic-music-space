@@ -3,11 +3,12 @@
 import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
+import { getStreamUrl } from "@/lib/audioStream";
 
 interface VersusCardProps {
   matchId: string;
-  songA: { id: string; title: string; artist: string; coverUrl?: string | null; audioUrl?: string | null; aiScore: number };
-  songB: { id: string; title: string; artist: string; coverUrl?: string | null; audioUrl?: string | null; aiScore: number };
+  songA: { id: string; title: string; artist: string; coverUrl?: string | null; aiScore: number };
+  songB: { id: string; title: string; artist: string; coverUrl?: string | null; aiScore: number };
   votesA: number;
   votesB: number;
   endsAt: string;
@@ -69,25 +70,40 @@ export default function VersusCard({
     };
   }, []);
 
-  function togglePreview(song: typeof songA, ref: React.MutableRefObject<HTMLAudioElement | null>, otherRef: React.MutableRefObject<HTMLAudioElement | null>) {
-    if (!song.audioUrl) return;
+  function togglePreview(
+    song: typeof songA,
+    ref: React.MutableRefObject<HTMLAudioElement | null>,
+    otherRef: React.MutableRefObject<HTMLAudioElement | null>,
+  ) {
+    if (!song.id) return;
 
-    // If the other track is playing, stop it first
-    if (otherRef.current) {
-      otherRef.current.pause();
-    }
+    // If the other track is playing, stop it first.
+    if (otherRef.current) otherRef.current.pause();
 
     if (!ref.current) {
-      ref.current = new Audio(song.audioUrl);
-      ref.current.volume = 0.8;
-      ref.current.addEventListener("ended", () => setPlayingId(null));
+      // Stream through the same-origin proxy — never expose the raw
+      // Supabase URL on the network panel. Matches what AudioPlayer +
+      // SongCard + the global player do everywhere else.
+      const audio = new Audio(getStreamUrl(song.id));
+      audio.volume = 0.8;
+      audio.preload = "metadata";
+      try {
+        audio.setAttribute("controlsList", "nodownload nofullscreen noremoteplayback");
+        audio.setAttribute("disablePictureInPicture", "true");
+        audio.crossOrigin = "anonymous";
+      } catch {
+        /* older browsers — non-fatal */
+      }
+      audio.addEventListener("ended", () => setPlayingId(null));
+      audio.addEventListener("error", () => setPlayingId(null));
+      ref.current = audio;
     }
 
     if (playingId === song.id) {
       ref.current.pause();
       setPlayingId(null);
     } else {
-      void ref.current.play();
+      void ref.current.play().catch(() => setPlayingId(null));
       setPlayingId(song.id);
     }
   }
@@ -138,20 +154,21 @@ export default function VersusCard({
     const isPreviewing = playingId === song.id;
     return (
       <div className="flex flex-1 flex-col gap-3">
-        {/* Preview button (separate from vote action) */}
-        {song.audioUrl && (
-          <button
-            type="button"
-            onClick={() => togglePreview(song, audioRef, otherRef)}
-            className={`w-full rounded-xl border py-1.5 text-xs font-semibold transition ${
-              isPreviewing
-                ? "border-accent-500/60 bg-accent-500/20 text-accent-400"
-                : "border-white/15 text-white/40 hover:border-white/30 hover:text-white/70"
-            }`}
-          >
-            {isPreviewing ? "⏸ Pause" : "▶ Preview"}
-          </button>
-        )}
+        {/* Preview button (separate from vote action) — stream URL is
+            constructed from songId, so it's always available for any
+            track on the platform. */}
+        <button
+          type="button"
+          onClick={() => togglePreview(song, audioRef, otherRef)}
+          aria-label={isPreviewing ? `Pause preview of ${song.title}` : `Preview ${song.title}`}
+          className={`w-full rounded-xl border py-1.5 text-xs font-semibold transition ${
+            isPreviewing
+              ? "border-accent-500/60 bg-accent-500/20 text-accent-400"
+              : "border-white/15 text-white/40 hover:border-white/30 hover:text-white/70"
+          }`}
+        >
+          {isPreviewing ? "⏸ Pause" : "▶ Preview"}
+        </button>
 
         {/* Vote card */}
         <button

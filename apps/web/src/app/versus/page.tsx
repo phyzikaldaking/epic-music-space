@@ -23,13 +23,13 @@ const getActiveBattles = unstable_cache(
           songA: {
             select: {
               id: true, title: true, artist: true,
-              coverUrl: true, audioUrl: true, aiScore: true,
+              coverUrl: true, aiScore: true,
             },
           },
           songB: {
             select: {
               id: true, title: true, artist: true,
-              coverUrl: true, audioUrl: true, aiScore: true,
+              coverUrl: true, aiScore: true,
             },
           },
         },
@@ -44,7 +44,7 @@ const getActiveBattles = unstable_cache(
               song: {
                 select: {
                   id: true, title: true, artist: true,
-                  coverUrl: true, audioUrl: true, aiScore: true,
+                  coverUrl: true, aiScore: true,
                 },
               },
             },

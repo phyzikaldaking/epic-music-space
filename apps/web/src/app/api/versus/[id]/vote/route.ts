@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { calculateAiScore, scoreToDistrict } from "@/lib/scoring";
 import { moderateLimiter } from "@/lib/rateLimit";
-import { enqueueAnalytics } from "@/lib/queues";
+import { enqueueAnalytics, enqueueNotification } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 
@@ -153,6 +153,38 @@ export async function POST(req: NextRequest, { params }: Params) {
     metadata: { matchId },
     timestamp: new Date().toISOString(),
   });
+
+  // Notify the voted-for artist — once per day per match so a viral
+  // battle doesn't spam them with one ping per voter. Best-effort,
+  // never blocks the response.
+  const votedArtistId =
+    votedSongId === match.songAId ? match.songA.artistId : match.songB.artistId;
+  if (votedArtistId !== session.user.id) {
+    void (async () => {
+      try {
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+        const recent = await prisma.notification.findFirst({
+          where: {
+            userId: votedArtistId,
+            type: "VERSUS_VOTE",
+            createdAt: { gt: new Date(Date.now() - ONE_DAY_MS) },
+            metadata: { path: ["matchId"], equals: matchId },
+          },
+          select: { id: true },
+        });
+        if (recent) return;
+        await enqueueNotification({
+          userId: votedArtistId,
+          type: "VERSUS_VOTE",
+          title: "Your battle is heating up 🔥",
+          body: `Fans are voting on your track — current score is ${updated.votesA} vs ${updated.votesB}. Tap to watch live.`,
+          metadata: { matchId, songId: votedSongId },
+        });
+      } catch (err) {
+        console.warn("[versus:vote] notify failed", err);
+      }
+    })();
+  }
 
   // Broadcast real-time vote update via Supabase
   const supabase = createServerSupabaseClient();

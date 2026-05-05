@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { getStreamUrl } from "@/lib/audioStream";
 
 interface Entry {
   id: string;
@@ -14,7 +15,6 @@ interface Entry {
     title: string;
     artist: string;
     coverUrl?: string | null;
-    audioUrl?: string | null;
     aiScore: number;
   };
 }
@@ -52,21 +52,32 @@ export default function BattleRoyaleCard({
     "grid-cols-4 sm:grid-cols-5";
 
   function togglePreview(song: Entry["song"]) {
-    if (!song.audioUrl) return;
+    if (!song.id) return;
     Object.entries(audioRefs.current).forEach(([id, audio]) => {
       if (id !== song.id) audio?.pause();
     });
     if (!audioRefs.current[song.id]) {
-      const audio = new Audio(song.audioUrl);
+      // Stream-proxy URL — same hardening pattern as VersusCard +
+      // AudioPlayer. The raw Supabase URL never appears on the network panel.
+      const audio = new Audio(getStreamUrl(song.id));
       audio.volume = 0.8;
+      audio.preload = "metadata";
+      try {
+        audio.setAttribute("controlsList", "nodownload nofullscreen noremoteplayback");
+        audio.setAttribute("disablePictureInPicture", "true");
+        audio.crossOrigin = "anonymous";
+      } catch {
+        /* older browsers — non-fatal */
+      }
       audio.addEventListener("ended", () => setPlayingId(null));
+      audio.addEventListener("error", () => setPlayingId(null));
       audioRefs.current[song.id] = audio;
     }
     if (playingId === song.id) {
       audioRefs.current[song.id]!.pause();
       setPlayingId(null);
     } else {
-      void audioRefs.current[song.id]!.play();
+      void audioRefs.current[song.id]!.play().catch(() => setPlayingId(null));
       setPlayingId(song.id);
     }
   }
@@ -153,15 +164,17 @@ export default function BattleRoyaleCard({
               <p className="text-[11px] font-semibold leading-tight line-clamp-2 text-center">{entry.song.title}</p>
               <p className="text-[10px] text-white/40 line-clamp-1">{entry.song.artist}</p>
 
-              {entry.song.audioUrl && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); togglePreview(entry.song); }}
-                  className="text-[10px] text-white/30 hover:text-white/60 transition"
-                >
-                  {playingId === entry.song.id ? "⏸" : "▶"}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePreview(entry.song);
+                }}
+                aria-label={playingId === entry.song.id ? `Pause ${entry.song.title}` : `Preview ${entry.song.title}`}
+                className="text-[10px] text-white/30 hover:text-white/60 transition"
+              >
+                {playingId === entry.song.id ? "⏸" : "▶"}
+              </button>
 
               {(voted ?? isExpired) && (
                 <div className="w-full mt-1 space-y-0.5">
