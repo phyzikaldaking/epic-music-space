@@ -10,9 +10,13 @@ const staticRoutes = [
   { path: "/versus", priority: 0.75, changeFrequency: "hourly" as const },
   { path: "/auctions", priority: 0.72, changeFrequency: "hourly" as const },
   { path: "/label", priority: 0.65, changeFrequency: "weekly" as const },
-  { path: "/legal/licensing", priority: 0.6, changeFrequency: "monthly" as const },
-  { path: "/legal/terms", priority: 0.45, changeFrequency: "monthly" as const },
-  { path: "/legal/privacy", priority: 0.45, changeFrequency: "monthly" as const },
+  { path: "/license-agreement", priority: 0.6, changeFrequency: "monthly" as const },
+  { path: "/terms", priority: 0.45, changeFrequency: "monthly" as const },
+  { path: "/privacy", priority: 0.45, changeFrequency: "monthly" as const },
+  { path: "/dmca", priority: 0.4, changeFrequency: "monthly" as const },
+  { path: "/feed", priority: 0.7, changeFrequency: "hourly" as const },
+  { path: "/services", priority: 0.65, changeFrequency: "daily" as const },
+  { path: "/trending", priority: 0.6, changeFrequency: "daily" as const },
 ] as const;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

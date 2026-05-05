@@ -6,6 +6,7 @@ import { moderateLimiter, strictLimiter } from "@/lib/rateLimit";
 import { isBlocked } from "@/lib/conversations";
 import { enqueueNotification } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
+import { validateTrustSafetyInput } from "@/lib/trustSafety";
 
 export const runtime = "nodejs";
 
@@ -134,6 +135,17 @@ export async function POST(
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+      { status: 400 },
+    );
+  }
+
+  // Same trust+safety filter as posts and comments — slur lists, link
+  // limits, all-caps spam, etc. Surfaces the underlying code so the
+  // client can show a useful message instead of a generic 400.
+  const trustSafety = validateTrustSafetyInput(parsed.data.body);
+  if (!trustSafety.ok) {
+    return NextResponse.json(
+      { error: trustSafety.message, code: trustSafety.code },
       { status: 400 },
     );
   }

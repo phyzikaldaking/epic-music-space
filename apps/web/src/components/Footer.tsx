@@ -27,7 +27,7 @@ const footerNav = [
     links: [
       { label: "Pricing", href: "/pricing" },
       { label: "Versus Battles", href: "/versus" },
-      { label: "AI Score Info", href: "/ai" },
+      { label: "AI Assistant", href: "/ai" },
     ],
   },
   {
@@ -77,8 +77,8 @@ export default function Footer() {
               <span className="text-gradient-ems">Epic Music Space</span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-6 text-white/42">
-              License cinematic space music with clear rights, instant previews,
-              and transparent revenue participation.
+              Host live listening sessions, upload music, and sell clear digital
+              licenses from one artist studio.
             </p>
             <div className="mt-5 flex gap-3">
               <Link

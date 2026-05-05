@@ -95,9 +95,40 @@ export default function SearchClient({
       </form>
 
       {!trimmedQuery && (
-        <p className="text-sm text-white/45">
-          Start typing to search across tracks, artists, and genres.
-        </p>
+        <div className="rounded-2xl border border-white/8 bg-[#141414] p-6 text-sm text-white/55">
+          <p className="mb-2 font-semibold text-white/85">Search anything on EMS</p>
+          <p className="text-xs">
+            Tracks, artists, and genres. Hit{" "}
+            <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">
+              /
+            </kbd>{" "}
+            from any page to focus this box. Try{" "}
+            <button
+              type="button"
+              onClick={() => setQ("hip hop")}
+              className="text-brand-400 hover:underline"
+            >
+              hip hop
+            </button>
+            ,{" "}
+            <button
+              type="button"
+              onClick={() => setQ("trap")}
+              className="text-brand-400 hover:underline"
+            >
+              trap
+            </button>
+            , or{" "}
+            <button
+              type="button"
+              onClick={() => setQ("ambient")}
+              className="text-brand-400 hover:underline"
+            >
+              ambient
+            </button>
+            .
+          </p>
+        </div>
       )}
 
       {trimmedQuery && loading && results === null && (
@@ -111,7 +142,16 @@ export default function SearchClient({
               Tracks ({results.songs.length})
             </h2>
             {results.songs.length === 0 ? (
-              <p className="text-sm text-white/40">No tracks match &ldquo;{trimmedQuery}&rdquo;.</p>
+              <div className="rounded-xl border border-white/8 bg-white/[0.02] p-5 text-sm text-white/55">
+                <p>No tracks match &ldquo;{trimmedQuery}&rdquo;.</p>
+                <p className="mt-1 text-xs text-white/35">
+                  Try a shorter keyword, a genre, or browse the{" "}
+                  <Link href="/marketplace" className="text-brand-400 hover:underline">
+                    marketplace
+                  </Link>
+                  .
+                </p>
+              </div>
             ) : (
               <ul className="space-y-2">
                 {results.songs.map((s) => (

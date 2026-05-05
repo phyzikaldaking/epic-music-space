@@ -480,6 +480,11 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           });
         }
         setParticipants(next);
+        const me = next.get(currentUserId);
+        if (me) {
+          setRole(me.role);
+          setHandRaised(me.handRaised);
+        }
       }
       if (!cancelled && msgRes.ok) {
         const data = (await msgRes.json()) as {
@@ -492,7 +497,84 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     return () => {
       cancelled = true;
     };
-  }, [room.id]);
+  }, [room.id, currentUserId]);
+
+  // ── Keep participant list fresh (joins/leaves/role changes) ───────────
+  // Broadcasts cover hand raises, chat, and moderation actions, but not
+  // plain joins/leaves (and Supabase may be disabled). A light poll keeps
+  // the room sidebar accurate without depending on realtime infra.
+  useEffect(() => {
+    if (ended) return;
+    let cancelled = false;
+    let inFlight = false;
+
+    async function pollOnce() {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        const res = await fetch(`/api/rooms/${room.id}`, { cache: "no-store" });
+        if (cancelled) return;
+        if (res.status === 403) {
+          setError("You no longer have access to this room.");
+          setEnded(true);
+          void disconnect();
+          return;
+        }
+        if (!res.ok) return;
+
+        const data = (await res.json()) as {
+          room: {
+            participants: {
+              userId: string;
+              role: Participant["role"];
+              handRaised: boolean;
+              user: { id: string; name: string | null; image: string | null };
+            }[];
+            status: "LIVE" | "ENDED";
+          };
+        };
+
+        const next = new Map<string, Participant>();
+        for (const p of data.room.participants) {
+          next.set(p.userId, {
+            userId: p.userId,
+            role: p.role,
+            handRaised: p.handRaised,
+            name: p.user.name ?? "Guest",
+            image: p.user.image,
+          });
+        }
+        setParticipants(next);
+
+        const me = next.get(currentUserId);
+        if (me) {
+          setHandRaised(me.handRaised);
+
+          const roleChanged = me.role !== role;
+          setRole(me.role);
+          if (roleChanged && connected && liveKitOnline) {
+            void disconnect(false).then(() => connect());
+          }
+        }
+
+        if (data.room.status === "ENDED") {
+          setEnded(true);
+          void disconnect();
+        }
+      } catch {
+        // Ignore transient network errors; next poll will recover.
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    void pollOnce();
+    const interval = setInterval(pollOnce, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [room.id, currentUserId, ended, role, connected, liveKitOnline, connect, disconnect]);
 
   // ── Subscribe to broadcasts ─────────────────────────────────────────
   useEffect(() => {
@@ -509,6 +591,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           if (p) next.set(userId, { ...p, handRaised: true });
           return next;
         });
+        if (userId === currentUserId) setHandRaised(true);
       })
       .on("broadcast", { event: "hand_lowered" }, ({ payload }) => {
         const { userId } = payload as { userId: string };
@@ -518,6 +601,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           if (p) next.set(userId, { ...p, handRaised: false });
           return next;
         });
+        if (userId === currentUserId) setHandRaised(false);
       })
       .on("broadcast", { event: "floor_granted" }, ({ payload }) => {
         const { userId } = payload as { userId: string };
@@ -528,6 +612,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           return next;
         });
         if (userId === currentUserId) {
+          setRole("SPEAKER");
           void disconnect(false).then(() => connect());
         }
       })
@@ -540,6 +625,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           return next;
         });
         if (userId === currentUserId) {
+          setRole("LISTENER");
           void disconnect(false).then(() => connect());
         }
       })

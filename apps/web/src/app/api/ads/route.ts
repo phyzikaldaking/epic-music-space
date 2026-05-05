@@ -16,7 +16,11 @@ const createAdSchema = z.object({
   ]),
   title: z.string().min(1).max(100),
   mediaUrl: z.string().url(),
-  linkUrl: z.string().url().optional(),
+  linkUrl: z
+    .string()
+    .url()
+    .refine((v) => /^https?:\/\//i.test(v), "linkUrl must be http or https")
+    .optional(),
   startDate: z.string().datetime(),
   endDate: z.string().datetime(),
 });
@@ -70,6 +74,12 @@ export async function POST(req: NextRequest) {
 
   // Calculate price based on location and duration
   const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  if (days > 90) {
+    return NextResponse.json(
+      { error: "Campaign duration cannot exceed 90 days." },
+      { status: 400 },
+    );
+  }
   const dailyRate = AD_PRICES[location] ?? 99;
   const totalPrice = dailyRate * days;
 

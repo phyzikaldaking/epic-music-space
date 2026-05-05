@@ -30,7 +30,7 @@ export const BADGE_META: Record<
   INVITE_10: {
     label: "Recruiter",
     icon: "📢",
-    description: "Invited 10 friends to EMS — billboard credit unlocked",
+    description: "Invited 10 friends to EMS — studio level up unlocked",
     color: "text-brand-400 border-brand-500/40 bg-brand-500/10",
   },
   INVITE_50: {

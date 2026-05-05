@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rateLimitInline";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,9 @@ export async function GET(
   }
 
   const { id } = await params;
+  const blocked = await rateLimit("lenient", `room:host_songs:${session.user.id}:${id}`);
+  if (blocked) return blocked;
+
   const room = await prisma.room.findUnique({
     where: { id },
     select: { hostId: true },

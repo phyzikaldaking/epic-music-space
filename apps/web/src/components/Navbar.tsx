@@ -64,6 +64,24 @@ export default function Navbar() {
 
         <div className="flex items-center gap-3">
           <NavbarSearch />
+          <Link
+            href="/ai"
+            aria-label="Open AI assistant"
+            title="AI assistant"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/12 text-white/60 transition hover:border-white/24 hover:bg-white/6 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+          >
+            <svg
+              aria-hidden="true"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l1.2 4.3L17.5 9l-4.3 1.2L12 14.5l-1.2-4.3L6.5 9l4.3-1.7L12 3z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 12l.7 2.5L22 16l-2.3.6L19 19l-.7-2.4L16 16l2.3-1.5L19 12z" />
+            </svg>
+          </Link>
           <NotificationBell />
           <NavbarAuth />
           <NavbarMobileMenu publicLinks={PUBLIC_LINKS} authedLinks={AUTHED_LINKS} />
