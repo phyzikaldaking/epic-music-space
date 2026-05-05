@@ -175,9 +175,9 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
 
       {reaction && (
         <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-black/25 backdrop-blur-[1px]">
-          <div className="rounded-[2.5rem] border border-gold-200/35 bg-black/70 px-10 py-8 text-center shadow-2xl shadow-gold-500/20">
-            <p className="text-xs font-black uppercase tracking-[0.34em] text-gold-100/80">Crowd Reaction</p>
-            <h2 className="mt-3 text-6xl font-black tracking-[-0.08em] text-white md:text-8xl">
+          <div className="rounded-[2.25rem] border border-gold-200/35 bg-black/70 px-5 py-6 text-center shadow-2xl shadow-gold-500/20 sm:px-10 sm:py-8">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-gold-100/80 sm:tracking-[0.34em]">Crowd Reaction</p>
+            <h2 className="mt-3 break-words text-3xl font-black tracking-[-0.05em] text-white sm:text-4xl md:text-6xl lg:text-8xl">
               {reaction === "crown" ? "CROWN SHIFT" : reaction === "fire" ? "BOOST SURGE" : reaction === "shock" ? "ROOM SHOCK" : "ENERGY UP"}
             </h2>
           </div>
@@ -195,13 +195,13 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
                 <span className="rounded-full border border-red-300/25 bg-red-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-red-100">{event.status ?? "LIVE"}</span>
               </div>
 
-              <h1 className="mt-5 max-w-4xl text-5xl font-black leading-[0.88] tracking-[-0.08em] text-white md:text-8xl">Live finals event stream.</h1>
+              <h1 className="mt-5 max-w-4xl break-words text-3xl font-black leading-[0.94] tracking-[-0.05em] text-white sm:text-4xl md:text-6xl lg:text-8xl">Live finals event stream.</h1>
               <p className="mt-6 max-w-2xl text-base leading-8 text-white/62 md:text-lg">Watch artists fight for the crown in real time. Chat, react, tip, and push the crowd energy while the finals board moves.</p>
             </div>
 
             <div className="rounded-[2rem] border border-white/10 bg-black/40 p-5 shadow-2xl shadow-black/45 backdrop-blur-2xl">
               <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">Current Leader</p>
-              <h2 className="mt-2 line-clamp-1 text-4xl font-black tracking-[-0.065em] text-white">{leader?.title ?? "Leader Pending"}</h2>
+              <h2 className="mt-2 line-clamp-2 break-words text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl md:line-clamp-1 md:text-4xl">{leader?.title ?? "Leader Pending"}</h2>
               <p className="mt-1 line-clamp-1 text-sm text-white/45">{leader?.artist ?? "Finalist"}</p>
               <div className="mt-5 rounded-2xl border border-gold-200/15 bg-gold-200/10 p-4"><div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.18em] text-white/40"><span>Crowd Energy</span><span>{crowdEnergy}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-gold-300 via-white to-cyan-300" style={{ width: `${crowdEnergy}%` }} /></div></div>
               <p className="mt-4 text-sm leading-6 text-white/55">{event.message}</p>
@@ -219,7 +219,7 @@ export default function SpectatorFinalsExperience({ finalists = fallbackFinalist
                   <article key={track.id} className={`relative overflow-hidden rounded-[1.65rem] border p-4 shadow-2xl transition hover:-translate-y-1 ${index === 0 ? "border-gold-200/45 bg-gold-200/10 shadow-gold-500/15" : "border-white/10 bg-white/[0.045] shadow-black/30"}`}>
                     <div className="absolute inset-0 bg-[linear-gradient(130deg,rgba(255,255,255,0.14),transparent_28%,transparent_72%,rgba(34,211,238,0.08))]" />
                     <div className="relative">
-                      <div className="flex items-center justify-between"><span className="text-4xl font-black tracking-[-0.08em] text-white">#{index + 1}</span><span className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/50">{index === 0 ? "Leader" : "Finalist"}</span></div>
+                      <div className="flex items-center justify-between"><span className="text-3xl font-black tracking-[-0.06em] text-white sm:text-4xl">#{index + 1}</span><span className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/50">{index === 0 ? "Leader" : "Finalist"}</span></div>
                       <div className="relative mt-5 aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black/50">{track.coverUrl ? <Image src={track.coverUrl} alt="" fill className="object-cover opacity-80" /> : <div className="grid h-full place-items-center text-xs font-black uppercase tracking-[0.18em] text-white/35">Live Screen</div>}</div>
                       <h3 className="mt-4 line-clamp-1 text-xl font-black tracking-[-0.04em] text-white">{track.title}</h3><p className="mt-1 line-clamp-1 text-sm text-white/45">{track.artist}</p>
                       <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-gold-300 via-white to-cyan-300" style={{ width: `${Math.max(8, Math.min(100, score / 12))}%` }} /></div>

@@ -115,12 +115,12 @@ export default function RealtimeMarketBridge({ userId }: { userId?: string | nul
         <div className="pointer-events-none fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-black/72 backdrop-blur-sm">
           <div className="absolute inset-0 animate-pulse bg-[radial-gradient(circle_at_50%_50%,rgba(253,224,71,0.34),transparent_34%),radial-gradient(circle_at_50%_80%,rgba(34,211,238,0.22),transparent_42%)]" />
           <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-gold-200 to-transparent shadow-[0_0_60px_rgba(253,224,71,0.8)]" />
-          <div className="relative mx-4 max-w-4xl rounded-[2.5rem] border border-gold-200/35 bg-black/75 p-8 text-center shadow-2xl shadow-gold-500/20 md:p-12">
-            <div className="mx-auto mb-5 grid h-20 w-20 place-items-center rounded-full border border-gold-200/35 bg-gold-200/15 text-sm font-black uppercase tracking-[0.16em] text-gold-100 shadow-2xl shadow-gold-500/30">Crown</div>
-            <p className="text-xs font-black uppercase tracking-[0.38em] text-gold-100/80">New Champion Takeover</p>
-            <h2 className="mt-4 text-5xl font-black leading-[0.88] tracking-[-0.08em] text-white md:text-7xl">{takeover.newChampion ?? takeover.title ?? "New Crown Holder"}</h2>
-            <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/62">{takeover.message ?? "The marketplace crown just changed hands. Rankings are refreshing now."}</p>
-            {takeover.previousChampion && <p className="mt-4 text-xs font-bold uppercase tracking-[0.18em] text-white/38">Passed: {takeover.previousChampion}</p>}
+          <div className="relative mx-4 max-w-4xl rounded-[2.25rem] border border-gold-200/35 bg-black/75 p-6 text-center shadow-2xl shadow-gold-500/20 md:p-10">
+            <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full border border-gold-200/35 bg-gold-200/15 text-xs font-black uppercase tracking-[0.14em] text-gold-100 shadow-2xl shadow-gold-500/30 sm:h-20 sm:w-20 sm:text-sm sm:tracking-[0.16em]">Crown</div>
+            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-gold-100/80 sm:text-xs sm:tracking-[0.38em]">New Champion Takeover</p>
+            <h2 className="mt-4 break-words text-3xl font-black leading-[0.94] tracking-[-0.05em] text-white sm:text-4xl md:text-6xl lg:text-7xl">{takeover.newChampion ?? takeover.title ?? "New Crown Holder"}</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/62 sm:mt-5 sm:text-base sm:leading-7">{takeover.message ?? "The marketplace crown just changed hands. Rankings are refreshing now."}</p>
+            {takeover.previousChampion && <p className="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-white/38 sm:tracking-[0.18em]">Passed: {takeover.previousChampion}</p>}
           </div>
         </div>
       )}

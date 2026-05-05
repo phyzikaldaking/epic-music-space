@@ -142,7 +142,7 @@ export default async function MarketplacePage(props: {
           <div className="relative grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.34em] text-cyan-200/85">Creator Marketplace</p>
-              <h1 className="mt-4 max-w-4xl text-5xl font-black leading-[0.92] tracking-[-0.07em] text-white md:text-7xl">The premium exchange floor for music licensing.</h1>
+              <h1 className="mt-4 max-w-4xl break-words text-3xl font-black leading-[0.96] tracking-[-0.05em] text-white sm:text-4xl md:text-6xl lg:text-7xl">The premium exchange floor for music licensing.</h1>
               <p className="mt-6 max-w-2xl text-base leading-8 text-white/66 md:text-lg">Discover ranked tracks, studio drops, and creator-ready music with clear licensing terms, supply visibility, and marketplace momentum built into every release.</p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a href="#marketplace-catalog" className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-black uppercase tracking-[0.12em] text-black shadow-2xl shadow-white/10 transition hover:-translate-y-0.5 hover:bg-cyan-200">Explore Catalog</a>
@@ -185,7 +185,7 @@ export default async function MarketplacePage(props: {
         {dominanceStrip.length > 0 && (
           <section className="mt-8 overflow-hidden rounded-[2rem] border border-gold-200/15 bg-black/35 p-5 shadow-2xl shadow-black/45 backdrop-blur-2xl">
             <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div><p className="text-xs font-black uppercase tracking-[0.28em] text-gold-100/80">Dominance Strip</p><h2 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white md:text-5xl">Top screens controlling the floor</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-white/50">These are the songs currently owning the marketplace attention layer. Boosts, sales, and EMS score decide who stays visible.</p></div>
+              <div><p className="text-xs font-black uppercase tracking-[0.24em] text-gold-100/80 sm:tracking-[0.28em]">Dominance Strip</p><h2 className="mt-2 break-words text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl md:text-5xl md:tracking-[-0.055em]">Top screens controlling the floor</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-white/50">These are the songs currently owning the marketplace attention layer. Boosts, sales, and EMS score decide who stays visible.</p></div>
               <div className="rounded-full border border-gold-200/20 bg-gold-200/10 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-gold-100">Live Rank Cycle</div>
             </div>
             <div className="grid gap-4 md:grid-cols-5">

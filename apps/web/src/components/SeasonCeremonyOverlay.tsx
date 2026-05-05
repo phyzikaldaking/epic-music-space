@@ -106,7 +106,7 @@ export default function SeasonCeremonyOverlay({ ceremony, autoPreview = false }:
             <p className="text-xs font-black uppercase tracking-[0.42em] text-gold-100/80">
               Season Reset Ceremony
             </p>
-            <h1 className="mt-4 text-5xl font-black leading-[0.88] tracking-[-0.08em] text-white md:text-8xl">
+            <h1 className="mt-4 break-words text-3xl font-black leading-[0.94] tracking-[-0.05em] text-white sm:text-4xl md:text-6xl lg:text-8xl">
               {activeCeremony.headline}
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/60 md:text-lg">
@@ -119,7 +119,7 @@ export default function SeasonCeremonyOverlay({ ceremony, autoPreview = false }:
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_0%,rgba(253,224,71,0.18),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.10),rgba(255,255,255,0.025))]" />
               <div className="relative">
                 <p className="text-xs font-black uppercase tracking-[0.3em] text-gold-100/75">Season Champion</p>
-                <h2 className="mt-4 text-5xl font-black tracking-[-0.07em] text-white md:text-7xl">
+                <h2 className="mt-4 break-words text-3xl font-black tracking-[-0.05em] text-white sm:text-4xl md:text-6xl lg:text-7xl">
                   {activeCeremony.winnerArtist ?? "Winner Pending"}
                 </h2>
                 <p className="mt-3 text-xl font-bold tracking-[-0.03em] text-cyan-100/85">
@@ -186,8 +186,8 @@ export default function SeasonCeremonyOverlay({ ceremony, autoPreview = false }:
                     ["Min", timeLeft.minutes],
                     ["Sec", timeLeft.seconds],
                   ].map(([label, value]) => (
-                    <div key={label} className="min-w-20 rounded-2xl border border-white/10 bg-white/[0.045] p-3">
-                      <p className="text-2xl font-black text-white">{String(value).padStart(2, "0")}</p>
+                    <div key={label} className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.045] p-3">
+                      <p className="text-xl font-black text-white sm:text-2xl">{String(value).padStart(2, "0")}</p>
                       <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">{label}</p>
                     </div>
                   ))}

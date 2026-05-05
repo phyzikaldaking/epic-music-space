@@ -6,32 +6,32 @@ import NavbarSearch from "@/components/NavbarSearch";
 import NotificationBell from "@/components/NotificationBell";
 
 const PUBLIC_LINKS = [
-  { href: "/feed", label: "Feed" },
-  { href: "/trending", label: "Trending" },
-  { href: "/studio/live", label: "Sessions" },
-  { href: "/versus", label: "Battles" },
-  { href: "/marketplace", label: "Tracks" },
-  { href: "/services", label: "Services" },
-  { href: "/leaderboard", label: "Charts" },
-  { href: "/pricing", label: "Pricing" },
+  { href: "/feed", label: "Feed", icon: "🏠", description: "Posts from artists you follow" },
+  { href: "/trending", label: "Trending", icon: "🔥", description: "What's hot right now" },
+  { href: "/studio/live", label: "Sessions", icon: "🎙️", description: "Drop into a live audio room" },
+  { href: "/versus", label: "Battles", icon: "⚔️", description: "1v1, Royale, and Verzuz showdowns" },
+  { href: "/marketplace", label: "Tracks", icon: "🎵", description: "License music with clear rights" },
+  { href: "/services", label: "Services", icon: "🛠️", description: "Producers, engineers, mixers" },
+  { href: "/leaderboard", label: "Charts", icon: "📊", description: "AI rankings + boost meter" },
+  { href: "/pricing", label: "Pricing", icon: "💎", description: "Plans for fans + artists" },
 ];
 
 const AUTHED_LINKS = [
-  { href: "/feed", label: "Feed" },
-  { href: "/trending", label: "Trending" },
-  { href: "/studio/live", label: "Sessions" },
-  { href: "/versus", label: "Battles" },
-  { href: "/marketplace", label: "Tracks" },
-  { href: "/services", label: "Services" },
-  { href: "/leaderboard", label: "Charts" },
-  { href: "/auctions", label: "Auctions" },
-  { href: "/library", label: "Library" },
-  { href: "/messages", label: "Messages" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/dashboard/wallet", label: "Wallet" },
+  { href: "/feed", label: "Feed", icon: "🏠", description: "Posts from artists you follow" },
+  { href: "/trending", label: "Trending", icon: "🔥", description: "What's hot right now" },
+  { href: "/studio/live", label: "Sessions", icon: "🎙️", description: "Drop into a live audio room" },
+  { href: "/versus", label: "Battles", icon: "⚔️", description: "Vote on track battles" },
+  { href: "/marketplace", label: "Tracks", icon: "🎵", description: "License music with clear rights" },
+  { href: "/services", label: "Services", icon: "🛠️", description: "Producers, engineers, mixers" },
+  { href: "/leaderboard", label: "Charts", icon: "📊", description: "AI rankings + boost meter" },
+  { href: "/auctions", label: "Auctions", icon: "🔨", description: "Bid on placement" },
+  { href: "/library", label: "Library", icon: "📀", description: "Saved tracks" },
+  { href: "/messages", label: "Messages", icon: "💬", description: "DMs with other artists + fans" },
+  { href: "/dashboard", label: "Dashboard", icon: "📈", description: "Your earnings + stats" },
+  { href: "/dashboard/wallet", label: "Wallet", icon: "💰", description: "Payouts + balances" },
 ];
 
-const ADMIN_LINK = { href: "/admin", label: "Admin" };
+const ADMIN_LINK = { href: "/admin", label: "Admin", icon: "🛡️", description: "Moderation + ops" };
 
 export default function Navbar() {
   return (

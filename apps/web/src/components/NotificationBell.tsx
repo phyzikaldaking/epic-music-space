@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import Link from "next/link";
 
 interface Notification {
   id: string;
@@ -105,34 +106,80 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-80 rounded-2xl border border-white/12 bg-[#111] shadow-2xl shadow-black/60 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
-            <span className="text-sm font-semibold text-white/80">Notifications</span>
-            {loading && <span className="text-xs text-white/30">Marking read…</span>}
-          </div>
-
-          <div className="max-h-[400px] overflow-y-auto divide-y divide-white/5">
-            {notifications.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-white/30">
-                No notifications yet.
+        <>
+          {/* Mobile-only backdrop so a tap-outside on phone closes the panel.
+              Desktop relies on the existing click-outside handler. */}
+          <div
+            aria-hidden
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm sm:hidden"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-label="Notifications"
+            className="fixed inset-x-3 top-16 z-50 mx-auto max-w-sm rounded-2xl border border-white/15 bg-gradient-to-b from-[#15151c] to-[#0d0d12] shadow-[0_20px_60px_rgba(124,58,237,0.25)] backdrop-blur-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-10 sm:mx-0 sm:w-80"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span aria-hidden className="text-base">🔔</span>
+                <span className="text-sm font-bold text-white/85">Notifications</span>
+                {unreadCount > 0 && (
+                  <span className="rounded-full bg-brand-500 px-1.5 py-0.5 text-[10px] font-black text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </div>
-            ) : (
-              notifications.slice(0, 20).map((n) => (
-                <div
-                  key={n.id}
-                  className={`flex gap-3 px-4 py-3 transition ${n.read ? "opacity-60" : "bg-brand-500/5"}`}
+              <div className="flex items-center gap-2">
+                {loading && <span className="text-xs text-white/35">Marking read…</span>}
+                <Link
+                  href="/notifications"
+                  onClick={() => setOpen(false)}
+                  className="text-[11px] font-semibold text-brand-400 hover:underline"
                 >
-                  <span className="text-xl flex-shrink-0 mt-0.5">{typeIcon(n.type)}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-white truncate">{n.title}</p>
-                    <p className="text-xs text-white/50 mt-0.5 line-clamp-2">{n.body}</p>
-                    <p className="text-xs text-white/25 mt-1">{timeAgo(n.createdAt)}</p>
-                  </div>
+                  See all
+                </Link>
+              </div>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto divide-y divide-white/5 sm:max-h-[400px]">
+              {notifications.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-sm text-white/45">
+                  <span aria-hidden className="text-3xl">📭</span>
+                  <p className="font-semibold text-white/65">No notifications yet</p>
+                  <p className="text-xs text-white/35">
+                    Likes, comments, follows, and license sales land here.
+                  </p>
                 </div>
-              ))
-            )}
+              ) : (
+                notifications.slice(0, 20).map((n) => (
+                  <div
+                    key={n.id}
+                    className={`flex gap-3 px-4 py-3 transition ${
+                      n.read ? "opacity-60" : "bg-brand-500/8"
+                    }`}
+                  >
+                    <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white/4 text-base ring-1 ring-white/10">
+                      {typeIcon(n.type)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-white">{n.title}</p>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-white/55">{n.body}</p>
+                      <p className="mt-1 text-[10px] uppercase tracking-widest text-white/30">
+                        {timeAgo(n.createdAt)}
+                      </p>
+                    </div>
+                    {!n.read && (
+                      <span
+                        aria-hidden
+                        className="ml-1 mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-accent-400 shadow-[0_0_8px_rgba(0,245,255,0.85)]"
+                      />
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
