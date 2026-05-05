@@ -8,7 +8,10 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "X-XSS-Protection", value: "1; mode=block" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Referrer-Policy", value: "strict-origin" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-site" },
+  { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=(self)",
@@ -21,10 +24,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      // 'unsafe-inline'/'unsafe-eval' kept for Next.js dev + framework hydration.
-      // Worth migrating to a nonce-based CSP in a follow-up; for now we keep
-      // them consistent with current Next.js + Stripe.js requirements.
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com",
+      "script-src 'self' https://js.stripe.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       // img-src: data: needed for inline SVGs/posters; blob: for in-page
       // preview of files the user just selected (cover/avatar previews).
