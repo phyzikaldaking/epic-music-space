@@ -123,15 +123,23 @@ const nextConfig = {
   },
 };
 
-// Wrap with Sentry's Next.js plugin only when DSN is configured.
-// (The plugin is a no-op runtime import when SENTRY_DSN is unset, but we
-// guard at build-time too so unconfigured deploys don't try to upload
-// source maps and fail.)
+// BotID — wrap the routes that should be challenged. Empty path list keeps
+// the runtime headers wired so checkBotId() server-side calls work, while
+// individual routes are responsible for actually invoking the check.
 let exported = nextConfig;
+try {
+  const { withBotId } = await import("botid/next/config");
+  exported = withBotId(exported);
+} catch {
+  // botid not installed — fall through.
+}
+
 if (process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN) {
   try {
     const { withSentryConfig } = await import("@sentry/nextjs");
-    exported = withSentryConfig(nextConfig, {
+    // Wrap the already-BotID-wrapped config (if any) so both plugins'
+    // settings stack rather than clobbering each other.
+    exported = withSentryConfig(exported, {
       silent: true,
       org: process.env.SENTRY_ORG,
       project: process.env.SENTRY_PROJECT,

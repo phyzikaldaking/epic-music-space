@@ -6,6 +6,7 @@ import { maybeAwardEarlyAdopter } from "@/lib/badges";
 import { sendVerificationEmail } from "@/lib/email";
 import { randomBytes } from "crypto";
 import { strictLimiter } from "@/lib/rateLimit";
+import { isLikelyBot } from "@/lib/botCheck";
 import { emitAuthEvent } from "@/lib/authObservability";
 import { sanitizeCallbackPath } from "@/lib/safeCallback";
 
@@ -35,6 +36,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "Too many registration attempts. Please try again later." },
       { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
+  // Vercel BotID — block obvious bot traffic before we burn DB writes on a
+  // signup that's almost certainly going to be deleted in moderation. Soft
+  // fail: if BotID is misconfigured the helper returns false (not bot) so
+  // we never lock real users out.
+  if (await isLikelyBot()) {
+    await emitAuthEvent("register_bot_blocked", { ip });
+    return NextResponse.json(
+      { error: "Couldn't verify the request. Try again from a normal browser." },
+      { status: 403 },
     );
   }
 

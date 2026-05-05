@@ -9,6 +9,7 @@ import DistrictBadge from "@/components/DistrictBadge";
 import SongCard from "@/components/SongCard";
 import FollowButton from "@/components/FollowButton";
 import TipArtistButton from "@/components/TipArtistButton";
+import MessageButton from "@/components/MessageButton";
 import PostCard from "@/components/PostCard";
 import { BADGE_META } from "@/lib/badges";
 import type { Metadata } from "next";
@@ -256,6 +257,7 @@ export default async function StudioProfilePage({ params }: Props) {
                 initialFollowerCount={user._count.followers}
               />
               <TipArtistButton artistId={user.id} artistName={user.name ?? username} />
+              <MessageButton peerId={user.id} />
             </>
           ) : (
             <a

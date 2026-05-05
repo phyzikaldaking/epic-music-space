@@ -2,6 +2,7 @@ import { track } from "@/lib/analytics";
 
 export type AuthEventName =
   | "register_rate_limited"
+  | "register_bot_blocked"
   | "register_invalid_input"
   | "register_existing_email"
   | "register_created"

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { moderateLimiter, strictLimiter } from "@/lib/rateLimit";
+import { isLikelyBot } from "@/lib/botCheck";
 import { getMuxClient } from "@/lib/mux";
 import { enqueueNotification } from "@/lib/queues";
 
@@ -166,6 +167,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "Posting too quickly — slow down." },
       { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
+
+  // BotID gate before we accept body bytes / spend a Mux upload slot. Soft
+  // fail (helper returns false on errors) so a flaky check can't lock real
+  // users out.
+  if (await isLikelyBot()) {
+    return NextResponse.json(
+      { error: "Couldn't verify the request. Try again from a normal browser." },
+      { status: 403 },
     );
   }
 
