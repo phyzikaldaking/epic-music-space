@@ -109,5 +109,81 @@ export async function GET(req: NextRequest) {
     }),
   );
 
-  return NextResponse.json({ expired: expired.length });
+  // Battle Royales — sweep ACTIVE rows past endsAt. Each one fans out a
+  // result notification per entry artist and applies the winner boost.
+  const expiredRoyales = await prisma.battleRoyale.findMany({
+    where: { status: "ACTIVE", endsAt: { lte: new Date() } },
+    include: {
+      entries: {
+        include: { song: { select: { id: true, artistId: true, title: true } } },
+        orderBy: { votes: "desc" },
+      },
+    },
+    take: 50,
+  });
+
+  if (expiredRoyales.length > 0) {
+    await Promise.allSettled(
+      expiredRoyales.map(async (battle) => {
+        const winner = battle.entries[0];
+        if (!winner) {
+          await prisma.battleRoyale.update({
+            where: { id: battle.id },
+            data: { status: "COMPLETED" },
+          });
+          return;
+        }
+        const totalVotes = battle.entries.reduce((sum, e) => sum + e.votes, 0);
+
+        await prisma.$transaction([
+          prisma.battleRoyale.update({
+            where: { id: battle.id },
+            data: { status: "COMPLETED" },
+          }),
+          prisma.song.update({
+            where: { id: winner.song.id },
+            data: {
+              versusWins: { increment: 1 },
+              boostScore: { increment: WINNER_BOOST },
+            },
+          }),
+        ]);
+
+        if (totalVotes > 0) {
+          await awardBadge(winner.song.artistId, "FIRST_BATTLE_WIN").catch(() => null);
+        }
+
+        await Promise.allSettled(
+          battle.entries.map((entry) => {
+            const won = entry.songId === winner.songId && totalVotes > 0;
+            const placement = battle.entries.findIndex((e) => e.id === entry.id) + 1;
+            return enqueueNotification({
+              userId: entry.song.artistId,
+              type: "VERSUS_RESULT",
+              title: won
+                ? "🏆 Royale won!"
+                : placement === 2
+                  ? "Runner-up in the Royale"
+                  : "Royale ended",
+              body: won
+                ? `"${entry.song.title}" took the crown with ${entry.votes} of ${totalVotes} votes. Boost score bumped, badge awarded.`
+                : `"${entry.song.title}" finished #${placement} of ${battle.entries.length} (${entry.votes} of ${totalVotes} votes). Run it back at /versus/new.`,
+              metadata: {
+                battleId: battle.id,
+                placement,
+                totalEntries: battle.entries.length,
+                votes: entry.votes,
+                totalVotes,
+              },
+            });
+          }),
+        );
+      }),
+    );
+  }
+
+  return NextResponse.json({
+    expired: expired.length,
+    expiredRoyales: expiredRoyales.length,
+  });
 }

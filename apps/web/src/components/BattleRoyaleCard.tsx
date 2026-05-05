@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { getStreamUrl } from "@/lib/audioStream";
+import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
 
 interface Entry {
   id: string;
@@ -88,6 +89,32 @@ export default function BattleRoyaleCard({
       Object.values(refs).forEach((a) => { if (a) { a.pause(); a.src = ""; } });
     };
   }, []);
+
+  // Live vote updates from other voters. Falls back gracefully when
+  // realtime is unavailable (the local POST already updates this client).
+  useEffect(() => {
+    if (isExpired) return;
+    const supabase = createBrowserSupabaseClient();
+    if (!supabase) return;
+    const channel = supabase
+      .channel(CHANNELS.royale(battleId))
+      .on("broadcast", { event: "vote_update" }, (msg) => {
+        const payload = msg.payload as
+          | { entries?: { id: string; votes: number }[] }
+          | undefined;
+        if (!payload?.entries) return;
+        setEntries((prev) =>
+          prev.map((e) => {
+            const updated = payload.entries!.find((u) => u.id === e.id);
+            return updated ? { ...e, votes: updated.votes } : e;
+          }),
+        );
+      })
+      .subscribe();
+    return () => {
+      void channel.unsubscribe();
+    };
+  }, [battleId, isExpired]);
 
   const vote = useCallback(async (songId: string) => {
     if (loading || isExpired || voted) return;

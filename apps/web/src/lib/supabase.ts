@@ -39,6 +39,7 @@ export const CHANNELS = {
   songs: "ems:songs",
   leaderboard: "ems:leaderboard",
   versus: (matchId: string) => `ems:versus:${matchId}`,
+  royale: (battleId: string) => `ems:royale:${battleId}`,
   notifications: (userId: string) => `ems:notifications:${userId}`,
   room: (roomId: string) => `ems:room:${roomId}`,
   conversation: (conversationId: string) => `ems:conv:${conversationId}`,

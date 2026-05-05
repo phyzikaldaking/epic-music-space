@@ -17,51 +17,59 @@ export const metadata = {
   description: "Vote on 1v1 track battles and Battle Royale showdowns. Discover the hottest music and help crown the next champion on Epic Music Space.",
 };
 
-const getActiveBattles = unstable_cache(
+const PAST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 days of recent results
+
+const getBattles = unstable_cache(
   async () => {
-    const [matches, royales] = await Promise.all([
+    const songSelect = {
+      id: true,
+      title: true,
+      artist: true,
+      coverUrl: true,
+      aiScore: true,
+    } as const;
+    const recentSince = new Date(Date.now() - PAST_WINDOW_MS);
+
+    const [activeMatches, activeRoyales, pastMatches, pastRoyales] = await Promise.all([
       prisma.versusMatch.findMany({
         where: { status: "ACTIVE" },
-        include: {
-          songA: {
-            select: {
-              id: true, title: true, artist: true,
-              coverUrl: true, aiScore: true,
-            },
-          },
-          songB: {
-            select: {
-              id: true, title: true, artist: true,
-              coverUrl: true, aiScore: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 20,
+        include: { songA: { select: songSelect }, songB: { select: songSelect } },
+        orderBy: { endsAt: "asc" },
+        take: 30,
       }),
       prisma.battleRoyale.findMany({
         where: { status: "ACTIVE" },
         include: {
           entries: {
-            include: {
-              song: {
-                select: {
-                  id: true, title: true, artist: true,
-                  coverUrl: true, aiScore: true,
-                },
-              },
-            },
+            include: { song: { select: songSelect } },
             orderBy: { position: "asc" },
           },
         },
-        orderBy: { createdAt: "desc" },
-        take: 20,
+        orderBy: { endsAt: "asc" },
+        take: 30,
+      }),
+      prisma.versusMatch.findMany({
+        where: { status: "COMPLETED", endsAt: { gte: recentSince } },
+        include: { songA: { select: songSelect }, songB: { select: songSelect } },
+        orderBy: { endsAt: "desc" },
+        take: 8,
+      }),
+      prisma.battleRoyale.findMany({
+        where: { status: "COMPLETED", endsAt: { gte: recentSince } },
+        include: {
+          entries: {
+            include: { song: { select: songSelect } },
+            orderBy: { votes: "desc" },
+          },
+        },
+        orderBy: { endsAt: "desc" },
+        take: 8,
       }),
     ]);
 
-    return { matches, royales };
+    return { activeMatches, activeRoyales, pastMatches, pastRoyales };
   },
-  ["versus-active-battles"],
+  ["versus-battles-v2"],
   { revalidate: 30, tags: [CACHE_TAGS.battles] },
 );
 
@@ -74,8 +82,8 @@ export default async function VersusPage() {
   const isArtist =
     Boolean(session?.user?.id) && session!.user.role !== "LISTENER";
 
-  const [{ matches, royales }, artistSongs, verzuzMatches] = await Promise.all([
-    getActiveBattles(),
+  const [{ activeMatches, activeRoyales, pastMatches, pastRoyales }, artistSongs, verzuzMatches] = await Promise.all([
+    getBattles(),
     isArtist
       ? prisma.song.findMany({
           where: { artistId: session?.user?.id ?? "", isActive: true },
@@ -104,39 +112,57 @@ export default async function VersusPage() {
     }),
   ]);
 
-  // Get user votes for 1v1 and royale
+  // Get user votes for both active and recent battles so the past results
+  // also reflect "you voted X."
   let userVotes: Record<string, string> = {};
   let userRoyaleVotes: Record<string, string> = {};
   if (session?.user?.id) {
+    const allMatchIds = [...activeMatches, ...pastMatches].map((m) => m.id);
+    const allRoyaleIds = [...activeRoyales, ...pastRoyales].map((r) => r.id);
     const [votes, royaleVotes] = await Promise.all([
       prisma.versusVote.findMany({
-        where: {
-          userId: session.user.id,
-          matchId: { in: matches.map((m) => m.id) },
-        },
+        where: { userId: session.user.id, matchId: { in: allMatchIds } },
       }),
       prisma.battleRoyaleVote.findMany({
-        where: {
-          userId: session.user.id,
-          battleId: { in: royales.map((r) => r.id) },
-        },
+        where: { userId: session.user.id, battleId: { in: allRoyaleIds } },
       }),
     ]);
     userVotes = Object.fromEntries(votes.map((v) => [v.matchId, v.votedSongId]));
     userRoyaleVotes = Object.fromEntries(royaleVotes.map((v) => [v.battleId, v.songId]));
   }
 
-  // Merge and sort all battles by createdAt
+  // Bucket active battles by urgency. <=1h to endsAt = "Ending soon" so the
+  // user can drop in and influence a result; >1h = "Now playing" general feed.
   type BattleItem =
-    | { type: "1v1"; createdAt: Date; data: (typeof matches)[0] }
-    | { type: "royale"; createdAt: Date; data: (typeof royales)[0] };
+    | { type: "1v1"; endsAt: Date; data: (typeof activeMatches)[0] }
+    | { type: "royale"; endsAt: Date; data: (typeof activeRoyales)[0] };
 
-  const all: BattleItem[] = [
-    ...matches.map((m) => ({ type: "1v1" as const, createdAt: m.createdAt, data: m })),
-    ...royales.map((r) => ({ type: "royale" as const, createdAt: r.createdAt, data: r })),
-  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const ENDING_SOON_MS = 60 * 60 * 1000;
+  const now = Date.now();
+  const allActive: BattleItem[] = [
+    ...activeMatches.map((m) => ({ type: "1v1" as const, endsAt: m.endsAt, data: m })),
+    ...activeRoyales.map((r) => ({ type: "royale" as const, endsAt: r.endsAt, data: r })),
+  ].sort((a, b) => a.endsAt.getTime() - b.endsAt.getTime());
 
-  const isEmpty = all.length === 0;
+  const endingSoon = allActive.filter(
+    (b) => b.endsAt.getTime() - now <= ENDING_SOON_MS && b.endsAt.getTime() > now,
+  );
+  const nowPlaying = allActive.filter(
+    (b) => b.endsAt.getTime() - now > ENDING_SOON_MS,
+  );
+
+  type PastItem =
+    | { type: "1v1"; endsAt: Date; data: (typeof pastMatches)[0] }
+    | { type: "royale"; endsAt: Date; data: (typeof pastRoyales)[0] };
+
+  const recentResults: PastItem[] = [
+    ...pastMatches.map((m) => ({ type: "1v1" as const, endsAt: m.endsAt, data: m })),
+    ...pastRoyales.map((r) => ({ type: "royale" as const, endsAt: r.endsAt, data: r })),
+  ]
+    .sort((a, b) => b.endsAt.getTime() - a.endsAt.getTime())
+    .slice(0, 10);
+
+  const isEmpty = allActive.length === 0 && recentResults.length === 0;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
@@ -354,31 +380,142 @@ export default async function VersusPage() {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-6">
-          {all.map((item) =>
-            item.type === "1v1" ? (
-              <VersusCard
-                key={item.data.id}
-                matchId={item.data.id}
-                songA={item.data.songA}
-                songB={item.data.songB}
-                votesA={item.data.votesA}
-                votesB={item.data.votesB}
-                endsAt={item.data.endsAt.toISOString()}
-                userVotedSongId={userVotes[item.data.id] ?? null}
-              />
-            ) : (
-              <BattleRoyaleCard
-                key={item.data.id}
-                battleId={item.data.id}
-                entries={item.data.entries}
-                endsAt={item.data.endsAt.toISOString()}
-                userVotedSongId={userRoyaleVotes[item.data.id] ?? null}
-              />
-            ),
+        <div className="flex flex-col gap-12">
+          {endingSoon.length > 0 && (
+            <BattleSection
+              eyebrow="Ending soon · less than an hour left"
+              title={
+                <>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500" />
+                    </span>
+                    Closing now
+                  </span>
+                </>
+              }
+              count={endingSoon.length}
+              accent="rose"
+            >
+              {endingSoon.map((item) =>
+                renderBattle(item, userVotes, userRoyaleVotes),
+              )}
+            </BattleSection>
+          )}
+
+          {nowPlaying.length > 0 && (
+            <BattleSection
+              eyebrow="Now playing"
+              title="Active battles"
+              count={nowPlaying.length}
+              accent="brand"
+            >
+              {nowPlaying.map((item) =>
+                renderBattle(item, userVotes, userRoyaleVotes),
+              )}
+            </BattleSection>
+          )}
+
+          {recentResults.length > 0 && (
+            <BattleSection
+              eyebrow={`Recent results · last ${Math.round(PAST_WINDOW_MS / (24 * 60 * 60 * 1000))} days`}
+              title="Just finished"
+              count={recentResults.length}
+              accent="muted"
+            >
+              {recentResults.map((item) =>
+                renderBattle(item, userVotes, userRoyaleVotes),
+              )}
+            </BattleSection>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+function renderBattle(
+  item:
+    | { type: "1v1"; data: { id: string; songA: SongPreview; songB: SongPreview; votesA: number; votesB: number; endsAt: Date } }
+    | { type: "royale"; data: { id: string; entries: { id: string; songId: string; votes: number; position: number; song: SongPreview }[]; endsAt: Date } },
+  userVotes: Record<string, string>,
+  userRoyaleVotes: Record<string, string>,
+) {
+  if (item.type === "1v1") {
+    return (
+      <VersusCard
+        key={item.data.id}
+        matchId={item.data.id}
+        songA={item.data.songA}
+        songB={item.data.songB}
+        votesA={item.data.votesA}
+        votesB={item.data.votesB}
+        endsAt={item.data.endsAt.toISOString()}
+        userVotedSongId={userVotes[item.data.id] ?? null}
+      />
+    );
+  }
+  return (
+    <BattleRoyaleCard
+      key={item.data.id}
+      battleId={item.data.id}
+      entries={item.data.entries}
+      endsAt={item.data.endsAt.toISOString()}
+      userVotedSongId={userRoyaleVotes[item.data.id] ?? null}
+    />
+  );
+}
+
+type SongPreview = {
+  id: string;
+  title: string;
+  artist: string;
+  coverUrl: string | null;
+  aiScore: number;
+};
+
+function BattleSection({
+  eyebrow,
+  title,
+  count,
+  accent,
+  children,
+}: {
+  eyebrow: string;
+  title: React.ReactNode;
+  count: number;
+  accent: "rose" | "brand" | "muted";
+  children: React.ReactNode;
+}) {
+  const eyebrowColor =
+    accent === "rose"
+      ? "text-rose-300"
+      : accent === "brand"
+        ? "text-brand-300"
+        : "text-white/45";
+  const countColor =
+    accent === "rose"
+      ? "border-rose-500/35 bg-rose-500/10 text-rose-200"
+      : accent === "brand"
+        ? "border-brand-500/35 bg-brand-500/10 text-brand-200"
+        : "border-white/10 bg-white/4 text-white/55";
+  return (
+    <section>
+      <div className="mb-4 flex items-end justify-between gap-3 border-b border-white/8 pb-3">
+        <div>
+          <p className={`text-[10px] font-black uppercase tracking-[0.24em] ${eyebrowColor}`}>
+            {eyebrow}
+          </p>
+          <h2 className="mt-1 text-lg font-extrabold text-white">{title}</h2>
+        </div>
+        <span
+          className={`rounded-full border px-2.5 py-0.5 text-[11px] font-black tabular-nums ${countColor}`}
+        >
+          {count}
+        </span>
+      </div>
+      <div className="flex flex-col gap-6">{children}</div>
+    </section>
   );
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 
 const voteSchema = z.object({
   songId: z.string().cuid(),
@@ -70,6 +71,18 @@ export async function POST(
     select: { id: true, songId: true, votes: true, position: true },
     orderBy: { votes: "desc" },
   });
+
+  const supabase = createServerSupabaseClient();
+  if (supabase) {
+    await supabase
+      .channel(CHANNELS.royale(battleId))
+      .send({
+        type: "broadcast",
+        event: "vote_update",
+        payload: { battleId, entries, votedSongId: songId },
+      })
+      .catch(() => null);
+  }
 
   return NextResponse.json({ votedSongId: songId, entries });
 }
