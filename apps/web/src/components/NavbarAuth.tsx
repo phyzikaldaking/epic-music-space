@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import NotificationBell from "@/components/NotificationBell";
 import SignOutButton from "@/components/SignOutButton";
 
 export default function NavbarAuth() {
@@ -35,7 +34,6 @@ export default function NavbarAuth() {
 
   return (
     <div className="flex items-center gap-3">
-      <NotificationBell />
       <div className="hidden md:flex items-center gap-2.5">
         <div className="h-7 w-7 rounded-full bg-brand-500/20 border border-brand-500/40 flex items-center justify-center text-xs font-bold text-brand-400">
           {initial}

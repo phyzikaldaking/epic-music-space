@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 
@@ -33,14 +34,24 @@ const LEGAL_LINKS: { href: string; label: string }[] = [
 
 export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { data: session } = useSession();
   const pathname = usePathname() ?? "/";
   const isLoggedIn = !!session;
   const navLinks = isLoggedIn ? authedLinks : publicLinks;
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  // Mount guard — portals need the DOM available
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        btnRef.current?.focus();
+      }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -62,53 +73,29 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
   const initial = (session?.user?.name?.[0] ?? session?.user?.email?.[0] ?? "?").toUpperCase();
   const userImage = session?.user?.image ?? null;
 
-  return (
-    <div className="md:hidden">
-      {open ? (
-        <button
-          type="button"
-          aria-label="Close navigation menu"
-          aria-expanded="true"
-          aria-controls="mobile-nav"
-          onClick={() => setOpen(false)}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/12 text-white/60 transition hover:border-white/24 hover:bg-white/6 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      ) : (
-        <button
-          type="button"
-          aria-label="Open navigation menu"
-          aria-expanded="false"
-          aria-controls="mobile-nav"
-          onClick={() => setOpen(true)}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/12 text-white/60 transition hover:border-white/24 hover:bg-white/6 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-          </svg>
-        </button>
-      )}
+  // The overlay + panel are portalled to <body> so they escape the navbar's
+  // backdrop-filter stacking context (which traps position:fixed children in
+  // Safari and Chrome, causing the panel to render in the wrong position).
+  const overlay = mounted
+    ? createPortal(
+        <>
+          {/* Backdrop */}
+          <div
+            className={`fixed inset-0 z-[9998] bg-black/65 backdrop-blur-sm transition-opacity duration-200 ${
+              open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+            }`}
+            aria-hidden="true"
+            onClick={() => setOpen(false)}
+          />
 
-      {/* Backdrop */}
-      <div
-        className={`fixed inset-0 z-40 bg-black/65 backdrop-blur-sm transition-opacity duration-200 ${
-          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
-        aria-hidden="true"
-        onClick={() => setOpen(false)}
-      />
-
-      {/* Slide-in side panel — full-bleed on phones, capped on tablets */}
-      <nav
-        id="mobile-nav"
-        aria-label="Mobile navigation"
-        className={`fixed inset-y-0 right-0 z-50 flex w-[88vw] max-w-sm flex-col overflow-hidden border-l border-white/10 bg-[#0a0a0e] shadow-[0_0_60px_rgba(124,58,237,0.25)] transition-transform duration-300 ease-out ${
-          open ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
+          {/* Slide-in side panel */}
+          <nav
+            id="mobile-nav"
+            aria-label="Mobile navigation"
+            className={`fixed inset-y-0 right-0 z-[9999] flex w-[88vw] max-w-sm flex-col overflow-hidden border-l border-white/10 bg-[#0a0a0e] shadow-[0_0_60px_rgba(124,58,237,0.25)] transition-transform duration-300 ease-out ${
+              open ? "translate-x-0" : "translate-x-full"
+            }`}
+          >
         {/* Decorative gradient header */}
         <div className="relative overflow-hidden border-b border-white/8">
           <div
@@ -285,6 +272,45 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
           </div>
         </div>
       </nav>
+        </>,
+        document.body
+      )
+    : null;
+
+  return (
+    <div className="md:hidden">
+      {/* Hamburger / close toggle — two separate buttons so aria-expanded can be literal */}
+      {open ? (
+        <button
+          ref={btnRef}
+          type="button"
+          aria-label="Close navigation menu"
+          aria-expanded="true"
+          aria-controls="mobile-nav"
+          onClick={() => setOpen(false)}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-white/8 text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 active:scale-95"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      ) : (
+        <button
+          ref={btnRef}
+          type="button"
+          aria-label="Open navigation menu"
+          aria-expanded="false"
+          aria-controls="mobile-nav"
+          onClick={() => setOpen(true)}
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/25 bg-white/5 text-white shadow-sm transition hover:border-white/40 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 active:scale-95"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+          </svg>
+        </button>
+      )}
+
+      {overlay}
     </div>
   );
 }

@@ -69,7 +69,7 @@ export default function Navbar() {
             href="/ai"
             aria-label="Open AI assistant"
             title="AI assistant"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/12 text-white/60 transition hover:border-white/24 hover:bg-white/6 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+            className="hidden h-9 w-9 items-center justify-center rounded-lg border border-white/12 text-white/60 transition hover:border-white/24 hover:bg-white/6 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 sm:flex"
           >
             <svg
               aria-hidden="true"
