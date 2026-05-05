@@ -231,6 +231,25 @@ export default async function TrackPage({ params, searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
+      <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2 text-xs text-white/45">
+        <Link href="/marketplace" className="hover:text-white/75">
+          Marketplace
+        </Link>
+        <span aria-hidden>›</span>
+        {song.genre && (
+          <>
+            <Link
+              href={`/marketplace?genre=${encodeURIComponent(song.genre)}`}
+              className="hover:text-white/75"
+            >
+              {song.genre}
+            </Link>
+            <span aria-hidden>›</span>
+          </>
+        )}
+        <span className="truncate text-white/65">{song.title}</span>
+      </nav>
+
       {song.isDemo && (
         <div className="mb-6 flex items-center gap-3 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-5 py-4 text-sm text-cyan-300">
           <span className="text-xl">🎧</span>

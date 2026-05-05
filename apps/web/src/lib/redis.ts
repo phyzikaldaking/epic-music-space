@@ -1,8 +1,7 @@
 import Redis from "ioredis";
 
-const REDIS_URL = process.env.REDIS_URL;
-
 let redis: Redis | null = null;
+let redisUrl: string | null = null;
 
 function hasUsableRedisUrl(value: string): boolean {
   try {
@@ -24,10 +23,12 @@ function hasUsableRedisUrl(value: string): boolean {
  * All callers must handle the null case; Redis features degrade gracefully.
  */
 export function getRedis(): Redis | null {
-  if (!REDIS_URL || !hasUsableRedisUrl(REDIS_URL)) return null;
+  const url = process.env.REDIS_URL;
+  if (!url || !hasUsableRedisUrl(url)) return null;
 
-  if (!redis) {
-    redis = new Redis(REDIS_URL, {
+  if (!redis || redisUrl !== url) {
+    redisUrl = url;
+    redis = new Redis(url, {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       lazyConnect: true,

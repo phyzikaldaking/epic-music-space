@@ -6,6 +6,7 @@ import ArtistWelcomeBanner from "@/components/ArtistWelcomeBanner";
 import NextPayoutWidget from "@/components/NextPayoutWidget";
 import ProviderDashboardCard from "@/components/ProviderDashboardCard";
 import ContinueListeningRail from "@/components/ContinueListeningRail";
+import ResendVerificationButton from "@/components/ResendVerificationButton";
 
 export const metadata: Metadata = {
   title: "Dashboard | Epic Music Space",
@@ -338,6 +339,24 @@ export default async function DashboardPage() {
               pendingDollars={artistEarnings}
               payoutsReady={connectStatus.onboardingComplete}
             />
+          </div>
+        )}
+
+        {/* ── Email verification reminder ─────────────────────────────────
+            Required for receipts, license downloads, and payouts. Hidden
+            once the user clicks the link in their welcome email. */}
+        {!user.emailVerified && (
+          <div className="mb-8 flex flex-col gap-3 rounded-2xl border border-yellow-500/35 bg-yellow-500/8 px-5 py-4 sm:flex-row sm:items-center">
+            <div className="flex-1">
+              <p className="text-sm font-bold text-yellow-200">Verify your email</p>
+              <p className="mt-0.5 text-xs text-yellow-100/65">
+                We sent a verification link to <strong>{user.email}</strong>. License receipts and
+                payout-related emails won&apos;t reach you until it&apos;s confirmed.
+              </p>
+            </div>
+            <div className="flex-shrink-0">
+              <ResendVerificationButton email={user.email ?? ""} />
+            </div>
           </div>
         )}
 
