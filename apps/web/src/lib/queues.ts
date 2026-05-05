@@ -110,6 +110,21 @@ export async function enqueueAiScoring(songId: string) {
 }
 
 export async function enqueueNotification(data: NotificationJobData) {
+  // Honor the recipient's per-type opt-out. Missing pref rows default to
+  // enabled (opt-out, not opt-in), so this only suppresses when the user
+  // has explicitly turned off the in-app channel for this type. If the
+  // lookup itself fails we deliver anyway — better noisy than silently
+  // dropped.
+  try {
+    const pref = await prisma.notificationPreference.findUnique({
+      where: { userId_type: { userId: data.userId, type: data.type } },
+      select: { inApp: true },
+    });
+    if (pref && pref.inApp === false) return;
+  } catch (err) {
+    console.warn("[enqueueNotification] pref lookup failed", err);
+  }
+
   const queued = await enqueueWithRetry(
     QUEUE_NAMES.notifications,
     notificationQueue,

@@ -89,7 +89,7 @@ function SignInContent({ googleEnabled }: { googleEnabled: boolean }) {
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <label className="block text-sm font-medium text-white/70">Password</label>
-                <Link href="/auth/forgot" className="text-xs text-brand-300 hover:underline">
+                <Link href="/auth/forgot-password" className="text-xs text-brand-300 hover:underline">
                   Forgot?
                 </Link>
               </div>

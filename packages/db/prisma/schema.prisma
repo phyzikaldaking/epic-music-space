@@ -86,6 +86,7 @@ model User {
   blockedBy          UserBlock[]        @relation("Blocked")
   reportsFiled       UserReport[]       @relation("Reporter")
   reportsReceived    UserReport[]       @relation("Reported")
+  notifPrefs         NotificationPreference[]
 }
 
 enum Role {
@@ -578,6 +579,21 @@ model Notification {
   createdAt DateTime @default(now())
   @@index([userId, read])
   @@index([userId, createdAt])
+}
+
+// Per-user, per-type notification preferences. Missing rows default to
+// "enabled" so the UI only needs to write when a user opts out.
+model NotificationPreference {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // POST_LIKED | POST_COMMENTED | FOLLOWED_POST | FOLLOW | LICENSE_SOLD | …
+  inApp     Boolean  @default(true)
+  email     Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  @@unique([userId, type])
+  @@index([userId])
 }
 
 model UserFollow {

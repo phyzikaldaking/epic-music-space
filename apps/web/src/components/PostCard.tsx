@@ -56,6 +56,9 @@ export default function PostCard(props: PostCardProps) {
   const [deleted, setDeleted] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [shared, setShared] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody] = useState(props.body);
+  const [body, setBody] = useState(props.body);
   const [showMenu, setShowMenu] = useState(false);
   const [moderationMsg, setModerationMsg] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState(props.videoStatus);
@@ -141,6 +144,29 @@ export default function PostCard(props: PostCardProps) {
       props.onDeleted?.(props.id);
     } catch {
       alert("Could not delete. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveEdit() {
+    const next = editBody.trim();
+    if (!next || next === body || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/posts/${props.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: next }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "Save failed.");
+      }
+      setBody(next);
+      setEditing(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Save failed.");
     } finally {
       setBusy(false);
     }
@@ -300,23 +326,70 @@ export default function PostCard(props: PostCardProps) {
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(true)}
-                disabled={busy}
-                className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/80"
-                aria-label="Delete post"
-              >
-                ⋯
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(true);
+                    setEditBody(body);
+                  }}
+                  disabled={busy || editing}
+                  className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/55 hover:bg-white/10 hover:text-white/80"
+                  aria-label="Edit post"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  disabled={busy}
+                  className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/80"
+                  aria-label="Delete post"
+                >
+                  ⋯
+                </button>
+              </>
             )}
           </div>
         )}
       </header>
 
-      {props.body && (
-        <p className="mt-3 whitespace-pre-wrap text-sm text-white/85">{linkifyBody(props.body)}</p>
-      )}
+      {editing ? (
+        <div className="mt-3 space-y-2">
+          <textarea
+            value={editBody}
+            onChange={(e) => setEditBody(e.target.value)}
+            rows={Math.min(8, Math.max(3, editBody.split("\n").length))}
+            maxLength={2000}
+            aria-label="Edit post body"
+            placeholder="Edit your post…"
+            className="w-full resize-y rounded-xl border border-white/10 bg-white/4 px-3 py-2 text-sm text-white focus:border-brand-500/60 focus:outline-none"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(false);
+                setEditBody(body);
+              }}
+              disabled={busy}
+              className="rounded-lg border border-white/15 px-3 py-1 text-xs text-white/65 hover:bg-white/5"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveEdit}
+              disabled={busy || !editBody.trim() || editBody.trim() === body}
+              className="rounded-lg bg-brand-500 px-3 py-1 text-xs font-bold text-white hover:bg-brand-600 disabled:opacity-50"
+            >
+              {busy ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : body ? (
+        <p className="mt-3 whitespace-pre-wrap text-sm text-white/85">{linkifyBody(body)}</p>
+      ) : null}
 
       {props.imageUrl && (
         <div className="mt-3 overflow-hidden rounded-xl border border-white/8">
