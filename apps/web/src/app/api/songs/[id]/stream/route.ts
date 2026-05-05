@@ -63,11 +63,19 @@ export async function GET(
   const originHost = hostFromUrl(origin);
   const refererHost = hostFromUrl(referer);
 
+  // Vercel preview hosts have the form epic-music-space-<hash>-<scope>.vercel.app
+  // Use a strict prefix-match instead of `includes("epic-music-space")` so an
+  // attacker can't register `epic-music-space-evil.com.vercel.app` style names
+  // and have referers from there satisfy the check.
+  const VERCEL_PREVIEW_RE = /^epic-music-space(-[a-z0-9-]+)?\.vercel\.app$/;
+  const isVercelPreview = (h: string | null) =>
+    !!h && (VERCEL_PREVIEW_RE.test(h) || h === requestHost);
+
   const isOk =
     (originHost && allowedHosts.has(originHost)) ||
     (refererHost && allowedHosts.has(refererHost)) ||
-    // Same-origin fetch from a Vercel preview deployment of this project
-    (refererHost?.endsWith(".vercel.app") && (refererHost.includes("epic-music-space") || refererHost === requestHost));
+    isVercelPreview(refererHost) ||
+    isVercelPreview(originHost);
 
   if (!isOk) {
     return new NextResponse("Forbidden", { status: 403 });
@@ -159,6 +167,10 @@ export async function GET(
   responseHeaders.set("Cache-Control", "private, max-age=60");
   responseHeaders.set("Content-Disposition", "inline");
   responseHeaders.set("X-Content-Type-Options", "nosniff");
+  // Block cross-origin <audio>/<video>/fetch from other sites — they can't
+  // read or include this resource even if a public stream URL leaks.
+  responseHeaders.set("Cross-Origin-Resource-Policy", "same-origin");
+  responseHeaders.set("Referrer-Policy", "no-referrer");
 
   return new NextResponse(upstream.body, {
     status: upstream.status,

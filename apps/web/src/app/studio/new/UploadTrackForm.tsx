@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CompactAudioPlayer from "@/components/CompactAudioPlayer";
@@ -48,6 +48,17 @@ export default function UploadTrackForm() {
   const audioRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const stemRef = useRef<HTMLInputElement>(null);
+
+  // Revoke any in-flight cover blob URL on unmount so we don't leak memory
+  // if the user navigates away mid-upload.
+  useEffect(() => {
+    return () => {
+      if (coverPreview && coverPreview.startsWith("blob:")) {
+        URL.revokeObjectURL(coverPreview);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Upload helpers ─────────────────────────────────────────────────────────
   // 1. Ask the API for a Supabase signed upload URL (tiny JSON request).
@@ -140,7 +151,11 @@ export default function UploadTrackForm() {
     const file = e.target.files?.[0];
     if (!file) return;
     setCoverFile(file);
-    setCoverPreview(URL.createObjectURL(file));
+    setCoverPreview((prev) => {
+      // Revoke the previous blob URL so we don't leak memory across reuploads.
+      if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
     setCoverUploadState("uploading");
     setCoverProgress(0);
     setError(null);
@@ -151,7 +166,10 @@ export default function UploadTrackForm() {
       setCoverUploadState("done");
     } catch (err) {
       setCoverUploadState("error");
-      setCoverPreview(null);
+      setCoverPreview((prev) => {
+        if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+        return null;
+      });
       setCoverFile(null);
       setCoverProgress(0);
       setError(err instanceof Error ? err.message : "Cover upload failed. You can continue without a cover.");
@@ -186,6 +204,17 @@ export default function UploadTrackForm() {
 
     if (!finalAudioUrl) {
       setError("Please upload an audio file or provide a direct audio URL.");
+      return;
+    }
+
+    // Pasted URL: must classify as a known stream/embed source — reject
+    // anything else (random https://attacker.com/foo.html). This prevents
+    // unrecognised URLs from being persisted to the DB and later proxied.
+    const audioClass = classifyAudioSource(finalAudioUrl);
+    if (audioClass.type === "unknown") {
+      setError(
+        "We can't recognize that audio URL. Upload the file directly, or paste a YouTube / Vimeo / SoundCloud / Spotify link.",
+      );
       return;
     }
 
@@ -298,7 +327,10 @@ export default function UploadTrackForm() {
                     for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
                     const file = new File([buf], `cover-${Date.now()}.png`, { type: "image/png" });
                     setCoverFile(file);
-                    setCoverPreview(URL.createObjectURL(file));
+                    setCoverPreview((prev) => {
+                      if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+                      return URL.createObjectURL(file);
+                    });
                     const { signedUrl, publicUrl } = await getSignedUrl("cover", file);
                     await uploadDirect(signedUrl, file, setCoverProgress);
                     setCoverUrl(publicUrl);
@@ -449,9 +481,21 @@ export default function UploadTrackForm() {
               placeholder="https://..."
               value={audioUrl}
               onChange={(e) => {
-                setAudioUrl(e.target.value);
-                // Reset upload state when user manually pastes a URL
-                if (e.target.value && audioUploadState === "idle") setAudioUploadState("done");
+                const v = e.target.value;
+                setAudioUrl(v);
+                // Only mark "done" once the pasted URL classifies as a known
+                // stream or embed source. Unknown URLs stay in idle so the
+                // submit button keeps the user honest.
+                if (!v) {
+                  if (audioUploadState === "done") setAudioUploadState("idle");
+                  return;
+                }
+                const cls = classifyAudioSource(v);
+                if (cls.type !== "unknown") {
+                  setAudioUploadState("done");
+                } else if (audioUploadState === "done") {
+                  setAudioUploadState("idle");
+                }
               }}
               className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60"
             />

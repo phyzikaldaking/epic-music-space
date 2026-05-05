@@ -71,9 +71,20 @@ export async function POST(req: NextRequest) {
   const allowedTypes = isStem ? ALLOWED_STEM_TYPES : isAudio ? ALLOWED_AUDIO_TYPES : ALLOWED_IMAGE_TYPES;
   const maxSize = isStem ? MAX_STEM_SIZE : isAudio ? MAX_AUDIO_SIZE : MAX_IMAGE_SIZE;
 
-  // Validate mimeType and size from JSON metadata (Supabase enforces content-type on upload too)
-  if (mimeType && !allowedTypes.has(mimeType)) {
+  // ── Validate mimeType and size from JSON metadata ───────────────────────
+  // The client-supplied fileSize is advisory — the real ceiling is enforced
+  // by the Supabase bucket's `file_size_limit` policy. We still check here
+  // so we can return a friendly 413 *before* the user uploads bytes that
+  // will be rejected at the storage layer. Reject obviously bogus values
+  // (zero/negative) that suggest a tampered request.
+  if (!mimeType || typeof mimeType !== "string") {
+    return NextResponse.json({ error: "mimeType is required" }, { status: 400 });
+  }
+  if (!allowedTypes.has(mimeType)) {
     return NextResponse.json({ error: `Invalid file type: ${mimeType}` }, { status: 415 });
+  }
+  if (typeof fileSize !== "number" || !Number.isFinite(fileSize) || fileSize <= 0) {
+    return NextResponse.json({ error: "fileSize must be a positive number" }, { status: 400 });
   }
   if (fileSize > maxSize) {
     const limitMb = maxSize / (1024 * 1024);
@@ -82,6 +93,16 @@ export async function POST(req: NextRequest) {
       { status: 413 }
     );
   }
+  if (typeof fileName !== "string" || fileName.length === 0 || fileName.length > 256) {
+    return NextResponse.json({ error: "Invalid fileName" }, { status: 400 });
+  }
+  // Strip path traversal characters from the extension lookup.
+  const safeExt = fileName
+    .split(".")
+    .pop()
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 8);
 
   // ── Create Supabase signed upload URL ────────────────────────────────────
   const supabase = createServerSupabaseClient();
@@ -92,7 +113,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ext = fileName.split(".").pop()?.toLowerCase() ?? (isStem ? "zip" : isAudio ? "mp3" : "jpg");
+  const ext = safeExt || (isStem ? "zip" : isAudio ? "mp3" : "jpg");
   const bucket = isAudio || isStem ? "audio" : "covers";
   const pathPrefix = isStem ? `stems/${session.user.id}` : session.user.id;
   const storagePath = `${pathPrefix}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;

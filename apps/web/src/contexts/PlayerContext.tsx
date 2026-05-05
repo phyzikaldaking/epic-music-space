@@ -8,6 +8,7 @@ import {
   useReducer,
   useRef,
 } from "react";
+import { isEmbedSource } from "@/lib/audioSource";
 
 export interface PlayerSong {
   id: string;
@@ -214,6 +215,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !state.currentSong) return;
+    // Defensive: refuse to feed embed-only URLs into the <audio> element.
+    // playSong already redirects in that case, but a stale dispatch from
+    // any other code path could still land here — fail closed.
+    if (isEmbedSource(state.currentSong.audioUrl)) {
+      return;
+    }
     audio.src = state.currentSong.audioUrl;
     audio.load();
     if (state.isPlaying) void audio.play().catch(() => {});

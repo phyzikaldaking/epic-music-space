@@ -40,11 +40,21 @@ function verifySignature(rawBody: string, header: string | null, secret: string)
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
 
-  if (MUX_WEBHOOK_SECRET) {
-    const sig = req.headers.get("mux-signature");
-    if (!verifySignature(rawBody, sig, MUX_WEBHOOK_SECRET)) {
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-    }
+  // ── Hard-require signature verification ────────────────────────────────
+  // Previous code skipped verification entirely if MUX_WEBHOOK_SECRET was
+  // unset, which let any caller forge READY/FAILED events. We now refuse
+  // to process the webhook at all unless the secret is configured AND the
+  // signature checks out — fail closed.
+  if (!MUX_WEBHOOK_SECRET) {
+    console.error("[mux:webhook] MUX_WEBHOOK_SIGNING_SECRET not configured — refusing webhook");
+    return NextResponse.json(
+      { error: "Webhook receiver not configured" },
+      { status: 503 },
+    );
+  }
+  const sig = req.headers.get("mux-signature");
+  if (!verifySignature(rawBody, sig, MUX_WEBHOOK_SECRET)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
   let event: { type?: string; data?: Record<string, unknown> };

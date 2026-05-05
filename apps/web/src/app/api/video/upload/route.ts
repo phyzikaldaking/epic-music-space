@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getMuxClient } from "@/lib/mux";
 import { moderateLimiter } from "@/lib/rateLimit";
+import { getSiteUrl } from "@/lib/site";
 
 /**
  * POST /api/video/upload
@@ -38,11 +39,44 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const origin = req.headers.get("origin") ?? "*";
+  // ── Resolve CORS origin from a server-side allowlist ────────────────────
+  // Echoing the request's Origin header would let an attacker pass a host
+  // they control, so we pin to the canonical site host (and accept the
+  // www-flipped variant + the request host when it's a known
+  // *.vercel.app preview of this project).
+  const reqOrigin = req.headers.get("origin");
+  let canonical = "";
+  try {
+    canonical = new URL(getSiteUrl()).origin;
+  } catch {
+    canonical = "";
+  }
+  const allowedOrigins = new Set<string>();
+  if (canonical) {
+    allowedOrigins.add(canonical);
+    try {
+      const u = new URL(canonical);
+      const host = u.host;
+      const flipped = host.startsWith("www.") ? host.slice(4) : `www.${host}`;
+      allowedOrigins.add(`${u.protocol}//${flipped}`);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (
+    reqOrigin &&
+    /^https:\/\/epic-music-space-[a-z0-9-]+\.vercel\.app$/.test(reqOrigin)
+  ) {
+    allowedOrigins.add(reqOrigin);
+  }
+  const corsOrigin =
+    reqOrigin && allowedOrigins.has(reqOrigin)
+      ? reqOrigin
+      : canonical || "https://epicmusicspace.com";
 
   try {
     const upload = await mux.video.uploads.create({
-      cors_origin: origin,
+      cors_origin: corsOrigin,
       // Bind this upload to the caller — checked at post-create time so
       // someone can't claim another user's upload as their own.
       // Mux echoes passthrough on the asset and on webhook payloads.
