@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { auth } from "@/lib/auth";
 import UploadTrackForm from "./UploadTrackForm";
 
@@ -57,5 +58,9 @@ export default async function StudioNewPage() {
     );
   }
 
-  return <UploadTrackForm />;
+  return (
+    <Suspense fallback={null}>
+      <UploadTrackForm />
+    </Suspense>
+  );
 }

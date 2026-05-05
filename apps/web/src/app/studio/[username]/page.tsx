@@ -507,57 +507,68 @@ export default async function StudioProfilePage({ params }: Props) {
         )}
       </section>
 
-      {/* Legacy / Vault — older catalog grouped separately so it doesn't
-          dominate "what's new from this artist." */}
+      {/* Legacy / Vault — older catalog given a dedicated, prominent section.
+          Older artists treat this as their archive on display: name on the
+          door, year on each record, full crate visible. No collapse. */}
       {legacySongs.length > 0 && (
-        <section className="mt-12">
-          <details className="group" open={legacySongs.length <= 6}>
-            <summary className="flex cursor-pointer items-center justify-between rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/8 via-transparent to-transparent px-5 py-4 hover:bg-amber-500/12">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl" aria-hidden>📼</span>
-                <div>
-                  <h2 className="text-base font-bold text-amber-100">
-                    From the vault
-                  </h2>
-                  <p className="text-xs text-white/55">
-                    Legacy catalog · {legacySongs.length} track{legacySongs.length === 1 ? "" : "s"}
-                  </p>
-                </div>
+        <section className="mt-16 overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-br from-amber-500/12 via-amber-500/4 to-transparent shadow-[0_30px_60px_-30px_rgba(245,158,11,0.45)]">
+          <div className="flex flex-wrap items-end justify-between gap-4 border-b border-amber-500/20 bg-amber-500/4 px-6 py-5 sm:px-8">
+            <div className="flex items-center gap-4">
+              <span
+                aria-hidden
+                className="flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-500/40 bg-amber-500/15 text-2xl"
+              >
+                📼
+              </span>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-300">
+                  Legacy Catalog · The Vault
+                </p>
+                <h2 className="mt-0.5 text-2xl font-extrabold text-amber-50">
+                  Records from the vault
+                </h2>
+                <p className="mt-1 max-w-xl text-sm text-amber-100/65">
+                  {user.name ?? "This artist"}&apos;s archive — older
+                  releases, demos, and back-when-I-used-to-rap material.
+                  Stream it, license it, share it like the day it dropped.
+                </p>
               </div>
-              <span className="text-xs font-bold uppercase tracking-widest text-amber-200/60 group-open:hidden">
-                show ↓
-              </span>
-              <span className="text-xs font-bold uppercase tracking-widest text-amber-200/60 hidden group-open:inline">
-                hide ↑
-              </span>
-            </summary>
-
-            <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {legacySongs.map((song) => (
-                <div key={song.id} className="relative">
-                  {song.originalReleaseYear && (
-                    <span className="absolute -top-2 left-3 z-10 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold tracking-widest text-amber-200">
-                      {song.originalReleaseYear}
-                    </span>
-                  )}
-                  <SongCard
-                    id={song.id}
-                    title={song.title}
-                    artist={song.artist}
-                    genre={song.genre}
-                    coverUrl={song.coverUrl}
-                    audioUrl={song.audioUrl}
-                    licensePrice={song.licensePrice.toString()}
-                    revenueSharePct={song.revenueSharePct.toString()}
-                    soldLicenses={song.soldLicenses}
-                    totalLicenses={song.totalLicenses}
-                    bpm={song.bpm}
-                    musicalKey={song.key}
-                  />
-                </div>
-              ))}
             </div>
-          </details>
+            <div className="text-right">
+              <p className="text-3xl font-black text-amber-100 tabular-nums">
+                {legacySongs.length}
+              </p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-amber-300/70">
+                {legacySongs.length === 1 ? "track" : "tracks"} on file
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-5 px-6 py-6 sm:grid-cols-2 sm:px-8 lg:grid-cols-3">
+            {legacySongs.map((song) => (
+              <div key={song.id} className="relative">
+                {song.originalReleaseYear && (
+                  <span className="absolute -top-2 left-3 z-10 rounded-full border border-amber-500/50 bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-black tracking-[0.2em] text-amber-100 shadow-md">
+                    {song.originalReleaseYear}
+                  </span>
+                )}
+                <SongCard
+                  id={song.id}
+                  title={song.title}
+                  artist={song.artist}
+                  genre={song.genre}
+                  coverUrl={song.coverUrl}
+                  audioUrl={song.audioUrl}
+                  licensePrice={song.licensePrice.toString()}
+                  revenueSharePct={song.revenueSharePct.toString()}
+                  soldLicenses={song.soldLicenses}
+                  totalLicenses={song.totalLicenses}
+                  bpm={song.bpm}
+                  musicalKey={song.key}
+                />
+              </div>
+            ))}
+          </div>
         </section>
       )}
     </div>

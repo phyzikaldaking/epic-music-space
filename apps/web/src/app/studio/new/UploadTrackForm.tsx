@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import CompactAudioPlayer from "@/components/CompactAudioPlayer";
 import EmbeddedAudioPreview from "@/components/EmbeddedAudioPreview";
@@ -11,6 +11,8 @@ type UploadState = "idle" | "uploading" | "done" | "error";
 
 export default function UploadTrackForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const legacyParam = searchParams.get("legacy") === "1";
 
   const [title, setTitle] = useState("");
   const [artistName, setArtistName] = useState("");
@@ -18,7 +20,7 @@ export default function UploadTrackForm() {
   const [description, setDescription] = useState("");
   const [licensePrice, setLicensePrice] = useState("9.99");
   const [allowFreeDownload, setAllowFreeDownload] = useState(false);
-  const [isLegacy, setIsLegacy] = useState(false);
+  const [isLegacy, setIsLegacy] = useState(legacyParam);
   const [originalReleaseYear, setOriginalReleaseYear] = useState("");
   const [revenueSharePct, setRevenueSharePct] = useState("10");
   const [totalLicenses, setTotalLicenses] = useState("100");
@@ -741,7 +743,7 @@ export default function UploadTrackForm() {
             </span>
           </label>
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/4 p-4">
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-500/35 bg-gradient-to-br from-amber-500/10 via-amber-500/4 to-transparent p-4 shadow-[0_10px_30px_-15px_rgba(245,158,11,0.45)]">
             <input
               type="checkbox"
               checked={isLegacy}
@@ -749,21 +751,27 @@ export default function UploadTrackForm() {
               className="mt-1 h-4 w-4 cursor-pointer accent-amber-500"
             />
             <span className="flex-1">
-              <span className="block text-sm font-semibold text-amber-200">
-                Legacy / vault track
+              <span className="flex items-center gap-2">
+                <span className="text-base" aria-hidden>📼</span>
+                <span className="block text-sm font-semibold text-amber-200">
+                  This belongs in The Vault
+                </span>
               </span>
-              <span className="mt-1 block text-xs text-white/55">
-                For older catalog material — songs you released years ago,
-                back-when-I-used-to-rap material, archived demos. Legacy
-                tracks land in a separate &ldquo;Vault&rdquo; section on your
-                studio page and are excluded from Trending and the
-                Marketplace home so new releases stay current. Listeners can
-                still find, stream, and license them.
+              <span className="mt-1.5 block text-xs leading-relaxed text-amber-100/70">
+                Tag this track as legacy and it joins your studio&apos;s Vault
+                section <em>and</em> the public{" "}
+                <a href="/vault" target="_blank" rel="noopener" className="text-amber-200 underline decoration-amber-500/50 underline-offset-2 hover:text-amber-100">
+                  /vault
+                </a>{" "}
+                — a dedicated home for older releases, archived demos, and
+                back-when-I-used-to-rap material. The original year shows on
+                every record. Excluded from Trending so new releases stay
+                current; fully streamable and licensable.
               </span>
               {isLegacy && (
                 <span className="mt-3 block">
-                  <span className="block text-[10px] font-bold uppercase tracking-widest text-amber-200/70 mb-1">
-                    Original release year (optional)
+                  <span className="block text-[10px] font-bold uppercase tracking-widest text-amber-200/80 mb-1">
+                    Original release year
                   </span>
                   <input
                     type="number"
@@ -773,8 +781,11 @@ export default function UploadTrackForm() {
                     value={originalReleaseYear}
                     onChange={(e) => setOriginalReleaseYear(e.target.value)}
                     placeholder="e.g. 2003"
-                    className="w-32 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm placeholder-white/25"
+                    className="w-32 rounded-lg border border-amber-500/25 bg-black/30 px-3 py-1.5 text-sm text-amber-100 placeholder-amber-100/30 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/40"
                   />
+                  <span className="mt-1.5 block text-[10px] text-amber-100/55">
+                    Shown as a stamp on every vault record. Optional but heavily recommended.
+                  </span>
                 </span>
               )}
             </span>

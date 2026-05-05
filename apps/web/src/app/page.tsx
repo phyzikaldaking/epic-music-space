@@ -11,9 +11,9 @@ import { CACHE_TAGS } from "@/lib/cacheTags";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Epic Music Space — Live Listening Rooms for Independent Artists",
+  title: "Epic Music Space — Versus Battles, Live Listening Rooms, and Legacy Catalogs",
   description:
-    "Host live listening sessions, upload music, and sell clear digital licenses from one artist studio. Turn every drop into a room fans can join, hear, and support.",
+    "Step in the ring on Versus, host live listening sessions, and surface your legacy catalog. Independent artists win on EMS — no playlists, no gatekeepers, 90% to the artist.",
   alternates: { canonical: "/" },
 };
 
@@ -61,20 +61,22 @@ function mapDemoTracksToSampleSongs(tracks: Awaited<ReturnType<typeof getDemoTra
 }
 
 const marqueeItems = [
+  "Versus Battles Tonight",
+  "Step in the Ring",
+  "Fans Vote Live",
+  "From the Vault",
+  "Legacy Catalogs",
   "Live Listening Parties",
-  "Drop Your Album Live",
   "Take the Floor",
-  "Versus Battles",
   "90% to the Artist",
-  "Fans Hold Your Catalog",
-  "Climb the Charts",
+  "Versus Battles Tonight",
+  "Step in the Ring",
+  "Fans Vote Live",
+  "From the Vault",
+  "Legacy Catalogs",
   "Live Listening Parties",
-  "Drop Your Album Live",
   "Take the Floor",
-  "Versus Battles",
   "90% to the Artist",
-  "Fans Hold Your Catalog",
-  "Climb the Charts",
 ];
 
 const trackArtClasses = ["vc-track-art-1", "vc-track-art-2", "vc-track-art-3"];
@@ -510,25 +512,26 @@ export default async function HomePage() {
         <div className="vc-horizon" aria-hidden="true" />
 
         <div className="vc-hero-content">
-          <p className="vc-eyebrow">For independent artists ready to host the room</p>
+          <p className="vc-eyebrow">Tonight on Epic Music Space — step in the ring</p>
           <h1 className="vc-hero-h1">
-            Host the room.
+            Versus Battles.
             <br />
-            Upload the song.
+            <span className="accent">Live tonight.</span>
             <br />
-            Sell the license.
+            Fans pick the winner.
           </h1>
           <p className="vc-hero-tagline">
-            Open a live listening session for your <span className="accent">album, unreleased track, or catalog</span>.
-            Talk between songs, bring fans into the moment, and turn every listener
-            into one click from licensing your music.
+            Drop your track against another artist&apos;s. The whole room votes
+            in real time, the winner climbs the charts overnight, and the loser
+            gets the rematch. <span className="accent">No playlist gatekeepers. No cosigns.</span>
+            {" "}Just you, the song, and the room.
           </p>
           <div className="vc-hero-ctas">
-            <Link href="/rooms/new" className="vc-btn vc-btn-pink">
-              Open a Room →
+            <Link href="/versus" className="vc-btn vc-btn-pink">
+              Enter a Battle →
             </Link>
-            <Link href="/studio/new" className="vc-btn vc-btn-ghost">
-              Upload Your First Track
+            <Link href="/rooms/new" className="vc-btn vc-btn-ghost">
+              Or open a listening room
             </Link>
           </div>
         </div>
@@ -559,23 +562,26 @@ export default async function HomePage() {
           </p>
           <div className="vc-platform-grid">
             <article className="vc-platform-card">
-              <span className="vc-platform-num">01 / Host</span>
+              <span className="vc-platform-num">01 / Battle</span>
+              <h3>Step in the ring on Versus.</h3>
+              <p>
+                Drop your track against another artist&apos;s. Fans vote in
+                real time, winners climb the charts overnight. This is how
+                unknown artists go viral on EMS — every night, no playlist
+                gatekeepers, no cosigns required.{" "}
+                <Link href="/versus" className="vc-feat-link">
+                  Enter a Battle →
+                </Link>
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">02 / Host</span>
               <h3>Open a live listening room.</h3>
               <p>
                 Your studio is a live audio space — like a club, a radio booth,
                 and a record release party in one. You press play, you talk
                 between tracks, you pass the mic to fans when they raise a hand.
                 Every listener in the world is sitting in the same room as you.
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">02 / Battle</span>
-              <h3>Step in the ring on Versus.</h3>
-              <p>
-                Drop your track against another artist&apos;s. Fans vote in
-                real time, winners climb the charts overnight. This is how
-                unknown artists go viral on EMS — every night, no playlist
-                gatekeepers, no cosigns required.
               </p>
             </article>
             <article className="vc-platform-card">
@@ -844,31 +850,31 @@ export default async function HomePage() {
           </h2>
           <div className="vc-feat-grid vc-feat-grid-top">
             <div className="vc-feat-card versus">
+              <span className="vc-feat-tag">Versus Battles · Flagship</span>
+              <h3>Step in the ring tonight</h3>
+              <p>
+                The headline event on EMS. Drop your track against another
+                artist&apos;s — fans watch live, vote in real time, and the
+                winner climbs the charts overnight. Royales, Verzuz-style sets,
+                rematches with bragging rights. The fastest way to go viral on
+                EMS — no playlist gatekeepers, no cosigns required.
+              </p>
+              <Link href="/versus" className="vc-feat-link vc-feat-link-pink">
+                Enter a Battle →
+              </Link>
+            </div>
+            <div className="vc-feat-card">
               <span className="vc-feat-tag">Live Listening Sessions</span>
-              <h3>The flagship — Clubhouse for music</h3>
+              <h3>Clubhouse for music</h3>
               <p>
                 Open a live audio room. Press play on your album, your unreleased
                 track, your back catalog. Talk between songs. Read the chat. Hand
                 the mic to fans when they raise a hand. Family across the country,
                 fans on the other side of the world — all in the same room with
-                you, hearing it together. Subscription tier sets your room size,
-                from intimate listening parties to thousand-strong releases.
+                you, hearing it together.
               </p>
-              <Link href="/rooms/new" className="vc-feat-link vc-feat-link-pink">
+              <Link href="/rooms/new" className="vc-feat-link">
                 Open a Room →
-              </Link>
-            </div>
-            <div className="vc-feat-card">
-              <span className="vc-feat-tag">Versus Battles</span>
-              <h3>Step in the ring tonight</h3>
-              <p>
-                Drop your track against another artist&apos;s. Fans watch live,
-                vote in real time, and the winner climbs the charts overnight.
-                The fastest way to go viral on EMS — no playlist gatekeepers,
-                no cosigns required.
-              </p>
-              <Link href="/versus" className="vc-feat-link">
-                Enter a Battle →
               </Link>
             </div>
             <div className="vc-feat-card">
@@ -898,6 +904,58 @@ export default async function HomePage() {
               >
                 See Top Scores →
               </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* The Vault — legacy catalog promo. Older artists with deep catalogs
+          get a dignified, on-page surface; new fans get a discovery doorway. */}
+      <section className="vc-section">
+        <div className="vc-container">
+          <div className="relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-br from-amber-500/14 via-amber-500/4 to-transparent px-6 py-12 shadow-[0_30px_60px_-30px_rgba(245,158,11,0.45)] sm:px-12 sm:py-14">
+            <div className="grid items-center gap-10 lg:grid-cols-[1.4fr_1fr]">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-amber-300">
+                  The Vault · Legacy Catalogs
+                </p>
+                <h2 className="mt-3 text-3xl font-extrabold leading-tight text-amber-50 sm:text-4xl">
+                  For the artists who&apos;ve{" "}
+                  <span className="text-amber-300">been doing this for years.</span>
+                </h2>
+                <p className="mt-4 max-w-xl text-base text-amber-100/75">
+                  Older releases. Demos that never got their moment. Records
+                  that disappeared off streaming. Tag a track as legacy and it
+                  lands in The Vault — a dedicated home for back-catalog work,
+                  with the year on every record and the original artist front
+                  and center.
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    href="/vault"
+                    className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-3 text-sm font-bold text-amber-950 transition hover:bg-amber-300"
+                  >
+                    Open The Vault →
+                  </Link>
+                  <Link
+                    href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fnew%3Flegacy%3D1"
+                    className="inline-flex items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/8 px-5 py-3 text-sm font-semibold text-amber-100 hover:bg-amber-500/14"
+                  >
+                    Add your vault tracks
+                  </Link>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {["1998", "2003", "2011", "2007", "2015", "1995"].map((year, i) => (
+                  <div
+                    key={`${year}-${i}`}
+                    className="flex aspect-square items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/8 text-2xl font-black tracking-widest text-amber-100/85"
+                    aria-hidden="true"
+                  >
+                    {year}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -991,19 +1049,19 @@ export default async function HomePage() {
         <div className="vc-container vc-closing-inner">
           <p className="vc-eyebrow">Your move</p>
           <h2 className="vc-section-title vc-closing-title">
-            Open a room. Press play. Watch the world show up.
+            Step in the ring. Press play. Watch the world show up.
           </h2>
           <p className="vc-section-sub vc-closing-sub">
-            Sign-up is free. Uploads are free. Hosting your first listening
-            session is free. You only get charged when you sell — and when
-            you sell, you keep 90%.
+            Sign-up is free. Uploads are free. Entering your first battle is
+            free. You only get charged when you sell — and when you sell, you
+            keep 90%.
           </p>
           <div className="vc-hero-ctas">
-            <Link href="/rooms/new" className="vc-btn vc-btn-pink">
-              Open a Room →
+            <Link href="/versus" className="vc-btn vc-btn-pink">
+              Enter a Battle →
             </Link>
-            <Link href="/studio/new" className="vc-btn vc-btn-chrome">
-              Upload Your First Track
+            <Link href="/rooms/new" className="vc-btn vc-btn-chrome">
+              Open a Listening Room
             </Link>
           </div>
         </div>
