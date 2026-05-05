@@ -84,7 +84,8 @@ describe("verzuz", () => {
         data: expect.objectContaining({ currentRound: 3, status: "LIVE" }),
       }),
     );
-    expect((res as any).currentRound).toBe(3);
+    expect(res).not.toBeNull();
+    expect(res?.currentRound).toBe(3);
   });
 
   it("completes the match, locks the final round, and sets endsAt", async () => {
@@ -133,8 +134,9 @@ describe("verzuz", () => {
         data: expect.objectContaining({ status: "COMPLETED", currentRound: 3 }),
       }),
     );
-    expect((res as any).status).toBe("COMPLETED");
-    expect((res as any).endsAt).toBeTruthy();
+    expect(res).not.toBeNull();
+    expect(res?.status).toBe("COMPLETED");
+    expect(res?.endsAt).toBeTruthy();
   });
 
   it("tallies rounds correctly", () => {

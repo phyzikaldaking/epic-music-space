@@ -154,7 +154,7 @@ export default function StageBackdrop3D({ status, artistA, artistB, theme }: Pro
 
       // Render loop (disabled when user prefers reduced motion).
       const reduced = prefersReducedMotion();
-      let t0 = performance.now();
+      const t0 = performance.now();
       const tick = () => {
         if (disposed) return;
         const t = (performance.now() - t0) / 1000;
@@ -163,14 +163,31 @@ export default function StageBackdrop3D({ status, artistA, artistB, theme }: Pro
           beamB.rotation.z = Math.cos(t * 0.6) * 0.18 + 0.15;
           rimA.intensity = 1.6 + Math.sin(t * 1.3) * 0.35;
           rimB.intensity = 1.6 + Math.cos(t * 1.2) * 0.35;
-          // Avoid pulling Three.js types into the module scope; this file
-          // is loaded dynamically and should stay lightweight.
-          (led.material as any).emissiveIntensity = 1.0 + Math.sin(t * 0.35) * 0.25;
+          const ledMaterial = led.material;
+          if (ledMaterial instanceof THREE.MeshStandardMaterial) {
+            ledMaterial.emissiveIntensity = 1.0 + Math.sin(t * 0.35) * 0.25;
+          }
         }
         renderer.render(scene, camera);
         raf = requestAnimationFrame(tick);
       };
       raf = requestAnimationFrame(tick);
+
+      type Disposable = { dispose: () => void };
+      type DisposableMesh = { geometry: Disposable; material: Disposable | Disposable[] };
+
+      const disposeMaterial = (material: Disposable | Disposable[]) => {
+        if (Array.isArray(material)) {
+          for (const m of material) m.dispose();
+          return;
+        }
+        material.dispose();
+      };
+
+      const disposeMesh = (mesh: DisposableMesh) => {
+        mesh.geometry.dispose();
+        disposeMaterial(mesh.material);
+      };
 
       cleanup = () => {
         ro.disconnect();
@@ -179,12 +196,9 @@ export default function StageBackdrop3D({ status, artistA, artistB, theme }: Pro
         beamGeo.dispose();
         beamMatA.dispose();
         beamMatB.dispose();
-        (floor.geometry as any).dispose?.();
-        (floor.material as any).dispose?.();
-        (riser.geometry as any).dispose?.();
-        (riser.material as any).dispose?.();
-        (led.geometry as any).dispose?.();
-        (led.material as any).dispose?.();
+        disposeMesh(floor);
+        disposeMesh(riser);
+        disposeMesh(led);
       };
     })();
 
