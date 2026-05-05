@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import PostComposer from "@/components/PostComposer";
 import PostCard, { type PostCardProps } from "@/components/PostCard";
 
@@ -159,10 +160,54 @@ export default function FeedClient({
       )}
 
       {posts.length === 0 && !loading && !error && (
-        <div className="glass rounded-2xl p-8 text-center text-sm text-white/50">
-          {mode === "following"
-            ? "Follow artists to see their posts here."
-            : "No posts yet. Be the first."}
+        <div className="glass rounded-2xl p-8 text-center">
+          <div className="mb-3 text-4xl" aria-hidden>
+            {mode === "following" ? "🌱" : "👋"}
+          </div>
+          <p className="text-sm font-semibold text-white/80">
+            {mode === "following"
+              ? "Your following feed is empty."
+              : "No posts yet — be the first to share."}
+          </p>
+          <p className="mx-auto mt-1 max-w-sm text-xs text-white/45">
+            {mode === "following"
+              ? "Follow some artists and their posts will land here."
+              : "Drop an update, photo, video, or one of your tracks."}
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {mode === "following" ? (
+              <>
+                <Link
+                  href="/marketplace"
+                  className="rounded-xl bg-brand-500 px-4 py-2 text-xs font-bold text-white hover:bg-brand-600"
+                >
+                  Discover artists
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setMode("all")}
+                  className="rounded-xl border border-white/12 px-4 py-2 text-xs font-bold text-white/75 hover:bg-white/5"
+                >
+                  Browse the public feed
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/studio/new"
+                  className="rounded-xl bg-brand-500 px-4 py-2 text-xs font-bold text-white hover:bg-brand-600"
+                >
+                  Upload a track
+                </Link>
+                <Link
+                  href="/marketplace"
+                  className="rounded-xl border border-white/12 px-4 py-2 text-xs font-bold text-white/75 hover:bg-white/5"
+                >
+                  Browse the marketplace
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       )}
 

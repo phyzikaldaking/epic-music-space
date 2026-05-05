@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { strictLimiter, moderateLimiter } from "@/lib/rateLimit";
+import { enqueueNotification } from "@/lib/queues";
 
 const commentSchema = z.object({
   body: z.string().min(1).max(1000),
@@ -66,7 +67,7 @@ export async function POST(
   const { id } = await params;
   const post = await prisma.post.findUnique({
     where: { id },
-    select: { id: true, isPublished: true },
+    select: { id: true, isPublished: true, authorId: true },
   });
   if (!post || !post.isPublished) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -103,6 +104,29 @@ export async function POST(
       },
     },
   });
+
+  // Notify the post author of the new comment — best-effort, never blocks
+  // the response. Skip self-comments.
+  if (post.authorId !== session.user.id) {
+    void (async () => {
+      try {
+        const commenterName = comment.author.name ?? "Someone";
+        const snippet =
+          parsed.data.body.length > 140
+            ? `${parsed.data.body.slice(0, 140)}…`
+            : parsed.data.body;
+        await enqueueNotification({
+          userId: post.authorId,
+          type: "POST_COMMENTED",
+          title: `${commenterName} commented on your post`,
+          body: snippet,
+          metadata: { postId: post.id, commentId: comment.id, fromUserId: session.user.id },
+        });
+      } catch (err) {
+        console.warn("[posts:comment] notify failed", err);
+      }
+    })();
+  }
 
   return NextResponse.json({ comment }, { status: 201 });
 }

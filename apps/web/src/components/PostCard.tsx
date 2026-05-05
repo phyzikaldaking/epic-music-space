@@ -52,6 +52,8 @@ export default function PostCard(props: PostCardProps) {
   const [likes, setLikes] = useState(props.likeCount);
   const [busy, setBusy] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [shared, setShared] = useState(false);
   const [videoStatus, setVideoStatus] = useState(props.videoStatus);
   const [muxPlaybackId, setMuxPlaybackId] = useState(props.muxPlaybackId);
   const [videoAspectRatio, setVideoAspectRatio] = useState(props.videoAspectRatio);
@@ -126,8 +128,8 @@ export default function PostCard(props: PostCardProps) {
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this post? This can't be undone.")) return;
     setBusy(true);
+    setConfirmingDelete(false);
     try {
       const res = await fetch(`/api/posts/${props.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -137,6 +139,32 @@ export default function PostCard(props: PostCardProps) {
       alert("Could not delete. Please try again.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleShare() {
+    const url = `${typeof window !== "undefined" ? window.location.origin : ""}/post/${props.id}`;
+    const shareData = {
+      title: `${props.author.name ?? "Post"} on Epic Music Space`,
+      text: props.body.slice(0, 140),
+      url,
+    };
+    // Prefer the native Web Share API (mobile + Safari) — falls back to
+    // clipboard with a "copied" toast.
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch {
+        /* user cancelled — fall through to copy */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setShared(true);
+      setTimeout(() => setShared(false), 1800);
+    } catch {
+      /* clipboard unavailable */
     }
   }
 
@@ -170,15 +198,38 @@ export default function PostCard(props: PostCardProps) {
           </div>
         </Link>
         {props.isOwner && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={busy}
-            className="ml-auto rounded-lg border border-white/10 px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/80"
-            aria-label="Delete post"
-          >
-            ⋯
-          </button>
+          <div className="ml-auto flex items-center gap-1.5">
+            {confirmingDelete ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={busy}
+                  className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/55 hover:bg-white/8"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={busy}
+                  className="rounded-lg border border-red-500/40 bg-red-500/15 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-500/25"
+                >
+                  {busy ? "Deleting…" : "Delete"}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                disabled={busy}
+                className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/80"
+                aria-label="Delete post"
+              >
+                ⋯
+              </button>
+            )}
+          </div>
         )}
       </header>
 
@@ -265,6 +316,15 @@ export default function PostCard(props: PostCardProps) {
           <span>💬</span>
           <span className="text-xs tabular-nums">{props.commentCount}</span>
         </Link>
+        <button
+          type="button"
+          onClick={handleShare}
+          className="ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1 text-white/55 hover:text-white"
+          aria-label="Share post"
+        >
+          <span aria-hidden>{shared ? "✓" : "↗"}</span>
+          <span className="text-xs">{shared ? "Copied" : "Share"}</span>
+        </button>
       </footer>
     </article>
   );
