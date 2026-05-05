@@ -53,6 +53,23 @@ export default async function PostDetailPage({ params }: Props) {
     ? (post as { likes?: unknown[] }).likes?.length === 1
     : false;
 
+  const attachedSong = post.songId
+    ? await prisma.song.findUnique({
+        where: { id: post.songId },
+        select: { id: true, title: true, artist: true, coverUrl: true, genre: true, licensePrice: true },
+      })
+    : null;
+  const song = attachedSong
+    ? {
+        id: attachedSong.id,
+        title: attachedSong.title,
+        artist: attachedSong.artist,
+        coverUrl: attachedSong.coverUrl,
+        genre: attachedSong.genre,
+        licensePrice: Number(attachedSong.licensePrice),
+      }
+    : null;
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 space-y-5">
       <PostCard
@@ -62,7 +79,8 @@ export default async function PostDetailPage({ params }: Props) {
         muxPlaybackId={post.muxPlaybackId}
         videoStatus={post.videoStatus}
         videoAspectRatio={post.videoAspectRatio}
-        createdAt={post.createdAt}
+        song={song}
+        createdAt={post.createdAt.toISOString()}
         author={post.author}
         likeCount={post._count.likes}
         commentCount={post._count.comments}

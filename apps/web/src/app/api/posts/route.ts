@@ -83,6 +83,18 @@ export async function GET(req: NextRequest) {
     },
   });
 
+  // Stitch in attached songs in a single query (Prisma model has songId but
+  // no declared relation, so we fan out manually rather than adding a schema
+  // change here).
+  const songIds = Array.from(new Set(posts.map((p) => p.songId).filter((x): x is string => !!x)));
+  const songs = songIds.length
+    ? await prisma.song.findMany({
+        where: { id: { in: songIds } },
+        select: { id: true, title: true, artist: true, coverUrl: true, genre: true, licensePrice: true },
+      })
+    : [];
+  const songMap = new Map(songs.map((s) => [s.id, { ...s, licensePrice: Number(s.licensePrice) }]));
+
   let nextCursor: string | null = null;
   if (posts.length > limit) {
     const last = posts.pop()!;
@@ -92,6 +104,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     posts: posts.map((p) => ({
       ...p,
+      song: p.songId ? songMap.get(p.songId) ?? null : null,
       likedByMe: viewerId ? (p as { likes?: unknown[] }).likes?.length === 1 : false,
       likes: undefined,
     })),
@@ -234,6 +247,18 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Stitch in the attached song for the response.
+  const attachedSong = post.songId
+    ? await prisma.song.findUnique({
+        where: { id: post.songId },
+        select: { id: true, title: true, artist: true, coverUrl: true, genre: true, licensePrice: true },
+      })
+    : null;
+  const postWithSong = {
+    ...post,
+    song: attachedSong ? { ...attachedSong, licensePrice: Number(attachedSong.licensePrice) } : null,
+  };
+
   // Fan out a notification to every follower. Best-effort — never blocks the
   // post create response. Capped so a 100k-follower account doesn't trigger
   // a 100k-row insert in the request hot path; the cap is generous enough
@@ -269,5 +294,5 @@ export async function POST(req: NextRequest) {
     }
   })();
 
-  return NextResponse.json({ post }, { status: 201 });
+  return NextResponse.json({ post: postWithSong }, { status: 201 });
 }

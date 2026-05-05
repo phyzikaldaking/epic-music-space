@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { lenientLimiter } from "@/lib/rateLimit";
 import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
+import { auth } from "@/lib/auth";
 
 /**
  * GET /api/songs/list
@@ -38,9 +39,22 @@ export async function GET(req: NextRequest) {
   const sort = searchParams.get("sort") ?? "trending";
   const rawLimit = Number(searchParams.get("limit") ?? "50");
   const limit = Math.min(Math.max(1, rawLimit), 100);
+  const mineOnly = searchParams.get("mine") === "1";
 
-  // Only cache when no filters are applied
-  const isUnfiltered = !genre && !search && sort === "trending";
+  // mine=1 returns the caller's own catalog (used by the post composer's
+  // "Attach a song" picker). Auth required; never cached and never trims
+  // legacy tracks.
+  let myArtistId: string | null = null;
+  if (mineOnly) {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    myArtistId = session.user.id;
+  }
+
+  // Only cache when no filters are applied AND not in mine-mode.
+  const isUnfiltered = !genre && !search && sort === "trending" && !mineOnly;
   if (isUnfiltered) {
     const cached = await cacheGet<unknown[]>(CACHE_KEYS.trendingSongs);
     if (cached) return NextResponse.json(cached.slice(0, limit));
@@ -64,7 +78,8 @@ export async function GET(req: NextRequest) {
   const songs = await prisma.song.findMany({
     where: {
       isActive: true,
-      isLegacy: false,
+      // mine-mode shows the artist their full catalog including legacy tracks.
+      ...(mineOnly ? { artistId: myArtistId! } : { isLegacy: false }),
       ...(genre ? { genre: { equals: genre, mode: "insensitive" } } : {}),
       ...(search
         ? {

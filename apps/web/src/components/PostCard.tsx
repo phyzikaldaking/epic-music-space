@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import MuxPlayer from "@mux/mux-player-react/lazy";
+import { usePlayer } from "@/contexts/PlayerContext";
+import { getStreamUrl } from "@/lib/audioStream";
 
 export interface PostCardProps {
   id: string;
@@ -12,6 +14,14 @@ export interface PostCardProps {
   muxPlaybackId?: string | null;
   videoStatus: "NONE" | "UPLOADING" | "PROCESSING" | "READY" | "FAILED";
   videoAspectRatio?: string | null;
+  song?: {
+    id: string;
+    title: string;
+    artist: string;
+    coverUrl: string | null;
+    genre: string | null;
+    licensePrice: number;
+  } | null;
   createdAt: string | Date;
   author: {
     id: string;
@@ -189,6 +199,8 @@ export default function PostCard(props: PostCardProps) {
         </div>
       )}
 
+      {props.song && <AttachedSongCard song={props.song} />}
+
       {videoStatus !== "NONE" && (
         <div className="mt-3 overflow-hidden rounded-xl border border-white/8 bg-black">
           {videoStatus === "READY" && muxPlaybackId ? (
@@ -255,5 +267,76 @@ export default function PostCard(props: PostCardProps) {
         </Link>
       </footer>
     </article>
+  );
+}
+
+function AttachedSongCard({
+  song,
+}: {
+  song: NonNullable<PostCardProps["song"]>;
+}) {
+  const player = usePlayer();
+  const isCurrent = player.currentSong?.id === song.id;
+  const playing = isCurrent && player.isPlaying;
+
+  function onClick() {
+    if (isCurrent) {
+      player.togglePlay();
+      return;
+    }
+    player.playSong({
+      id: song.id,
+      title: song.title,
+      artist: song.artist,
+      audioUrl: getStreamUrl(song.id),
+      coverUrl: song.coverUrl,
+    });
+  }
+
+  return (
+    <Link
+      href={`/track/${song.id}`}
+      className="mt-3 flex items-center gap-3 rounded-xl border border-white/10 bg-gradient-to-r from-brand-500/8 to-accent-500/4 p-3 transition hover:border-brand-500/35 hover:from-brand-500/12"
+    >
+      <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-brand-900">
+        {song.coverUrl ? (
+          <Image src={song.coverUrl} alt="" fill unoptimized className="object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-xl">🎵</div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-brand-400">Track</p>
+        <p className="truncate text-sm font-bold">{song.title}</p>
+        <p className="truncate text-xs text-white/55">
+          {song.artist}
+          {song.genre ? <> · {song.genre}</> : null}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClick();
+        }}
+        aria-label={playing ? `Pause ${song.title}` : `Play ${song.title}`}
+        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-105 ${
+          playing
+            ? "bg-accent-500 shadow-accent-500/30"
+            : "bg-brand-500 shadow-brand-500/30"
+        }`}
+      >
+        {playing ? (
+          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+          </svg>
+        ) : (
+          <svg className="ml-0.5 h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        )}
+      </button>
+    </Link>
   );
 }

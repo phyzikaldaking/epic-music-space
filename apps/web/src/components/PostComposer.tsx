@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import Image from "next/image";
+
+interface MySong {
+  id: string;
+  title: string;
+  artist: string;
+  coverUrl: string | null;
+}
 
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;  // 10 MB
@@ -20,11 +27,38 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [videoUploadId, setVideoUploadId] = useState<string | null>(null);
   const [videoFileName, setVideoFileName] = useState<string | null>(null);
+  const [songId, setSongId] = useState<string | null>(null);
+  const [mySongs, setMySongs] = useState<MySong[] | null>(null);
+  const [showSongPicker, setShowSongPicker] = useState(false);
 
   const imageRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
 
-  const hasMedia = !!imageUrl || !!videoUploadId;
+  const hasMedia = !!imageUrl || !!videoUploadId || !!songId;
+  const attachedSong = mySongs?.find((s) => s.id === songId) ?? null;
+
+  // Lazy-load the artist's catalog once when they open the picker.
+  useEffect(() => {
+    if (!showSongPicker || mySongs !== null) return;
+    void (async () => {
+      try {
+        const res = await fetch("/api/songs/list?mine=1&limit=50");
+        if (!res.ok) {
+          setMySongs([]);
+          return;
+        }
+        const data = (await res.json()) as Array<{
+          id: string;
+          title: string;
+          artist: string;
+          coverUrl: string | null;
+        }>;
+        setMySongs(data.map((s) => ({ id: s.id, title: s.title, artist: s.artist, coverUrl: s.coverUrl })));
+      } catch {
+        setMySongs([]);
+      }
+    })();
+  }, [showSongPicker, mySongs]);
 
   function reset() {
     setBody("");
@@ -32,6 +66,8 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
     setImagePreview(null);
     setVideoUploadId(null);
     setVideoFileName(null);
+    setSongId(null);
+    setShowSongPicker(false);
     setError(null);
     setProgress(0);
     setMode("idle");
@@ -44,6 +80,10 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
     if (!file) return;
     if (videoUploadId) {
       setError("Remove the video first to attach an image.");
+      return;
+    }
+    if (songId) {
+      setError("Remove the attached song first to attach an image.");
       return;
     }
     if (!ALLOWED_IMAGE.includes(file.type)) {
@@ -105,6 +145,10 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
     if (!file) return;
     if (imageUrl) {
       setError("Remove the image first to attach a video.");
+      return;
+    }
+    if (songId) {
+      setError("Remove the attached song first to attach a video.");
       return;
     }
     if (!ALLOWED_VIDEO.includes(file.type)) {
@@ -173,6 +217,7 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
           body: trimmed,
           imageUrl: imageUrl ?? undefined,
           muxUploadId: videoUploadId ?? undefined,
+          songId: songId ?? undefined,
         }),
       });
       if (!res.ok) {
@@ -243,6 +288,69 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
         </div>
       )}
 
+      {attachedSong && (
+        <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/4 p-3">
+          <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md bg-brand-900">
+            {attachedSong.coverUrl ? (
+              <Image src={attachedSong.coverUrl} alt="" fill unoptimized className="object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-lg">🎵</div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{attachedSong.title}</p>
+            <p className="truncate text-xs text-white/40">{attachedSong.artist}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSongId(null)}
+            className="rounded-lg border border-white/15 px-3 py-1 text-xs hover:bg-white/10"
+          >
+            Remove
+          </button>
+        </div>
+      )}
+
+      {showSongPicker && !attachedSong && (
+        <div className="mt-3 max-h-64 overflow-y-auto rounded-xl border border-white/10 bg-black/30 p-2">
+          {mySongs === null ? (
+            <p className="px-2 py-3 text-center text-xs text-white/40">Loading your tracks…</p>
+          ) : mySongs.length === 0 ? (
+            <p className="px-2 py-3 text-center text-xs text-white/40">
+              You haven&apos;t uploaded any tracks yet. <a href="/studio/new" className="text-brand-400 hover:underline">Upload one →</a>
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {mySongs.map((s) => (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSongId(s.id);
+                      setShowSongPicker(false);
+                      setError(null);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-white/8"
+                  >
+                    <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-md bg-brand-900">
+                      {s.coverUrl ? (
+                        <Image src={s.coverUrl} alt="" fill unoptimized className="object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-sm">🎵</div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm">{s.title}</p>
+                      <p className="truncate text-[11px] text-white/40">{s.artist}</p>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {mode === "uploading" && (
         <div className="mt-3">
           <div className="h-1.5 w-full rounded-full bg-white/10">
@@ -285,6 +393,29 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
               className="hidden"
             />
           </label>
+          <button
+            type="button"
+            onClick={() => {
+              if (imageUrl) {
+                setError("Remove the image first to attach a track.");
+                return;
+              }
+              if (videoUploadId) {
+                setError("Remove the video first to attach a track.");
+                return;
+              }
+              setError(null);
+              setShowSongPicker((v) => !v);
+            }}
+            disabled={mode !== "idle"}
+            className={`rounded-lg border px-3 py-1.5 text-xs transition disabled:opacity-50 ${
+              showSongPicker || attachedSong
+                ? "border-brand-500/50 bg-brand-500/15 text-brand-200"
+                : "border-white/10 bg-white/4 hover:bg-white/10"
+            }`}
+          >
+            🎵 Track
+          </button>
         </div>
         <button
           type="button"

@@ -34,8 +34,18 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Stitch in attached song (Post.songId is a column without a Prisma relation
+  // declared, so we fetch it separately).
+  const attachedSong = post.songId
+    ? await prisma.song.findUnique({
+        where: { id: post.songId },
+        select: { id: true, title: true, artist: true, coverUrl: true, genre: true, licensePrice: true },
+      })
+    : null;
+
   return NextResponse.json({
     ...post,
+    song: attachedSong ? { ...attachedSong, licensePrice: Number(attachedSong.licensePrice) } : null,
     likedByMe: viewerId ? (post as { likes?: unknown[] }).likes?.length === 1 : false,
     likes: undefined,
   });

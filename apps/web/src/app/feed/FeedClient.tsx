@@ -15,6 +15,7 @@ interface RawPost {
   muxPlaybackId: string | null;
   videoStatus: PostCardProps["videoStatus"];
   videoAspectRatio: string | null;
+  song: PostCardProps["song"];
   createdAt: string;
   authorId: string;
   author: PostCardProps["author"];
@@ -23,6 +24,17 @@ interface RawPost {
 }
 
 function mapPost(p: RawPost): FeedPost {
+  // Prisma serialises Decimal columns to strings — coerce any licensePrice
+  // to a number so the PostCard can render it without runtime gymnastics.
+  const song = p.song
+    ? {
+        ...p.song,
+        licensePrice:
+          typeof p.song.licensePrice === "number"
+            ? p.song.licensePrice
+            : Number(p.song.licensePrice),
+      }
+    : null;
   return {
     id: p.id,
     body: p.body,
@@ -30,6 +42,7 @@ function mapPost(p: RawPost): FeedPost {
     muxPlaybackId: p.muxPlaybackId,
     videoStatus: p.videoStatus,
     videoAspectRatio: p.videoAspectRatio,
+    song,
     createdAt: p.createdAt,
     author: p.author,
     likeCount: p._count.likes,
