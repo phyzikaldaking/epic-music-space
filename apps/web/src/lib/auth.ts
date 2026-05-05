@@ -10,7 +10,7 @@ import { emitAuthEvent } from "@/lib/authObservability";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z.string().min(12).max(128),
 });
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
@@ -19,7 +19,23 @@ const googleEnabled = Boolean(googleClientId && googleClientSecret);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 }, // 30 days — persistent across browser restarts
+  trustHost: true,
+  session: {
+    strategy: "jwt",
+    maxAge: 7 * 24 * 60 * 60,
+    updateAge: 60 * 60,
+  },
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === "production" ? "__Secure-ems.session-token" : "ems.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
   pages: {
     signIn: "/auth/signin",
     error: "/auth/signin",
@@ -30,10 +46,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           GoogleProvider({
             clientId: googleClientId!,
             clientSecret: googleClientSecret!,
-            // Allow users who registered with email+password to sign in with
-            // Google using the same email without getting OAuthAccountNotLinked.
-            // Safe: Google verifies email ownership before returning the token.
-            allowDangerousEmailAccountLinking: true,
+            allowDangerousEmailAccountLinking: false,
           }),
         ]
       : []),
@@ -48,10 +61,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!parsed.success) return null;
 
         const normalizedEmail = parsed.data.email.trim().toLowerCase();
-
-        const user = await prisma.user.findUnique({
-          where: { email: normalizedEmail },
-        });
+        const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
         if (!user || !user.passwordHash) {
           await emitAuthEvent("signin_invalid_credentials", {
@@ -61,10 +71,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        const valid = await bcrypt.compare(
-          parsed.data.password,
-          user.passwordHash,
-        );
+        const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
         if (!valid) {
           await emitAuthEvent("signin_invalid_credentials", {
             email: normalizedEmail,
@@ -74,7 +81,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        // Block unverified credential accounts (OAuth sets emailVerified automatically)
         if (!user.emailVerified) {
           await emitAuthEvent("signin_email_unverified", {
             email: normalizedEmail,
@@ -82,6 +88,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
           throw new Error("EMAIL_NOT_VERIFIED");
         }
+
+        await emitAuthEvent("signin_success", {
+          email: normalizedEmail,
+          userId: user.id,
+          provider: "credentials",
+        });
 
         return {
           id: user.id,
@@ -94,12 +106,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    async signIn({ user, account, profile }) {
+      if (account?.provider === "google") {
+        const email = user.email?.trim().toLowerCase();
+        const emailVerified = (profile as { email_verified?: boolean } | undefined)?.email_verified;
+        if (!email || emailVerified === false) {
+          await emitAuthEvent("oauth_rejected", { provider: "google", reason: "email_unverified" });
+          return false;
+        }
+      }
+      return true;
+    },
     async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
-        // For OAuth sign-ins the PrismaAdapter returns the DB user, but if
-        // role/subscriptionTier are missing (e.g. first-ever Google login on a
-        // freshly-created account), fall back to a DB lookup.
         if (user.role && user.subscriptionTier !== undefined) {
           token.role = user.role;
           token.subscriptionTier = user.subscriptionTier;
