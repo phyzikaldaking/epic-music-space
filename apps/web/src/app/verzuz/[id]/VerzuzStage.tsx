@@ -189,6 +189,21 @@ export default function VerzuzStage(props: Props) {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#06060a]">
+      {/* Mobile-only sticky live-round indicator. Sits below the navbar so
+          a fan scrolling through the round ladder always sees what's
+          live and how much time is left. Hidden on md+ where the
+          scoreboard is in view at the top of the page. */}
+      {props.status === "LIVE" && liveRound && (
+        <div className="sticky top-[57px] z-30 mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-white/15 bg-black/80 px-3 py-2 shadow-2xl backdrop-blur md:hidden">
+          <span className="flex h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.85)]" aria-hidden />
+          <span className="text-[10px] font-black uppercase tracking-widest text-white/55">
+            Round {liveRound.roundNumber}/{props.totalRounds}
+          </span>
+          <span className="ml-auto font-mono text-sm font-bold tabular-nums text-white">
+            {fmt(secondsLeft)}
+          </span>
+        </div>
+      )}
       {/* Stage backdrop — gradient + animated lights */}
       <div
         aria-hidden

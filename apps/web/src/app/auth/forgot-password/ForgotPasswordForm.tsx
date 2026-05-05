@@ -55,12 +55,16 @@ export default function ForgotPasswordForm() {
         </span>
         <input
           type="email"
+          name="email"
           required
           autoComplete="email"
+          inputMode="email"
+          autoCapitalize="none"
+          spellCheck={false}
           autoFocus
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/30 focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-base text-white placeholder-white/30 focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
         />
       </label>
       <button

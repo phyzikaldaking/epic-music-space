@@ -12,11 +12,19 @@ const GlobalAudioPlayer = dynamic(() => import("@/components/GlobalAudioPlayer")
 const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"));
 const KeyboardShortcuts = dynamic(() => import("@/components/KeyboardShortcuts"));
 const MobileBottomNav = dynamic(() => import("@/components/MobileBottomNav"));
+const OfflineBanner = dynamic(() => import("@/components/OfflineBanner"));
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#0a0a0a",
+  // viewportFit=cover lets the layout extend behind the iPhone notch +
+  // home indicator; components that care opt-in via env(safe-area-inset-*).
+  // Player bar + mobile bottom-nav already do.
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#0a0a0a" },
+  ],
 };
 
 export const metadata: Metadata = {
@@ -136,6 +144,7 @@ export default function RootLayout({
           <KeyboardShortcuts />
           <CookieConsent />
           <MobileBottomNav />
+          <OfflineBanner />
         </Providers>
       </body>
     </html>

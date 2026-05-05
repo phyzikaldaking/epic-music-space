@@ -96,7 +96,7 @@ export default async function TrustCenterPage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-12">
       <div className="mb-10">
-        <h1 className="text-4xl font-extrabold">
+        <h1 className="break-words text-2xl font-extrabold sm:text-3xl md:text-4xl">
           <span className="text-gradient-ems">Trust Center</span>
         </h1>
         <p className="mt-2 text-white/40">
@@ -111,7 +111,7 @@ export default async function TrustCenterPage() {
             <ShieldIcon className="h-6 w-6 text-brand-400" />
             <span className="font-semibold text-white">Account Security</span>
           </div>
-          <p className={`text-5xl font-extrabold ${secColor}`}>{secScore}</p>
+          <p className={`text-3xl font-extrabold sm:text-5xl ${secColor}`}>{secScore}</p>
           <p className={`mt-1 text-sm font-semibold ${secColor}`}>{secLabel}</p>
           <ul className="mt-4 space-y-2 text-sm text-white/50">
             <li className={user.emailVerified ? "text-green-400" : "text-red-400"}>

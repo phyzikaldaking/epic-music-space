@@ -361,10 +361,13 @@ function SignUpContent() {
               </label>
               <input
                 type="text"
+                name="name"
+                autoComplete="name"
+                autoCapitalize="words"
                 required
                 value={form.name}
                 onChange={(e) => update("name", e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-sm text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
+                className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
                 placeholder="Your name"
               />
             </div>
@@ -374,10 +377,15 @@ function SignUpContent() {
               </label>
               <input
                 type="email"
+                name="email"
+                autoComplete="email"
+                inputMode="email"
+                autoCapitalize="none"
+                spellCheck={false}
                 required
                 value={form.email}
                 onChange={(e) => update("email", e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-sm text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
+                className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
                 placeholder="you@example.com"
               />
             </div>
@@ -387,11 +395,13 @@ function SignUpContent() {
               </label>
               <input
                 type="password"
+                name="new-password"
+                autoComplete="new-password"
                 required
                 minLength={8}
                 value={form.password}
                 onChange={(e) => update("password", e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-sm text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
+                className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
                 placeholder="Min. 8 characters"
               />
             </div>

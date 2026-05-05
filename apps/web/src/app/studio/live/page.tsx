@@ -175,7 +175,7 @@ export default async function VirtualStudioPage({
               <span className="h-1.5 w-1.5 rounded-full bg-brand-400 studio-live-pulse" />
               Live Rooms
             </div>
-            <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl">
+            <h1 className="break-words text-2xl font-extrabold tracking-tight sm:text-3xl md:text-5xl">
               Listening <span className="text-gradient-ems">Sessions</span>
             </h1>
             <p className="mt-3 max-w-xl text-white/45">
@@ -320,7 +320,7 @@ export default async function VirtualStudioPage({
           /* ── Empty state ──────────────────────────────────────────────── */
           <div className="rounded-3xl border border-white/8 bg-[#0d0d14] p-16 text-center">
             <div className="mb-4 flex justify-center">
-              <span className="text-6xl">🎧</span>
+              <span className="text-4xl sm:text-6xl">🎧</span>
             </div>
             <h2 className="mb-2 text-xl font-bold">No sessions yet</h2>
             <p className="mb-6 text-sm text-white/40">
@@ -397,7 +397,7 @@ export default async function VirtualStudioPage({
               },
             ].map((step) => (
               <div key={step.title} className="flex flex-col items-center gap-3">
-                <span className="text-4xl">{step.icon}</span>
+                <span className="text-2xl sm:text-4xl">{step.icon}</span>
                 <p className="font-bold">{step.title}</p>
                 <p className="text-sm text-white/40">{step.desc}</p>
               </div>
@@ -433,7 +433,7 @@ function FeaturedSessionCard({ studio }: { studio: SessionStudio }) {
             unoptimized
           />
         ) : (
-          <span className="text-6xl opacity-30">🎵</span>
+          <span className="text-4xl sm:text-6xl opacity-30">🎵</span>
         )}
         {/* Gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-[#111118] via-transparent to-transparent" />
