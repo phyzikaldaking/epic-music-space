@@ -2,6 +2,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
+import AppleProvider from "next-auth/providers/apple";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -16,6 +17,10 @@ const credentialsSchema = z.object({
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 const googleEnabled = Boolean(googleClientId && googleClientSecret);
+
+const appleClientId = process.env.APPLE_CLIENT_ID;
+const appleClientSecret = process.env.APPLE_CLIENT_SECRET;
+const appleEnabled = Boolean(appleClientId && appleClientSecret);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -33,6 +38,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             // Allow users who registered with email+password to sign in with
             // Google using the same email without getting OAuthAccountNotLinked.
             // Safe: Google verifies email ownership before returning the token.
+            allowDangerousEmailAccountLinking: true,
+          }),
+        ]
+      : []),
+    ...(appleEnabled
+      ? [
+          AppleProvider({
+            clientId: appleClientId!,
+            clientSecret: appleClientSecret!,
+            // Apple verifies the email before returning a token, so linking
+            // by email to an existing credential account is safe. Note that
+            // Apple may return a private-relay address (@privaterelay.appleid.com)
+            // — we treat those as the user's verified address.
             allowDangerousEmailAccountLinking: true,
           }),
         ]
