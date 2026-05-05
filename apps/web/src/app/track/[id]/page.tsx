@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import AudioPlayer from "@/components/AudioPlayer";
 import SongCard from "@/components/SongCard";
 import LicenseButton from "@/components/LicenseButton";
+import ReportUserButton from "@/components/ReportUserButton";
 import TrackActions from "@/components/TrackActions";
 import { getStreamUrl } from "@/lib/audioStream";
 import SaveTrackButton from "@/components/SaveTrackButton";
@@ -194,6 +195,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
               take: 5,
               select: {
                 id: true,
+                holderId: true,
                 purchasedAt: true,
                 price: true,
                 holder: { select: { name: true, image: true, studio: { select: { username: true } } } },
@@ -215,6 +217,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
             distinctListeners: distinctListeners.length,
             recentBuyers: recentBuyers.map((b) => ({
               id: b.id,
+              holderId: b.holderId,
               purchasedAt: b.purchasedAt,
               price: Number(b.price),
               holderName: b.holder.name,
@@ -515,6 +518,12 @@ export default async function TrackPage({ params, searchParams }: Props) {
                       ${b.price.toFixed(2)} ·{" "}
                       {new Date(b.purchasedAt).toLocaleDateString()}
                     </span>
+                    <ReportUserButton
+                      reportedUserId={b.holderId}
+                      context={{ kind: "transaction", id: b.id }}
+                      label=""
+                      className="rounded-md border border-white/10 bg-white/4 px-1.5 py-0.5 text-[10px] text-white/45 hover:bg-white/10"
+                    />
                   </li>
                 ))}
               </ul>

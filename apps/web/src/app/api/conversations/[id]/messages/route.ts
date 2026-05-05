@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { moderateLimiter, strictLimiter } from "@/lib/rateLimit";
 import { isBlocked } from "@/lib/conversations";
 import { enqueueNotification } from "@/lib/queues";
+import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
@@ -151,6 +152,24 @@ export async function POST(
       data: { lastMessageAt: new Date() },
     }),
   ]);
+
+  // Realtime broadcast on the per-conversation channel — both clients are
+  // subscribed, so the receiving end sees the new message without waiting
+  // for the next 5s poll. Best-effort; subscribers fall back to the
+  // existing poll if Supabase is unreachable.
+  void (async () => {
+    try {
+      const supabase = createServerSupabaseClient();
+      if (!supabase) return;
+      await supabase.channel(CHANNELS.conversation(id)).send({
+        type: "broadcast",
+        event: "message",
+        payload: { message },
+      });
+    } catch (err) {
+      console.warn("[messages:send] realtime broadcast failed", err);
+    }
+  })();
 
   // Notify the peer (best-effort; pref consumer handles opt-out).
   void (async () => {

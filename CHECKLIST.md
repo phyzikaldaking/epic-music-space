@@ -11,6 +11,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = partial
 - [x] **C3 — `streamCount`:** `AudioPlayer.tsx` calls `POST /api/songs/${songId}/stream` on every play.
 - [x] **C4 — Subscription tier enforcement:** `subscriptionTier` on User model + `getTierLimits` enforced in songs/create, market/buy, checkout, boost, versus, and analytics routes.
 - [ ] **C5 — Workers have no deployment:** `src/workers/` (notifications, analytics, aiScoring) require a long-running process (BullMQ + Redis). Set `REDIS_URL` in Vercel env and wire a Render/Railway worker dyno pointing to `apps/api`. Until then, notifications silently drop.
+  Verify: Render workers are deployed from `render.yaml` and logs show each worker “Started listening …” without exiting.
 
 ---
 
@@ -20,6 +21,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = partial
 - [x] **H2 — Label owner signing UI:** Label `[id]` page has a full invite-artist form.
 - [x] **H3 — Profile avatar upload:** `/profile/edit` has a file-picker wired to `/api/upload` (Supabase signed URL flow) with MIME + size validation.
 - [ ] **H4 — Supabase storage buckets not created:** `/api/upload` uses `supabase.storage.from("audio")` and `.from("covers")` — create these buckets in Supabase dashboard (set public read, service-role write). **(external — one-time setup)**
+  Verify: upload a track + cover at `/studio/new` and confirm playback + images load.
 - [x] **H5 — `next.config.mjs` `ignoreBuildErrors`:** Removed. Build will fail on TS/ESLint errors.
 - [x] **H6 — Signout CSRF:** `NavbarAuth` uses `<SignOutButton>` which calls `signOut()` from `next-auth/react`.
 - [x] **H7 — `AUCTION_BID_RECEIVED` icon:** Notifications page icon map has `AUCTION_BID_RECEIVED: "🔨"`.
@@ -33,12 +35,14 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = partial
 - [x] **M1 — Missing `loading.tsx` on most pages:** All dynamic routes now have skeleton loaders.
 - [x] **M2 — Missing per-route `error.tsx`:** Route-level error boundaries added to all dynamic pages.
 - [x] **M3 — Email verification:** `POST /api/auth/register` creates a `VerificationToken`, calls `sendVerificationEmail()` via Resend, and blocks sign-in for unverified credential accounts. Requires `RESEND_API_KEY` env var in Vercel dashboard.
+  Verify: production signup sends a verification email (not the dev console URL).
 - [x] **M4 — Analytics page is ungated:** `/analytics` checks `getActiveLimits(user).canAccessAnalytics` and redirects to `/pricing?reason=analytics` for non-qualifying tiers.
 - [x] **M5 — Invite milestone rewards:** INVITE_5 creates a real Stripe promotion code (via `INVITE5_COUPON_ID` env var) and includes the code in the in-app notification. INVITE_10 increments `studio.level`. INVITE_50 upgrades `subscriptionTier` to `PRIME`.
 - [x] **M6 — `city/page.tsx` missing `<Suspense>`:** City route has been reorganized; no `CityScene3DClient` found — city is a standard page.
 - [x] **M7 — Middleware path:** Middleware matcher covers `/dashboard/:path*` which includes `/dashboard/payouts`. No stray `/payouts` entry exists — non-issue.
 - [ ] **M8 — `<img>` used in OG image routes instead of `<Image>`:** OG image routes (`opengraph-image.tsx`) must use plain `<img>` — satori/Vercel OG doesn't support `next/image`. Other pages already use `<Image>`.
 - [x] **M9 — Analytics worker PostHog:** Worker initialises a real `PostHog` client when `POSTHOG_API_KEY` is set, falls back to stdout. Set `POSTHOG_API_KEY` + `POSTHOG_HOST` in the Render worker env (already wired in `render.yaml`).
+  Verify: analytics worker logs include `[analytics-worker] PostHog sink active`.
 
 ---
 
@@ -82,6 +86,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = partial
 
 ### Code improvements shipped this session
 
+- [x] **Mobile seek bar touch support** — `handleSeekTouch` added to AudioPlayer seek bar (`onTouchStart` + `onTouchMove`). Shared `seekToX(clientX, el)` helper used by both mouse and touch.
 - [x] **MediaSession API** — `AudioPlayer.tsx` now registers lock-screen / notification-shade controls (play, pause, seek ±10s, stop) and keeps the OS scrubber in sync via `setPositionState`. Works on Android Chrome, iOS Safari 15+, macOS.
 - [x] **INVITE_5 Stripe promo code** — `checkInviteMilestones` now calls `stripe.promotionCodes.create` when `INVITE5_COUPON_ID` is set. The promo code is embedded in the in-app notification body so the user can copy it immediately.
 
@@ -89,7 +94,7 @@ Legend: `[ ]` = todo · `[x]` = done · `[~]` = partial
 
 - [ ] **Versus battle wager** — Allow artists to stake credits when creating a battle. Winner receives ~90% of the pool (10% platform fee). Requires `creditBalance Int @default(0)` on `User` schema + new migration.
 - [ ] **Pg_trgm full-text search** — Enable the `pg_trgm` extension in Supabase (`CREATE EXTENSION IF NOT EXISTS pg_trgm`) and add GIN indexes on `Song.title`, `Song.artist`, `Studio.username` for ranked trigram search.
-- [ ] **Mobile seek bar touch support** — AudioPlayer seek bar only handles `onClick` (mouse). Add `onTouchStart`/`onTouchMove`/`onTouchEnd` handlers for mobile.
+- [x] **Mobile seek bar touch support** — `handleSeekTouch` added to AudioPlayer seek bar (`onTouchStart` + `onTouchMove`). Shared `seekToX(clientX, el)` helper used by both mouse and touch.
 - [ ] **Notification promo code UI** — Surface the `promoCode` field from notification metadata on the `/notifications` page as a copyable badge rather than plain body text.
 
 ---

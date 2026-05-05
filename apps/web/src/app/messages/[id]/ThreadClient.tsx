@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import ReportUserButton from "@/components/ReportUserButton";
+import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
 
 interface Peer {
   id: string;
@@ -49,13 +51,37 @@ export default function ThreadClient({
     }
   }
 
-  // Initial load + 5s poll. Poor man's realtime — good enough for v1; the
-  // proper path is a Supabase channel subscription, deferred to keep this
-  // ship-ready.
+  // Initial load + Supabase realtime subscription. The 5s poll stays as a
+  // fallback so a transient WebSocket drop or unconfigured Supabase env
+  // never silently freezes the thread. When the channel is healthy the
+  // poll is mostly redundant — that's fine; new messages still appear
+  // within ~50ms via the broadcast on the send route.
   useEffect(() => {
     void load();
+    const supabase = createBrowserSupabaseClient();
+    let unsubscribe: (() => void) | null = null;
+    if (supabase) {
+      const channel = supabase
+        .channel(CHANNELS.conversation(conversationId))
+        .on("broadcast", { event: "message" }, (payload) => {
+          const incoming = (payload?.payload as { message?: MessageRow } | undefined)?.message;
+          if (!incoming) return;
+          setMessages((prev) => {
+            // Dedupe — the sender's own optimistic append already added it.
+            if (prev.some((m) => m.id === incoming.id)) return prev;
+            return [...prev, incoming];
+          });
+        })
+        .subscribe();
+      unsubscribe = () => {
+        void supabase.removeChannel(channel);
+      };
+    }
     const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    return () => {
+      clearInterval(t);
+      unsubscribe?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
@@ -123,6 +149,14 @@ export default function ThreadClient({
             )}
           </div>
         </Link>
+        <div className="ml-auto">
+          <ReportUserButton
+            reportedUserId={peer.id}
+            context={{ kind: "message", id: conversationId }}
+            label=""
+            className="rounded-lg border border-white/10 bg-white/4 px-2 py-1.5 text-xs text-white/55 hover:bg-white/10"
+          />
+        </div>
       </header>
 
       <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto px-4 py-4">

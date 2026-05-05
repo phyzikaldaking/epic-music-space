@@ -170,14 +170,23 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
     }
   }
 
-  function handleSeek(e: React.MouseEvent<HTMLDivElement>) {
+  function seekToX(clientX: number, el: HTMLElement) {
     const audio = audioRef.current;
     if (!audio || !audio.duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const rect = el.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     audio.currentTime = ratio * audio.duration;
     setCurrentTime(audio.currentTime);
     setProgress(ratio * 100);
+  }
+
+  function handleSeek(e: React.MouseEvent<HTMLDivElement>) {
+    seekToX(e.clientX, e.currentTarget);
+  }
+
+  function handleSeekTouch(e: React.TouchEvent<HTMLDivElement>) {
+    const touch = e.touches[0];
+    if (touch) seekToX(touch.clientX, e.currentTarget);
   }
 
   function seekBy(seconds: number) {
@@ -280,6 +289,8 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
               <div
                 className="relative h-12 w-full cursor-pointer overflow-hidden rounded-xl border border-white/10 bg-black/50"
                 onClick={handleSeek}
+                onTouchStart={handleSeekTouch}
+                onTouchMove={handleSeekTouch}
                 role="slider"
                 aria-label={`Seek position in ${title}`}
                 aria-valuenow={Math.round(progress)}

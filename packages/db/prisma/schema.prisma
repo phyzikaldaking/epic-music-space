@@ -37,6 +37,12 @@ model User {
   // Verified-artist badge. Set by an admin via /api/admin/users/[id]/verify.
   isVerified         Boolean  @default(false)
   verifiedAt         DateTime?
+  // Stripe Identity verification — separate from the verified-artist
+  // badge. Used for KYC-grade gating on Connect payouts above platform
+  // thresholds. Webhook flips identityVerifiedAt when the verification
+  // session reports `verified`.
+  stripeIdentitySessionId String?  @unique
+  identityVerifiedAt      DateTime?
 
   // ── Stripe Connect compliance ──────────────────────────────
   connectChargesEnabled Boolean  @default(false)

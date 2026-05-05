@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import PayoutActions from "./PayoutActions";
+import IdentityVerifyButton from "@/components/IdentityVerifyButton";
 
 export const dynamic = "force-dynamic";
 
@@ -112,6 +113,7 @@ export default async function PayoutsPage(props: {
       stripeConnectId: true,
       connectCountry: true,
       taxFormStatus: true,
+      identityVerifiedAt: true,
       role: true,
       songs: {
         where: { isActive: true },
@@ -206,6 +208,11 @@ export default async function PayoutsPage(props: {
           taxFormStatus={connectStatus.taxFormStatus}
           fmt={fmt}
         />
+      )}
+
+      {/* ── Stripe Identity verification ────────────────────────────────── */}
+      {connectStatus.connected && (
+        <IdentityVerificationCard verifiedAt={user.identityVerifiedAt} />
       )}
 
       {/* ── Summary stats ───────────────────────────────────────────────── */}
@@ -503,3 +510,34 @@ function humanizeRequirement(field: string): string {
   return map[field] ?? field.replace(/_/g, " ").replace(/\./g, " › ");
 }
 
+
+function IdentityVerificationCard({ verifiedAt }: { verifiedAt: Date | null }) {
+  const verified = !!verifiedAt;
+  return (
+    <div
+      className={`glass-card mb-8 rounded-2xl border p-6 ${
+        verified
+          ? "border-emerald-500/35 bg-emerald-500/6"
+          : "border-cyan-500/35 bg-cyan-500/6"
+      }`}
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="flex-1">
+          <h3 className={`text-sm font-semibold ${verified ? "text-emerald-300" : "text-cyan-300"}`}>
+            Identity verification — {verified ? "Verified" : "Optional today, required for high-value payouts"}
+          </h3>
+          <p className="mt-1 text-xs text-white/55">
+            {verified
+              ? `Government-ID + selfie verified on ${verifiedAt!.toLocaleDateString()}. High-value payouts and label deals are unlocked.`
+              : "Adds a Stripe-verified ID + selfie check on top of Stripe Express's tax / bank flow. Required for label payouts and any single transfer over the platform threshold."}
+          </p>
+        </div>
+        {!verified && (
+          <div className="flex-shrink-0">
+            <IdentityVerifyButton />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

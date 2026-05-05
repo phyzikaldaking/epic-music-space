@@ -41,4 +41,5 @@ export const CHANNELS = {
   versus: (matchId: string) => `ems:versus:${matchId}`,
   notifications: (userId: string) => `ems:notifications:${userId}`,
   room: (roomId: string) => `ems:room:${roomId}`,
+  conversation: (conversationId: string) => `ems:conv:${conversationId}`,
 } as const;

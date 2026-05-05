@@ -10,6 +10,7 @@ import SongCard from "@/components/SongCard";
 import FollowButton from "@/components/FollowButton";
 import TipArtistButton from "@/components/TipArtistButton";
 import MessageButton from "@/components/MessageButton";
+import ReportUserButton from "@/components/ReportUserButton";
 import PostCard from "@/components/PostCard";
 import { BADGE_META } from "@/lib/badges";
 import type { Metadata } from "next";
@@ -258,6 +259,12 @@ export default async function StudioProfilePage({ params }: Props) {
               />
               <TipArtistButton artistId={user.id} artistName={user.name ?? username} />
               <MessageButton peerId={user.id} />
+              {session.user.id !== user.id && (
+                <ReportUserButton
+                  reportedUserId={user.id}
+                  context={{ kind: "profile", id: user.id }}
+                />
+              )}
             </>
           ) : (
             <a

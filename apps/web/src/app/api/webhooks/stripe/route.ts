@@ -113,6 +113,13 @@ export async function POST(req: NextRequest) {
       await handleCustomerDeleted(customer);
       break;
     }
+    case "identity.verification_session.verified":
+    case "identity.verification_session.requires_input":
+    case "identity.verification_session.canceled": {
+      const vs = event.data.object as Stripe.Identity.VerificationSession;
+      await handleIdentityVerificationEvent(vs, event.type);
+      break;
+    }
     default:
       break;
   }
@@ -1253,6 +1260,57 @@ async function handleVersusTipCompleted(session: Stripe.Checkout.Session) {
       metadata: { matchId: tip.matchId, tipId },
     }),
   ]);
+}
+
+async function handleIdentityVerificationEvent(
+  vs: Stripe.Identity.VerificationSession,
+  eventType: string,
+) {
+  // Look up by stripeIdentitySessionId — the /api/stripe-connect/identity
+  // route stamps the User row when it creates the session, and metadata
+  // also carries userId as a belt-and-suspenders fallback.
+  const userIdFromMetadata = (vs.metadata as { userId?: string } | undefined)?.userId;
+  const user =
+    userIdFromMetadata
+      ? await prisma.user.findUnique({
+          where: { id: userIdFromMetadata },
+          select: { id: true, identityVerifiedAt: true },
+        })
+      : await prisma.user.findFirst({
+          where: { stripeIdentitySessionId: vs.id },
+          select: { id: true, identityVerifiedAt: true },
+        });
+  if (!user) {
+    console.warn("[stripe-webhook] identity event for unknown user", {
+      sessionId: vs.id,
+      type: eventType,
+    });
+    return;
+  }
+
+  if (eventType === "identity.verification_session.verified") {
+    // Idempotent — only stamp the verified-at on the first transition.
+    if (!user.identityVerifiedAt) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { identityVerifiedAt: new Date() },
+      });
+      await enqueueNotification({
+        userId: user.id,
+        type: "IDENTITY_VERIFIED",
+        title: "Identity verified ✅",
+        body: "Your government-ID verification is on file. High-value payouts are now unlocked.",
+      });
+    }
+  } else if (eventType === "identity.verification_session.canceled") {
+    // Clear the linkage so a future attempt can mint a fresh session.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { stripeIdentitySessionId: null },
+    });
+  }
+  // requires_input → no DB mutation; the Identity URL itself surfaces the
+  // remediation step to the user.
 }
 
 function escapeHtml(s: string) {

@@ -8,6 +8,78 @@ Everything required before onboarding 20–30 real artists. Items marked **(exte
 
 Set in Vercel → Project → Settings → Environment Variables, for **Preview + Production**.
 
+### The “infra-only toggles” (the ones you listed)
+
+These are the most common “it deployed but it’s not really live” gotchas. Do these once and the platform stops feeling haunted.
+
+#### `RESEND_API_KEY` (email verification + all transactional email)
+
+1. Resend Dashboard → API Keys → create key.
+2. Vercel → Env Vars: set `RESEND_API_KEY` and `EMAIL_FROM`.
+3. Resend Dashboard → Domains (or Single Sender) → verify the sender used in `EMAIL_FROM`.
+
+Verify:
+- In production, sign up with a new email at `/auth/signup` and confirm you receive a verification email.
+- Check Vercel logs for `[email] Send failed` after a signup attempt (should be absent).
+
+#### `POSTHOG_API_KEY` + `POSTHOG_HOST` (analytics sink)
+
+This affects both:
+- server-side analytics capture via `apps/web/src/lib/analytics.ts`
+- the Render analytics worker in `apps/web/src/workers/analytics.ts`
+
+1. PostHog → Project Settings → grab the Project API Key.
+2. Decide host:
+   - PostHog Cloud US: `https://us.i.posthog.com` (default in code)
+   - PostHog Cloud EU/self-hosted: set `POSTHOG_HOST` explicitly
+3. Set env vars in:
+   - Render workers (recommended): `POSTHOG_API_KEY`, `POSTHOG_HOST`
+   - Vercel (optional but fine): same keys so server-side capture works everywhere
+
+Verify:
+- Render logs for `ems-analytics-worker` should print `[analytics-worker] PostHog sink active`.
+
+#### `REDIS_URL` (queues + caching + workers)
+
+This is the switch that makes “background stuff” real: BullMQ workers, queue-backed notifications, and Redis-backed rate limiting/caching.
+
+1. Create Redis (Upstash is easiest) and copy the `rediss://...` URL.
+2. Set `REDIS_URL` in:
+   - Vercel (web app)
+   - Render (all workers) using the same value
+
+Verify:
+- Render worker logs should show workers starting (and not exiting with `REDIS_URL is not set`).
+- `/status` should stop reporting Redis as missing/degraded (if your status page includes Redis health checks).
+
+#### `INVITE5_COUPON_ID` (Stripe coupon id for the 5-invite reward)
+
+This must be a Stripe *Coupon ID* (starts with `coupon_...`), not a promotion code.
+
+1. Stripe Dashboard → Products → Coupons → Create:
+   - Type: percent or amount off
+   - Duration: once (recommended) or repeating (your call)
+2. Copy the `coupon_...` id and set it as `INVITE5_COUPON_ID` in Vercel (and any worker env that issues rewards).
+
+Verify:
+- Use an invite code to reach 5 signups and check the inviter gets a notification that includes a promo code.
+- Stripe Dashboard → Promotion codes should show a new code with metadata `{ milestone: "INVITE_5" }`.
+
+#### Supabase storage buckets: `audio` and `covers` (public read)
+
+This is required for uploads to work reliably.
+
+1. Supabase Dashboard → Storage → Buckets → Create bucket `audio`.
+2. Create bucket `covers`.
+3. Configure both for:
+   - Public read access (so browsers can load media)
+   - Service-role write access (server writes signed URLs / uploads)
+
+Verify:
+- Upload an MP3 + cover at `/studio/new` and confirm:
+  - the track page plays audio
+  - cover art loads everywhere it’s referenced
+
 ### Required for the site to function
 
 | Variable | Where to get it |
@@ -152,6 +224,23 @@ Manual checks the script can't do (because no auth):
 - [ ] On a phone-sized viewport, mobile nav opens, links work, body scroll locks while open.
 
 ---
+
+## Appendix A. Render workers (BullMQ)
+
+`render.yaml` at the repo root is ready. The workers are:
+- `ems-notifications-worker`
+- `ems-analytics-worker`
+- `ems-ai-scoring-worker`
+
+Required env vars (minimum viable):
+- `REDIS_URL`
+- `DATABASE_URL` and `DIRECT_URL` (for workers that touch Prisma)
+- `OPENAI_API_KEY` (AI scoring worker)
+- `POSTHOG_API_KEY` + optional `POSTHOG_HOST` (analytics worker)
+
+Verify:
+- Each worker shows “Started listening …” logs and stays up for at least a few minutes.
+
 
 ## 8. Post-launch monitoring
 
