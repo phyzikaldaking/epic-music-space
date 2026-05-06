@@ -2,11 +2,18 @@ import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import Image from "next/image";
-import AudioPlayer from "@/components/AudioPlayer";
+import dynamic from "next/dynamic";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { prisma } from "@/lib/prisma";
 import { formatPrice } from "@ems/utils";
 import { CACHE_TAGS } from "@/lib/cacheTags";
+import homepageStyles from "@/styles/homepage.module.css";
+import HomeVersusRail from "@/components/HomeVersusRail";
+
+const AudioPlayer = dynamic(() => import("@/components/LazyAudioPlayer"), {
+  ssr: false,
+  loading: () => <div className="h-48 animate-pulse rounded-2xl bg-white/5" />,
+});
 
 export const revalidate = 60;
 
@@ -82,264 +89,6 @@ const marqueeItems = [
 ];
 
 const trackArtClasses = ["vc-track-art-1", "vc-track-art-2", "vc-track-art-3"];
-
-const premiumHomeCss = `
-.vc-page {
-  background:
-    radial-gradient(circle at 20% 0%, rgba(34, 211, 238, 0.12), transparent 30%),
-    radial-gradient(circle at 80% 0%, rgba(253, 224, 71, 0.10), transparent 28%),
-    #050507;
-  color: #f7f7fb;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-.vc-page::before { display: none; }
-.vc-nav {
-  background: rgba(5, 5, 8, 0.72);
-  border-bottom: 1px solid rgba(255,255,255,0.10);
-  box-shadow: 0 18px 60px rgba(0,0,0,0.35);
-}
-.vc-logo {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  font-size: 13px;
-  font-weight: 900;
-  letter-spacing: 0.22em;
-  color: #fff;
-  -webkit-text-fill-color: #fff;
-  background: none;
-  text-shadow: none;
-}
-.vc-logo-mark {
-  margin-left: 0;
-  border: 1px solid rgba(253,224,71,0.45);
-  border-radius: 999px;
-  padding: 4px 8px;
-  color: #fde68a;
-  -webkit-text-fill-color: #fde68a;
-  background: rgba(253,224,71,0.10);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-}
-.vc-nav-links a,
-.vc-btn,
-.vc-btn-ghost-cyan,
-.vc-eyebrow,
-.vc-section-eyebrow,
-.vc-feat-tag,
-.vc-feat-link,
-.vc-track-genre,
-.vc-track-bpm,
-.vc-track-price,
-.vc-track-license,
-.vc-stat .label,
-.vc-lb-header span,
-.vc-lb-rank,
-.vc-lb-streams {
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-}
-.vc-nav-links a { letter-spacing: 0.12em; color: rgba(255,255,255,0.66); }
-.vc-nav-links a:hover { color: #fff; text-shadow: none; }
-.vc-btn {
-  border-radius: 999px;
-  letter-spacing: 0.11em;
-  box-shadow: none;
-}
-.vc-btn-pink {
-  background: linear-gradient(135deg, #f7f7fb 0%, #c9cad4 52%, #f6d36f 100%);
-  color: #07070b;
-  box-shadow: 0 18px 48px rgba(253,224,71,0.18);
-}
-.vc-btn-pink:hover { box-shadow: 0 22px 70px rgba(253,224,71,0.28); }
-.vc-btn-ghost,
-.vc-btn-ghost-cyan {
-  color: #d7faff;
-  border-color: rgba(34,211,238,0.34);
-  background: rgba(255,255,255,0.045);
-}
-.vc-btn-ghost:hover,
-.vc-btn-ghost-cyan:hover {
-  background: rgba(34,211,238,0.12);
-  box-shadow: 0 18px 42px rgba(34,211,238,0.16);
-}
-.vc-hero { min-height: calc(100svh - 65px); background: #050507; }
-.vc-studio-photo {
-  opacity: 0;
-  filter: brightness(0.28) contrast(1.28) saturate(0.65) hue-rotate(10deg);
-  transform: scale(1.10);
-  animation:
-    vc-photo-fade-in 3.8s cubic-bezier(0.16, 1, 0.3, 1) forwards,
-    vc-photo-breathe 22s ease-in-out 3.8s infinite alternate;
-}
-@keyframes vc-photo-fade-in {
-  0%   { opacity: 0;   transform: scale(1.10); filter: brightness(0.20) contrast(1.32) saturate(0.55) hue-rotate(14deg); }
-  60%  { opacity: 0.7; }
-  100% { opacity: 1;   transform: scale(1.03); filter: brightness(0.50) contrast(1.18) saturate(0.82) hue-rotate(6deg); }
-}
-@keyframes vc-photo-breathe {
-  0%   { filter: brightness(0.48) contrast(1.16) saturate(0.80) hue-rotate(5deg); transform: scale(1.03); }
-  100% { filter: brightness(0.56) contrast(1.22) saturate(0.88) hue-rotate(8deg); transform: scale(1.06); }
-}
-.vc-studio-tint {
-  background: linear-gradient(135deg, rgba(5,5,8,0.36), rgba(11,26,31,0.26), rgba(93,72,20,0.20));
-  mix-blend-mode: normal;
-}
-.vc-studio-overlay {
-  background:
-    radial-gradient(ellipse 70% 45% at 50% 82%, rgba(253,224,71,0.14), transparent 64%),
-    radial-gradient(ellipse 48% 36% at 18% 16%, rgba(34,211,238,0.18), transparent 58%),
-    linear-gradient(180deg, rgba(5,5,8,0.10) 0%, rgba(5,5,8,0.28) 50%, rgba(5,5,8,0.92) 100%);
-}
-.vc-studio-scan { opacity: 0.12; }
-.vc-stars { opacity: 0.28; }
-.vc-grid-floor {
-  opacity: 0.20;
-  background-size: 110px 110px;
-  background-image:
-    linear-gradient(to right, rgba(34,211,238,0.36) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(253,224,71,0.24) 1px, transparent 1px);
-}
-.vc-horizon {
-  background: linear-gradient(90deg, transparent, rgba(34,211,238,0.55), rgba(253,224,71,0.70), rgba(34,211,238,0.55), transparent);
-  box-shadow: 0 0 42px rgba(34,211,238,0.28);
-}
-.vc-palm { display: none !important; }
-.vc-eyebrow {
-  color: #d7faff;
-  letter-spacing: 0.26em;
-  text-shadow: none;
-  animation: none;
-}
-.vc-hero-h1,
-.vc-section-title,
-.vc-track-name,
-.vc-lb-track-name,
-.vc-split-card h3,
-.vc-feat-card h3,
-.vc-stat .num {
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  letter-spacing: -0.055em;
-  text-transform: none;
-}
-.vc-hero-h1 {
-  max-width: 960px;
-  font-weight: 950;
-  font-size: clamp(4.2rem, 11vw, 10rem);
-  line-height: 0.9;
-  background: linear-gradient(180deg, #fff 0%, #f5f5f7 38%, #d7faff 70%, #f6d36f 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-shadow: 0 32px 90px rgba(0,0,0,0.7);
-}
-.vc-hero-tagline {
-  max-width: 760px;
-  color: rgba(255,255,255,0.78);
-  line-height: 1.75;
-}
-.vc-hero-tagline .accent { color: #f6d36f; text-shadow: none; }
-.vc-marquee {
-  background: rgba(255,255,255,0.03);
-  border-top: 1px solid rgba(255,255,255,0.08);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-}
-.vc-marquee-track span {
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.24em;
-  color: rgba(255,255,255,0.64);
-  text-transform: uppercase;
-}
-.vc-marquee-track .dot { color: #f6d36f; text-shadow: none; }
-.vc-section { padding: 112px 40px; }
-.vc-section-eyebrow { color: #f6d36f; letter-spacing: 0.22em; text-shadow: none; }
-.vc-section-title {
-  font-size: clamp(2.4rem, 5.2vw, 4.9rem);
-  font-weight: 920;
-  line-height: 0.98;
-}
-.vc-section-title .glow,
-.vc-section-title .pink { color: #d7faff; text-shadow: none; }
-.vc-platform-section {
-  background:
-    radial-gradient(circle at 12% 10%, rgba(34,211,238,0.10), transparent 32%),
-    linear-gradient(180deg, #050507 0%, #090910 100%);
-}
-.vc-platform-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
-  margin-top: 48px;
-}
-.vc-platform-card,
-.vc-track-card,
-.vc-lb-table,
-.vc-split-card,
-.vc-feat-card {
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.035));
-  border: 1px solid rgba(255,255,255,0.12);
-  box-shadow: 0 28px 90px rgba(0,0,0,0.30);
-}
-.vc-platform-card {
-  min-height: 260px;
-  padding: 34px;
-  position: relative;
-  overflow: hidden;
-}
-.vc-platform-card::after {
-  content: '';
-  position: absolute;
-  inset: auto -18% -32% 30%;
-  height: 160px;
-  border-radius: 999px;
-  background: radial-gradient(circle, rgba(34,211,238,0.20), transparent 70%);
-}
-.vc-platform-num {
-  color: #f6d36f;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-}
-.vc-platform-card h3 {
-  margin-top: 28px;
-  font-size: 28px;
-  line-height: 1.02;
-  letter-spacing: -0.04em;
-  font-weight: 900;
-}
-.vc-platform-card p {
-  margin-top: 18px;
-  color: rgba(255,255,255,0.60);
-  line-height: 1.65;
-}
-.vc-tracks-section,
-.vc-leaderboard-section,
-.vc-split-section,
-.vc-feat-section {
-  background:
-    radial-gradient(circle at 70% 20%, rgba(34,211,238,0.08), transparent 34%),
-    #050507;
-}
-.vc-track-card { padding: 22px; border-radius: 26px; }
-.vc-track-card:hover { box-shadow: 0 32px 90px rgba(34,211,238,0.16); border-color: rgba(253,224,71,0.28); }
-.vc-track-art { border-radius: 18px; }
-.vc-track-name { font-weight: 900; letter-spacing: -0.04em; }
-.vc-lb-row { color: inherit; text-decoration: none; }
-.vc-lb-track-name { font-weight: 850; font-size: 18px; }
-.vc-lb-rank, .vc-lb-row.top1 .vc-lb-rank, .vc-lb-row.top2 .vc-lb-rank, .vc-lb-row.top3 .vc-lb-rank { color: #f6d36f; text-shadow: none; }
-.vc-split-card h3 { font-size: clamp(2.3rem, 4vw, 3.7rem); font-weight: 930; }
-.vc-feat-card h3 { font-size: 34px; font-weight: 900; }
-.vc-feat-tag { color: #f6d36f; background: rgba(253,224,71,0.10); border-color: rgba(253,224,71,0.24); }
-.vc-feat-card.versus .vc-feat-tag { color: #d7faff; background: rgba(34,211,238,0.10); border-color: rgba(34,211,238,0.24); }
-@media (max-width: 900px) {
-  .vc-platform-grid { grid-template-columns: 1fr; }
-  .vc-section { padding: 84px 22px; }
-}
-`;
 
 const getHomeData = unstable_cache(
   async (): Promise<HomeData> => {
@@ -488,8 +237,7 @@ export default async function HomePage() {
   };
 
   return (
-    <div className="vc-page">
-      <style dangerouslySetInnerHTML={{ __html: premiumHomeCss }} />
+    <div className={homepageStyles.page}>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
@@ -498,8 +246,8 @@ export default async function HomePage() {
       <section className="vc-hero">
         <div className="vc-stars" aria-hidden="true" />
         <Image
-          className="vc-studio-photo"
-          src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=2600&q=90&auto=format&fit=crop&crop=center"
+          className={homepageStyles.studioPhoto}
+          src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=1200&q=80&auto=format&fit=crop"
           alt=""
           aria-hidden="true"
           fill
@@ -556,6 +304,11 @@ export default async function HomePage() {
           ))}
         </div>
       </div>
+
+      {/* Live battles rail — renders only when there are active matches.
+         Placed directly under the marquee so the first scrollable surface
+         on /home is real, voteable activity, not marketing copy. */}
+      <HomeVersusRail />
 
       <section className="vc-section vc-platform-section">
         <div className="vc-container">

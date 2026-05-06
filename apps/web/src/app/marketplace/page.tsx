@@ -10,6 +10,8 @@ import MarketplaceSearch from "@/components/MarketplaceSearch";
 import AdSlot from "@/components/ads/AdSlot";
 import { computeRankingTransparency } from "@/lib/rankingTransparency";
 import SectionErrorBoundary from "@/components/SectionErrorBoundary";
+import MadeForYouRail from "@/components/MadeForYouRail";
+import type { RailCandidate } from "@/lib/personalizedRail";
 
 export const revalidate = 30;
 
@@ -70,6 +72,69 @@ type MarketplaceSong = {
 };
 type SearchParamValue = string | string[] | undefined;
 type MarketplaceSearchParams = Record<string, SearchParamValue>;
+
+const RESILIENT_FALLBACK_TRACKS: RawTrack[] = [
+  {
+    id: "fallback-crown-room",
+    title: "Crown Room",
+    artist: "EMS Sessions",
+    genre: "Cinematic",
+    audioUrl: "/demo/audio/back-then-drunk.wav",
+    coverUrl: null,
+    bpm: 92,
+    key: "F minor",
+    licensePrice: 79,
+    revenueSharePct: 8.5,
+    totalLicenses: 100,
+    soldLicenses: 21,
+    aiScore: 92,
+    boostScore: 0,
+    streamCount: 2400,
+    versusWins: 4,
+    versusLosses: 1,
+    createdAt: new Date(),
+  },
+  {
+    id: "fallback-night-grid",
+    title: "Night Grid",
+    artist: "EMS Sessions",
+    genre: "Trap",
+    audioUrl: "/demo/audio/dog-food.wav",
+    coverUrl: null,
+    bpm: 140,
+    key: "E minor",
+    licensePrice: 69,
+    revenueSharePct: 7.9,
+    totalLicenses: 90,
+    soldLicenses: 18,
+    aiScore: 89,
+    boostScore: 0,
+    streamCount: 1800,
+    versusWins: 3,
+    versusLosses: 2,
+    createdAt: new Date(),
+  },
+  {
+    id: "fallback-after-hours",
+    title: "After Hours Signal",
+    artist: "EMS Sessions",
+    genre: "R&B",
+    audioUrl: "/demo/audio/pay-like-you-weigh.wav",
+    coverUrl: null,
+    bpm: 104,
+    key: "C minor",
+    licensePrice: 74,
+    revenueSharePct: 8.1,
+    totalLicenses: 80,
+    soldLicenses: 13,
+    aiScore: 87,
+    boostScore: 0,
+    streamCount: 1300,
+    versusWins: 2,
+    versusLosses: 2,
+    createdAt: new Date(),
+  },
+];
 
 const MarketplaceWorld3D = dynamic(() => import("@/components/MarketplaceWorld3D"), {
   loading: () => <SectionShell title="Marketplace World" description="Loading live district pulse..." />,
@@ -201,6 +266,16 @@ function toMarketplaceSong(track: RawTrack): MarketplaceSong {
   };
 }
 
+async function getResilientFallbackTracks() {
+  try {
+    const demoTracks = await getDemoTracks();
+    if (demoTracks.length > 0) return demoTracks;
+  } catch {
+    // Keep rendering with static tracks if demo source is unavailable.
+  }
+  return RESILIENT_FALLBACK_TRACKS;
+}
+
 export default async function MarketplacePage(props: {
   searchParams: Promise<MarketplaceSearchParams>;
 }) {
@@ -236,15 +311,22 @@ export default async function MarketplacePage(props: {
       },
     });
   } catch {
-    allSongs = await getDemoTracks();
+    allSongs = await getResilientFallbackTracks();
   }
 
   if (allSongs.length === 0) {
-    allSongs = await getDemoTracks();
+    allSongs = await getResilientFallbackTracks();
   }
 
   const rankedSongs = allSongs
-    .map((song) => toMarketplaceSong(song))
+    .map((song) => {
+      try {
+        return toMarketplaceSong(song);
+      } catch {
+        return null;
+      }
+    })
+    .filter((song): song is MarketplaceSong => Boolean(song))
     .sort((a, b) => Number(b.rankScore ?? 0) - Number(a.rankScore ?? 0));
 
   const displaySongs = rankedSongs.filter((song) => {
@@ -264,6 +346,32 @@ export default async function MarketplacePage(props: {
 
   const topSong = rankedSongs[0];
   const dominanceStrip = rankedSongs.slice(0, 5);
+
+  // Build the rail candidate set. The personalization library needs a
+  // few extra fields (versusWins/Losses, createdAt) that don't live on
+  // MarketplaceSong, so look them up by id from the raw track list.
+  const rawById = new Map(allSongs.map((track) => [track.id, track]));
+  const railCandidates: RailCandidate[] = rankedSongs.map((song) => {
+    const raw = rawById.get(song.id);
+    return {
+      id: song.id,
+      title: song.title,
+      artist: song.artist,
+      genre: song.genre,
+      coverUrl: song.coverUrl,
+      bpm: song.bpm,
+      key: song.key,
+      aiScore: song.aiScore,
+      rankScore: song.rankScore,
+      versusWins: Number(raw?.versusWins ?? 0),
+      versusLosses: Number(raw?.versusLosses ?? 0),
+      createdAt: raw?.createdAt ? new Date(raw.createdAt) : null,
+      licensePrice: song.licensePrice,
+      revenueSharePct: song.revenueSharePct,
+      soldLicenses: song.soldLicenses,
+      totalLicenses: song.totalLicenses,
+    };
+  });
   const boostedCount = rankedSongs.filter((song) => Number(song.boostScore ?? 0) > 0).length;
   const totalSupply = getTotalLicenseSupply(rankedSongs);
   const claimedLicenses = getClaimedLicenses(rankedSongs);
@@ -284,6 +392,13 @@ export default async function MarketplacePage(props: {
               <p className="text-xs font-black uppercase tracking-[0.34em] text-cyan-200/85">Creator Marketplace</p>
               <h1 className="mt-4 max-w-4xl break-words text-3xl font-black leading-[0.96] tracking-[-0.05em] text-white sm:text-4xl md:text-6xl lg:text-7xl">The premium exchange floor for music licensing.</h1>
               <p className="mt-6 max-w-2xl text-base leading-8 text-white/66 md:text-lg">Discover ranked tracks, studio drops, and creator-ready music with clear licensing terms, supply visibility, and marketplace momentum built into every release.</p>
+              <p className="mt-4 inline-flex items-center gap-2 rounded-full border border-cyan-200/25 bg-cyan-200/8 px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Open ranking — every factor &amp; paid-boost cap on every track
+              </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a href="#marketplace-catalog" className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-black uppercase tracking-[0.12em] text-black shadow-2xl shadow-white/10 transition hover:-translate-y-0.5 hover:bg-cyan-200">Explore Catalog</a>
                 <Link href="/auth/signup" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/15 bg-white/[0.05] px-6 text-sm font-black uppercase tracking-[0.12em] text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-gold-200/40 hover:bg-gold-200/10">Sell Your Music</Link>
@@ -310,7 +425,37 @@ export default async function MarketplacePage(props: {
 
         <section className="mt-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex flex-1 gap-3 overflow-x-auto pb-2 sm:pb-0">{categories.map((category, index) => (<a key={category} href={index === 0 ? "/marketplace" : `/marketplace?genre=${encodeURIComponent(category)}`} className={`whitespace-nowrap rounded-full border px-5 py-2.5 text-sm font-black uppercase tracking-[0.12em] transition ${index === 0 ? "border-cyan-200/35 bg-cyan-200/12 text-cyan-100 shadow-lg shadow-cyan-500/10" : "border-white/10 bg-white/[0.045] text-white/52 hover:border-cyan-200/35 hover:bg-cyan-200/10 hover:text-cyan-100"}`}>{category}</a>))}</div>
+            <div className="flex flex-1 gap-3 overflow-x-auto pb-2 sm:pb-0">
+              {categories.map((category, index) => {
+                const isAll = index === 0;
+                const isActive = isAll
+                  ? genreFilter.length === 0
+                  : category.toLowerCase() === genreFilter;
+                // Preserve the active search query when switching genres so a
+                // user filtering by "trap" + searching "808" doesn't lose
+                // their search term every time they tap a pill.
+                const params = new URLSearchParams();
+                if (!isAll) params.set("genre", category);
+                if (rawQuery) params.set("q", rawQuery);
+                const href = params.toString()
+                  ? `/marketplace?${params.toString()}`
+                  : "/marketplace";
+                return (
+                  <a
+                    key={category}
+                    href={href}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`whitespace-nowrap rounded-full border px-5 py-2.5 text-sm font-black uppercase tracking-[0.12em] transition ${
+                      isActive
+                        ? "border-cyan-200/35 bg-cyan-200/12 text-cyan-100 shadow-lg shadow-cyan-500/10"
+                        : "border-white/10 bg-white/[0.045] text-white/52 hover:border-cyan-200/35 hover:bg-cyan-200/10 hover:text-cyan-100"
+                    }`}
+                  >
+                    {category}
+                  </a>
+                );
+              })}
+            </div>
             <Suspense><MarketplaceSearch initialQuery={rawQuery} /></Suspense>
           </div>
           {searchQuery && (
@@ -341,6 +486,16 @@ export default async function MarketplacePage(props: {
             </div>
           </section>
         )}
+
+        {/* Personalized rail — slots between the dominance strip and the
+           3D world so signed-in users hit a curated set before scanning
+           the long catalog. The component itself handles the cold-start
+           and DB-failure paths. */}
+        <SectionErrorBoundary title="Made for you">
+          <section className="mt-8">
+            <MadeForYouRail candidates={railCandidates} />
+          </section>
+        </SectionErrorBoundary>
 
         <SectionErrorBoundary title="Marketplace World"><section className="mt-8"><MarketplaceWorld3D items={rankedSongs.map((song) => ({ id: song.id, title: song.title }))} /></section></SectionErrorBoundary>
 
@@ -382,6 +537,39 @@ export default async function MarketplacePage(props: {
                 />
               ))}
             </div>
+            {displaySongs.length === 0 && (
+              <section className="overflow-hidden rounded-[1.75rem] border border-cyan-200/20 bg-gradient-to-br from-cyan-300/10 via-white/[0.04] to-gold-200/10 p-6 shadow-2xl shadow-black/40">
+                <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-100/80">Tracks Standby</p>
+                    <h3 className="mt-2 text-3xl font-black tracking-[-0.05em] text-white">No exact matches yet</h3>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">
+                      Try a different genre or search term. Your tracks wall is still live and ready.
+                    </p>
+                  </div>
+                  <Link
+                    href="/marketplace"
+                    className="inline-flex min-h-11 items-center justify-center rounded-full border border-cyan-200/30 bg-cyan-200/10 px-5 text-xs font-black uppercase tracking-[0.14em] text-cyan-100 transition hover:bg-cyan-200/20"
+                  >
+                    Reset Filters
+                  </Link>
+                </div>
+                <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {rankedSongs.slice(0, 3).map((song) => (
+                    <Link
+                      key={song.id}
+                      href={`/track/${song.id}`}
+                      className="rounded-2xl border border-white/12 bg-black/30 p-4 transition hover:-translate-y-0.5 hover:border-cyan-200/45"
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">Suggested</p>
+                      <p className="mt-2 line-clamp-1 text-lg font-black text-white">{song.title}</p>
+                      <p className="mt-1 line-clamp-1 text-sm text-white/55">{song.artist}</p>
+                      <p className="mt-3 text-xs font-semibold text-cyan-100/80">${song.licensePrice.toFixed(2)} license</p>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         </section>
       </div>

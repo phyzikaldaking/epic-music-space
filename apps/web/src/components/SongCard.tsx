@@ -207,41 +207,61 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
           </div>
 
           {rankingFactors && (
-            <details className="rounded-xl border border-cyan-300/20 bg-cyan-300/5 p-2 text-xs text-white/70">
-              <summary className="cursor-pointer list-none font-bold uppercase tracking-[0.12em] text-cyan-100">
-                Why This Track Is Ranked
+            <details className="group/why rounded-xl border border-cyan-300/20 bg-cyan-300/5 p-2.5 text-xs text-white/70">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-bold uppercase tracking-[0.12em] text-cyan-100">
+                <span className="flex items-center gap-1.5">
+                  <svg className="h-3 w-3 text-cyan-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 8v.01M12 11v5" strokeLinecap="round" />
+                  </svg>
+                  Why this track ranks here
+                </span>
+                <span className="text-[10px] font-black tracking-widest text-cyan-300/70 transition group-open/why:rotate-45">+</span>
               </summary>
-              <div className="mt-2 space-y-1.5">
-                <p className="flex justify-between gap-2">
-                  <span className="text-white/55">AI quality</span>
-                  <span className="font-semibold text-white">{rankingFactors.aiQuality.toFixed(1)}</span>
-                </p>
-                <p className="flex justify-between gap-2">
-                  <span className="text-white/55">License demand</span>
-                  <span className="font-semibold text-white">{rankingFactors.licenseDemand.toFixed(1)}</span>
-                </p>
-                <p className="flex justify-between gap-2">
-                  <span className="text-white/55">Stream velocity</span>
-                  <span className="font-semibold text-white">{rankingFactors.streamVelocity.toFixed(1)}</span>
-                </p>
-                <p className="flex justify-between gap-2">
-                  <span className="text-white/55">Versus strength</span>
-                  <span className="font-semibold text-white">{rankingFactors.versusStrength.toFixed(1)}</span>
-                </p>
-                <p className="flex justify-between gap-2">
+              <p className="mt-2 text-[11px] leading-5 text-white/55">
+                Open math. Every factor is public, and a paid boost can never overtake quality —
+                {typeof paidBoostCap === "number" ? ` boosts are capped at ${paidBoostCap.toFixed(1)} points` : " boosts are hard-capped"} on this track.
+              </p>
+              <div className="mt-3 space-y-2">
+                {[
+                  { label: "AI quality", value: rankingFactors.aiQuality, weight: "64%", color: "from-brand-500 to-accent-300" },
+                  { label: "License demand", value: rankingFactors.licenseDemand, weight: "16%", color: "from-gold-400 to-gold-200" },
+                  { label: "Stream velocity", value: rankingFactors.streamVelocity, weight: "10%", color: "from-cyan-300 to-cyan-100" },
+                  { label: "Versus strength", value: rankingFactors.versusStrength, weight: "6%", color: "from-rose-400 to-amber-300" },
+                  { label: "Recency", value: rankingFactors.recency, weight: "4%", color: "from-white/70 to-white/30" },
+                ].map((row) => (
+                  <div key={row.label}>
+                    <div className="mb-0.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.12em] text-white/55">
+                      <span>
+                        {row.label} <span className="text-white/30">· weight {row.weight}</span>
+                      </span>
+                      <span className="text-white">{row.value.toFixed(0)}</span>
+                    </div>
+                    <div className="h-1 overflow-hidden rounded-full bg-white/8">
+                      <div
+                        className={`h-full rounded-full bg-gradient-to-r ${row.color}`}
+                        style={{ width: `${Math.max(2, Math.min(100, row.value))}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 rounded-lg border border-white/10 bg-black/40 p-2 text-[11px] leading-5">
+                <p className="flex items-center justify-between gap-2">
                   <span className="text-white/55">Paid boost applied</span>
-                  <span className="font-semibold text-white">{Number(paidBoostApplied ?? boostScore).toFixed(1)}</span>
+                  <span className="font-semibold text-white">{Number(paidBoostApplied ?? boostScore).toFixed(1)} pts</span>
                 </p>
-                <p className="flex justify-between gap-2">
-                  <span className="text-white/55">Paid influence share</span>
-                  <span className="font-semibold text-white">{paidInfluencePct.toFixed(1)}%</span>
+                <p className="mt-0.5 flex items-center justify-between gap-2">
+                  <span className="text-white/55">Paid share of total</span>
+                  <span className={`font-semibold ${paidInfluencePct >= 18 ? "text-amber-200" : "text-white"}`}>
+                    {paidInfluencePct.toFixed(1)}%
+                  </span>
                 </p>
-                {typeof paidBoostCap === "number" && (
-                  <p className="text-[11px] text-white/60">
-                    Paid influence is capped at {paidBoostCap.toFixed(1)} points.
-                    {paidBoostCapped ? " Requested boost exceeded the cap and was reduced." : ""}
-                  </p>
-                )}
+                 {paidBoostCapped && (
+                   <p className="mt-1.5 text-[10px] text-amber-200/85">
+                     The artist&apos;s requested boost exceeded the cap and was trimmed. Quality still wins.
+                   </p>
+                 )}
               </div>
             </details>
           )}

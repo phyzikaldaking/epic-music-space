@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isLiveKitConfigured } from "@/lib/livekit";
 import { isRoomExpired } from "@/lib/roomTier";
 import RoomClient from "./RoomClient";
+import RoomBattleStrip from "@/components/RoomBattleStrip";
 import SectionErrorBoundary from "@/components/SectionErrorBoundary";
 
 interface Props {
@@ -22,7 +23,7 @@ export default async function RoomPage({ params }: Props) {
     include: {
       host: { select: { id: true, name: true, image: true, username: true, subscriptionTier: true } },
       currentSong: {
-        select: { id: true, title: true, artist: true, coverUrl: true, audioUrl: true, licensePrice: true, soldLicenses: true, totalLicenses: true },
+        select: { id: true, title: true, artist: true, genre: true, coverUrl: true, audioUrl: true, licensePrice: true, soldLicenses: true, totalLicenses: true },
       },
     },
   });
@@ -41,6 +42,15 @@ export default async function RoomPage({ params }: Props) {
 
   return (
     <SectionErrorBoundary title="Room">
+    {/* Pinned above the room: live Versus battles relevant to what's
+       playing. Listeners stay one tap away from voting without leaving
+       the room context. Renders nothing if no active battles match. */}
+    <RoomBattleStrip
+      roomId={room.id}
+      currentSongId={room.currentSong?.id ?? null}
+      currentSongArtist={room.currentSong?.artist ?? null}
+      currentSongGenre={room.currentSong?.genre ?? null}
+    />
     <RoomClient
       room={{
         id: room.id,
