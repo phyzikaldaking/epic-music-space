@@ -7,6 +7,7 @@ import { lenientLimiter } from "@/lib/rateLimit";
 const patchSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   image: z.string().url("image must be a valid URL").optional(),
+  bio: z.string().max(256).optional(),
 });
 
 /**
@@ -115,23 +116,30 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  if (Object.keys(parsed.data).length === 0) {
+  const { bio, ...userFields } = parsed.data;
+
+  if (Object.keys(userFields).length === 0 && bio === undefined) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
-  const updated = await prisma.user.update({
-    where: { id: session.user.id },
-    data: parsed.data,
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      image: true,
-      role: true,
-      username: true,
-      updatedAt: true,
-    },
-  });
+  const [updated] = await Promise.all([
+    Object.keys(userFields).length > 0
+      ? prisma.user.update({
+          where: { id: session.user.id },
+          data: userFields,
+          select: { id: true, name: true, email: true, image: true, role: true, username: true, updatedAt: true },
+        })
+      : prisma.user.findUnique({
+          where: { id: session.user.id },
+          select: { id: true, name: true, email: true, image: true, role: true, username: true, updatedAt: true },
+        }),
+    bio !== undefined
+      ? prisma.studio.updateMany({
+          where: { userId: session.user.id },
+          data: { bio },
+        })
+      : Promise.resolve(),
+  ]);
 
   return NextResponse.json(updated);
 }

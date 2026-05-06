@@ -170,16 +170,6 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
     }
   }
 
-  function seekToX(clientX: number, el: HTMLElement) {
-    const audio = audioRef.current;
-    if (!audio || !audio.duration) return;
-    const rect = el.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    audio.currentTime = ratio * audio.duration;
-    setCurrentTime(audio.currentTime);
-    setProgress(ratio * 100);
-  }
-
   function handleProgressChange(e: React.ChangeEvent<HTMLInputElement>) {
     const audio = audioRef.current;
     if (!audio || !audio.duration) return;

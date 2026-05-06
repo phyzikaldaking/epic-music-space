@@ -116,7 +116,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
     ? createPortal(
         <>
           <div
-            className={`fixed inset-0 z-[9998] bg-black/65 backdrop-blur-sm transition-opacity duration-200 ${
+            className={`fixed inset-0 z-[11000] bg-black/65 backdrop-blur-sm transition-opacity duration-200 ${
               open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
             }`}
             aria-hidden="true"
@@ -145,12 +145,12 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
               touchStartX.current = null;
               touchDeltaX.current = 0;
             }}
-            className={`fixed inset-y-0 right-0 z-[9999] flex w-[88vw] max-w-sm flex-col overflow-hidden border-l border-white/10 bg-[#0a0a0e] shadow-[0_0_60px_rgba(124,58,237,0.25)] motion-safe:transition-transform motion-reduce:transition-none duration-300 ease-out ${
+            className={`fixed right-0 top-0 z-[11001] flex h-[100dvh] w-[88vw] max-w-sm flex-col overflow-hidden border-l border-white/10 bg-[#0a0a0e] shadow-[0_0_60px_rgba(124,58,237,0.25)] motion-safe:transition-transform motion-reduce:transition-none duration-300 ease-out ${
               open ? "translate-x-0" : "translate-x-full"
             }`}
           >
             {/* Decorative gradient header */}
-            <div className="relative overflow-hidden border-b border-white/8">
+            <div className="relative overflow-hidden border-b border-white/8 pt-[env(safe-area-inset-top)]">
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(124,58,237,0.45),transparent_55%),radial-gradient(circle_at_85%_70%,rgba(0,245,255,0.32),transparent_55%),linear-gradient(135deg,#0c0a18,#070713)]"
@@ -230,7 +230,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
             </div>
 
             {/* Scrollable nav body */}
-            <div className="flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
               <ul className="flex flex-col gap-1 px-3 py-3" role="list">
                 {navLinks.map((link) => {
                   const active =
@@ -341,7 +341,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
           aria-expanded="true"
           aria-controls="mobile-nav"
           onClick={close}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/25 bg-white/8 text-white shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 active:scale-95"
+          className="relative z-[11002] flex h-10 w-10 items-center justify-center rounded-lg border border-white/25 bg-white/8 text-white shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 active:scale-95"
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -355,7 +355,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
           aria-expanded="false"
           aria-controls="mobile-nav"
           onClick={() => setOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/25 bg-white/5 text-white shadow-sm transition hover:border-white/40 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 active:scale-95"
+          className="relative z-[11002] flex h-10 w-10 items-center justify-center rounded-lg border border-white/25 bg-white/5 text-white shadow-sm transition hover:border-white/40 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 active:scale-95"
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />

@@ -28,6 +28,17 @@ interface SongCardProps {
   musicalKey?: string | null;
   aiScore?: number;
   boostScore?: number;
+  paidBoostApplied?: number;
+  paidBoostCap?: number;
+  paidBoostCapped?: boolean;
+  paidInfluencePct?: number;
+  rankingFactors?: {
+    aiQuality: number;
+    licenseDemand: number;
+    streamVelocity: number;
+    versusStrength: number;
+    recency: number;
+  };
   isTrending?: boolean;
   isBoosted?: boolean;
   rankPosition?: number;
@@ -80,13 +91,13 @@ function getTierClass(tier: DominanceTier) {
 
 const visualizerBars = [34, 62, 44, 76, 52, 88, 41, 70, 95, 58, 47, 82, 38, 66, 51, 73, 46, 90];
 
-export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl, licensePrice, revenueSharePct, soldLicenses, totalLicenses, bpm, musicalKey, aiScore, boostScore = 0, isTrending = false, isBoosted = false, rankPosition, dominanceTier, placementLabel, competitorGap }: SongCardProps) {
+export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl, licensePrice, revenueSharePct, soldLicenses, totalLicenses, bpm, musicalKey, aiScore, boostScore = 0, paidBoostApplied, paidBoostCap, paidBoostCapped = false, paidInfluencePct = 0, rankingFactors, isTrending = false, isBoosted = false, rankPosition, dominanceTier, placementLabel, competitorGap }: SongCardProps) {
   const remaining = Math.max(0, totalLicenses - soldLicenses);
   const remainingPct = totalLicenses > 0 ? Math.round((remaining / totalLicenses) * 100) : 0;
   const soldOutSoon = totalLicenses > 0 && remainingPct <= 20;
   const revenueShare = revenueSharePct.toString();
   const licenseLabel = displayPrice(licensePrice);
-  const rankScore = Number(aiScore ?? 0) + Number(boostScore ?? 0);
+  const rankScore = Number(aiScore ?? 0) + Number(paidBoostApplied ?? boostScore ?? 0);
   const tier = dominanceTier ?? getDominanceTier(rankPosition, boostScore, rankScore);
   const isChampion = tier === "CROWN" || (rankScore > 0 && rankScore >= 250);
   const dominancePercent = Math.max(8, Math.min(100, Math.round(rankScore / 3)));
@@ -152,7 +163,120 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
           <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/10" aria-hidden="true"><div className="h-full bg-gradient-to-r from-brand-500 via-accent-400 to-gold-300 transition-all" style={{ width: `${playing ? progress : hovered ? 8 : 0}%` }} /></div>
           <div className="absolute inset-x-0 bottom-0 translate-y-4 bg-gradient-to-t from-black/96 via-black/84 to-transparent px-4 pb-4 pt-16 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100"><div className="rounded-xl border border-white/12 bg-black/72 p-3 backdrop-blur-md"><div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/35">License from</p><p className="text-xl font-black text-white">{licenseLabel}</p></div><span className="rounded-full border border-gold-400/25 bg-gold-400/10 px-2.5 py-1 text-xs font-bold text-gold-200">{revenueShare}% rev share</span></div><div className="mb-3 grid grid-cols-2 gap-2 text-[11px] font-semibold text-white/55"><span className="rounded-lg bg-white/7 px-2 py-1.5">{remaining} licenses left</span><span className="rounded-lg bg-white/7 px-2 py-1.5">{soldLicenses}/{totalLicenses} claimed</span></div><Link href={`/track/${id}`} className="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-white px-4 text-sm font-black text-black transition hover:bg-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400">Buy / License</Link></div></div>
         </div>
-        <div className="flex flex-1 flex-col gap-4 px-2 pb-3 pt-4"><div><div className="mb-2 flex items-center justify-between gap-2"><span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/45">{rankPosition ? `#${rankPosition}` : "Unranked"}</span><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">Dominance {dominancePercent}%</span></div><Link href={`/track/${id}`} className="line-clamp-1 font-black text-white transition hover:text-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400">{title}</Link><p className="mt-1 line-clamp-1 text-sm text-white/50">{artist}</p></div><div className="flex min-h-7 flex-wrap gap-1.5">{genre && <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">{genre}</span>}{bpm && <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">{bpm} BPM</span>}{musicalKey && <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">Key {musicalKey}</span>}</div><div className="rounded-xl border border-white/10 bg-black/30 p-2"><div className="mb-1 flex justify-between text-[10px] font-bold uppercase tracking-[0.14em] text-white/35"><span>Control Meter</span><span>{rankScore.toFixed(1)}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className={`h-full rounded-full ${isChampion ? "bg-gradient-to-r from-gold-400 via-white to-accent-300" : "bg-gradient-to-r from-brand-500 to-accent-300"}`} style={{ width: `${dominancePercent}%` }} /></div>{competitorGap != null && competitorGap > 0 && <p className="mt-2 text-[11px] font-semibold text-gold-200/75">Only {competitorGap.toFixed(1)} power from taking the next slot.</p>}</div><div className="flex items-start justify-between gap-3 text-sm"><span className="font-bold text-brand-300">{licenseLabel} / license</span><span className="rounded-full border border-gold-500/20 bg-gold-500/10 px-2 py-0.5 text-xs font-semibold text-gold-300">{revenueShare}% rev share</span></div><div><div className="mb-1 flex justify-between gap-3 text-xs"><span className={soldOutSoon ? "font-semibold text-red-300" : "text-white/45"}>{remaining} of {totalLicenses} left{soldOutSoon && " · Almost gone"}</span><span className="text-white/30">{remainingPct}%</span></div><div className="h-1.5 w-full rounded-full bg-white/8"><div className={`h-full rounded-full transition-all ${soldOutSoon ? "bg-gradient-to-r from-red-500 to-orange-400" : "bg-gradient-to-r from-brand-500 to-accent-500"}`} style={{ width: `${remainingPct}%` }} /></div></div><div className="grid grid-cols-2 gap-2"><Link href={`/track/${id}`} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/12 bg-white/8 px-4 text-sm font-bold text-white transition hover:border-accent-300/50 hover:bg-accent-400/15 hover:text-accent-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400">View</Link><PromoteSongButton songId={id} /></div></div>
+        <div className="flex flex-1 flex-col gap-4 px-2 pb-3 pt-4">
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/45">
+                {rankPosition ? `#${rankPosition}` : "Unranked"}
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
+                Dominance {dominancePercent}%
+              </span>
+            </div>
+            <Link
+              href={`/track/${id}`}
+              className="line-clamp-1 font-black text-white transition hover:text-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+            >
+              {title}
+            </Link>
+            <p className="mt-1 line-clamp-1 text-sm text-white/50">{artist}</p>
+          </div>
+
+          <div className="flex min-h-7 flex-wrap gap-1.5">
+            {genre && <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">{genre}</span>}
+            {bpm && <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">{bpm} BPM</span>}
+            {musicalKey && <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">Key {musicalKey}</span>}
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/30 p-2">
+            <div className="mb-1 flex justify-between text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">
+              <span>Control Meter</span>
+              <span>{rankScore.toFixed(1)}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div
+                className={`h-full rounded-full ${isChampion ? "bg-gradient-to-r from-gold-400 via-white to-accent-300" : "bg-gradient-to-r from-brand-500 to-accent-300"}`}
+                style={{ width: `${dominancePercent}%` }}
+              />
+            </div>
+            {competitorGap != null && competitorGap > 0 && (
+              <p className="mt-2 text-[11px] font-semibold text-gold-200/75">
+                Only {competitorGap.toFixed(1)} power from taking the next slot.
+              </p>
+            )}
+          </div>
+
+          {rankingFactors && (
+            <details className="rounded-xl border border-cyan-300/20 bg-cyan-300/5 p-2 text-xs text-white/70">
+              <summary className="cursor-pointer list-none font-bold uppercase tracking-[0.12em] text-cyan-100">
+                Why This Track Is Ranked
+              </summary>
+              <div className="mt-2 space-y-1.5">
+                <p className="flex justify-between gap-2">
+                  <span className="text-white/55">AI quality</span>
+                  <span className="font-semibold text-white">{rankingFactors.aiQuality.toFixed(1)}</span>
+                </p>
+                <p className="flex justify-between gap-2">
+                  <span className="text-white/55">License demand</span>
+                  <span className="font-semibold text-white">{rankingFactors.licenseDemand.toFixed(1)}</span>
+                </p>
+                <p className="flex justify-between gap-2">
+                  <span className="text-white/55">Stream velocity</span>
+                  <span className="font-semibold text-white">{rankingFactors.streamVelocity.toFixed(1)}</span>
+                </p>
+                <p className="flex justify-between gap-2">
+                  <span className="text-white/55">Versus strength</span>
+                  <span className="font-semibold text-white">{rankingFactors.versusStrength.toFixed(1)}</span>
+                </p>
+                <p className="flex justify-between gap-2">
+                  <span className="text-white/55">Paid boost applied</span>
+                  <span className="font-semibold text-white">{Number(paidBoostApplied ?? boostScore).toFixed(1)}</span>
+                </p>
+                <p className="flex justify-between gap-2">
+                  <span className="text-white/55">Paid influence share</span>
+                  <span className="font-semibold text-white">{paidInfluencePct.toFixed(1)}%</span>
+                </p>
+                {typeof paidBoostCap === "number" && (
+                  <p className="text-[11px] text-white/60">
+                    Paid influence is capped at {paidBoostCap.toFixed(1)} points.
+                    {paidBoostCapped ? " Requested boost exceeded the cap and was reduced." : ""}
+                  </p>
+                )}
+              </div>
+            </details>
+          )}
+
+          <div className="flex items-start justify-between gap-3 text-sm">
+            <span className="font-bold text-brand-300">{licenseLabel} / license</span>
+            <span className="rounded-full border border-gold-500/20 bg-gold-500/10 px-2 py-0.5 text-xs font-semibold text-gold-300">{revenueShare}% rev share</span>
+          </div>
+
+          <div>
+            <div className="mb-1 flex justify-between gap-3 text-xs">
+              <span className={soldOutSoon ? "font-semibold text-red-300" : "text-white/45"}>
+                {remaining} of {totalLicenses} left
+                {soldOutSoon && " · Almost gone"}
+              </span>
+              <span className="text-white/30">{remainingPct}%</span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-white/8">
+              <div
+                className={`h-full rounded-full transition-all ${soldOutSoon ? "bg-gradient-to-r from-red-500 to-orange-400" : "bg-gradient-to-r from-brand-500 to-accent-500"}`}
+                style={{ width: `${remainingPct}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Link
+              href={`/track/${id}`}
+              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/12 bg-white/8 px-4 text-sm font-bold text-white transition hover:border-accent-300/50 hover:bg-accent-400/15 hover:text-accent-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+            >
+              View
+            </Link>
+            <PromoteSongButton songId={id} />
+          </div>
+        </div>
       </div>
       <div className="mx-auto h-4 w-24 rounded-b-2xl bg-gradient-to-b from-zinc-700 to-zinc-950 shadow-lg shadow-black/50" /><div className="mx-auto h-1.5 w-36 rounded-full bg-black/70" />
     </article>

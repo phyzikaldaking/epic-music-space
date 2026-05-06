@@ -17,6 +17,14 @@ const KNOWN_TYPES = [
   "VERSUS_RESULT",
   "AUCTION_BID_RECEIVED",
   "AUCTION_OUTBID",
+  // Holder / token royalty events
+  "HOLDER_PAYOUT",
+  "LICENSE_HOLDER_EARNED",
+  // Fraud & integrity
+  "STREAM_FRAUD_ALERT",
+  // Refund / clawback
+  "REFUND_CLAWBACK",
+  "REFUND_ISSUED",
 ] as const;
 type KnownType = (typeof KNOWN_TYPES)[number];
 

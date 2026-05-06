@@ -12,6 +12,10 @@ interface ProfileData {
   studio?: { bio: string | null; username: string } | null;
 }
 
+const BIO_MAX = 256;
+
+const PHONE_CHALLENGE_EXPIRES_AT_STORAGE_KEY = "ems_phone_challenge_expires_at";
+
 export default function ProfileEditPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -21,9 +25,22 @@ export default function ProfileEditPage() {
 
   const [name, setName] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [bio, setBio] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [phoneInput, setPhoneInput] = useState("");
+  const [phoneMasked, setPhoneMasked] = useState<string | null>(null);
+  const [phoneSaving, setPhoneSaving] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+  const [phoneSuccess, setPhoneSuccess] = useState("");
+  const [phoneChallengeCode, setPhoneChallengeCode] = useState("");
+  const [phoneChallengeSent, setPhoneChallengeSent] = useState(false);
+  const [phoneChallengeVerified, setPhoneChallengeVerified] = useState(false);
+  const [phoneManageToken, setPhoneManageToken] = useState("");
+  const [phoneChallengeBusy, setPhoneChallengeBusy] = useState(false);
+  const [phoneChallengeExpiresAt, setPhoneChallengeExpiresAt] = useState<number | null>(null);
+  const [phoneChallengeSecondsLeft, setPhoneChallengeSecondsLeft] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -90,6 +107,7 @@ export default function ProfileEditPage() {
         if (!data) return;
         setName(data.name ?? "");
         setImageUrl(data.image ?? "");
+        setBio(data.studio?.bio ?? "");
         setEmail(data.email ?? "");
         setRole(data.role ?? "");
         setLoading(false);
@@ -98,7 +116,211 @@ export default function ProfileEditPage() {
         setError("Failed to load profile.");
         setLoading(false);
       });
+
+    fetch("/api/user/phone")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setPhoneMasked(typeof data.maskedPhone === "string" ? data.maskedPhone : null);
+      })
+      .catch(() => null);
   }, [router]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(PHONE_CHALLENGE_EXPIRES_AT_STORAGE_KEY);
+    if (!stored) return;
+
+    const parsed = Number(stored);
+    if (!Number.isFinite(parsed) || parsed <= Date.now()) {
+      window.localStorage.removeItem(PHONE_CHALLENGE_EXPIRES_AT_STORAGE_KEY);
+      return;
+    }
+
+    setPhoneChallengeExpiresAt(parsed);
+    setPhoneChallengeSent(true);
+  }, []);
+
+  useEffect(() => {
+    if (!phoneChallengeExpiresAt) {
+      setPhoneChallengeSecondsLeft(0);
+      window.localStorage.removeItem(PHONE_CHALLENGE_EXPIRES_AT_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(
+      PHONE_CHALLENGE_EXPIRES_AT_STORAGE_KEY,
+      String(phoneChallengeExpiresAt),
+    );
+
+    const tick = () => {
+      const remaining = Math.max(
+        0,
+        Math.ceil((phoneChallengeExpiresAt - Date.now()) / 1000),
+      );
+      setPhoneChallengeSecondsLeft(remaining);
+
+      if (remaining === 0) {
+        setPhoneChallengeVerified(false);
+        setPhoneManageToken("");
+        window.localStorage.removeItem(PHONE_CHALLENGE_EXPIRES_AT_STORAGE_KEY);
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [phoneChallengeExpiresAt]);
+
+  function challengeTimeLabel(totalSeconds: number) {
+    const mm = Math.floor(totalSeconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const ss = (totalSeconds % 60).toString().padStart(2, "0");
+    return `${mm}:${ss}`;
+  }
+
+  async function handlePhoneSave(e: React.FormEvent) {
+    e.preventDefault();
+    setPhoneSaving(true);
+    setPhoneError("");
+    setPhoneSuccess("");
+
+    try {
+      const res = await fetch("/api/user/phone", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: phoneInput,
+          manageToken: phoneManageToken || undefined,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        maskedPhone?: string | null;
+      };
+
+      if (!res.ok) {
+        setPhoneError(data.error ?? "Could not update phone.");
+        return;
+      }
+
+      setPhoneMasked(data.maskedPhone ?? null);
+      setPhoneInput("");
+      setPhoneSuccess("Phone number updated.");
+      setPhoneChallengeCode("");
+      setPhoneChallengeSent(false);
+      setPhoneChallengeVerified(false);
+      setPhoneManageToken("");
+      setPhoneChallengeExpiresAt(null);
+    } catch {
+      setPhoneError("Could not update phone.");
+    } finally {
+      setPhoneSaving(false);
+    }
+  }
+
+  async function handleRequestPhoneChallenge() {
+    setPhoneChallengeBusy(true);
+    setPhoneError("");
+    setPhoneSuccess("");
+
+    try {
+      const res = await fetch("/api/user/phone/challenge/request", {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        expiresInSeconds?: number;
+      };
+      if (!res.ok) {
+        setPhoneError(data.error ?? "Could not send verification code.");
+        return;
+      }
+
+      const expiresIn = Number(data.expiresInSeconds ?? 600);
+      setPhoneChallengeExpiresAt(Date.now() + expiresIn * 1000);
+      setPhoneChallengeSent(true);
+      setPhoneChallengeVerified(false);
+      setPhoneManageToken("");
+      setPhoneSuccess("Verification code sent to your current linked phone.");
+    } catch {
+      setPhoneError("Could not send verification code.");
+    } finally {
+      setPhoneChallengeBusy(false);
+    }
+  }
+
+  async function handleVerifyPhoneChallenge() {
+    setPhoneChallengeBusy(true);
+    setPhoneError("");
+    setPhoneSuccess("");
+
+    try {
+      const res = await fetch("/api/user/phone/challenge/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: phoneChallengeCode }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        manageToken?: string;
+        expiresInSeconds?: number;
+      };
+
+      if (!res.ok || !data.manageToken) {
+        setPhoneError(data.error ?? "Invalid verification code.");
+        return;
+      }
+
+      setPhoneManageToken(data.manageToken);
+      setPhoneChallengeVerified(true);
+      const expiresIn = Number(data.expiresInSeconds ?? 600);
+      setPhoneChallengeExpiresAt(Date.now() + expiresIn * 1000);
+      setPhoneSuccess("Current phone verified. You can now update or remove it.");
+    } catch {
+      setPhoneError("Could not verify code.");
+    } finally {
+      setPhoneChallengeBusy(false);
+    }
+  }
+
+  async function handlePhoneRemove() {
+    setPhoneSaving(true);
+    setPhoneError("");
+    setPhoneSuccess("");
+
+    try {
+      const res = await fetch("/api/user/phone", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          remove: true,
+          manageToken: phoneManageToken || undefined,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
+
+      if (!res.ok) {
+        setPhoneError(data.error ?? "Could not remove phone.");
+        return;
+      }
+
+      setPhoneMasked(null);
+      setPhoneInput("");
+      setPhoneSuccess("Phone number removed.");
+      setPhoneChallengeCode("");
+      setPhoneChallengeSent(false);
+      setPhoneChallengeVerified(false);
+      setPhoneManageToken("");
+      setPhoneChallengeExpiresAt(null);
+    } catch {
+      setPhoneError("Could not remove phone.");
+    } finally {
+      setPhoneSaving(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -109,6 +331,7 @@ export default function ProfileEditPage() {
     const body: Record<string, string> = {};
     if (name.trim()) body.name = name.trim();
     if (imageUrl.trim()) body.image = imageUrl.trim();
+    if (bio.trim().length > 0) body.bio = bio.trim().slice(0, BIO_MAX);
 
     if (Object.keys(body).length === 0) {
       setError("No changes to save.");
@@ -256,6 +479,21 @@ export default function ProfileEditPage() {
           </p>
         </div>
 
+        {(role === "ARTIST" || role === "PRODUCER" || role === "ENGINEER" || role === "LABEL") && (
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-white/40">
+              Bio <span className="normal-case text-white/25">({bio.length}/{BIO_MAX})</span>
+            </label>
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value.slice(0, BIO_MAX))}
+              rows={3}
+              placeholder="Tell the world about your sound…"
+              className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-sm text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40 resize-none"
+            />
+          </div>
+        )}
+
         <button
           type="submit"
           disabled={saving}
@@ -271,6 +509,114 @@ export default function ProfileEditPage() {
           )}
         </button>
       </form>
+
+      <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
+        <h2 className="text-sm font-bold uppercase tracking-widest text-white/70">
+          Phone sign-in
+        </h2>
+        <p className="mt-2 text-xs text-white/50">
+          Link a phone number to sign in with one-time login codes.
+        </p>
+        <p className="mt-2 text-xs text-white/60">
+          Current: {phoneMasked ?? "Not linked"}
+        </p>
+
+        {phoneMasked && (
+          <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+            <p className="text-xs text-white/60">
+              For security, verify your current linked phone before replacing or removing it.
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleRequestPhoneChallenge}
+                disabled={phoneChallengeBusy}
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 disabled:opacity-50"
+              >
+                {phoneChallengeSent ? "Resend code" : "Send verification code"}
+              </button>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                value={phoneChallengeCode}
+                onChange={(e) =>
+                  setPhoneChallengeCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                }
+                placeholder="6-digit code"
+                className="flex-1 rounded-xl border border-white/10 bg-white/4 px-4 py-2 text-xs text-white placeholder-white/35 outline-none focus:border-brand-500/50"
+              />
+              <button
+                type="button"
+                onClick={handleVerifyPhoneChallenge}
+                disabled={phoneChallengeBusy || phoneChallengeCode.length !== 6}
+                className="rounded-xl bg-brand-500 px-4 py-2 text-xs font-bold text-white hover:bg-brand-600 disabled:opacity-50"
+              >
+                Verify
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-white/45">
+              {phoneChallengeVerified
+                ? "Verified. You can update or remove this phone now."
+                : "Verification expires in about 10 minutes."}
+            </p>
+            {phoneChallengeSent && phoneChallengeSecondsLeft > 0 && (
+              <p className="mt-1 text-[11px] text-white/55">
+                Challenge expires in {challengeTimeLabel(phoneChallengeSecondsLeft)}
+              </p>
+            )}
+            {phoneChallengeSent && phoneChallengeSecondsLeft === 0 && (
+              <p className="mt-1 text-[11px] text-red-300">
+                Challenge expired. Request and verify a new code.
+              </p>
+            )}
+          </div>
+        )}
+
+        {phoneError && (
+          <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            {phoneError}
+          </div>
+        )}
+
+        {phoneSuccess && (
+          <div className="mt-3 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-xs text-green-300">
+            {phoneSuccess}
+          </div>
+        )}
+
+        <form onSubmit={handlePhoneSave} className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <input
+            type="tel"
+            value={phoneInput}
+            onChange={(e) => setPhoneInput(e.target.value)}
+            placeholder="+15551234567"
+            className="flex-1 rounded-xl border border-white/10 bg-white/4 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-brand-500/50"
+          />
+          <button
+            type="submit"
+            disabled={
+              phoneSaving ||
+              !phoneInput.trim() ||
+              (phoneMasked !== null && !phoneChallengeVerified)
+            }
+            className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-600 disabled:opacity-50"
+          >
+            {phoneSaving ? "Saving…" : "Save phone"}
+          </button>
+        </form>
+
+        {phoneMasked && (
+          <button
+            type="button"
+            onClick={handlePhoneRemove}
+            disabled={phoneSaving || !phoneChallengeVerified}
+            className="mt-3 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
+          >
+            Remove linked phone
+          </button>
+        )}
+      </div>
 
       <p className="mt-6 text-center text-xs text-white/20">
         Email and role cannot be changed here. Contact support for account changes.
