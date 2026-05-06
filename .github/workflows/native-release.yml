@@ -33,10 +33,39 @@ permissions:
 # iOS — runs on macOS with Xcode
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
+  mobile-reliability-gate:
+    name: Mobile Reliability Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Run mobile reliability suite
+        env:
+          SYNTHETICS_BASE_URL: ${{ secrets.SYNTHETICS_BASE_URL }}
+        run: npm run reliability:mobile
+
+      - name: Run auth reliability suite
+        env:
+          SYNTHETICS_BASE_URL: ${{ secrets.SYNTHETICS_BASE_URL }}
+        run: npm run reliability:auth-smoke
+
   ios-beta:
     name: iOS → TestFlight
     runs-on: macos-15
     timeout-minutes: 60
+    needs: mobile-reliability-gate
 
     steps:
       - name: Checkout
@@ -124,6 +153,7 @@ jobs:
     name: Android → Play (internal)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    needs: mobile-reliability-gate
 
     steps:
       - name: Checkout

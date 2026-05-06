@@ -115,6 +115,16 @@ Verify:
 | `ADMIN_BOOTSTRAP_SECRET` | `openssl rand -base64 32` — **unset after first use** | First-admin grant |
 | `ADMIN_IP_ALLOWLIST` | Your office/VPN public IPs, comma-separated | Defence-in-depth on `/api/admin/*` |
 
+Quick LiveKit sync (for `epicmusicspace.com`):
+
+```bash
+npx vercel link --yes --project credit-control
+export LIVEKIT_API_KEY="..."
+export LIVEKIT_API_SECRET="..."
+export NEXT_PUBLIC_LIVEKIT_URL="wss://your-project.livekit.cloud"
+npm run livekit:configure -- --deploy
+```
+
 ### Optional
 
 `AD_TRACKING_SALT`, `INTERNAL_API_TOKEN`, `MIN_CREATOR_PAYOUT_USD`, `STRIPE_WEBHOOK_FORWARD_URL`, `LIVEKIT_RECORDING_S3_*`, `ELEVENLABS_*`, `HIGHLIGHT_*`, `AUTO_*`. See `apps/web/.env.example` for descriptions.
