@@ -79,10 +79,12 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connectionQuality, setConnectionQuality] = useState<"good" | "fair" | "poor" | "offline">("offline");
   const [role, setRole] = useState<Participant["role"]>(isHost ? "HOST" : "LISTENER");
   const [muted, setMuted] = useState(true);
   const [handRaised, setHandRaised] = useState(false);
   const [participants, setParticipants] = useState<Map<string, Participant>>(new Map());
+  const [activeSpeakers, setActiveSpeakers] = useState<Set<string>>(new Set());
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [ended, setEnded] = useState(room.status === "ENDED");
@@ -101,6 +103,8 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
 
   const lkRoomRef = useRef<Room | null>(null);
   const audioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const pingRef = useRef<number | null>(null);
+  const reconnectAttempts = useRef(0);
 
   async function roomAction(
     path: string,
@@ -155,11 +159,43 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           el.style.display = "none";
           document.body.appendChild(el);
           audioElsRef.current.set(participant.identity, el);
+
+          // Basic active-speaker detection: mark participant active while audio is playing
+          const markActive = () => {
+            setActiveSpeakers((prev) => new Set(prev).add(participant.identity));
+          };
+          const clearActive = () => {
+            setActiveSpeakers((prev) => {
+              const next = new Set(prev);
+              next.delete(participant.identity);
+              return next;
+            });
+          };
+          el.addEventListener("playing", markActive);
+          el.addEventListener("pause", clearActive);
+          el.addEventListener("ended", clearActive);
+
+          // store cleanup on the element for later
+          (el as any).__cleanup = () => {
+            el.removeEventListener("playing", markActive);
+            el.removeEventListener("pause", clearActive);
+            el.removeEventListener("ended", clearActive);
+          };
         }
       });
       lkRoom.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
-        track.detach().forEach((el) => el.remove());
+        track.detach().forEach((el) => {
+          try {
+            (el as any).__cleanup?.();
+          } catch {}
+          el.remove();
+        });
         audioElsRef.current.delete(participant.identity);
+        setActiveSpeakers((prev) => {
+          const next = new Set(prev);
+          next.delete(participant.identity);
+          return next;
+        });
       });
       lkRoom.on(RoomEvent.Disconnected, () => {
         setConnected(false);
@@ -169,6 +205,10 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       lkRoomRef.current = lkRoom;
       setConnected(true);
       setMuted(true);
+      // reset reconnect attempts and start pinging
+      reconnectAttempts.current = 0;
+      setConnectionQuality("good");
+      startPingLoop();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to connect";
       setError(msg);
@@ -176,6 +216,42 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       setConnecting(false);
     }
   }, [connecting, connected, ended, room.id]);
+
+  // Ping loop to measure RTT and set a simple connection quality indicator
+  function startPingLoop() {
+    stopPingLoop();
+    let cancelled = false;
+    async function pingOnce() {
+      const t0 = performance.now();
+      try {
+        const res = await fetch(`/api/rooms/${room.id}/ping`, { cache: "no-store" });
+        if (!res.ok) throw new Error("ping failed");
+        const rtt = performance.now() - t0;
+        if (cancelled) return;
+        if (rtt < 150) setConnectionQuality("good");
+        else if (rtt < 400) setConnectionQuality("fair");
+        else setConnectionQuality("poor");
+      } catch {
+        if (cancelled) return;
+        setConnectionQuality("poor");
+      }
+    }
+    pingOnce();
+    const id = window.setInterval(pingOnce, 5000);
+    pingRef.current = id;
+    return () => {
+      cancelled = true;
+      if (pingRef.current) window.clearInterval(pingRef.current);
+      pingRef.current = null;
+    };
+  }
+
+  function stopPingLoop() {
+    if (pingRef.current) {
+      window.clearInterval(pingRef.current);
+      pingRef.current = null;
+    }
+  }
 
   const stopTrackPlayback = useCallback(async () => {
     const lkRoom = lkRoomRef.current;
@@ -207,6 +283,8 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     audioElsRef.current.clear();
     setConnected(false);
     setMuted(true);
+    stopPingLoop();
+    setConnectionQuality("offline");
     if (markLeft && !isHost) {
       await fetch(`/api/rooms/${room.id}/leave`, { method: "POST" }).catch(() => null);
     }
@@ -217,6 +295,35 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       void disconnect();
     };
   }, [disconnect]);
+
+  // Auto-reconnect on unexpected disconnect with exponential backoff
+  useEffect(() => {
+    if (connected) {
+      reconnectAttempts.current = 0;
+      return;
+    }
+    if (ended) return;
+    // If disconnected unexpectedly (not manual leave), attempt reconnect
+    let cancelled = false;
+    async function attempt() {
+      if (connecting || connected) return;
+      const attempts = reconnectAttempts.current ?? 0;
+      const delay = Math.min(30_000, Math.pow(2, attempts) * 1000);
+      await new Promise((res) => setTimeout(res, delay));
+      if (cancelled || connected) return;
+      reconnectAttempts.current = attempts + 1;
+      try {
+        await connect();
+      } catch {
+        // will try again on next effect run
+      }
+    }
+    // only start attempts if we previously connected at least once
+    if (reconnectAttempts.current >= 0) attempt();
+    return () => {
+      cancelled = true;
+    };
+  }, [connected, connecting, connect, ended]);
 
   // ── Toggle mic ──────────────────────────────────────────────────────
   async function toggleMute() {
@@ -794,6 +901,26 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
         </div>
       )}
 
+      {/* Connection quality indicator */}
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-white/50">Connection</span>
+          <span
+            aria-hidden
+            className={`inline-block h-2 w-2 rounded-full ${
+              connectionQuality === "good"
+                ? "bg-emerald-400"
+                : connectionQuality === "fair"
+                  ? "bg-amber-400"
+                  : connectionQuality === "poor"
+                    ? "bg-red-400"
+                    : "bg-white/30"
+            }`}
+          />
+          <span className="text-xs text-white/40">{connectionQuality}</span>
+        </div>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         {/* Stage */}
         <div className="space-y-6">
@@ -925,7 +1052,9 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
               )}
               {speakers.map((p) => (
                 <div key={p.userId} className="flex flex-col items-center gap-2 text-center">
-                  <div className="relative h-16 w-16 overflow-hidden rounded-full border-2 border-brand-500/50 bg-brand-500/20">
+                  <div className={`relative h-16 w-16 overflow-hidden rounded-full bg-brand-500/20 ${
+                    activeSpeakers.has(p.userId) ? "ring-4 ring-accent-400/50 shadow-[0_0_18px_rgba(0,245,255,0.12)]" : "border-2 border-brand-500/50"
+                  }`}>
                     {p.image ? (
                       <Image src={p.image} alt={p.name} fill sizes="64px" className="object-cover" />
                     ) : (
