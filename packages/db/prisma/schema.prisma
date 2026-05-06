@@ -51,6 +51,12 @@ model User {
   emailBounced    Boolean   @default(false)
   emailBouncedAt  DateTime?
 
+  // Session-revocation marker. JWTs issued before this timestamp are
+  // treated as signed-out by the session callback. Set whenever we want
+  // every existing session for this user to die — password reset,
+  // suspend, admin-forced sign-out, etc.
+  sessionsRevokedAt DateTime?
+
   // ── Identity / verification ────────────────────────────────
   // Verified-artist badge. Set by an admin via /api/admin/users/[id]/verify.
   isVerified         Boolean  @default(false)

@@ -359,6 +359,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
+        // Stamp the issue time in seconds so the session callback can
+        // compare against User.sessionsRevokedAt and force-sign-out
+        // tokens that were issued before a revocation event (password
+        // reset, suspend, admin sign-out).
+        token.iat = Math.floor(Date.now() / 1000);
         // For OAuth sign-ins the PrismaAdapter returns the DB user, but if
         // role/subscriptionTier are missing (e.g. first-ever Google login on a
         // freshly-created account), fall back to a DB lookup.
@@ -380,11 +385,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as Role;
-        session.user.subscriptionTier = token.subscriptionTier as SubscriptionTier | undefined;
+      if (!token?.id) return session;
+
+      // Server-side revocation check. One DB read per session lookup,
+      // pulling only the two fields we need. If sessionsRevokedAt was
+      // set after this JWT was issued, OR if the user is currently
+      // suspended, return a session with no `user.id` so the rest of
+      // the app treats this request as signed-out.
+      const userId = token.id as string;
+      const tokenIat = typeof token.iat === "number" ? token.iat : 0;
+      try {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { sessionsRevokedAt: true, isSuspended: true },
+        });
+        const revokedAtSec = dbUser?.sessionsRevokedAt
+          ? Math.floor(dbUser.sessionsRevokedAt.getTime() / 1000)
+          : 0;
+        const revoked =
+          dbUser?.isSuspended === true ||
+          (revokedAtSec > 0 && revokedAtSec >= tokenIat);
+        if (revoked) {
+          // Strip the user identity. Server pages reading the session
+          // see no `user.id` and redirect to /auth/signin.
+          return { ...session, user: { ...session.user } } as typeof session;
+        }
+      } catch {
+        // DB lookup failure: fail open (let the session through) so a
+        // transient DB blip doesn't sign every user out. The server-
+        // side checks on individual routes still enforce auth.
       }
+
+      session.user.id = userId;
+      session.user.role = token.role as Role;
+      session.user.subscriptionTier = token.subscriptionTier as SubscriptionTier | undefined;
       return session;
     },
   },

@@ -67,10 +67,21 @@ export async function completePasswordReset(
 
   const passwordHash = await bcryptHash(password, 12);
 
+  // Revoke every outstanding JWT for this user by stamping
+  // sessionsRevokedAt. The session callback in auth.ts compares
+  // each token's iat against this timestamp on every request and
+  // signs the user out if their token was issued earlier. Without
+  // this, a stolen JWT survives the password reset for the full
+  // 30-day cookie lifetime.
+  const revokeSessions = opts?.revokeSessions !== false;
+
   await prisma.$transaction([
     prisma.user.update({
       where: { id: record.userId },
-      data: { passwordHash },
+      data: {
+        passwordHash,
+        ...(revokeSessions ? { sessionsRevokedAt: new Date() } : {}),
+      },
     }),
     prisma.passwordResetToken.update({
       where: { id: record.id },
@@ -80,9 +91,11 @@ export async function completePasswordReset(
       where: { userId: record.userId, usedAt: null, id: { not: record.id } },
       data: { usedAt: new Date() },
     }),
-    ...(opts?.revokeSessions === false
-      ? []
-      : [prisma.session.deleteMany({ where: { userId: record.userId } })]),
+    // Best-effort: also delete any Session rows in case the strategy
+    // is ever flipped to "database" — a no-op under JWT.
+    ...(revokeSessions
+      ? [prisma.session.deleteMany({ where: { userId: record.userId } })]
+      : []),
   ]);
 
   return { ok: true as const };
