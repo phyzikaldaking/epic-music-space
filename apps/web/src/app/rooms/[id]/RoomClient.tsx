@@ -11,6 +11,7 @@ import {
   type LocalTrackPublication,
 } from "livekit-client";
 import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
+import StudioBackdrop from "@/components/StudioBackdrop";
 
 type Host = {
   id: string;
@@ -680,20 +681,23 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   const listeners = Array.from(participants.values()).filter((p) => p.role === "LISTENER" && !p.handRaised);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="relative min-h-[100dvh]">
+      <StudioBackdrop status={ended ? "ENDED" : "LIVE"} />
+
+      <div className="relative mx-auto max-w-6xl px-4 py-8">
       {/* Header */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs font-bold text-brand-300">
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-rose-400/40 bg-rose-500/15 px-3 py-1 text-xs font-bold text-rose-200 backdrop-blur-md">
             {ended ? (
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
-                Session Ended
+                Session Ended · Live Studio
               </>
             ) : (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-brand-400 animate-pulse" />
-                Live Listening Room
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-400 animate-pulse" />
+                Tracking Room · Live
               </>
             )}
             {recordingStatus === "RECORDING" && (
@@ -795,7 +799,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
         <div className="space-y-6">
           {/* Now playing */}
           {currentSong && (
-            <div className="flex items-center gap-4 rounded-3xl border border-white/8 bg-white/3 p-5">
+            <div className="flex items-center gap-4 rounded-3xl border border-white/12 bg-[#0a0a0e]/70 p-5 backdrop-blur-xl shadow-[0_30px_60px_-30px_rgba(0,0,0,0.7)]">
               <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl bg-brand-900/30">
                 {currentSong.coverUrl ? (
                   <Image src={currentSong.coverUrl} alt={currentSong.title} fill sizes="80px" className="object-cover" />
@@ -861,7 +865,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
 
           {/* Track picker overlay */}
           {pickerOpen && (
-            <div className="rounded-3xl border border-white/10 bg-[#0d0d14] p-5">
+            <div className="rounded-3xl border border-white/12 bg-[#0a0a0e]/70 p-5 backdrop-blur-xl shadow-[0_30px_60px_-30px_rgba(0,0,0,0.7)]">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-bold uppercase tracking-widest text-white/60">Featured Track</h3>
                 <button
@@ -908,7 +912,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           )}
 
           {/* Stage / speakers */}
-          <div className="rounded-3xl border border-white/8 bg-[#0d0d14] p-6">
+          <div className="rounded-3xl border border-white/12 bg-[#0a0a0e]/70 p-6 backdrop-blur-xl shadow-[0_30px_60px_-30px_rgba(0,0,0,0.7)]">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-widest text-white/60">On Stage</h2>
               <span className="text-xs text-white/35">
@@ -1032,7 +1036,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
 
           {/* Host: full listener moderation panel */}
           {isHost && listeners.length > 0 && (
-            <div className="rounded-3xl border border-white/8 bg-[#0d0d14] p-6">
+            <div className="rounded-3xl border border-white/12 bg-[#0a0a0e]/70 p-6 backdrop-blur-xl shadow-[0_30px_60px_-30px_rgba(0,0,0,0.7)]">
               <h3 className="mb-3 text-sm font-bold uppercase tracking-widest text-white/60">Listeners ({listeners.length})</h3>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {listeners.slice(0, 24).map((p) => (
@@ -1074,7 +1078,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
         </div>
 
         {/* Chat */}
-        <aside className="flex h-[600px] flex-col rounded-3xl border border-white/8 bg-[#0d0d14]">
+        <aside className="flex h-[600px] flex-col rounded-3xl border border-white/12 bg-[#0a0a0e]/75 backdrop-blur-xl shadow-[0_30px_60px_-30px_rgba(0,0,0,0.7)]">
           <div className="border-b border-white/8 px-5 py-3">
             <h3 className="text-sm font-bold uppercase tracking-widest text-white/60">Live Chat</h3>
           </div>
@@ -1124,6 +1128,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
             </button>
           </form>
         </aside>
+      </div>
       </div>
     </div>
   );
