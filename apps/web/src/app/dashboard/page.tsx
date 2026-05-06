@@ -614,7 +614,7 @@ export default async function DashboardPage() {
               <p className="text-sm text-white/45 mt-0.5">
                 {connectStatus.connected
                   ? "Finish your Stripe verification to receive automatic payouts when licenses sell."
-                  : "Connect Stripe to receive 90% of every license sale directly to your bank account."}
+                  : "Connect Stripe to receive your share of every license sale directly to your bank account (100% allocated to you, less the flat 10% platform fee — itemized on every payout)."}
               </p>
             </div>
             <Link
@@ -634,7 +634,9 @@ export default async function DashboardPage() {
             <div className="flex-1">
               <p className="font-semibold text-green-300">Payouts enabled</p>
               <p className="text-sm text-white/45 mt-0.5">
-                You receive 90% of every license sale automatically via Stripe.
+                Every license sale is allocated 100% to you and pays out via
+                Stripe automatically — flat 10% platform fee itemized on every
+                payout receipt.
               </p>
             </div>
             <Link

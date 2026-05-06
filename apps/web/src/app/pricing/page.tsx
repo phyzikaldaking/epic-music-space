@@ -198,6 +198,57 @@ function PricingContent() {
           </p>
         </div>
 
+        {/* ── Platform-fee transparency block ─────────────────────────────
+           Required disclosure for the "100% to the artist" headline copy
+           used elsewhere on the site. Keep this block visible on
+           /pricing so the fee is never buried — that visibility is what
+           keeps the headline claim defensible. */}
+        <section
+          aria-label="Platform fee transparency"
+          className="mb-12 overflow-hidden rounded-3xl border border-emerald-500/25 bg-gradient-to-br from-emerald-500/10 via-[#0e1816] to-[#0a0d0c] p-6 md:p-8"
+        >
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-2xl">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-200">
+                Open Math · Honest Fees
+              </div>
+              <h2 className="text-2xl font-extrabold tracking-tight text-white md:text-3xl">
+                100% allocated to the artist.{" "}
+                <span className="text-emerald-300">10% platform fee.</span>{" "}
+                That&apos;s the whole pricing model.
+              </h2>
+              <p className="mt-3 text-sm leading-7 text-white/70 md:text-base">
+                Every license sale is allocated 100% to the artist&apos;s
+                account. EMS charges a flat <strong>10% platform fee per
+                license</strong> — line-itemed on every payout receipt and
+                shown on every dashboard. No streaming royalty cuts. No
+                tiered upsells. No shadow markups. No hidden processing
+                surcharges (Stripe&apos;s standard payout fee is the only
+                cost outside the 10%, and it&apos;s shown on each payout).
+              </p>
+            </div>
+            <div className="flex-shrink-0 rounded-2xl border border-white/10 bg-black/30 p-5 text-sm">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/40">
+                Example: $10 license sale
+              </p>
+              <ul className="mt-3 space-y-1.5 text-white/85">
+                <li className="flex items-center justify-between gap-6">
+                  <span>Allocated to artist</span>
+                  <span className="font-bold text-emerald-300">$10.00</span>
+                </li>
+                <li className="flex items-center justify-between gap-6">
+                  <span>Platform fee (10%)</span>
+                  <span className="font-bold text-white/55">−$1.00</span>
+                </li>
+                <li className="mt-2 flex items-center justify-between gap-6 border-t border-white/10 pt-2">
+                  <span className="font-semibold">Net to artist</span>
+                  <span className="font-extrabold text-white">$9.00</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
         {/* ── Free Trial Hero ────────────────────────────── */}
         {!trialSuccess ? (
           <div className="mb-14 overflow-hidden rounded-3xl border border-brand-500/40 bg-gradient-to-br from-brand-500/15 via-[#141414] to-accent-500/10">

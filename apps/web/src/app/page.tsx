@@ -77,7 +77,7 @@ const marqueeItems = [
   "Versus Battles Tonight",
   "Step in the Ring",
   "From the Vault",
-  "90% to the Artist",
+  "100% to the Artist*",
   "Virtual Studios Coming Soon",
   "Your Music HQ",
   "Showcase Your Work",
@@ -86,7 +86,7 @@ const marqueeItems = [
   "Versus Battles Tonight",
   "Step in the Ring",
   "From the Vault",
-  "90% to the Artist",
+  "100% to the Artist*",
   "Virtual Studios Coming Soon",
 ];
 
@@ -193,8 +193,8 @@ export default async function HomePage() {
       label: "License Supply",
     },
     {
-      num: totalRevenue > 0 ? formatRevenue(totalRevenue) : "90%",
-      label: totalRevenue > 0 ? "Paid to Artists" : "Artist Share",
+      num: totalRevenue > 0 ? formatRevenue(totalRevenue) : "100%",
+      label: totalRevenue > 0 ? "Paid to Artists" : "Artist Share*",
     },
     { num: "Live", label: "Studio Tools" },
   ];
@@ -224,7 +224,7 @@ export default async function HomePage() {
         name: "How do artists make money on Epic Music Space?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Sessions, sales, and battles all feed each other. Sell licenses (you keep 90%), get tipped in live rooms, win Versus battles to climb the charts, and earn streaming royalties forever. Every fan in your room is one click from licensing the song they're hearing.",
+          text: "Sessions, sales, and battles all feed each other. Sell licenses (every sale is allocated 100% to the artist; a flat 10% platform fee is itemized on every payout), get tipped in live rooms, win Versus battles to climb the charts, and earn streaming royalties forever. Every fan in your room is one click from licensing the song they're hearing.",
         },
       },
       {
@@ -271,16 +271,27 @@ export default async function HomePage() {
            * that any creator platform could write. A cold visitor learns
            * what's different here in three lines, not three scrolls.
            */}
+          {/*
+           * IMPORTANT — legal note for future editors:
+           * "100% to the artist" pairs with the inline "10% platform fee"
+           * disclosure right under the tagline. Keep that disclosure
+           * visible on the same screen as the headline. Burying the fee
+           * (footnote, modal, separate page only) creates an FTC
+           * "deceptive net impression" exposure. The /pricing page also
+           * carries the full breakdown. Don't strip the inline
+           * disclosure to make the hero "cleaner" — the visibility of
+           * the 10% next to the 100% is what makes the claim safe.
+           */}
           <h1 className="vc-hero-h1">
-            Keep 90%.
+            100% to the artist.
             <br />
             <span className="accent">Rank in the open.</span>
             <br />
             Battle tonight.
           </h1>
           <p className="vc-hero-tagline">
-            Epic Music Space is the only artist platform where you keep 90% of
-            every license, every rank factor is{" "}
+            Epic Music Space is the only artist platform where every license
+            sale is allocated 100% to the artist, every rank factor is{" "}
             <Link href="/marketplace" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
               public on every track
             </Link>
@@ -289,6 +300,15 @@ export default async function HomePage() {
               battles live
             </Link>{" "}
             in front of voting fans every night.
+            <span className="block mt-3 text-sm text-white/60">
+              Flat 10% platform fee per license — itemized on every payout
+              receipt. No streaming cuts, no tiered upsells, no shadow markups.
+              See full breakdown on{" "}
+              <Link href="/pricing" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
+                /pricing
+              </Link>
+              .
+            </span>
           </p>
           <div className="vc-hero-ctas">
             <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
@@ -364,8 +384,9 @@ export default async function HomePage() {
               <p>
                 Upload tracks, set licensing terms in plain language, surface
                 older material in The Vault, and let fans become license
-                holders who share streaming revenue with you forever. You
-                keep 90%.
+                holders who share streaming revenue with you forever. Every
+                license is allocated 100% to you — a flat 10% platform fee is
+                line-itemed on every payout.
               </p>
             </article>
             <article className="vc-platform-card">
@@ -602,18 +623,26 @@ export default async function HomePage() {
                   Open live listening sessions for fans across the world, pass
                   the mic when you want, and turn the people in your room into
                   paying license holders before they leave. Battles, charts,
-                  and 90% royalties baked in.
+                  and 100% artist allocation baked in.
                 </p>
                 <div className="vc-split-stats">
                   <div className="vc-stat">
-                    <div className="num">90%</div>
-                    <div className="label">Yours, Per License</div>
+                    <div className="num">100%*</div>
+                    <div className="label">Allocated to Artist</div>
                   </div>
                   <div className="vc-stat">
                     <div className="num">Live</div>
                     <div className="label">Battles &amp; Drops</div>
                   </div>
                 </div>
+                <p className="mt-2 text-[11px] leading-5 text-white/45">
+                  *Flat 10% platform fee per license, itemized on every payout.
+                  Full breakdown on{" "}
+                  <Link href="/pricing" className="underline decoration-dotted underline-offset-2 hover:text-white/70">
+                    /pricing
+                  </Link>
+                  .
+                </p>
               </div>
               <Link
                 href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew"
@@ -872,8 +901,9 @@ export default async function HomePage() {
           </h2>
           <p className="vc-section-sub vc-closing-sub">
             Sign-up is free. Uploads are free. Entering your first Versus
-            battle is free. You only get charged when you sell — and when you
-            sell, you keep 90%. Virtual studios and the 3D city ship next.
+            battle is free. You only get charged when you sell — every license
+            is allocated 100% to you, with a flat 10% platform fee itemized on
+            every payout. Virtual studios and the 3D city ship next.
           </p>
           <div className="vc-hero-ctas">
             <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">

@@ -358,8 +358,13 @@ function SignUpContent({
                 <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-white/70 sm:grid-cols-3">
                   <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-3 py-2">List beats &amp; templates</div>
                   <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-3 py-2">Instant download</div>
-                  <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-3 py-2">Keep 90%</div>
+                  <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-3 py-2">100% to you*</div>
                 </div>
+                <p className="mt-2 text-[10px] leading-4 text-white/40">
+                  *Every sale allocated 100% to you. Flat 10% platform fee per
+                  license, itemized on every payout. See{" "}
+                  <Link href="/pricing" className="underline decoration-dotted underline-offset-2">/pricing</Link>.
+                </p>
               </>
             ) : selectedRole === "ENGINEER" ? (
               <>

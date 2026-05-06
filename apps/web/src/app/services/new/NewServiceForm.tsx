@@ -60,7 +60,9 @@ export default function NewServiceForm({ allowedKinds, role }: Props) {
         </p>
         <h1 className="text-3xl font-extrabold">List a service</h1>
         <p className="mt-2 text-sm text-white/55">
-          Buyers pay through Stripe, you keep 90%. Payouts batch weekly.
+          Buyers pay through Stripe. Every sale is allocated 100% to you,
+          minus a flat 10% platform fee that&apos;s itemized on every payout.
+          Payouts batch weekly.
         </p>
       </div>
 

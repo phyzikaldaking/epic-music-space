@@ -392,7 +392,7 @@ export default async function VirtualStudioPage({
               {
                 icon: "💰",
                 title: "Licenses sell live",
-                desc: "Fans in the room are one tap from licensing the song they're hearing. Sales fire while the music's still rolling — you keep 90%.",
+                desc: "Fans in the room are one tap from licensing the song they're hearing. Sales fire while the music's still rolling — every license is allocated 100% to the artist (flat 10% platform fee per license, itemized on every payout).",
               },
             ].map((step) => (
               <div key={step.title} className="flex flex-col items-center gap-3">

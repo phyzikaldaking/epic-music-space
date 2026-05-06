@@ -274,9 +274,18 @@ export default async function PayoutsPage(props: {
         )}
       </div>
 
-      <p className="mt-6 text-xs text-white/20 text-center">
-        EMS retains a 10% platform fee. Stripe processes transfers within 2 business days.
-        Minimum payout: $10.00.
+      {/*
+        Fee transparency line. Was previously text-white/20 (essentially
+        invisible) — bumped to white/55 + structured copy so the 10%
+        platform-fee disclosure is unambiguous on the surface where the
+        artist actually sees their numbers. This visibility is what
+        protects the "100% to the artist" claim used in marketing.
+      */}
+      <p className="mt-6 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-center text-xs text-white/60">
+        Every license sale is allocated 100% to the artist. EMS charges a flat
+        <strong className="text-white"> 10% platform fee</strong> per license,
+        itemized on each payout above. Stripe processes transfers within 2
+        business days. Minimum payout: $10.00.
       </p>
     </div>
   );
