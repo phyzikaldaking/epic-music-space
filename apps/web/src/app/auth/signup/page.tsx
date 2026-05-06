@@ -5,11 +5,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { sanitizeCallbackPath } from "@/lib/safeCallback";
+import TurnstileWidget from "@/components/TurnstileWidget";
 import {
   evaluatePassword,
   personalTokensFor,
   MIN_LENGTH as PASSWORD_MIN_LENGTH,
 } from "@/lib/passwordStrength";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
 const ROLES = [
   {
@@ -72,6 +75,8 @@ function SignUpContent() {
   const [selectedRole, setSelectedRole] = useState<RoleValue>("LISTENER");
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
   const [showPassword, setShowPassword] = useState(false);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
@@ -175,6 +180,10 @@ function SignUpContent() {
       setError("You must accept the Terms of Service and Privacy Policy.");
       return;
     }
+    if (turnstileEnabled && !turnstileToken) {
+      setError("Please complete the bot-check below before creating your account.");
+      return;
+    }
     setLoading(true);
     setError("");
 
@@ -189,6 +198,7 @@ function SignUpContent() {
         callbackUrl,
         ageConfirmed,
         termsAccepted,
+        turnstileToken: turnstileToken ?? undefined,
       }),
     });
 
@@ -197,6 +207,12 @@ function SignUpContent() {
     if (!res.ok) {
       setError(data.error ?? "Something went wrong.");
       setLoading(false);
+      return;
+    }
+
+    if (data.autoVerified) {
+      // Email failed but account was auto-verified — go straight to sign-in
+      router.push(`/auth/signin?accountCreated=1&email=${encodeURIComponent(form.email)}${callbackUrl ? `&callbackUrl=${encodeURIComponent(callbackUrl)}` : ""}`);
       return;
     }
 
@@ -667,6 +683,13 @@ function SignUpContent() {
                 </p>
               ) : null;
             })()}
+            {turnstileEnabled && (
+              <TurnstileWidget
+                siteKey={TURNSTILE_SITE_KEY}
+                onVerify={(t) => setTurnstileToken(t)}
+                onExpire={() => setTurnstileToken(null)}
+              />
+            )}
             <button
               type="submit"
               disabled={loading}

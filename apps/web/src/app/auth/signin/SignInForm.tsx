@@ -6,6 +6,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { appendCallbackParam, sanitizeCallbackPath } from "@/lib/safeCallback";
 import { isCapacitorWebView } from "@/lib/runtime";
+import TurnstileWidget from "@/components/TurnstileWidget";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
 function SignInContent({
   googleEnabled,
@@ -19,6 +22,7 @@ function SignInContent({
   const router = useRouter();
   const params = useSearchParams();
   const verified = params.get("verified") === "true";
+  const accountCreated = params.get("accountCreated") === "1";
   const reset = params.get("reset");
   const resetSuccess = reset === "1" || reset === "ok";
   const oauthError = params.get("error") ?? "";
@@ -39,13 +43,18 @@ function SignInContent({
     : !hideGoogleForWebView);
 
   const [mode, setMode] = useState<"email" | "phone">("email");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(params.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [phoneCode, setPhoneCode] = useState("");
   const [phoneCodeSent, setPhoneCodeSent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  // When the Turnstile env var is unset, we treat the gate as disabled
+  // and the form behaves exactly as before. Once the deploy has the key,
+  // submit is gated on a solved challenge token.
+  const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
 
   // Map every NextAuth-surfaced error to a specific actionable message.
   // The previous catch-all "Sign-in failed. Please try again." was a
@@ -60,16 +69,24 @@ function SignInContent({
     setLoading(true);
     setError("");
 
+    if (turnstileEnabled && !turnstileToken) {
+      setError("Please complete the bot-check below before signing in.");
+      setLoading(false);
+      return;
+    }
+
     const result =
       mode === "email"
         ? await signIn("credentials", {
             email,
             password,
+            turnstileToken: turnstileToken ?? "",
             redirect: false,
           })
         : await signIn("phone-otp", {
             phone,
             code: phoneCode,
+            turnstileToken: turnstileToken ?? "",
             redirect: false,
           });
 
@@ -105,6 +122,9 @@ function SignInContent({
         } else {
           setError("Invalid or expired code. Request a new code and try again.");
         }
+      } else if (authCode.includes("turnstile")) {
+        setError("Bot-check didn't pass. Re-solve the challenge below and try again.");
+        setTurnstileToken(null);
       } else if (authCode.includes("email_not_verified")) {
         setError("Please verify your email before signing in. Check your inbox — or use Resend below.");
       } else if (authCode.includes("rate_limited")) {
@@ -184,6 +204,12 @@ function SignInContent({
           <p className="mb-6 text-sm text-white/50">
             Welcome back to Epic Music Space
           </p>
+
+          {accountCreated && (
+            <div className="mb-4 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">
+              Account created! Enter your password to sign in.
+            </div>
+          )}
 
           {verified && (
             <div className="mb-4 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">
@@ -330,6 +356,13 @@ function SignInContent({
                   />
                 </div>
               </>
+            )}
+            {turnstileEnabled && (
+              <TurnstileWidget
+                siteKey={TURNSTILE_SITE_KEY}
+                onVerify={(t) => setTurnstileToken(t)}
+                onExpire={() => setTurnstileToken(null)}
+              />
             )}
             <button
               type="submit"

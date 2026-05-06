@@ -19,15 +19,22 @@ import {
   clearSignInFailures,
   recordFailedSignIn,
 } from "@/lib/signInGuard";
+import { verifyTurnstileToken } from "@/lib/turnstile";
+
+class TurnstileFailedError extends CredentialsSignin {
+  code = "turnstile_failed";
+}
 
 const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
+  turnstileToken: z.string().optional(),
 });
 
 const phoneOtpSchema = z.object({
   phone: z.string().min(8).max(32),
   code: z.string().regex(/^\d{6}$/),
+  turnstileToken: z.string().optional(),
 });
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
@@ -95,6 +102,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const normalizedEmail = normalizeEmail(parsed.data.email);
         const ip = getClientIp(request.headers);
+
+        // Bot gate. When TURNSTILE_SECRET_KEY is unset the verifier
+        // returns ok:true so dev / pre-Turnstile deploys still work.
+        const turnstile = await verifyTurnstileToken(parsed.data.turnstileToken, ip);
+        if (!turnstile.ok) {
+          await emitAuthEvent("signin_invalid_credentials", {
+            email: normalizedEmail,
+            ip,
+            reason: "turnstile_failed",
+          });
+          throw new TurnstileFailedError();
+        }
 
         const signinGate = await assertSignInAllowed(normalizedEmail, ip);
         if (!signinGate.allowed) {
@@ -203,6 +222,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials, request) {
         const parsed = phoneOtpSchema.safeParse(credentials);
         if (!parsed.success) return null;
+
+        const ipForGate = getClientIp(request.headers);
+        const turnstile = await verifyTurnstileToken(parsed.data.turnstileToken, ipForGate);
+        if (!turnstile.ok) {
+          throw new TurnstileFailedError();
+        }
 
         const normalizedPhone = normalizePhone(parsed.data.phone);
         if (!normalizedPhone) {

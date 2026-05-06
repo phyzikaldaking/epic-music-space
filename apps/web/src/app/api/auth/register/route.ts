@@ -17,6 +17,7 @@ import {
   MAX_LENGTH as PASSWORD_MAX_LENGTH,
   MIN_LENGTH as PASSWORD_MIN_LENGTH,
 } from "@/lib/passwordStrength";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 function generateCode(): string {
   return randomBytes(5).toString("hex").toUpperCase(); // 10-char hex code
@@ -43,6 +44,10 @@ const registerSchema = z.object({
   termsAccepted: z.literal(true, {
     errorMap: () => ({ message: "You must accept the Terms of Service and Privacy Policy." }),
   }),
+  // Cloudflare Turnstile token from the signup form. Optional on the
+  // schema so non-browser clients (and pre-Turnstile deploys) still
+  // work — verifyTurnstileToken is a no-op when the secret is unset.
+  turnstileToken: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -92,10 +97,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, email, password, confirmPassword, phone, role, inviteCode, callbackUrl } = parsed.data;
+    const { name, email, password, confirmPassword, phone, role, inviteCode, callbackUrl, turnstileToken } = parsed.data;
     const normalizedEmail = normalizeEmail(email);
     const normalizedPhone = phone ? normalizePhone(phone) : null;
     const safeCallbackUrl = sanitizeCallbackPath(callbackUrl);
+
+    // Bot gate. When TURNSTILE_SECRET_KEY is unset the verifier returns
+    // ok:true so dev / pre-Turnstile deploys still work.
+    const turnstile = await verifyTurnstileToken(turnstileToken, ip);
+    if (!turnstile.ok) {
+      await emitAuthEvent("register_bot_blocked", {
+        ip,
+        reason: "turnstile_failed",
+      });
+      return NextResponse.json(
+        { error: "Bot-check didn't pass. Refresh the page and try again." },
+        { status: 403 },
+      );
+    }
 
     if (confirmPassword !== undefined && confirmPassword !== password) {
       await emitAuthEvent("register_invalid_input", {
@@ -308,13 +327,20 @@ export async function POST(req: NextRequest) {
             : String(verificationEmail.error ?? "unknown"),
       });
 
+      // Email provider not configured or failed — auto-verify so the user
+      // isn't permanently locked out of an account they just created.
+      // When RESEND is properly configured this branch is never reached.
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: new Date() },
+      });
+
       return NextResponse.json(
         {
           user,
-          requiresVerification: true,
+          requiresVerification: false,
           verificationEmailSent: false,
-          error:
-            "We could not send your verification email right now. Please use resend verification in a moment and check your spam folder.",
+          autoVerified: true,
         },
         { status: 201 },
       );
