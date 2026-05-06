@@ -105,6 +105,7 @@ model User {
   roomsHosted        Room[]              @relation("RoomHost")
   roomParticipations RoomParticipant[]
   roomMessages       RoomMessage[]
+  roomTimelineNotes  RoomTimelineNote[]
   roomBans           RoomBan[]           @relation("RoomBanned")
   roomBansIssued     RoomBan[]           @relation("RoomBannedBy")
   revenueSplits      RevenueSplit[]      @relation("RevenueSplits")
@@ -1032,6 +1033,15 @@ model Room {
   status        RoomStatus @default(LIVE)
   maxCapacity   Int        // resolved at create time from host's tier
   currentSongId String?    // optional: track currently playing
+  sessionMode   RoomSessionMode @default(PLAYBACK)
+  studioVibe    RoomStudioVibe  @default(NEON)
+  spotlightUserId String?
+  crowdEnergy   Int        @default(42)
+  applauseBursts Int       @default(0)
+  heatPoints    Json       @default("[]")
+  autoQueueEnabled Boolean @default(false)
+  quietMode      Boolean   @default(false)
+  speakerLimitSec Int      @default(60)
   startedAt     DateTime   @default(now())
   endedAt       DateTime?
   createdAt     DateTime   @default(now())
@@ -1041,11 +1051,25 @@ model Room {
   currentSong   Song?             @relation(fields: [currentSongId], references: [id], onDelete: SetNull)
   participants  RoomParticipant[]
   messages      RoomMessage[]
+  timelineNotes RoomTimelineNote[]
   recordings    RoomRecording[]
   bans          RoomBan[]
 
   @@index([status, startedAt])
   @@index([hostId, status])
+}
+
+enum RoomSessionMode {
+  PLAYBACK
+  CRITIQUE
+  A_AND_R
+  SILENT_NOTES
+}
+
+enum RoomStudioVibe {
+  NEON
+  SUNSET
+  MIDNIGHT
 }
 
 model RoomRecording {
@@ -1128,6 +1152,36 @@ model RoomMessage {
 
   @@index([roomId, createdAt])
   @@index([userId, createdAt])
+}
+
+model RoomTimelineNote {
+  id        String   @id @default(cuid())
+  roomId    String
+  userId    String
+  parentId  String?
+  category  RoomNoteCategory @default(GENERAL)
+  resolvedAt DateTime?
+  resolvedById String?
+  atSeconds Int      @default(0)
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  room      Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    RoomTimelineNote? @relation("RoomTimelineNoteReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   RoomTimelineNote[] @relation("RoomTimelineNoteReplies")
+
+  @@index([roomId, createdAt])
+  @@index([roomId, parentId, createdAt])
+}
+
+enum RoomNoteCategory {
+  GENERAL
+  MIX
+  MASTER
+  SONGWRITING
+  ARRANGEMENT
+  PERFORMANCE
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1780,6 +1834,34 @@ model AuthEvent {
 
   @@index([event, createdAt])
   @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+// Durable fraud/abuse event ledger. This is separate from product analytics so
+// operators can investigate abuse even when third-party analytics are disabled.
+model RiskEvent {
+  id            String   @id @default(cuid())
+  eventType     String   // suspicious_signup | fake_play | fake_vote | failed_payment | content_report
+  severity      String   @default("LOW") // LOW | MEDIUM | HIGH | CRITICAL
+  status        String   @default("OPEN") // OPEN | DISMISSED | ESCALATED | ACTIONED
+  actorUserId   String?
+  targetUserId  String?
+  songId        String?
+  reportId      String?
+  transactionId String?
+  ipHash        String?
+  reason        String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  reviewedAt    DateTime?
+  reviewedById  String?
+
+  @@index([eventType, createdAt])
+  @@index([severity, createdAt])
+  @@index([status, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([targetUserId, createdAt])
+  @@index([songId, createdAt])
   @@index([createdAt])
 }
 
