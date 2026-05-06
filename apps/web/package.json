@@ -15,7 +15,8 @@
     "test:browser": "playwright test -c playwright.config.ts",
     "auth:watchdog": "tsx scripts/auth-watchdog.ts",
     "test:watch": "vitest",
-    "worker:notifications": "tsx scripts/notifications-worker.ts"
+    "worker:notifications": "tsx scripts/notifications-worker.ts",
+    "worker:payouts": "tsx src/workers/payoutTransfers.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.2",
@@ -35,7 +36,9 @@
     "@sentry/nextjs": "^10.51.0",
     "@stripe/stripe-js": "^4.8.0",
     "@supabase/supabase-js": "^2.45.4",
+    "@vercel/analytics": "^2.0.1",
     "@vercel/sandbox": "^1.10.0",
+    "@vercel/speed-insights": "^2.0.0",
     "autoprefixer": "^10.4.20",
     "bcryptjs": "^2.4.3",
     "botid": "^1.5.11",

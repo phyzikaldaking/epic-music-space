@@ -3,6 +3,69 @@
     "Vercel": {
       "type": "http",
       "url": "https://mcp.vercel.com"
+    },
+    "ElevenLabs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "elevenlabs-mcp"
+      ],
+      "env": {
+        "ELEVENLABS_API_KEY": ""
+      }
+    },
+    "Figma": {
+      "type": "http",
+      "url": "https://mcp.figma.com/mcp"
+    },
+    "Memory": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
+    },
+    "Sequential Thinking": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    },
+    "Airtable": {
+      "type": "http",
+      "url": "https://mcp.airtable.com/mcp"
+    },
+    "Exa": {
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp"
+    },
+    "Next.js Devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "next-devtools-mcp"
+      ]
+    },
+    "GitHub": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    },
+    "Cloudflare": {
+      "type": "http",
+      "url": "https://docs.mcp.cloudflare.com/mcp"
+    },
+    "Linear": {
+      "type": "sse",
+      "url": "https://mcp.linear.app/sse"
+    },
+    "Better Auth": {
+      "type": "http",
+      "url": "https://mcp.inkeep.com/better-auth/mcp"
     }
   }
 }
