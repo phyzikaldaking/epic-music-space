@@ -216,6 +216,71 @@ export async function enqueueNotification(data: NotificationJobData) {
   } catch (err) {
     console.error("[enqueueNotification] Direct DB write failed", err);
   }
+
+  // ── Native push channel ────────────────────────────────────────────
+  // Fan out to every PushToken row for this user (iOS APNs + Android FCM)
+  // so the notification wakes their phone, not just their /notifications
+  // tab. Best-effort: a missing config (no APNS_KEY_P8 / no FCM_SERVER_KEY)
+  // returns silently from sendPushToUsers and never throws.
+  void (async () => {
+    try {
+      const { sendPushToUsers } = await import("@/lib/pushNotifications");
+      await sendPushToUsers([data.userId], {
+        title: data.title,
+        body: data.body,
+        url: deepLinkForNotification(data.type, data.metadata),
+        data: data.metadata
+          ? Object.fromEntries(
+              Object.entries(data.metadata)
+                .filter(([, v]) => v !== null && v !== undefined)
+                .map(([k, v]) => [k, String(v)]),
+            )
+          : undefined,
+      });
+    } catch (err) {
+      console.warn("[enqueueNotification] push send failed", err);
+    }
+  })();
+}
+
+/**
+ * Map a notification type to the deep-link the app should open when the
+ * user taps the push. Falls back to the in-app /notifications tab so a
+ * tap is never a dead end.
+ */
+function deepLinkForNotification(type: string, meta?: Record<string, unknown>): string {
+  const matchId = typeof meta?.matchId === "string" ? meta.matchId : null;
+  const battleId = typeof meta?.battleId === "string" ? meta.battleId : null;
+  const songId = typeof meta?.songId === "string" ? meta.songId : null;
+  const conversationId = typeof meta?.conversationId === "string" ? meta.conversationId : null;
+  const postId = typeof meta?.postId === "string" ? meta.postId : null;
+  const challengeId = typeof meta?.challengeId === "string" ? meta.challengeId : null;
+
+  if (type.startsWith("VERSUS")) {
+    if (challengeId) return `/versus/inbox?id=${challengeId}`;
+    if (matchId) return `/versus/${matchId}`;
+    if (battleId) return `/versus/royale/${battleId}`;
+    return "/versus";
+  }
+  if (type.startsWith("VERZUZ")) {
+    if (challengeId) return `/versus/inbox?type=verzuz&id=${challengeId}`;
+    if (matchId) return `/verzuz/${matchId}`;
+    return "/verzuz";
+  }
+  if (type === "DM" && conversationId) return `/messages/${conversationId}`;
+  if (type === "POST_LIKED" || type === "POST_COMMENTED" || type === "FOLLOWED_POST") {
+    return postId ? `/timeline?post=${postId}` : "/timeline";
+  }
+  if (type.includes("LICENSE") && songId) return `/song/${songId}`;
+  if (type.includes("PAYOUT") || type.includes("CONNECT") || type.includes("PAYMENT")) {
+    return "/dashboard/earnings";
+  }
+  if (type.includes("SUBSCRIPTION")) return "/dashboard/subscriptions";
+  if (type.includes("BADGE")) return "/dashboard/badges";
+  if (type.includes("FOLLOW")) return "/timeline";
+  if (type.includes("AUCTION_BID")) return "/auctions";
+  if (type === "ROOM_LIVE" && matchId) return `/rooms/${matchId}`;
+  return "/notifications";
 }
 
 export async function enqueueAnalytics(data: AnalyticsJobData) {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { DISTRICT_META } from "@/lib/scoring";
 import { isRoomExpired } from "@/lib/roomTier";
+import StudioBackdrop from "@/components/StudioBackdrop";
 import type { Metadata } from "next";
 
 export const revalidate = 30;
@@ -161,10 +162,8 @@ export default async function VirtualStudioPage({
   const availableGenres = ["all", ...genreCount.map((g) => g.genre!).filter(Boolean)];
 
   return (
-    <div className="relative min-h-screen bg-[#050509]">
-      {/* Ambient glows */}
-      <div className="pointer-events-none fixed top-0 left-1/4 h-[600px] w-[700px] rounded-full bg-brand-500/8 blur-[140px]" />
-      <div className="pointer-events-none fixed bottom-0 right-1/4 h-[400px] w-[500px] rounded-full bg-accent-500/6 blur-[120px]" />
+    <div className="relative min-h-screen">
+      <StudioBackdrop status="LIVE" />
 
       <div className="relative mx-auto max-w-7xl px-4 py-12">
 

@@ -1670,6 +1670,42 @@ enum VerzuzStatus {
   COMPLETED
 }
 
+// Two-sided invitation flow that lets cross-artist Verzuz matches actually
+// happen. The challenger proposes opponent + theme + setlist + start time;
+// the opponent accepts (picking their own setlist) which atomically creates
+// the real VerzuzMatch with rounds zipped 1:1. Mirrors VersusChallenge.
+model VerzuzChallenge {
+  id                       String                @id @default(cuid())
+  challengerId             String                // user.id of the artist who initiated
+  opponentId               String                // user.id of the artist being challenged
+  challengerSongIds        String[]              // 1-10 song IDs from the challenger
+  opponentSongIds          String[]              // populated on accept; same length
+  proposedTheme            String?
+  proposedTotalRounds      Int                   @default(10)
+  proposedRoundDurationSec Int                   @default(180)
+  proposedTier             String                @default("MAIN_EVENT")
+  proposedStartsAt         DateTime
+  status                   VerzuzChallengeStatus @default(PENDING)
+  message                  String?               @db.Text
+  createdAt                DateTime              @default(now())
+  expiresAt                DateTime              // PENDING expires after 48h
+  acceptedAt               DateTime?
+  declinedAt               DateTime?
+  matchId                  String?               @unique // VerzuzMatch row created on accept
+
+  @@index([opponentId, status])
+  @@index([challengerId, status])
+  @@index([expiresAt])
+}
+
+enum VerzuzChallengeStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CANCELLED
+}
+
 model VerzuzRound {
   id            String   @id @default(cuid())
   matchId       String
