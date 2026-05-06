@@ -263,7 +263,7 @@ function deepLinkForNotification(type: string, meta?: Record<string, unknown>): 
     return "/versus";
   }
   if (type.startsWith("VERZUZ")) {
-    if (challengeId) return `/versus/inbox?type=verzuz&id=${challengeId}`;
+    if (challengeId) return `/verzuz/challenge/${challengeId}`;
     if (matchId) return `/verzuz/${matchId}`;
     return "/verzuz";
   }

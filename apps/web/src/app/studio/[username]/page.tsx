@@ -298,6 +298,13 @@ export default async function StudioProfilePage({ params }: Props) {
                 initialFollowerCount={user._count.followers}
               />
               <TipArtistButton artistId={user.id} artistName={user.name ?? username} />
+              <Link
+                href={`/verzuz/challenge/new?opponent=${encodeURIComponent(username)}`}
+                className="rounded-xl border border-rose-400/40 bg-rose-500/12 px-3 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20"
+                title="Challenge this artist to a Verzuz"
+              >
+                🎤 Verzuz
+              </Link>
               <MessageButton peerId={user.id} />
               {session.user.id !== user.id && (
                 <ReportUserButton
