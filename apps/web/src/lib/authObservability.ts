@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { track } from "@/lib/analytics";
 import { prisma } from "@/lib/prisma";
+import { page } from "@/lib/pager";
 
 export type AuthEventName =
   | "register_rate_limited"
@@ -78,29 +79,19 @@ function maskEmail(email?: string) {
   return `${visible}${"*".repeat(Math.max(1, local.length - 2))}@${domain}`;
 }
 
-async function maybeSendAlert(event: AuthEventName, meta: AuthEventMeta) {
-  const webhook = process.env.AUTH_ALERT_WEBHOOK_URL;
-  if (!webhook || !ALERT_EVENTS.has(event)) return;
-
-  try {
-    await fetch(webhook, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        service: "epic-music-space/web",
-        event,
-        severity: "warning",
-        ts: new Date().toISOString(),
-        meta: {
-          ...meta,
-          email: maskEmail(meta.email),
-        },
-      }),
-      cache: "no-store",
-    });
-  } catch (error) {
-    console.error("[auth-alert] Failed to send auth alert", error);
-  }
+function maybeSendAlert(event: AuthEventName, meta: AuthEventMeta) {
+  if (!ALERT_EVENTS.has(event)) return;
+  page({
+    severity: "warn",
+    title: `[auth] ${event}`,
+    context: {
+      service: "epic-music-space/web",
+      ts: new Date().toISOString(),
+      ...meta,
+      email: maskEmail(meta.email),
+    },
+    fingerprint: `auth:${event}:${meta.userId ?? meta.ip ?? "anon"}`,
+  });
 }
 
 export async function emitAuthEvent(event: AuthEventName, meta: AuthEventMeta = {}) {

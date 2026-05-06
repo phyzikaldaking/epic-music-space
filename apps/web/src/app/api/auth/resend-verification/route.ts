@@ -5,14 +5,12 @@ import { randomBytes } from "crypto";
 import { strictLimiter } from "@/lib/rateLimit";
 import { emitAuthEvent } from "@/lib/authObservability";
 import { sanitizeCallbackPath } from "@/lib/safeCallback";
+import { getClientIp, hashAuthToken, normalizeEmail } from "@/lib/authIdentity";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "unknown";
+  const ip = getClientIp(req.headers);
 
   try {
     await strictLimiter.consume(`resend-verify:${ip}`);
@@ -28,7 +26,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : null;
+  const email = typeof body.email === "string" ? normalizeEmail(body.email) : null;
   const callbackUrl = sanitizeCallbackPath(
     typeof body.callbackUrl === "string" ? body.callbackUrl : undefined,
   );
@@ -36,8 +34,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Email is required." }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
+  const user = await prisma.user.findFirst({
+    where: {
+      email: {
+        equals: email,
+        mode: "insensitive",
+      },
+    },
     select: { id: true, emailVerified: true, passwordHash: true },
   });
 
@@ -47,13 +50,20 @@ export async function POST(req: NextRequest) {
   }
 
   // Delete any existing tokens for this email
-  await prisma.verificationToken.deleteMany({ where: { identifier: email } });
+  await prisma.verificationToken.deleteMany({
+    where: {
+      identifier: {
+        equals: email,
+        mode: "insensitive",
+      },
+    },
+  });
 
   const token = randomBytes(32).toString("hex");
   await prisma.verificationToken.create({
     data: {
       identifier: email,
-      token,
+      token: hashAuthToken(token),
       expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
     },
   });

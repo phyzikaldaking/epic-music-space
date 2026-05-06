@@ -47,6 +47,7 @@ export function validateCriticalEnvironment(env: EnvSource = process.env): Criti
     "INTERNAL_API_TOKEN",
     "OPENAI_API_KEY",
     "RESEND_API_KEY",
+    "REDIS_URL",
   ] as const;
 
   if (isProductionLike) {
@@ -96,6 +97,15 @@ export function validateCriticalEnvironment(env: EnvSource = process.env): Criti
     addIssue("warning", "partial_google_oauth_config", "Google OAuth configuration is only partially set.");
   }
 
+  const twilioValues = [
+    readEnv(env, "TWILIO_ACCOUNT_SID"),
+    readEnv(env, "TWILIO_AUTH_TOKEN"),
+    readEnv(env, "TWILIO_VERIFY_FROM"),
+  ];
+  if (twilioValues.some(Boolean) && !twilioValues.every(Boolean)) {
+    addIssue("warning", "partial_phone_auth_config", "Phone OTP configuration is only partially set.");
+  }
+
   if (isProductionLike && !readEnv(env, "SOCIAL_ENCRYPTION_KEY")) {
     addIssue(
       "warning",
@@ -106,9 +116,9 @@ export function validateCriticalEnvironment(env: EnvSource = process.env): Criti
 
   if (!readEnv(env, "REDIS_URL")) {
     addIssue(
-      isProductionLike ? "warning" : "warning",
+      isProductionLike ? "error" : "warning",
       "missing_redis_url",
-      "REDIS_URL is not configured; rate limits and queues will fall back to in-memory behavior.",
+      "REDIS_URL is not configured; production rate limits and queues must be shared across instances.",
     );
   }
 

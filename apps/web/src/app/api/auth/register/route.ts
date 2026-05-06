@@ -18,6 +18,7 @@ import {
   MIN_LENGTH as PASSWORD_MIN_LENGTH,
 } from "@/lib/passwordStrength";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { recordRiskEvent } from "@/lib/riskEvents";
 
 function generateCode(): string {
   return randomBytes(5).toString("hex").toUpperCase(); // 10-char hex code
@@ -57,6 +58,13 @@ export async function POST(req: NextRequest) {
     await strictLimiter.consume(`register:${ip}`);
   } catch {
     await emitAuthEvent("register_rate_limited", { ip, retryAfterSeconds: 60 });
+    await recordRiskEvent({
+      eventType: "suspicious_signup",
+      severity: "MEDIUM",
+      ip,
+      reason: "register_rate_limited",
+      metadata: { retryAfterSeconds: 60 },
+    });
     return NextResponse.json(
       { error: "Too many registration attempts. Please try again later." },
       { status: 429, headers: { "Retry-After": "60" } }
@@ -75,6 +83,18 @@ export async function POST(req: NextRequest) {
       secFetchSite: req.headers.get("sec-fetch-site") ?? "unknown",
       origin: req.headers.get("origin") ?? "unknown",
       referer: req.headers.get("referer") ?? "unknown",
+    });
+    await recordRiskEvent({
+      eventType: "suspicious_signup",
+      severity: "HIGH",
+      ip,
+      reason: "botid_block",
+      metadata: {
+        userAgent: req.headers.get("user-agent") ?? "unknown",
+        secFetchSite: req.headers.get("sec-fetch-site") ?? "unknown",
+        origin: req.headers.get("origin") ?? "unknown",
+        referer: req.headers.get("referer") ?? "unknown",
+      },
     });
     return NextResponse.json(
       { error: "Couldn't verify the request. Try again from a normal browser." },
@@ -109,6 +129,13 @@ export async function POST(req: NextRequest) {
       await emitAuthEvent("register_bot_blocked", {
         ip,
         reason: "turnstile_failed",
+      });
+      await recordRiskEvent({
+        eventType: "suspicious_signup",
+        severity: "HIGH",
+        ip,
+        reason: "turnstile_failed",
+        metadata: { email: normalizedEmail },
       });
       return NextResponse.json(
         { error: "Bot-check didn't pass. Refresh the page and try again." },
@@ -284,6 +311,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Auto-create Studio profile for artists so /studio works from day one
+    let studioUsername: string | null = null;
     if (role === "ARTIST" || role === "LABEL") {
       const baseSlug = name
         .toLowerCase()
@@ -294,10 +322,13 @@ export async function POST(req: NextRequest) {
         where: { username: baseSlug },
         select: { id: true },
       });
-      const studioUsername = takenStudio ? `${baseSlug}-${user.id.slice(-4)}` : baseSlug;
+      studioUsername = takenStudio ? `${baseSlug}-${user.id.slice(-4)}` : baseSlug;
       await prisma.studio.create({
         data: { userId: user.id, username: studioUsername },
-      }).catch(() => { /* ignore race condition */ });
+      }).catch(() => {
+        // Race collision — look up the actual slug so the response is correct.
+        studioUsername = null;
+      });
     }
 
     // Create email verification token and send welcome email
@@ -341,6 +372,7 @@ export async function POST(req: NextRequest) {
           requiresVerification: false,
           verificationEmailSent: false,
           autoVerified: true,
+          studioUsername,
         },
         { status: 201 },
       );
@@ -354,11 +386,12 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(
-      { user, requiresVerification: true, verificationEmailSent: true },
+      { user, requiresVerification: true, verificationEmailSent: true, studioUsername },
       { status: 201 },
     );
   } catch (err) {
-    console.error("[register]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const requestId = randomBytes(4).toString("hex");
+    console.error("[register]", requestId, err);
+    return NextResponse.json({ error: "Internal server error", requestId }, { status: 500 });
   }
 }

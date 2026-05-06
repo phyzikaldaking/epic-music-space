@@ -23,6 +23,12 @@ describe("validateCriticalEnvironment", () => {
         "missing_auth_secret",
         "missing_cron_secret",
         "missing_internal_api_token",
+        "missing_redis_url",
+      ]),
+    );
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "missing_redis_url", severity: "error" }),
       ]),
     );
   });
@@ -32,12 +38,14 @@ describe("validateCriticalEnvironment", () => {
       NODE_ENV: "development",
       LIVEKIT_API_KEY: "lk_key",
       NEXT_PUBLIC_LIVEKIT_URL: "https://livekit.example.com",
+      TWILIO_ACCOUNT_SID: "sid",
     });
 
     expect(report.issues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: "missing_redis_url", severity: "warning" }),
         expect.objectContaining({ code: "partial_livekit_config", severity: "warning" }),
+        expect.objectContaining({ code: "partial_phone_auth_config", severity: "warning" }),
       ]),
     );
   });
