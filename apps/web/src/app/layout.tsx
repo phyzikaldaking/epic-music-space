@@ -38,6 +38,7 @@ const KeyboardShortcuts = dynamic(() => import("@/components/KeyboardShortcuts")
 const MobileBottomNav = dynamic(() => import("@/components/MobileBottomNav"));
 const OfflineBanner = dynamic(() => import("@/components/OfflineBanner"));
 const ChatbotWidget = dynamic(() => import("@/components/ChatbotWidget"));
+const InstallAppPrompt = dynamic(() => import("@/components/InstallAppPrompt"));
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -168,6 +169,7 @@ export default function RootLayout({
           <MobileBottomNav />
           <OfflineBanner />
           <ChatbotWidget />
+          <InstallAppPrompt />
           <ClientOnlyDynamics />
         </Providers>
         <Analytics />
