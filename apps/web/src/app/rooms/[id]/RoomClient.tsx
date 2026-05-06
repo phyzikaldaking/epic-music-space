@@ -148,9 +148,30 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     setConnecting(true);
     try {
       const res = await fetch(`/api/rooms/${room.id}/token`, { method: "POST" });
-      const data = (await res.json()) as { token?: string; url?: string; role?: Participant["role"]; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        token?: string;
+        url?: string;
+        role?: Participant["role"];
+        error?: string;
+      };
+      if (res.status === 503) {
+        throw new Error(
+          "Real-time voice isn't switched on for this deployment yet. Chat still works.",
+        );
+      }
+      if (res.status === 401) {
+        throw new Error("Sign in to join the room.");
+      }
+      if (res.status === 403) {
+        throw new Error(data.error ?? "You can't join this room.");
+      }
+      if (res.status === 410 || data.error?.toLowerCase().includes("ended")) {
+        throw new Error("This session has ended.");
+      }
       if (!res.ok || !data.token || !data.url) {
-        throw new Error(data.error ?? "Failed to get token");
+        throw new Error(
+          data.error ?? `Couldn't get a session token (status ${res.status}).`,
+        );
       }
       setRole(data.role ?? "LISTENER");
 
@@ -205,7 +226,22 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
         setConnected(false);
       });
 
-      await lkRoom.connect(data.url, data.token);
+      try {
+        await lkRoom.connect(data.url, data.token);
+      } catch (connErr) {
+        const m = connErr instanceof Error ? connErr.message : String(connErr);
+        if (/permission|denied|notallowed/i.test(m)) {
+          throw new Error(
+            "Microphone access was blocked. Click the lock icon in your address bar, allow mic, then try again.",
+          );
+        }
+        if (/network|websocket|connection/i.test(m)) {
+          throw new Error(
+            "Couldn't reach the audio server. Check your connection and try again.",
+          );
+        }
+        throw connErr;
+      }
       lkRoomRef.current = lkRoom;
       setConnected(true);
       setMuted(true);

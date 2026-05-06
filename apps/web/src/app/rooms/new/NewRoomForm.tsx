@@ -53,7 +53,14 @@ export default function NewRoomForm({ limits, tier, songs, liveKitOnline }: Prop
 
     if (!res.ok || !data.id) {
       setSubmitting(false);
-      setError(data.error ?? "Couldn't open the room");
+      setError(
+        data.error ??
+          (res.status === 401
+            ? "You need to sign in first."
+            : res.status === 429
+              ? "Too many rooms in a short window. Wait a minute and try again."
+              : `Couldn't open the room (status ${res.status}).`),
+      );
       return;
     }
 
