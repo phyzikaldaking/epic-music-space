@@ -83,6 +83,24 @@ worker.on("failed", (job, err) => {
   console.error(`[aiScoring-worker] Job failed: ${job?.id}`, err.message);
 });
 
+worker.on("error", (err) => {
+  console.error("[aiScoring-worker] Worker error", err);
+});
+
+async function shutdown(signal: string) {
+  console.info(`[aiScoring-worker] Received ${signal}, draining…`);
+  try {
+    await worker.close();
+    console.info("[aiScoring-worker] Closed cleanly");
+    process.exit(0);
+  } catch (err) {
+    console.error("[aiScoring-worker] Shutdown failed", err);
+    process.exit(1);
+  }
+}
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
+
 console.info(
   `[aiScoring-worker] Started listening for jobs on ${QUEUE_NAMES.aiScoring}`,
 );

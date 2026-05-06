@@ -45,10 +45,23 @@ worker.on("failed", (job, err) => {
   console.error(`[analytics-worker] Job failed: ${job?.id}`, err.message);
 });
 
-process.on("SIGTERM", async () => {
-  await posthog?.shutdown();
-  await worker.close();
-  process.exit(0);
+worker.on("error", (err) => {
+  console.error("[analytics-worker] Worker error", err);
 });
+
+async function shutdown(signal: string) {
+  console.info(`[analytics-worker] Received ${signal}, draining…`);
+  try {
+    await posthog?.shutdown();
+    await worker.close();
+    console.info("[analytics-worker] Closed cleanly");
+    process.exit(0);
+  } catch (err) {
+    console.error("[analytics-worker] Shutdown failed", err);
+    process.exit(1);
+  }
+}
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
 
 console.info(`[analytics-worker] Started listening on ${QUEUE_NAMES.analytics}`);
