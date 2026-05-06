@@ -55,7 +55,7 @@
   border-bottom: 1px solid rgba(255, 45, 146, 0.22);
 }
 .vc-logo {
-  font-family: 'Audiowide', cursive;
+  font-family: var(--font-audiowide), 'Audiowide', cursive;
   font-size: 18px;
   letter-spacing: 0.08em;
   background: linear-gradient(180deg, #fff 0%, #ffd6ec 35%, var(--vc-hot-pink) 65%, var(--vc-purple) 100%);
@@ -77,7 +77,7 @@
 .vc-nav-links a {
   color: rgba(255, 255, 255, 0.82);
   text-decoration: none;
-  font-family: 'Orbitron', sans-serif;
+  font-family: var(--font-orbitron), 'Orbitron', sans-serif;
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -244,7 +244,7 @@
   padding: 0 24px;
 }
 .vc-eyebrow {
-  font-family: 'Orbitron', sans-serif;
+  font-family: var(--font-orbitron), 'Orbitron', sans-serif;
   font-weight: 500;
   font-size: 12px;
   letter-spacing: 0.5em;
@@ -259,7 +259,7 @@
   93%, 95% { opacity: 0.4; }
 }
 .vc-hero-h1 {
-  font-family: 'Bebas Neue', sans-serif;
+  font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
   font-weight: 400;
   font-size: clamp(4rem, 14vw, 11rem);
   line-height: 0.86;
@@ -287,7 +287,7 @@
 
 /* ─ Buttons ─ */
 .vc-btn {
-  font-family: 'Orbitron', sans-serif;
+  font-family: var(--font-orbitron), 'Orbitron', sans-serif;
   font-weight: 700;
   font-size: 12px;
   letter-spacing: 0.18em;
@@ -338,7 +338,7 @@
   width: max-content;
 }
 .vc-marquee-track span {
-  font-family: 'Bebas Neue', sans-serif;
+  font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
   font-size: 28px;
   letter-spacing: 0.1em;
   color: rgba(255,255,255,0.85);
@@ -353,7 +353,7 @@
 .vc-section { padding: 120px 40px; position: relative; }
 .vc-container { max-width: 1280px; margin: 0 auto; }
 .vc-section-eyebrow {
-  font-family: 'Orbitron', sans-serif;
+  font-family: var(--font-orbitron), 'Orbitron', sans-serif;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.4em;
@@ -363,7 +363,7 @@
   text-shadow: 0 0 12px var(--vc-hot-pink);
 }
 .vc-section-title {
-  font-family: 'Bebas Neue', sans-serif;
+  font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
   font-size: clamp(2.5rem, 6vw, 5rem);
   line-height: 0.92;
   letter-spacing: -0.005em;
@@ -424,13 +424,13 @@
 }
 .vc-track-card:hover .vc-play { background: var(--vc-hot-pink); border-color: var(--vc-hot-pink); transform: scale(1.1); box-shadow: 0 0 30px var(--vc-hot-pink); }
 .vc-track-meta { display: flex; justify-content: space-between; margin-bottom: 6px; }
-.vc-track-genre { font-family: 'Orbitron', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.25em; color: var(--vc-cyan); text-transform: uppercase; }
-.vc-track-bpm { font-size: 11px; color: rgba(255,255,255,0.5); font-family: 'Orbitron', sans-serif; letter-spacing: 0.1em; }
-.vc-track-name { font-family: 'Bebas Neue', sans-serif; font-size: 30px; line-height: 1; letter-spacing: 0.005em; margin-bottom: 4px; color: #fff; }
+.vc-track-genre { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.25em; color: var(--vc-cyan); text-transform: uppercase; }
+.vc-track-bpm { font-size: 11px; color: rgba(255,255,255,0.5); font-family: var(--font-orbitron), 'Orbitron', sans-serif; letter-spacing: 0.1em; }
+.vc-track-name { font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif; font-size: 30px; line-height: 1; letter-spacing: 0.005em; margin-bottom: 4px; color: #fff; }
 .vc-track-artist { font-size: 13px; color: rgba(255,255,255,0.56); margin-bottom: 18px; }
 .vc-track-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); }
-.vc-track-price { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 14px; color: var(--vc-gold); }
-.vc-track-license { font-size: 11px; color: rgba(255,255,255,0.5); letter-spacing: 0.18em; text-transform: uppercase; font-family: 'Orbitron', sans-serif; }
+.vc-track-price { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-weight: 700; font-size: 14px; color: var(--vc-gold); }
+.vc-track-license { font-size: 11px; color: rgba(255,255,255,0.5); letter-spacing: 0.18em; text-transform: uppercase; font-family: var(--font-orbitron), 'Orbitron', sans-serif; }
 
 /* ─ Leaderboard ─ */
 .vc-leaderboard-section {
@@ -453,7 +453,7 @@
   display: grid;
   grid-template-columns: 60px 1fr auto;
 }
-.vc-lb-header span { font-family: 'Orbitron', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.3em; text-transform: uppercase; color: var(--vc-hot-pink); }
+.vc-lb-header span { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.3em; text-transform: uppercase; color: var(--vc-hot-pink); }
 .vc-lb-row {
   display: grid;
   grid-template-columns: 60px 1fr auto;
@@ -464,13 +464,13 @@
 }
 .vc-lb-row:hover { background: rgba(34,211,238,0.05); }
 .vc-lb-row:last-child { border-bottom: none; }
-.vc-lb-rank { font-family: 'Orbitron', sans-serif; font-size: 22px; font-weight: 900; color: var(--vc-cyan); text-shadow: 0 0 16px var(--vc-cyan); }
+.vc-lb-rank { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-size: 22px; font-weight: 900; color: var(--vc-cyan); text-shadow: 0 0 16px var(--vc-cyan); }
 .vc-lb-row.top1 .vc-lb-rank { color: var(--vc-gold); text-shadow: 0 0 16px var(--vc-gold); }
 .vc-lb-row.top2 .vc-lb-rank { color: var(--vc-neon-pink); text-shadow: 0 0 16px var(--vc-neon-pink); }
 .vc-lb-row.top3 .vc-lb-rank { color: var(--vc-purple); text-shadow: 0 0 16px var(--vc-purple); }
-.vc-lb-track-name { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 0.04em; color: #fff; }
+.vc-lb-track-name { font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 0.04em; color: #fff; }
 .vc-lb-track-artist { font-size: 12px; color: rgba(255,255,255,0.5); }
-.vc-lb-streams { font-family: 'Orbitron', sans-serif; font-size: 13px; font-weight: 700; color: var(--vc-hot-pink); letter-spacing: 0.1em; }
+.vc-lb-streams { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-size: 13px; font-weight: 700; color: var(--vc-hot-pink); letter-spacing: 0.1em; }
 
 /* ─ Split CTA ─ */
 .vc-split-section {
@@ -497,13 +497,13 @@
     linear-gradient(135deg, #0d0420 0%, #1a4053 100%);
   border: 1.5px solid rgba(34,211,238,0.5);
 }
-.vc-split-card h3 { font-family: 'Bebas Neue', sans-serif; font-size: 56px; line-height: 0.95; letter-spacing: 0.005em; margin-bottom: 16px; text-transform: uppercase; }
+.vc-split-card h3 { font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif; font-size: 56px; line-height: 0.95; letter-spacing: 0.005em; margin-bottom: 16px; text-transform: uppercase; }
 .vc-split-card.creators h3 .high { color: var(--vc-neon-pink); text-shadow: 0 0 22px var(--vc-hot-pink); }
 .vc-split-card.artists h3 .high { color: var(--vc-cyan); text-shadow: 0 0 22px var(--vc-cyan); }
 .vc-split-card p { color: rgba(255,255,255,0.78); font-size: 16px; max-width: 380px; margin-bottom: 32px; }
 .vc-split-stats { display: flex; gap: 28px; margin-bottom: 32px; }
-.vc-stat .num { font-family: 'Bebas Neue', sans-serif; font-size: 44px; line-height: 1; color: #fff; }
-.vc-stat .label { font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: rgba(255,255,255,0.6); margin-top: 4px; }
+.vc-stat .num { font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif; font-size: 44px; line-height: 1; color: #fff; }
+.vc-stat .label { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: rgba(255,255,255,0.6); margin-top: 4px; }
 
 /* ─ Feature cards ─ */
 .vc-feat-section { background: linear-gradient(180deg, var(--vc-void) 0%, #0d0420 100%); }
@@ -528,7 +528,7 @@
 }
 .vc-feat-tag {
   display: inline-block;
-  font-family: 'Orbitron', sans-serif;
+  font-family: var(--font-orbitron), 'Orbitron', sans-serif;
   font-size: 10px;
   font-weight: 700;
   padding: 6px 12px;
@@ -541,11 +541,11 @@
   margin-bottom: 20px;
 }
 .vc-feat-card.versus .vc-feat-tag { background: rgba(255,45,146,0.15); border-color: rgba(255,45,146,0.5); color: var(--vc-neon-pink); }
-.vc-feat-card h3 { font-family: 'Bebas Neue', sans-serif; font-size: 44px; line-height: 0.95; margin-bottom: 16px; text-transform: uppercase; }
+.vc-feat-card h3 { font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif; font-size: 44px; line-height: 0.95; margin-bottom: 16px; text-transform: uppercase; }
 .vc-feat-card p { color: rgba(255,255,255,0.7); font-size: 15px; line-height: 1.6; margin-bottom: 28px; }
 .vc-feat-link {
   color: var(--vc-cyan);
-  font-family: 'Orbitron', sans-serif;
+  font-family: var(--font-orbitron), 'Orbitron', sans-serif;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.2em;
@@ -572,7 +572,7 @@
   color: var(--vc-cyan);
   border: 1.5px solid rgba(34,211,238,0.6);
   background: rgba(34,211,238,0.05);
-  font-family: 'Orbitron', sans-serif;
+  font-family: var(--font-orbitron), 'Orbitron', sans-serif;
   font-weight: 700;
   font-size: 12px;
   letter-spacing: 0.18em;

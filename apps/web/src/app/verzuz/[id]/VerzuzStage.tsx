@@ -342,7 +342,6 @@ export default function VerzuzStage(props: Props) {
 
     presenceChRef.current = ch;
     return () => { void supabase.removeChannel(ch); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.matchId]);
 
   // Poll fallback

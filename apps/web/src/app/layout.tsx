@@ -1,6 +1,28 @@
 import type { Metadata, Viewport } from "next";
 import dynamic from "next/dynamic";
+import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
 import "./globals.css";
+
+const bebasNeue = Bebas_Neue({
+  weight: "400",
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-bebas-neue",
+});
+
+const orbitron = Orbitron({
+  weight: ["500", "700", "900"],
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-orbitron",
+});
+
+const audiowide = Audiowide({
+  weight: "400",
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-audiowide",
+});
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
@@ -117,13 +139,10 @@ export default function RootLayout({
   ];
 
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
-        <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Orbitron:wght@500;700;900&family=Audiowide&display=swap" rel="stylesheet" />
-      </head>
+    <html
+      lang="en"
+      className={`${bebasNeue.variable} ${orbitron.variable} ${audiowide.variable}`}
+    >
       <body className="min-h-screen bg-[#0a0a0a] text-white">
         <a
           href="#main-content"
