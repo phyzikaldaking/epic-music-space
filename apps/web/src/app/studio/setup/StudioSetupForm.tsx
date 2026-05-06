@@ -181,27 +181,49 @@ export default function StudioSetupForm({
           <label htmlFor="studio-banner" className="mb-1 block text-sm font-semibold text-white/70">
             Banner Image <span className="text-white/30 font-normal">(optional)</span>
           </label>
-          <p className="mb-3 text-xs text-white/35">Upload an image, or paste a direct image URL.</p>
+          <p className="mb-3 text-xs text-white/35">
+            Upload an image, or paste a direct image URL. JPG, PNG, WebP, HEIC — max 10 MB.
+          </p>
           <input
             ref={bannerFileRef}
             type="file"
             accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
             aria-label="Upload studio banner"
-            className="hidden"
+            className="sr-only"
             onChange={handleBannerFile}
           />
           <button
             type="button"
             onClick={() => bannerFileRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-brand-500/50", "bg-brand-500/5"); }}
+            onDragLeave={(e) => { e.currentTarget.classList.remove("border-brand-500/50", "bg-brand-500/5"); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.currentTarget.classList.remove("border-brand-500/50", "bg-brand-500/5");
+              const file = e.dataTransfer.files?.[0];
+              if (file) {
+                setError(null);
+                setUploadingBanner(true);
+                uploadImage(file, { kind: "cover" })
+                  .then((result) => setBannerUrl(result.publicUrl))
+                  .catch((err) => setError(err instanceof Error ? err.message : "Banner upload failed."))
+                  .finally(() => setUploadingBanner(false));
+              }
+            }}
             disabled={uploadingBanner}
-            className="mb-3 flex items-center gap-2 rounded-xl border border-white/10 bg-white/4 px-4 py-2 text-sm text-white/70 transition hover:border-brand-500/50 hover:text-white disabled:opacity-50"
+            className="mb-3 w-full rounded-xl border-2 border-dashed border-white/10 bg-white/[0.02] p-4 text-center transition hover:border-brand-500/40 disabled:opacity-50"
           >
             {uploadingBanner ? (
-              <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              <div className="flex items-center justify-center gap-2 text-sm text-white/60">
+                <span className="h-4 w-4 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
+                Uploading…
+              </div>
             ) : (
-              <span>📁</span>
+              <div className="flex items-center justify-center gap-2 text-sm text-white/50">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                {bannerUrl ? "Drop to replace, or click to browse" : "Drop banner here, or click to browse"}
+              </div>
             )}
-            {uploadingBanner ? "Uploading…" : "Upload image"}
           </button>
           <input
             id="studio-banner"
@@ -212,7 +234,7 @@ export default function StudioSetupForm({
             className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60"
           />
           {bannerUrl && (
-            <div className="relative mt-3 h-24 w-full overflow-hidden rounded-xl border border-white/10">
+            <div className="relative mt-3 h-28 w-full overflow-hidden rounded-xl border border-white/10">
               <Image
                 src={bannerUrl}
                 alt="Banner preview"
@@ -221,6 +243,15 @@ export default function StudioSetupForm({
                 className="object-cover"
                 unoptimized
               />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+              <button
+                type="button"
+                onClick={() => { setBannerUrl(""); }}
+                className="absolute top-2 right-2 rounded-full bg-black/50 p-1 text-xs text-white/70 hover:bg-black/70 hover:text-white transition"
+                aria-label="Remove banner"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+              </button>
             </div>
           )}
         </div>

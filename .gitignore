@@ -45,6 +45,9 @@ yarn-error.log*
 # Claude Code
 .claude/
 
+# Kilo Code IDE state
+.kilo/
+
 # Playwright
 .playwright-cli/
 output/

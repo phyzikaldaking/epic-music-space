@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
+import { revalidateTag, revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { enqueueAiScoring, enqueueAnalytics } from "@/lib/queues";
 import { getActiveLimits } from "@/lib/tierLimits";
 import { track } from "@/lib/analytics";
 import { CACHE_TAGS } from "@/lib/cacheTags";
+import { classifyAudioSource } from "@/lib/audioSource";
 
 const createSongSchema = z.object({
   title: z.string().min(1).max(200),
@@ -108,6 +109,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Defense-in-depth: classify the audioUrl server-side and reject any
+  // unrecognised source. The client form already does this, but we can't
+  // trust it — without this gate, a malicious client could persist a song
+  // pointing at attacker-controlled bytes which the stream proxy would
+  // then try to fetch on every play.
+  const audioClass = classifyAudioSource(parsed.data.audioUrl);
+  if (audioClass.type === "unknown") {
+    return NextResponse.json(
+      {
+        error:
+          "audioUrl must be a direct audio file or a YouTube / Vimeo / SoundCloud / Spotify link.",
+      },
+      { status: 400 }
+    );
+  }
+
   const song = await prisma.song.create({
     data: {
       ...parsed.data,
@@ -160,6 +177,13 @@ export async function POST(req: NextRequest) {
   // Bust cached homepage / track / songs surfaces so the new track shows up immediately.
   revalidateTag(CACHE_TAGS.songs);
   revalidateTag(CACHE_TAGS.homepage);
+  // /vault uses route-level `export const revalidate = 60` rather than a
+  // tagged cache, so revalidateTag alone won't bust it. Path-level
+  // revalidation guarantees an artist returning to /vault after a
+  // legacy publish sees their tape on the shelf immediately.
+  if (parsed.data.isLegacy) {
+    revalidatePath("/vault");
+  }
 
   // Strip raw upstream audio URL — clients use the proxy.
   const { publicSong } = await import("@/lib/serializeSong");

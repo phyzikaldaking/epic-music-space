@@ -14,7 +14,8 @@ interface MySong {
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;  // 10 MB
 const ALLOWED_VIDEO = ["video/mp4", "video/quicktime", "video/webm"];
-const ALLOWED_IMAGE = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_IMAGE = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"];
+const ALLOWED_IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "gif", "heic", "heif"]);
 
 type Mode = "idle" | "uploading" | "submitting";
 
@@ -87,8 +88,10 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
       setError("Remove the attached song first to attach an image.");
       return;
     }
-    if (!ALLOWED_IMAGE.includes(file.type)) {
-      setError("Image must be JPEG, PNG, WebP, or GIF.");
+    // Accept by MIME or extension — mobile cloud picks often have empty MIME.
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!ALLOWED_IMAGE.includes(file.type) && !ALLOWED_IMAGE_EXTS.has(ext)) {
+      setError("Image must be JPEG, PNG, WebP, GIF, or HEIC.");
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
@@ -380,7 +383,7 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
               accept={ALLOWED_IMAGE.join(",")}
               onChange={handleImage}
               disabled={mode !== "idle"}
-              className="hidden"
+              className="sr-only"
             />
           </label>
           <label className="cursor-pointer rounded-lg border border-white/10 bg-white/4 px-3 py-1.5 text-xs hover:bg-white/10">
@@ -391,7 +394,7 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
               accept={ALLOWED_VIDEO.join(",")}
               onChange={handleVideo}
               disabled={mode !== "idle"}
-              className="hidden"
+              className="sr-only"
             />
           </label>
           <button

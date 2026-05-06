@@ -52,6 +52,10 @@ export default function UploadTrackForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const legacyParam = searchParams.get("legacy") === "1";
+  // Set by /vault/new so we know to return the artist to the vault
+  // after a successful publish — they came from there, they should land
+  // there (and see their tape sitting in the room they just left).
+  const fromVault = searchParams.get("from") === "vault";
 
   const [title, setTitle] = useState("");
   const [artistName, setArtistName] = useState("");
@@ -273,7 +277,7 @@ export default function UploadTrackForm() {
           : "Audio upload failed. Tap \"Try again\".",
       );
     }
-  }, [getSignedUrl, uploadDirect]);
+  }, [getSignedUrl, uploadDirect, detectAudioDuration]);
 
   async function handleAudioChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -428,9 +432,19 @@ export default function UploadTrackForm() {
       properties: {
         publishDurationMs: Math.round(performance.now() - pageOpenedAtRef.current),
         hasStems: Boolean(stemUrl.trim()),
+        legacy: payload.isLegacy,
       },
     });
-    router.push("/studio");
+
+    // Return artists to the room they came from. Vault uploads land back
+    // in the Vault so older artists see their tape sitting on the shelf;
+    // everyone else goes to their studio. The catalog is cache-revalidated
+    // server-side via the songs/homepage tags in /api/songs/create.
+    if (payload.isLegacy && fromVault) {
+      router.push("/vault");
+    } else {
+      router.push("/studio");
+    }
   }
 
   const uploading = audioUploadState === "uploading" || coverUploadState === "uploading" || stemUploadState === "uploading";
@@ -463,15 +477,32 @@ export default function UploadTrackForm() {
           Publish your music to the EMS marketplace and start earning license royalties.
         </p>
         <div className="mt-5 grid gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-xs font-bold uppercase tracking-[0.14em] text-white/55 sm:grid-cols-4">
-          {["Upload audio", "Set licensing", "Publish", "Open a room"].map((step, index) => (
+          {([
+            { label: "Upload audio", done: audioUploadState === "done" },
+            { label: "Track details", done: Boolean(title.trim() && artistName.trim()) },
+            { label: "Set licensing", done: Boolean(licensePrice && revenueSharePct && totalLicenses) },
+            { label: "Publish", done: submitState === "done" },
+          ]).map((step, index) => (
             <div
-              key={step}
-              className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2"
+              key={step.label}
+              className={`flex items-center gap-2 rounded-xl border px-3 py-2 transition-colors ${
+                step.done
+                  ? "border-green-500/25 bg-green-500/5"
+                  : "border-white/10 bg-black/20"
+              }`}
             >
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-500/20 text-[10px] text-brand-200">
-                {index + 1}
+              <span className={`grid h-6 w-6 place-items-center rounded-full text-[10px] transition-colors ${
+                step.done
+                  ? "bg-green-500/25 text-green-400"
+                  : "bg-brand-500/20 text-brand-200"
+              }`}>
+                {step.done ? (
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                ) : (
+                  index + 1
+                )}
               </span>
-              <span>{step}</span>
+              <span className={step.done ? "text-green-400/80" : ""}>{step.label}</span>
             </div>
           ))}
         </div>
@@ -504,16 +535,16 @@ export default function UploadTrackForm() {
                   setError(null);
                   uploadImage(file, {
                     kind: "cover",
-                    onProgress: (p) => {
+                    onProgress: (p: { phase: string; percent?: number }) => {
                       if (p.phase === "uploading" && typeof p.percent === "number") setCoverProgress(p.percent);
                     },
-                  }).then((result) => {
+                  }).then((result: { publicUrl: string }) => {
                     setCoverUrl(result.publicUrl);
                     setCoverUploadState("done");
                     buzz(20);
-                  }).catch((err) => {
+                  }).catch((err: unknown) => {
                     setCoverUploadState("error");
-                    setCoverPreview((prev) => { if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev); return null; });
+                    setCoverPreview((prev: string | null) => { if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev); return null; });
                     setCoverFile(null);
                     setCoverProgress(0);
                     setError(err instanceof Error ? err.message : "Cover upload failed.");
@@ -649,32 +680,42 @@ export default function UploadTrackForm() {
               e.currentTarget.classList.remove("border-brand-500/60", "bg-brand-500/5");
               const file = e.dataTransfer.files?.[0];
               if (!file) return;
-              // Don't gate on file.type here — pre-flight validation handles it
-              // and gives a friendlier message than alert().
               void startAudioUpload(file);
             }}
-            className="w-full rounded-xl border-2 border-dashed border-white/15 p-6 text-center hover:border-brand-500/60 transition"
+            className="w-full rounded-xl border-2 border-dashed border-white/15 p-6 text-center hover:border-brand-500/60 transition group"
           >
             {audioFile ? (
               <div className="flex items-center justify-center gap-3">
-                <span className="text-2xl">🎵</span>
-                <div className="text-left">
-                  <p className="text-sm font-medium truncate max-w-xs">{audioFile.name}</p>
-                  <p className="text-xs text-white/40">{fmtMB(audioFile.size)}</p>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/15">
+                  <svg className="h-5 w-5 text-brand-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m9 9 10.5-3m0 6.553v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 1 1-.99-3.467l2.31-.66a2.25 2.25 0 0 0 1.632-2.163Zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 0 1-.99-3.467l2.31-.66A2.25 2.25 0 0 0 9 15.553Z" /></svg>
+                </div>
+                <div className="text-left min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{audioFile.name}</p>
+                  <div className="flex items-center gap-2 text-xs text-white/40">
+                    <span>{fmtMB(audioFile.size)}</span>
+                    {audioDuration && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-mono">{audioDuration}</span>}
+                    {audioFile.name.split(".").pop() && (
+                      <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand-300">
+                        {audioFile.name.split(".").pop()?.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {audioUploadState === "uploading" && (
-                  <div className="h-5 w-5 rounded-full border-2 border-brand-400 border-t-transparent animate-spin ml-2" />
+                  <div className="h-5 w-5 rounded-full border-2 border-brand-400 border-t-transparent animate-spin ml-2 shrink-0" />
                 )}
                 {audioUploadState === "done" && (
-                  <span className="text-green-400 ml-2">✓</span>
+                  <div className="ml-2 flex h-6 w-6 items-center justify-center rounded-full bg-green-500/20 shrink-0">
+                    <svg className="h-3.5 w-3.5 text-green-400" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                  </div>
                 )}
               </div>
             ) : (
               <div className="text-white/40">
-                <p className="text-lg mb-1">🎵</p>
-                <p className="hidden sm:block text-sm">Drop your audio file here, or tap to browse</p>
-                <p className="block sm:hidden text-sm">Tap to add from Files, iCloud, or your music library</p>
-                <p className="text-xs mt-1">MP3, WAV, FLAC, AAC, M4A — up to 200 MB</p>
+                <svg className="mx-auto h-10 w-10 text-white/15 group-hover:text-brand-500/40 transition" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                <p className="hidden sm:block text-sm mt-2">Drop your audio file here, or click to browse</p>
+                <p className="block sm:hidden text-sm mt-2">Tap to add from Files, iCloud, or your music library</p>
+                <p className="text-xs mt-1 text-white/25">MP3, WAV, FLAC, AAC, M4A, OGG — up to 200 MB</p>
               </div>
             )}
           </button>
@@ -686,29 +727,55 @@ export default function UploadTrackForm() {
             className={HIDDEN_INPUT_CLASS}
             onChange={handleAudioChange}
           />
-          {audioUploadState === "error" && lastAudioFileRef.current && (
-            <button
-              type="button"
-              onClick={() => {
-                const f = lastAudioFileRef.current;
-                if (f) void startAudioUpload(f);
-              }}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-brand-500/35 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-300 hover:bg-brand-500/20"
-            >
-              ↻ Try again
-            </button>
-          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {audioUploadState === "error" && lastAudioFileRef.current && (
+              <button
+                type="button"
+                onClick={() => {
+                  const f = lastAudioFileRef.current;
+                  if (f) void startAudioUpload(f);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-brand-500/35 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-300 hover:bg-brand-500/20"
+              >
+                ↻ Try again
+              </button>
+            )}
+            {audioUploadState === "uploading" && (
+              <button
+                type="button"
+                onClick={() => {
+                  audioXhrRef.current?.abort();
+                  setAudioUploadState("idle");
+                  setAudioProgress(0);
+                  setAudioFile(null);
+                  setAudioDuration(null);
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs font-bold text-red-400 hover:bg-red-500/20 transition"
+              >
+                Cancel
+              </button>
+            )}
+            {audioUploadState === "done" && (
+              <button
+                type="button"
+                onClick={() => audioRef.current?.click()}
+                className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-white/50 hover:text-white hover:bg-white/10 transition"
+              >
+                ↻ Replace file
+              </button>
+            )}
+          </div>
           <div className="mt-3">
             {/* Upload progress bar */}
             {audioUploadState === "uploading" && (
               <div className="mb-3">
-                <div className="h-1.5 w-full rounded-full bg-white/10">
+                <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                   <div
-                    className="h-1.5 rounded-full bg-brand-400 transition-all duration-200"
+                    className="h-2 rounded-full bg-gradient-to-r from-brand-400 to-accent-400 transition-all duration-300"
                     style={{ width: `${audioProgress}%` }}
                   />
                 </div>
-                <p className="mt-1 text-xs text-brand-400">Uploading… {audioProgress}%</p>
+                <p className="mt-1 text-xs text-brand-400 font-medium">Uploading… {audioProgress}%</p>
               </div>
             )}
 
@@ -782,28 +849,50 @@ export default function UploadTrackForm() {
           <button
             type="button"
             onClick={() => stemRef.current?.click()}
-            className="w-full rounded-xl border-2 border-dashed border-white/15 p-5 text-center hover:border-brand-500/60 transition"
+            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-brand-500/60", "bg-brand-500/5"); }}
+            onDragLeave={(e) => { e.currentTarget.classList.remove("border-brand-500/60", "bg-brand-500/5"); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.currentTarget.classList.remove("border-brand-500/60", "bg-brand-500/5");
+              const file = e.dataTransfer.files?.[0];
+              if (file) {
+                // Mirror handleStemChange
+                const check = validateUpload("stem", file);
+                if (!check.ok) { setStemUploadState("error"); setError(check.reason); return; }
+                setStemFile(file); setStemUploadState("uploading"); setStemProgress(0); setError(null);
+                getSignedUrl("stem", file).then(({ signedUrl, publicUrl }) =>
+                  uploadDirect(signedUrl, file, setStemProgress, stemXhrRef).then(() => {
+                    setStemUrl(publicUrl); setStemUploadState("done"); buzz(20);
+                  })
+                ).catch((err) => { setStemUploadState("error"); setStemProgress(0); setError(err instanceof Error ? err.message : "Stem upload failed"); });
+              }
+            }}
+            className="w-full rounded-xl border-2 border-dashed border-white/15 p-5 text-center hover:border-brand-500/60 transition group"
           >
             {stemFile ? (
               <div className="flex items-center justify-center gap-3">
-                <span className="text-2xl">📦</span>
-                <div className="text-left">
-                  <p className="text-sm font-medium truncate max-w-xs">{stemFile.name}</p>
-                  <p className="text-xs text-white/40">
-                    {(stemFile.size / (1024 * 1024)).toFixed(1)} MB
-                  </p>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-500/15">
+                  <svg className="h-5 w-5 text-accent-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
+                </div>
+                <div className="text-left min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{stemFile.name}</p>
+                  <p className="text-xs text-white/40">{fmtMB(stemFile.size)}</p>
                 </div>
                 {stemUploadState === "uploading" && (
-                  <div className="h-5 w-5 rounded-full border-2 border-brand-400 border-t-transparent animate-spin ml-2" />
+                  <div className="h-5 w-5 rounded-full border-2 border-brand-400 border-t-transparent animate-spin ml-2 shrink-0" />
                 )}
-                {stemUploadState === "done" && <span className="text-green-400 ml-2">✓ Uploaded</span>}
-                {stemUploadState === "error" && <span className="text-red-400 ml-2">✗ Failed</span>}
+                {stemUploadState === "done" && (
+                  <div className="ml-2 flex h-6 w-6 items-center justify-center rounded-full bg-green-500/20 shrink-0">
+                    <svg className="h-3.5 w-3.5 text-green-400" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                  </div>
+                )}
+                {stemUploadState === "error" && <span className="text-red-400 text-xs font-bold ml-2 shrink-0">Failed</span>}
               </div>
             ) : (
               <div className="text-white/40">
-                <p className="text-lg mb-1">📦</p>
-                <p className="text-sm">Click to upload trackout / stems</p>
-                <p className="text-xs mt-1">ZIP, WAV, MP3, FLAC — max 500MB · Optional</p>
+                <svg className="mx-auto h-8 w-8 text-white/15 group-hover:text-accent-500/40 transition" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
+                <p className="text-sm mt-2">Drop stems here, or click to browse</p>
+                <p className="text-xs mt-1 text-white/25">ZIP, WAV, MP3, FLAC — max 500 MB</p>
               </div>
             )}
           </button>
@@ -815,15 +904,40 @@ export default function UploadTrackForm() {
             className={HIDDEN_INPUT_CLASS}
             onChange={handleStemChange}
           />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {stemUploadState === "uploading" && (
+              <button
+                type="button"
+                onClick={() => {
+                  stemXhrRef.current?.abort();
+                  setStemUploadState("idle");
+                  setStemProgress(0);
+                  setStemFile(null);
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs font-bold text-red-400 hover:bg-red-500/20 transition"
+              >
+                Cancel
+              </button>
+            )}
+            {stemUploadState === "done" && (
+              <button
+                type="button"
+                onClick={() => stemRef.current?.click()}
+                className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-white/50 hover:text-white hover:bg-white/10 transition"
+              >
+                ↻ Replace
+              </button>
+            )}
+          </div>
           {stemUploadState === "uploading" && (
-            <div className="mt-3">
-              <div className="h-1.5 w-full rounded-full bg-white/10">
+            <div className="mt-2">
+              <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                 <div
-                  className="h-1.5 rounded-full bg-brand-400 transition-all duration-200"
+                  className="h-2 rounded-full bg-gradient-to-r from-brand-400 to-accent-400 transition-all duration-300"
                   style={{ width: `${stemProgress}%` }}
                 />
               </div>
-              <p className="mt-1 text-xs text-brand-400">Uploading… {stemProgress}%</p>
+              <p className="mt-1 text-xs text-brand-400 font-medium">Uploading… {stemProgress}%</p>
             </div>
           )}
         </div>

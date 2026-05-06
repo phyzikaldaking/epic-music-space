@@ -428,21 +428,42 @@ export default function ProfileEditPage() {
             type="file"
             accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
             aria-label="Upload avatar image"
-            className="hidden"
+            className="sr-only"
             onChange={handleAvatarFile}
           />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-brand-500/50", "bg-brand-500/5"); }}
+            onDragLeave={(e) => { e.currentTarget.classList.remove("border-brand-500/50", "bg-brand-500/5"); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.currentTarget.classList.remove("border-brand-500/50", "bg-brand-500/5");
+              const file = e.dataTransfer.files?.[0];
+              if (file) {
+                // Trigger the same handler as the file input
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                if (fileInputRef.current) {
+                  fileInputRef.current.files = dt.files;
+                  fileInputRef.current.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+              }
+            }}
             disabled={uploading}
-            className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/4 px-4 py-2.5 text-sm text-white/70 transition hover:border-brand-500/50 hover:text-white disabled:opacity-50"
+            className="mb-2 w-full rounded-xl border-2 border-dashed border-white/10 bg-white/[0.02] px-4 py-4 text-sm text-white/50 transition hover:border-brand-500/40 disabled:opacity-50"
           >
             {uploading ? (
-              <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
+                Uploading…
+              </span>
             ) : (
-              <span>📁</span>
+              <span className="flex items-center justify-center gap-2">
+                <svg className="h-5 w-5 text-white/25" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                {imageUrl ? "Drop to replace, or click to browse" : "Drop avatar here, or click to browse"}
+              </span>
             )}
-            {uploading ? "Uploading…" : "Upload image"}
           </button>
           <input
             type="url"
@@ -452,7 +473,7 @@ export default function ProfileEditPage() {
             className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-sm text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
           />
           <p className="mt-1 text-xs text-white/25">
-            Upload a file or paste a direct image URL.
+            JPG, PNG, WebP, HEIC — max 10 MB. Square recommended.
           </p>
         </div>
 

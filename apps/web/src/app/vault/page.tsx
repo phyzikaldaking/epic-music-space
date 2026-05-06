@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import SongCard from "@/components/SongCard";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 
 export const revalidate = 60;
 
@@ -20,6 +21,9 @@ export const metadata: Metadata = {
 const PAGE_SIZE = 48;
 
 export default async function VaultPage() {
+  const session = await auth();
+  const isArtist = session?.user?.role === "ARTIST" || session?.user?.role === "LABEL";
+
   const songs = await prisma.song
     .findMany({
       where: { isActive: true, isLegacy: true },
@@ -115,10 +119,11 @@ export default async function VaultPage() {
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Link
-                href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fnew%3Flegacy%3D1"
+                href="/vault/new"
+                prefetch={false}
                 className="inline-flex items-center gap-2 rounded-xl border-2 border-amber-400/65 bg-gradient-to-b from-amber-300 to-amber-500 px-5 py-3 text-sm font-black uppercase tracking-widest text-amber-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_8px_18px_-6px_rgba(245,158,11,0.6)] transition hover:from-amber-200 hover:to-amber-400"
               >
-                Add your vault tracks →
+                {isArtist ? "Add your vault track →" : "Drop in the first one →"}
               </Link>
               <Link
                 href="/marketplace"
@@ -182,12 +187,13 @@ export default async function VaultPage() {
               <p className="mt-1 text-sm text-amber-100/65">
                 When artists upload tracks marked as legacy, they show up here.
               </p>
-              <Link
-                href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fnew%3Flegacy%3D1"
-                className="mt-5 inline-flex items-center gap-2 rounded-xl border-2 border-amber-400/60 bg-gradient-to-b from-amber-300 to-amber-500 px-5 py-2 text-sm font-black uppercase tracking-widest text-amber-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] hover:from-amber-200 hover:to-amber-400"
-              >
-                Drop in the first one →
-              </Link>
+               <Link
+                 href="/vault/new"
+                 prefetch={false}
+                 className="mt-5 inline-flex items-center gap-2 rounded-xl border-2 border-amber-400/60 bg-gradient-to-b from-amber-300 to-amber-500 px-5 py-2 text-sm font-black uppercase tracking-widest text-amber-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] hover:from-amber-200 hover:to-amber-400"
+               >
+                 {isArtist ? "Add your vault track →" : "Drop in the first one →"}
+               </Link>
             </div>
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

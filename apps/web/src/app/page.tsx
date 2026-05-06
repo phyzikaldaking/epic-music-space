@@ -7,7 +7,7 @@ import { getDemoTracks } from "@/lib/demoTracks";
 import { prisma } from "@/lib/prisma";
 import { formatPrice } from "@ems/utils";
 import { CACHE_TAGS } from "@/lib/cacheTags";
-import homepageStyles from "@/styles/homepage.module.css";
+import { auth } from "@/lib/auth";
 import HomeVersusRail from "@/components/HomeVersusRail";
 
 const AudioPlayer = dynamic(() => import("@/components/LazyAudioPlayer"), {
@@ -181,6 +181,10 @@ export default async function HomePage() {
   const { songCount, licenseCount, totalRevenue, sampleSongs } =
     await getHomeData();
 
+  // Check if user is logged in as an artist for Vault CTA routing
+  const session = await auth();
+  const isArtist = session?.user?.role === "ARTIST" || session?.user?.role === "LABEL";
+
   const displayStats = [
     {
       num: songCount > 0 ? `${formatCount(songCount)}+` : "Curated",
@@ -237,7 +241,7 @@ export default async function HomePage() {
   };
 
   return (
-    <div className={homepageStyles.page}>
+    <div className="vc-page">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
@@ -246,7 +250,7 @@ export default async function HomePage() {
       <section className="vc-hero">
         <div className="vc-stars" aria-hidden="true" />
         <Image
-          className={homepageStyles.studioPhoto}
+          className="vc-studio-photo"
           src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=1200&q=80&auto=format&fit=crop"
           alt=""
           aria-hidden="true"
@@ -734,7 +738,8 @@ export default async function HomePage() {
                     Open The Vault →
                   </Link>
                   <Link
-                    href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fnew%3Flegacy%3D1"
+                    href="/vault/new"
+                    prefetch={false}
                     className="inline-flex items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/8 px-5 py-3 text-sm font-semibold text-amber-100 hover:bg-amber-500/14"
                   >
                     Add your vault tracks
