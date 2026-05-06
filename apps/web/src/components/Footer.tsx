@@ -96,39 +96,73 @@ export default function Footer() {
                 Get started
               </Link>
             </div>
-            {/* App store badges */}
+            {/* App store badges. When a store isn't shipped yet we render a
+                non-clickable badge with a "Soon" tag — the previous version
+                used <a>s that looked identical to the live state, which read
+                as broken links to anyone who clicked. */}
             <div className="mt-5 flex flex-col gap-2.5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/30">Get the App</p>
               <div className="flex flex-wrap gap-2">
-                <a
-                  href={mobileStoreLinks.ios.href ?? "/get-the-app"}
-                  target={mobileStoreLinks.ios.available ? "_blank" : undefined}
-                  rel={mobileStoreLinks.ios.available ? "noopener noreferrer" : undefined}
-                  aria-label={mobileStoreLinks.ios.available ? "Download on the App Store" : "iPhone release coming soon"}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${mobileStoreLinks.ios.available ? "border-white/12 bg-white/5 text-white/70 hover:bg-white/10" : "border-white/10 bg-white/3 text-white/45"}`}
-                >
-                  <svg className="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11Z"/>
-                  </svg>
-                  {mobileStoreLinks.ios.available ? "App Store" : "iPhone soon"}
-                </a>
-                <a
-                  href={mobileStoreLinks.android.href ?? "/get-the-app"}
-                  target={mobileStoreLinks.android.available ? "_blank" : undefined}
-                  rel={mobileStoreLinks.android.available ? "noopener noreferrer" : undefined}
-                  aria-label={mobileStoreLinks.android.available ? "Get it on Google Play" : "Android release coming soon"}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${mobileStoreLinks.android.available ? "border-white/12 bg-white/5 text-white/70 hover:bg-white/10" : "border-white/10 bg-white/3 text-white/45"}`}
-                >
-                  <svg className="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                    <path fill="#EA4335" d="m1.22 0 10.42 10.41L1.22 0Z"/>
-                    <path fill="#FBBC04" d="M1.22 24 11.64 13.59 1.22 24Z"/>
-                    <path fill="#4285F4" d="M20.11 10.43 16.9 8.6 11.64 13.59l5.26 4.99 3.22-1.83a2.5 2.5 0 0 0 0-4.32Z"/>
-                    <path fill="#34A853" d="M1.22 0a2.06 2.06 0 0 0-.95.24L11.64 10.41l5.26-4.99L1.22 0Z"/>
-                    <path fill="#34A853" d="m.27 23.76 11.37-10.17L1.22 24a2.06 2.06 0 0 1-.95-.24Z"/>
-                    <path fill="#EA4335" d="M1.22 24a2.06 2.06 0 0 1-.95-.24L11.64 13.59.27.24A2.06 2.06 0 0 0 .22 1.26v21.48A2.06 2.06 0 0 0 1.22 24Z"/>
-                  </svg>
-                  {mobileStoreLinks.android.available ? "Google Play" : "Android soon"}
-                </a>
+                {mobileStoreLinks.ios.available ? (
+                  <a
+                    href={mobileStoreLinks.ios.href ?? "/get-the-app"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Download on the App Store"
+                    className="flex items-center gap-2 rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+                  >
+                    <svg className="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11Z"/>
+                    </svg>
+                    App Store
+                  </a>
+                ) : (
+                  <span
+                    aria-label="iPhone app coming soon"
+                    className="flex cursor-default items-center gap-2 rounded-lg border border-dashed border-white/8 bg-white/[0.02] px-3 py-2 text-xs text-white/35"
+                  >
+                    <svg className="h-4 w-4 flex-shrink-0 opacity-60" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11Z"/>
+                    </svg>
+                    iPhone
+                    <span className="rounded-full border border-white/12 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/45">Soon</span>
+                  </span>
+                )}
+                {mobileStoreLinks.android.available ? (
+                  <a
+                    href={mobileStoreLinks.android.href ?? "/get-the-app"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Get it on Google Play"
+                    className="flex items-center gap-2 rounded-lg border border-white/12 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+                  >
+                    <svg className="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="#EA4335" d="m1.22 0 10.42 10.41L1.22 0Z"/>
+                      <path fill="#FBBC04" d="M1.22 24 11.64 13.59 1.22 24Z"/>
+                      <path fill="#4285F4" d="M20.11 10.43 16.9 8.6 11.64 13.59l5.26 4.99 3.22-1.83a2.5 2.5 0 0 0 0-4.32Z"/>
+                      <path fill="#34A853" d="M1.22 0a2.06 2.06 0 0 0-.95.24L11.64 10.41l5.26-4.99L1.22 0Z"/>
+                      <path fill="#34A853" d="m.27 23.76 11.37-10.17L1.22 24a2.06 2.06 0 0 1-.95-.24Z"/>
+                      <path fill="#EA4335" d="M1.22 24a2.06 2.06 0 0 1-.95-.24L11.64 13.59.27.24A2.06 2.06 0 0 0 .22 1.26v21.48A2.06 2.06 0 0 0 1.22 24Z"/>
+                    </svg>
+                    Google Play
+                  </a>
+                ) : (
+                  <span
+                    aria-label="Android app coming soon"
+                    className="flex cursor-default items-center gap-2 rounded-lg border border-dashed border-white/8 bg-white/[0.02] px-3 py-2 text-xs text-white/35"
+                  >
+                    <svg className="h-4 w-4 flex-shrink-0 opacity-60" viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="#EA4335" d="m1.22 0 10.42 10.41L1.22 0Z"/>
+                      <path fill="#FBBC04" d="M1.22 24 11.64 13.59 1.22 24Z"/>
+                      <path fill="#4285F4" d="M20.11 10.43 16.9 8.6 11.64 13.59l5.26 4.99 3.22-1.83a2.5 2.5 0 0 0 0-4.32Z"/>
+                      <path fill="#34A853" d="M1.22 0a2.06 2.06 0 0 0-.95.24L11.64 10.41l5.26-4.99L1.22 0Z"/>
+                      <path fill="#34A853" d="m.27 23.76 11.37-10.17L1.22 24a2.06 2.06 0 0 1-.95-.24Z"/>
+                      <path fill="#EA4335" d="M1.22 24a2.06 2.06 0 0 1-.95-.24L11.64 13.59.27.24A2.06 2.06 0 0 0 .22 1.26v21.48A2.06 2.06 0 0 0 1.22 24Z"/>
+                    </svg>
+                    Android
+                    <span className="rounded-full border border-white/12 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/45">Soon</span>
+                  </span>
+                )}
               </div>
             </div>
           </div>

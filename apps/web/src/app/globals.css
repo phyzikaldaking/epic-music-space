@@ -261,8 +261,15 @@
 .vc-hero-h1 {
   font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif;
   font-weight: 400;
-  font-size: clamp(4rem, 14vw, 11rem);
-  line-height: 0.86;
+  /*
+   * Capped lower than the original clamp(4rem, 14vw, 11rem) so the three-line
+   * hero (Build / Showcase / Grow) doesn't overflow desktop viewports and
+   * leaves room for the tagline + CTA above the fold. The original 14vw was
+   * rendering at 176px on a 1438px viewport — three lines plus tagline pushed
+   * the CTA off-screen entirely.
+   */
+  font-size: clamp(2.75rem, 8vw, 6.5rem);
+  line-height: 0.92;
   letter-spacing: -0.01em;
   text-transform: uppercase;
   background: linear-gradient(180deg, #fff 0%, #fff 18%, #ffd6ec 30%, var(--vc-neon-pink) 48%, var(--vc-magenta) 62%, var(--vc-purple) 80%, #5a1188 100%);
@@ -1420,4 +1427,62 @@ select:-moz-autofill {
 
 .ems-progress-wave::-webkit-progress-bar {
   background: transparent;
+}
+
+/* ── Music-platform feel ── */
+
+/* Equalizer animation — used by GlobalAudioPlayer and SongCard */
+@keyframes equalize {
+  from { transform: scaleY(0.3); }
+  to { transform: scaleY(1); }
+}
+
+/* Now-playing pulse ring on song cards when track is active */
+@keyframes now-playing-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 245, 255, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(0, 245, 255, 0); }
+}
+.now-playing-ring {
+  animation: now-playing-ring 2s ease-in-out infinite;
+}
+
+/* Skeleton shimmer for loading grids (like Spotify's content loading) */
+@keyframes skeleton-sweep {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-music {
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.8s ease-in-out infinite;
+}
+
+/* Ambient vinyl spin for album art (slow, subtle, only on playing state) */
+@keyframes vinyl-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+.vinyl-breathe {
+  animation: vinyl-breathe 4s ease-in-out infinite;
+}
+
+/* Smooth waveform bar hover */
+.waveform-seek-bar span {
+  transition: height 0.1s ease-out, background 0.15s ease;
+}
+
+/* Volume slider track styling */
+.volume-slider-vertical::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+.volume-slider-vertical::-webkit-slider-runnable-track {
+  width: 4px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 2px;
 }

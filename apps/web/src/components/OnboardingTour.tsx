@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 const STORAGE_KEY = "ems_tour_dismissed_v1";
+// Mirror of CookieConsent's storage key. The tour waits until the user has
+// answered (Accept or Reject) before opening — otherwise the tour modal
+// covers the cookie banner on first paint and the user can't read either.
+const COOKIE_CONSENT_KEY = "ems-cookie-consent";
 
 interface Step {
   emoji: string;
@@ -63,9 +67,24 @@ export default function OnboardingTour() {
     if (!session?.user?.id) return;
     if (typeof window === "undefined") return;
     if (window.localStorage.getItem(STORAGE_KEY) === "1") return;
-    // Tiny delay so it doesn't fight with page-load animations.
-    const t = setTimeout(() => setOpen(true), 400);
-    return () => clearTimeout(t);
+
+    // Don't open while the cookie banner is still visible — the tour
+    // modal would cover it and trap the user. Open after the user has
+    // answered (or after the banner is already dismissed from a prior
+    // visit). CookieConsent dispatches `ems:consent` on Accept/Reject;
+    // we listen so the tour fires immediately after, not on next visit.
+    function maybeOpen() {
+      if (window.localStorage.getItem(COOKIE_CONSENT_KEY)) {
+        setOpen(true);
+      }
+    }
+    if (window.localStorage.getItem(COOKIE_CONSENT_KEY)) {
+      const t = setTimeout(() => setOpen(true), 400);
+      return () => clearTimeout(t);
+    }
+    const handler = () => maybeOpen();
+    window.addEventListener("ems:consent", handler);
+    return () => window.removeEventListener("ems:consent", handler);
   }, [session?.user?.id]);
 
   function dismiss() {
