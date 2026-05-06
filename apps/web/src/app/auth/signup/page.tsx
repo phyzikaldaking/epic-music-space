@@ -638,15 +638,38 @@ function SignUpContent() {
               </span>
             </label>
 
+            {(() => {
+              // Live "what's missing" helper. The button below is always
+              // enabled (unless we're already submitting) so the user can
+              // click it at any time and the existing handleSubmit path
+              // will surface the same specific error inline. Showing the
+              // missing item here is the proactive version.
+              const missing = !form.name.trim()
+                ? "Add your name."
+                : !form.email.trim()
+                  ? "Add your email."
+                  : form.password.length === 0
+                    ? "Pick a password."
+                    : !strength.acceptable
+                      ? strength.hint || "Make the password a little stronger."
+                      : confirmPassword.length === 0
+                        ? "Re-type your password to confirm."
+                        : !passwordsMatch
+                          ? "The two passwords don't match."
+                          : !ageConfirmed
+                            ? "Confirm you're at least 13."
+                            : !termsAccepted
+                              ? "Accept the Terms to continue."
+                              : null;
+              return missing ? (
+                <p className="-mt-1 text-center text-xs text-amber-300/85">
+                  ⚠ {missing}
+                </p>
+              ) : null;
+            })()}
             <button
               type="submit"
-              disabled={
-                loading ||
-                !ageConfirmed ||
-                !termsAccepted ||
-                !strength.acceptable ||
-                !passwordsMatch
-              }
+              disabled={loading}
               className="rounded-xl bg-brand-500 py-3 font-bold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50 glow-purple-sm"
             >
               {loading ? "Creating account…" : "Create account →"}
