@@ -1,11 +1,67 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
 version: 2
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "npm"
+    directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "07:00"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    groups:
+      # Group patch + minor updates per ecosystem so Dependabot opens fewer PRs
+      # and less context-switching for reviewers. Major bumps stay separate.
+      next-and-react:
+        patterns:
+          - "next"
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+          - "eslint-config-next"
+        update-types:
+          - "minor"
+          - "patch"
+      types-and-tooling:
+        patterns:
+          - "@types/*"
+          - "typescript"
+          - "eslint*"
+          - "vitest*"
+          - "tsx"
+        update-types:
+          - "minor"
+          - "patch"
+      sentry:
+        patterns:
+          - "@sentry/*"
+        update-types:
+          - "minor"
+          - "patch"
+      stripe:
+        patterns:
+          - "stripe"
+          - "@stripe/*"
+        update-types:
+          - "minor"
+          - "patch"
+      prisma:
+        patterns:
+          - "prisma"
+          - "@prisma/*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Major version bumps stay manual — they often require code changes.
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "ci"

@@ -49,6 +49,10 @@ yarn-error.log*
 .playwright-cli/
 output/
 
+# Test + report artifacts
+test-results/
+apps/web/lhreport.json
+
 # Standalone HTML prototypes
 city-3d.html
 metaverse-3d.html

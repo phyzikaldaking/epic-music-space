@@ -38,11 +38,58 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Auth watchdog
+        run: npm --workspace apps/web run auth:watchdog
+
       - name: Build web
         run: npm run build:web
 
+      - name: Performance budgets
+        run: npm run perf:budget
+
+      - name: Web auth focused tests
+        run: npm --workspace apps/web run test:auth
+
+      - name: Web critical E2E tests
+        run: npm --workspace apps/web run test:e2e
+
       - name: API test suite (contracts)
         run: npm --workspace apps/api run test
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm audit` against the lockfile. We gate on high+ severity so
+      # known-CVE introductions block merge. Dependabot handles routine
+      # patch upgrades — this catches regressions between Dependabot runs.
+      - name: npm audit (high severity gate)
+        run: npm audit --omit=dev --audit-level=high
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Gitleaks scans the full diff in PRs and the full history on main.
+      # The action falls back to a bundled config if .gitleaks.toml is absent.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   post-deploy-smoke:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -67,3 +114,13 @@ jobs:
         env:
           SYNTHETICS_BASE_URL: ${{ secrets.SYNTHETICS_BASE_URL }}
         run: npm run reliability:smoke
+
+      - name: Run production auth smoke checks
+        env:
+          SYNTHETICS_BASE_URL: ${{ secrets.SYNTHETICS_BASE_URL }}
+        run: npm run reliability:auth-smoke
+
+      - name: Run production mobile reliability checks
+        env:
+          SYNTHETICS_BASE_URL: ${{ secrets.SYNTHETICS_BASE_URL }}
+        run: npm run reliability:mobile

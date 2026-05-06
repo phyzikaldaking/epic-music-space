@@ -1,0 +1,12 @@
+{
+  "extends": "lighthouse:default",
+  "settings": {
+    "onlyCategories": ["performance","accessibility","best-practices","seo"],
+    "emulatedFormFactor": "mobile",
+    "throttling": {
+      "rttMs": 150,
+      "throughputKbps": 1600,
+      "cpuSlowdownMultiplier": 4
+    }
+  }
+}
