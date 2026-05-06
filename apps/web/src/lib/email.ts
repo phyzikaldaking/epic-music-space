@@ -43,6 +43,53 @@ export async function sendPasswordResetEmail(email: string, token: string) {
   return { ok: true };
 }
 
+export async function sendMagicLinkEmail(
+  email: string,
+  token: string,
+  callbackUrl?: string,
+) {
+  const base = getSiteUrl();
+  const callbackParam = callbackUrl
+    ? `&callbackUrl=${encodeURIComponent(callbackUrl)}`
+    : "";
+  const url = `${base}/auth/magic-link?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}${callbackParam}`;
+
+  if (!resend) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[email] Magic-link email blocked in production — RESEND_API_KEY not set");
+      return { ok: false, error: { code: "EMAIL_PROVIDER_NOT_CONFIGURED" } };
+    }
+    console.warn("[email] RESEND_API_KEY not set — magic-link URL below");
+    console.info(`[email] Magic-link URL: ${url}`);
+    return { ok: true, dev: true, url };
+  }
+
+  const html = `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#fff;font-family:-apple-system,sans-serif;padding:40px 16px">
+    <div style="max-width:540px;margin:0 auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px 32px;text-align:center">
+      <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:24px">
+        <div style="width:36px;height:36px;background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.3);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px">♫</div>
+        <span style="font-size:20px;font-weight:800;background:linear-gradient(135deg,#a78bfa,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Epic Music Space</span>
+      </div>
+      <h1 style="margin:0 0 12px;font-size:24px">Your sign-in link</h1>
+      <p style="color:rgba(255,255,255,0.7);line-height:1.6">Click the button below to sign in. This link works once and expires in 15 minutes.</p>
+      <p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:700">Sign in →</a></p>
+      <p style="color:rgba(255,255,255,0.45);font-size:12px;line-height:1.5">If you didn't request this, ignore the email — nothing will happen.</p>
+    </div></body></html>`;
+
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: email,
+    subject: "Your Epic Music Space sign-in link",
+    html,
+    text: `Sign in to Epic Music Space: ${url}\n\nLink works once and expires in 15 minutes.`,
+  });
+  if (error) {
+    console.error("[email] Magic-link send failed", error);
+    return { ok: false, error };
+  }
+  return { ok: true };
+}
+
 export async function sendVerificationEmail(
   email: string,
   token: string,

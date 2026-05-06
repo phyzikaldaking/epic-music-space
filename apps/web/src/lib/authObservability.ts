@@ -26,7 +26,13 @@ export type AuthEventName =
   | "phone_login_code_requested"
   | "phone_login_code_failed"
   | "phone_signin_invalid_code"
-  | "phone_signin_invalid_phone";
+  | "phone_signin_invalid_phone"
+  | "magic_link_rate_limited"
+  | "magic_link_sent"
+  | "magic_link_skipped"
+  | "magic_link_send_failed"
+  | "magic_link_invalid"
+  | "magic_link_signin_success";
 
 export type AuthEventMeta = {
   email?: string;

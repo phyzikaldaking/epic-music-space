@@ -8,7 +8,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import type { Role, SubscriptionTier } from "@ems/db";
 import { emitAuthEvent } from "@/lib/authObservability";
-import { getClientIp, normalizeEmail } from "@/lib/authIdentity";
+import { getClientIp, hashAuthToken, normalizeEmail } from "@/lib/authIdentity";
 import {
   hashPhoneLoginCode,
   normalizePhone,
@@ -37,6 +37,13 @@ const phoneOtpSchema = z.object({
   turnstileToken: z.string().optional(),
 });
 
+const magicLinkSchema = z.object({
+  email: z.string().email(),
+  token: z.string().min(32).max(128),
+});
+
+export const MAGIC_LINK_IDENTIFIER_PREFIX = "magic:";
+
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 const googleEnabled = Boolean(googleClientId && googleClientSecret);
@@ -55,6 +62,10 @@ class AccountSuspendedError extends CredentialsSignin {
 
 class SignInRateLimitedError extends CredentialsSignin {
   code = "rate_limited";
+}
+
+class MagicLinkInvalidError extends CredentialsSignin {
+  code = "magic_link_invalid";
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -202,6 +213,119 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         await clearSignInFailures(normalizedEmail, ip);
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          subscriptionTier: user.subscriptionTier,
+        };
+      },
+    }),
+    CredentialsProvider({
+      id: "email-link",
+      name: "Email link",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        token: { label: "Token", type: "text" },
+      },
+      async authorize(credentials, request) {
+        const parsed = magicLinkSchema.safeParse(credentials);
+        if (!parsed.success) throw new MagicLinkInvalidError();
+
+        const normalizedEmail = normalizeEmail(parsed.data.email);
+        const ip = getClientIp(request.headers);
+
+        const signinGate = await assertSignInAllowed(`magic:${normalizedEmail}`, ip);
+        if (!signinGate.allowed) {
+          await emitAuthEvent("signin_rate_limited", {
+            email: normalizedEmail,
+            ip,
+            retryAfterSeconds: signinGate.retryAfterSeconds,
+          });
+          throw new SignInRateLimitedError();
+        }
+
+        const hashedToken = hashAuthToken(parsed.data.token);
+        const record = await prisma.verificationToken.findUnique({
+          where: { token: hashedToken },
+          select: { token: true, identifier: true, expires: true },
+        });
+
+        const expectedIdentifier = `${MAGIC_LINK_IDENTIFIER_PREFIX}${normalizedEmail}`;
+        if (
+          !record ||
+          record.identifier.toLowerCase() !== expectedIdentifier ||
+          record.expires < new Date()
+        ) {
+          await recordFailedSignIn(`magic:${normalizedEmail}`, ip);
+          await emitAuthEvent("magic_link_invalid", {
+            email: normalizedEmail,
+            ip,
+            reason: !record
+              ? "token_not_found"
+              : record.identifier.toLowerCase() !== expectedIdentifier
+                ? "identifier_mismatch"
+                : "expired",
+          });
+          if (record && record.expires < new Date()) {
+            await prisma.verificationToken
+              .delete({ where: { token: record.token } })
+              .catch(() => {});
+          }
+          throw new MagicLinkInvalidError();
+        }
+
+        const user = await prisma.user.findFirst({
+          where: {
+            email: { equals: normalizedEmail, mode: "insensitive" },
+          },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            subscriptionTier: true,
+            emailVerified: true,
+            isSuspended: true,
+          },
+        });
+
+        if (!user) {
+          await prisma.verificationToken
+            .delete({ where: { token: record.token } })
+            .catch(() => {});
+          throw new MagicLinkInvalidError();
+        }
+
+        if (user.isSuspended) {
+          await emitAuthEvent("signin_suspended", {
+            email: normalizedEmail,
+            userId: user.id,
+            ip,
+          });
+          throw new AccountSuspendedError();
+        }
+
+        await prisma.$transaction([
+          prisma.verificationToken.delete({ where: { token: record.token } }),
+          ...(user.emailVerified
+            ? []
+            : [
+                prisma.user.update({
+                  where: { id: user.id },
+                  data: { emailVerified: new Date() },
+                }),
+              ]),
+        ]);
+
+        await clearSignInFailures(`magic:${normalizedEmail}`, ip);
+        await emitAuthEvent("magic_link_signin_success", {
+          email: normalizedEmail,
+          userId: user.id,
+          ip,
+        });
 
         return {
           id: user.id,
@@ -409,9 +533,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const dbUser = await prisma.user.findUnique({
             where: { id: user.id },
             select: { role: true, subscriptionTier: true },
-          });
-          token.role = dbUser?.role ?? "FAN";
-          token.subscriptionTier = dbUser?.subscriptionTier;
+           });
+           token.role = dbUser?.role ?? "LISTENER";
+           token.subscriptionTier = dbUser?.subscriptionTier;
         } else {
           token.role = user.role;
           token.subscriptionTier = user.subscriptionTier;
