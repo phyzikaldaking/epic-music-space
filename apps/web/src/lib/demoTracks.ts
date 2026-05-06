@@ -130,6 +130,12 @@ function buildPublicUrl(path: string) {
     .join("/")}`;
 }
 
+function demoContentEnabled() {
+  if (process.env.ENABLE_DEMO_CONTENT === "true") return true;
+  if (process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true") return true;
+  return process.env.VERCEL_ENV !== "production" && process.env.NODE_ENV !== "production";
+}
+
 /** Local /public fallback — used when the Supabase bucket is empty or unavailable. */
 function buildLocalUrl(seed: TrackSeed): string {
   return `/demo/audio/${slugify(seed.fileName)}.wav`;
@@ -180,6 +186,8 @@ async function listAudioFiles(prefix = ""): Promise<string[]> {
 
 const getCachedDemoTracks = unstable_cache(
   async (): Promise<DemoTrack[]> => {
+    if (!demoContentEnabled()) return [];
+
     const audioPaths = await listAudioFiles();
     const matchedTracks = audioPaths
       .map((path) => {

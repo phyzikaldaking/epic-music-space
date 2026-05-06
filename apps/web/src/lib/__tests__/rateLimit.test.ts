@@ -69,9 +69,9 @@ describe("withRateLimit", () => {
     const req = reqWithHeaders({ "x-forwarded-for": "1.2.3.4, 5.6.7.8" });
     const res = await wrapped(req);
 
-    expect(consumeSpy).toHaveBeenCalledWith("1.2.3.4");
+    expect(consumeSpy).toHaveBeenCalledWith("ip:1.2.3.4");
     expect(handler).toHaveBeenCalledTimes(1);
-    expect((res as unknown as { key: string }).key).toBe("1.2.3.4");
+    expect((res as unknown as { key: string }).key).toBe("ip:1.2.3.4");
   });
 
   it("falls back to x-real-ip when x-forwarded-for absent", async () => {
@@ -91,8 +91,8 @@ describe("withRateLimit", () => {
     const req = reqWithHeaders({ "x-real-ip": "9.9.9.9" });
     const res = await wrapped(req);
 
-    expect(consumeSpy).toHaveBeenCalledWith("9.9.9.9");
-    expect((res as unknown as { key: string }).key).toBe("9.9.9.9");
+    expect(consumeSpy).toHaveBeenCalledWith("ip:9.9.9.9");
+    expect((res as unknown as { key: string }).key).toBe("ip:9.9.9.9");
   });
 
   it("returns 429 when limiter throws", async () => {
