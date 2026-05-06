@@ -5,6 +5,17 @@ import { getDemoTracks } from "@/lib/demoTracks";
 import { getSiteUrl } from "@/lib/site";
 import { classifyAudioSource } from "@/lib/audioSource";
 import { getRedis } from "@/lib/redis";
+import { enqueueNotification } from "@/lib/queues";
+import { recordStreamRoyalty } from "@/lib/revenueShare";
+import { recordRiskEvent } from "@/lib/riskEvents";
+
+// Configurable per-play micro-royalty. Defaults to 1 cent ($0.01) per
+// verified, deduplicated play. Set STREAM_ROYALTY_CENTS_PER_PLAY in env to
+// tune without a code deploy.
+const STREAM_ROYALTY_CENTS = Math.max(
+  0,
+  Number(process.env.STREAM_ROYALTY_CENTS_PER_PLAY ?? "1"),
+);
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -244,10 +255,88 @@ export async function POST(
 
   if (!shouldCount) return NextResponse.json({ ok: true });
 
-  await prisma.song.updateMany({
-    where: { id, isActive: true },
+  const song = await prisma.song.findUnique({
+    where: { id },
+    select: { id: true, title: true, isActive: true, artistId: true },
+  });
+  if (!song?.isActive) {
+    return NextResponse.json({ ok: true });
+  }
+
+  let suspiciousBurst = false;
+  if (redis) {
+    try {
+      const minuteBucket = Math.floor(Date.now() / 60_000);
+      const dayBucket = new Date().toISOString().slice(0, 10);
+      const minuteKey = `ems:stream:burst:m:${song.id}:${ip}:${minuteBucket}`;
+      const dayKey = `ems:stream:burst:d:${song.id}:${ip}:${dayBucket}`;
+
+      const [minuteHits, dayHits] = await Promise.all([
+        redis.incr(minuteKey),
+        redis.incr(dayKey),
+      ]);
+      if (minuteHits === 1) {
+        await redis.expire(minuteKey, 120);
+      }
+      if (dayHits === 1) {
+        await redis.expire(dayKey, 172800);
+      }
+      suspiciousBurst = minuteHits > 15 || dayHits > 120;
+
+      if (suspiciousBurst) {
+        void recordRiskEvent({
+          eventType: "fake_play",
+          severity: minuteHits > 50 || dayHits > 300 ? "HIGH" : "MEDIUM",
+          songId: song.id,
+          ip,
+          reason: "stream_burst",
+          metadata: {
+            minuteBucket,
+            dayBucket,
+            minuteHits,
+            dayHits,
+          },
+        });
+        const alertKey = `ems:stream:burst:alert:${song.id}:${ip}:${dayBucket}`;
+        const firstAlert = await redis.set(alertKey, "1", "EX", 3600, "NX");
+        if (firstAlert === "OK") {
+          void enqueueNotification({
+            userId: song.artistId,
+            type: "STREAM_FRAUD_ALERT",
+            title: "Suspicious stream burst detected",
+            body: `A stream burst on "${song.title}" was flagged and excluded from payout calculations until review.`,
+            metadata: {
+              songId: song.id,
+              sourceIpHashHint: ip.slice(0, 12),
+              minuteBucket,
+              dayBucket,
+              minuteHits,
+              dayHits,
+            },
+          });
+        }
+      }
+    } catch {
+      suspiciousBurst = false;
+    }
+  }
+
+  if (suspiciousBurst) {
+    return NextResponse.json({ ok: true, skipped: "integrity_review" });
+  }
+
+  await prisma.song.update({
+    where: { id: song.id },
     data: { streamCount: { increment: 1 } },
   });
+
+  // Record a micro-royalty for the artist. Fire-and-forget — a ledger write
+  // failure must never break the play-count response the client depends on.
+  if (STREAM_ROYALTY_CENTS > 0) {
+    void recordStreamRoyalty({ songId: song.id, pennies: STREAM_ROYALTY_CENTS }).catch(
+      (err) => console.warn("[stream] royalty write failed", err),
+    );
+  }
 
   return NextResponse.json({ ok: true });
 }
