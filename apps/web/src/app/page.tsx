@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { formatPrice } from "@ems/utils";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import HomeVersusRail from "@/components/HomeVersusRail";
+import HeroNowSpinning from "@/components/HeroNowSpinning";
 
 const AudioPlayer = dynamic(() => import("@/components/LazyAudioPlayer"), {
   ssr: false,
@@ -264,25 +265,30 @@ export default async function HomePage() {
 
         <div className="vc-hero-content">
           <p className="vc-eyebrow">The digital headquarters for music creators</p>
+          {/*
+           * Hero copy names the three actual moats — economics, transparency,
+           * growth loop — instead of the generic "build / showcase / grow"
+           * that any creator platform could write. A cold visitor learns
+           * what's different here in three lines, not three scrolls.
+           */}
           <h1 className="vc-hero-h1">
-            Build your profile.
+            Keep 90%.
             <br />
-            <span className="accent">Showcase your work.</span>
+            <span className="accent">Rank in the open.</span>
             <br />
-            Grow your business.
+            Battle tonight.
           </h1>
           <p className="vc-hero-tagline">
-            Epic Music Space is where artists, producers, and engineers run their
-            careers in one place — profile, catalog, services for sale, fan
-            collabs, and{" "}
+            Epic Music Space is the only artist platform where you keep 90% of
+            every license, every rank factor is{" "}
+            <Link href="/marketplace" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
+              public on every track
+            </Link>
+            , and your catalog{" "}
             <Link href="/versus" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
-              live Versus battles
+              battles live
             </Link>{" "}
-            that put your music in front of voting fans every night.
-            <span className="block mt-2 text-base text-white/45">
-              Virtual studios and 3D city districts ship next — claim your block
-              before the doors open.
-            </span>
+            in front of voting fans every night.
           </p>
           <div className="vc-hero-ctas">
             <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
@@ -292,6 +298,20 @@ export default async function HomePage() {
               Watch Versus Live
             </Link>
           </div>
+
+          {/*
+           * Above-the-fold playable. The original hero ended at the CTAs —
+           * a cold visitor had to click and sign up before hearing
+           * anything the platform actually does. This rail puts one real
+           * track in their ears in five seconds, with all the math
+           * (BPM/key, licenses claimed) visible inline.
+           */}
+          {sampleSongs[0] && (
+            <HeroNowSpinning
+              song={sampleSongs[0]}
+              secondary={sampleSongs[1] ?? null}
+            />
+          )}
         </div>
       </section>
 
