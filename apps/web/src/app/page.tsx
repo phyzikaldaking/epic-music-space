@@ -11,9 +11,9 @@ import { CACHE_TAGS } from "@/lib/cacheTags";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Epic Music Space — Versus Battles, Live Listening Rooms, and Legacy Catalogs",
+  title: "Epic Music Space — The Digital Headquarters for Music Creators",
   description:
-    "Step in the ring on Versus, host live listening sessions, and surface your legacy catalog. Independent artists win on EMS — no playlists, no gatekeepers, 90% to the artist.",
+    "Build your profile, showcase your work, sell services, collaborate, and grow your music business. Step in the ring on Versus battles. Virtual studios and city districts coming next.",
   alternates: { canonical: "/" },
 };
 
@@ -61,22 +61,24 @@ function mapDemoTracksToSampleSongs(tracks: Awaited<ReturnType<typeof getDemoTra
 }
 
 const marqueeItems = [
+  "Your Music HQ",
+  "Showcase Your Work",
+  "Sell Your Services",
+  "Collaborate Live",
   "Versus Battles Tonight",
   "Step in the Ring",
-  "Fans Vote Live",
   "From the Vault",
-  "Legacy Catalogs",
-  "Live Listening Parties",
-  "Take the Floor",
   "90% to the Artist",
+  "Virtual Studios Coming Soon",
+  "Your Music HQ",
+  "Showcase Your Work",
+  "Sell Your Services",
+  "Collaborate Live",
   "Versus Battles Tonight",
   "Step in the Ring",
-  "Fans Vote Live",
   "From the Vault",
-  "Legacy Catalogs",
-  "Live Listening Parties",
-  "Take the Floor",
   "90% to the Artist",
+  "Virtual Studios Coming Soon",
 ];
 
 const trackArtClasses = ["vc-track-art-1", "vc-track-art-2", "vc-track-art-3"];
@@ -512,26 +514,33 @@ export default async function HomePage() {
         <div className="vc-horizon" aria-hidden="true" />
 
         <div className="vc-hero-content">
-          <p className="vc-eyebrow">Tonight on Epic Music Space — step in the ring</p>
+          <p className="vc-eyebrow">The digital headquarters for music creators</p>
           <h1 className="vc-hero-h1">
-            Versus Battles.
+            Build your profile.
             <br />
-            <span className="accent">Live tonight.</span>
+            <span className="accent">Showcase your work.</span>
             <br />
-            Fans pick the winner.
+            Grow your business.
           </h1>
           <p className="vc-hero-tagline">
-            Drop your track against another artist&apos;s. The whole room votes
-            in real time, the winner climbs the charts overnight, and the loser
-            gets the rematch. <span className="accent">No playlist gatekeepers. No cosigns.</span>
-            {" "}Just you, the song, and the room.
+            Epic Music Space is where artists, producers, and engineers run their
+            careers in one place — profile, catalog, services for sale, fan
+            collabs, and{" "}
+            <Link href="/versus" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
+              live Versus battles
+            </Link>{" "}
+            that put your music in front of voting fans every night.
+            <span className="block mt-2 text-base text-white/45">
+              Virtual studios and 3D city districts ship next — claim your block
+              before the doors open.
+            </span>
           </p>
           <div className="vc-hero-ctas">
-            <Link href="/versus" className="vc-btn vc-btn-pink">
-              Enter a Battle →
+            <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
+              Build Your Studio →
             </Link>
-            <Link href="/rooms/new" className="vc-btn vc-btn-ghost">
-              Or open a listening room
+            <Link href="/versus" className="vc-btn vc-btn-ghost">
+              Watch Versus Live
             </Link>
           </div>
         </div>
@@ -550,48 +559,82 @@ export default async function HomePage() {
 
       <section className="vc-section vc-platform-section">
         <div className="vc-container">
-          <p className="vc-section-eyebrow">What you can do here</p>
+          <p className="vc-section-eyebrow">Your music HQ</p>
           <h2 className="vc-section-title">
-            Built so independent artists win — without a label, without
-            permission, without waiting.
+            One platform for your profile, your catalog, your services,
+            <br />
+            and the fans who back you.
           </h2>
           <p className="vc-section-sub">
-            EMS gives you the tools the majors keep behind closed doors —
-            live audio rooms, licensing, distribution, fan investment, and
-            a stage to perform on every single night.
+            Epic Music Space is the digital headquarters where music creators
+            run the whole business — claim your studio, ship your work, sell
+            your services, collaborate with the room, and battle live.
+            Virtual studios and 3D city districts are next.
           </p>
           <div className="vc-platform-grid">
             <article className="vc-platform-card">
-              <span className="vc-platform-num">01 / Battle</span>
+              <span className="vc-platform-num">01 / Profile</span>
+              <h3>Claim your studio.</h3>
+              <p>
+                A real artist profile — bio, catalog, badges, district rank,
+                social links, payouts. The page you point fans, labels, and
+                supervisors to instead of pasting six different URLs.{" "}
+                <Link href="/auth/signup?role=ARTIST" className="vc-feat-link">
+                  Build your studio →
+                </Link>
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">02 / Catalog</span>
+              <h3>Showcase + license your work.</h3>
+              <p>
+                Upload tracks, set licensing terms in plain language, surface
+                older material in The Vault, and let fans become license
+                holders who share streaming revenue with you forever. You
+                keep 90%.
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">03 / Services</span>
+              <h3>Sell mixing, mastering, beats.</h3>
+              <p>
+                Producers and engineers list services with clear scope,
+                delivery time, and price. Fans and other artists book and
+                pay through EMS. No third-party invoicing, no chasing.
+              </p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">04 / Battle</span>
               <h3>Step in the ring on Versus.</h3>
               <p>
-                Drop your track against another artist&apos;s. Fans vote in
-                real time, winners climb the charts overnight. This is how
-                unknown artists go viral on EMS — every night, no playlist
-                gatekeepers, no cosigns required.{" "}
+                Drop your track against another artist&apos;s. The whole room
+                votes in real time, winners climb the charts overnight. This is
+                how unknown artists go viral on EMS — every night, no playlist
+                gatekeepers.{" "}
                 <Link href="/versus" className="vc-feat-link">
                   Enter a Battle →
                 </Link>
               </p>
             </article>
             <article className="vc-platform-card">
-              <span className="vc-platform-num">02 / Host</span>
-              <h3>Open a live listening room.</h3>
+              <span className="vc-platform-num">05 / Collaborate</span>
+              <h3>Live listening rooms.</h3>
               <p>
-                Your studio is a live audio space — like a club, a radio booth,
-                and a record release party in one. You press play, you talk
-                between tracks, you pass the mic to fans when they raise a hand.
-                Every listener in the world is sitting in the same room as you.
+                Open a live audio room for your album, your unreleased track,
+                or a session with another artist. Talk between songs, pass
+                the mic to fans, and turn listeners into license holders
+                without leaving the room.
               </p>
             </article>
             <article className="vc-platform-card">
-              <span className="vc-platform-num">03 / Get Paid</span>
-              <h3>Keep 90% of every license.</h3>
+              <span className="vc-platform-num">06 / Coming Soon</span>
+              <h3>Virtual studios + city districts.</h3>
               <p>
-                Every license sold during your session pays out instantly.
-                Fans become license holders who share in your streaming revenue —
-                so they win when you win, and they push your tracks harder
-                than any marketing team.
+                Walk into a 3D studio room, drop into another artist&apos;s
+                booth, and watch your track climb the leaderboard inside a
+                living city. Three districts (Label Row, Downtown Prime,
+                Indie Blocks) — claim your block now and migrate your studio
+                in on launch day.
               </p>
             </article>
           </div>
@@ -1049,19 +1092,19 @@ export default async function HomePage() {
         <div className="vc-container vc-closing-inner">
           <p className="vc-eyebrow">Your move</p>
           <h2 className="vc-section-title vc-closing-title">
-            Step in the ring. Press play. Watch the world show up.
+            Claim your studio. Run your business. Battle the room.
           </h2>
           <p className="vc-section-sub vc-closing-sub">
-            Sign-up is free. Uploads are free. Entering your first battle is
-            free. You only get charged when you sell — and when you sell, you
-            keep 90%.
+            Sign-up is free. Uploads are free. Entering your first Versus
+            battle is free. You only get charged when you sell — and when you
+            sell, you keep 90%. Virtual studios and the 3D city ship next.
           </p>
           <div className="vc-hero-ctas">
-            <Link href="/versus" className="vc-btn vc-btn-pink">
-              Enter a Battle →
+            <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
+              Build Your Studio →
             </Link>
-            <Link href="/rooms/new" className="vc-btn vc-btn-chrome">
-              Open a Listening Room
+            <Link href="/versus" className="vc-btn vc-btn-chrome">
+              Step in a Versus Battle
             </Link>
           </div>
         </div>
