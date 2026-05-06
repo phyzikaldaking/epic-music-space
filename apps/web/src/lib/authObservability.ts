@@ -1,4 +1,6 @@
+import { createHash } from "crypto";
 import { track } from "@/lib/analytics";
+import { prisma } from "@/lib/prisma";
 
 export type AuthEventName =
   | "register_rate_limited"
@@ -29,12 +31,39 @@ export type AuthEventMeta = {
   email?: string;
   userId?: string;
   ip?: string;
+  userAgent?: string;
   reason?: string;
   providerError?: string;
   retryAfterSeconds?: number;
   role?: string;
   [key: string]: unknown;
 };
+
+function hashIp(ip?: string): string | undefined {
+  if (!ip || ip === "unknown") return undefined;
+  const salt = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? "dev-ip-hash-salt";
+  return createHash("sha256").update(`${salt}:${ip}`).digest("hex");
+}
+
+async function persistAuthEvent(event: AuthEventName, meta: AuthEventMeta) {
+  if (!process.env.DATABASE_URL) return;
+  const { email, userId, ip, userAgent, reason, ...rest } = meta;
+  try {
+    await prisma.authEvent.create({
+      data: {
+        event,
+        userId: userId ?? null,
+        emailMasked: maskEmail(email) ?? null,
+        ipHash: hashIp(ip) ?? null,
+        userAgent: userAgent?.slice(0, 500) ?? null,
+        reason: reason ?? null,
+        meta: Object.keys(rest).length > 0 ? (rest as object) : undefined,
+      },
+    });
+  } catch (err) {
+    console.error("[auth-event] DB persist failed", err);
+  }
+}
 
 const ALERT_EVENTS = new Set<AuthEventName>([
   "verification_email_send_failed",
@@ -88,5 +117,5 @@ export async function emitAuthEvent(event: AuthEventName, meta: AuthEventMeta = 
     properties: payload,
   });
 
-  await maybeSendAlert(event, meta);
+  await Promise.allSettled([persistAuthEvent(event, meta), maybeSendAlert(event, meta)]);
 }

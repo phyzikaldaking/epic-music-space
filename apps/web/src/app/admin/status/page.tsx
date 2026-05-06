@@ -260,6 +260,35 @@ export default async function AdminStatusPage() {
         )}
       </section>
 
+      <section className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-white/50">
+          Sentry capture test
+        </h2>
+        <p className="mb-3 text-xs text-white/45">
+          Confirms error reporting is wired. The first link sends a captureMessage
+          (safe, no exception). The second throws a real error so you can verify
+          the global handler.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href="/api/admin/sentry-test?mode=message"
+            target="_blank"
+            rel="noopener"
+            className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20"
+          >
+            Send test event
+          </a>
+          <a
+            href="/api/admin/sentry-test?mode=throw"
+            target="_blank"
+            rel="noopener"
+            className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-bold text-red-300 hover:bg-red-500/20"
+          >
+            Throw test error
+          </a>
+        </div>
+      </section>
+
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
         <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-white/50">
           Activity (last 24h)

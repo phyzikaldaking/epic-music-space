@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rateLimitInline";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
+import { maskProfanity } from "@/lib/profanity";
 
 export const runtime = "nodejs";
 
@@ -78,12 +79,14 @@ export async function POST(
     return NextResponse.json({ error: "Match has ended" }, { status: 410 });
   }
 
+  const { masked } = maskProfanity(parsed.data.body.trim());
+
   const message = await prisma.verzuzMessage.create({
     data: {
       matchId: id,
       userId: session.user.id,
       roundNumber: Math.min(match.currentRound, match.totalRounds),
-      body: parsed.data.body.trim(),
+      body: masked,
     },
     select: {
       id: true,

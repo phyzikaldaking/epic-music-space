@@ -1763,6 +1763,26 @@ model PushToken {
 }
 
 // Lightweight daily session ping from native app shell.
+// Durable trail of authentication events (success + failure). PostHog gets the
+// same events for product analytics, but those go away if POSTHOG_KEY isn't
+// configured or the project is paused — this table is the always-on forensic
+// log. Email is stored already-masked; never write a plaintext password or token.
+model AuthEvent {
+  id          String   @id @default(cuid())
+  event       String   // matches AuthEventName union
+  userId      String?
+  emailMasked String?
+  ipHash      String?  // SHA256 of IP, never the raw value
+  userAgent   String?
+  reason      String?
+  meta        Json?
+  createdAt   DateTime @default(now())
+
+  @@index([event, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
 // Tracks real-world version distribution + platform mix without a 3P SDK.
 model NativeTelemetryEvent {
   id         String   @id @default(cuid())
