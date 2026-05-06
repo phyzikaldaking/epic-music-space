@@ -117,6 +117,8 @@ model User {
   posts              Post[]             @relation("PostAuthor")
   postComments       PostComment[]      @relation("PostCommentAuthor")
   postLikes          PostLike[]         @relation("PostLikeUser")
+  trackComments      TrackComment[]     @relation("TrackCommentAuthor")
+  trackLikes         TrackLike[]        @relation("TrackLikeUser")
   connectedAccounts  ConnectedAccount[]
   blocking           UserBlock[]        @relation("Blocker")
   blockedBy          UserBlock[]        @relation("Blocked")
@@ -275,11 +277,15 @@ model Song {
   behaviorEvents UserBehaviorEvent[]
   rooms          Room[]
   revenueEvents  RevenueEvent[]
+  trackComments  TrackComment[]
+  trackLikes     TrackLike[]
   @@index([artistId])
   @@index([district])
   @@index([isActive])
   @@index([aiScore])
   @@index([isActive, aiScore, createdAt])
+  @@index([isActive, genre])
+  @@index([isActive, bpm])
 }
 
 model LicenseToken {
@@ -1384,6 +1390,34 @@ model PostLike {
 
   @@unique([postId, userId])
   @@index([postId])
+}
+
+// ─────────────────────────────────────────
+// TRACK COMMENTS & LIKES
+// ─────────────────────────────────────────
+
+model TrackComment {
+  id       String   @id @default(cuid())
+  songId   String
+  song     Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User     @relation("TrackCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body     String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([songId, createdAt])
+}
+
+model TrackLike {
+  id       String   @id @default(cuid())
+  songId   String
+  song     Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation("TrackLikeUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([songId, userId])
+  @@index([songId])
 }
 
 // ─────────────────────────────────────────
