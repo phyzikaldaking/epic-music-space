@@ -46,33 +46,51 @@ export const lenientLimiter = createLimiter({
 
 type Limiter = typeof strictLimiter;
 
+export function getClientIp(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown"
+  );
+}
+
 /**
  * Apply rate limiting to a Next.js API route handler.
- * The key is based on the authenticated user ID or the client IP.
+ *
+ * Key precedence: explicit `keyFor(req)` override (typically a session user
+ * id) → "user:<id>"; otherwise the client IP. Per-user keys avoid penalising
+ * everyone behind a shared NAT and stop a single abuser from burning their
+ * IP-share against legitimate co-tenants.
  */
 export function withRateLimit(
   limiter: Limiter,
-  handler: (req: NextRequest, ctx: { key: string }) => Promise<NextResponse>
+  handler: (req: NextRequest, ctx: { key: string }) => Promise<NextResponse>,
+  options: { keyFor?: (req: NextRequest) => Promise<string | null> | string | null } = {},
 ) {
   return async (req: NextRequest): Promise<NextResponse> => {
-    // Prefer authenticated user ID for per-user limits; fall back to IP
-    const ip =
-      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      req.headers.get("x-real-ip") ??
-      "unknown";
+    let key: string | null = null;
+    if (options.keyFor) {
+      try {
+        const userId = await options.keyFor(req);
+        if (userId) key = `user:${userId}`;
+      } catch {
+        // Resolver failure shouldn't block the request — fall back to IP.
+      }
+    }
+    if (!key) key = `ip:${getClientIp(req)}`;
 
     try {
-      await limiter.consume(ip);
+      await limiter.consume(key);
     } catch {
       return NextResponse.json(
         { error: "Too many requests. Please slow down." },
         {
           status: 429,
           headers: { "Retry-After": "60" },
-        }
+        },
       );
     }
 
-    return handler(req, { key: ip });
+    return handler(req, { key });
   };
 }

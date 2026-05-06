@@ -5,3 +5,15 @@
 // truth.
 export * from "./sentry.client.config";
 import "./sentry.client.config";
+import { initBotId } from "botid/client/core";
+
+initBotId({
+  protect: [
+    { path: "/api/auth/register", method: "POST" },
+    { path: "/api/posts", method: "POST" },
+    { path: "/api/dmca", method: "POST" },
+    { path: "/api/checkout", method: "POST" },
+    { path: "/api/payments/create-checkout", method: "POST" },
+    { path: "/api/stripe/checkout", method: "POST" },
+  ],
+});

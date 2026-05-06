@@ -4,46 +4,47 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.resolve(__dirname, "src");
 
+// CSP frame-ancestors 'none' (set in middleware) is the modern equivalent;
+// X-Frame-Options DENY is belt-and-suspenders for legacy clients. Stripe
+// Checkout / OAuth popups need same-origin-allow-popups (not same-origin) to
+// open and post back. The Permissions-Policy denies every powerful API we
+// don't use and self-allows camera/mic for creator recording flows.
 const securityHeaders = [
+  { key: "X-DNS-Prefetch-Control", value: "off" },
+  { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-site" },
+  { key: "Origin-Agent-Cluster", value: "?1" },
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "SAMEORIGIN" },
-  { key: "X-XSS-Protection", value: "1; mode=block" },
+  { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), payment=(self)",
+    value: [
+      "accelerometer=()",
+      "autoplay=(self)",
+      "browsing-topics=()",
+      "camera=(self)",
+      "display-capture=()",
+      "encrypted-media=(self)",
+      "fullscreen=(self)",
+      "geolocation=()",
+      "gyroscope=()",
+      "magnetometer=()",
+      "microphone=(self)",
+      "midi=()",
+      "payment=(self)",
+      "picture-in-picture=(self)",
+      "publickey-credentials-get=(self)",
+      "screen-wake-lock=()",
+      "sync-xhr=()",
+      "usb=()",
+      "xr-spatial-tracking=(self)",
+    ].join(", "),
   },
   {
     key: "Strict-Transport-Security",
     value: "max-age=63072000; includeSubDomains; preload",
-  },
-  {
-    key: "Content-Security-Policy",
-    value: [
-      "default-src 'self'",
-      // 'unsafe-inline'/'unsafe-eval' kept for Next.js dev + framework hydration.
-      // Worth migrating to a nonce-based CSP in a follow-up; for now we keep
-      // them consistent with current Next.js + Stripe.js requirements.
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      // img-src: data: needed for inline SVGs/posters; blob: for in-page
-      // preview of files the user just selected (cover/avatar previews).
-      // Mux poster thumbnails live on image.mux.com.
-      "img-src 'self' data: blob: https://epicmusicspace.com https://www.epicmusicspace.com https://*.amazonaws.com https://*.supabase.co https://lh3.googleusercontent.com https://images.unsplash.com https://image.mux.com",
-      // media-src: blob: required by Mux player's MSE-based HLS playback.
-      // Stream proxies: own origin (audio proxy) + Mux video CDN.
-      "media-src 'self' blob: https://*.amazonaws.com https://*.supabase.co https://stream.mux.com https://*.mux.com",
-      // connect-src: add Mux stream + Mux Data analytics (litix.io).
-      "connect-src 'self' https://*.supabase.co https://api.openai.com https://api.stripe.com https://checkout.stripe.com https://stream.mux.com https://*.mux.com https://*.litix.io",
-      // frame-src: Stripe Checkout/Elements + Mux player iframe + supported
-      // embeds we render via EmbeddedAudioPreview (YouTube/Vimeo/SoundCloud/Spotify).
-      "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com https://*.mux.com https://www.youtube.com https://player.vimeo.com https://w.soundcloud.com https://open.spotify.com",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
-      "object-src 'none'",
-      "font-src 'self' https://fonts.gstatic.com",
-      "worker-src 'self' blob:",
-    ].join("; "),
   },
 ];
 

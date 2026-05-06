@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { strictLimiter } from "@/lib/rateLimit";
 import { sendSupportConfirmation } from "@/lib/email";
+import { page } from "@/lib/pager";
 import { randomBytes } from "crypto";
 
 export const runtime = "nodejs";
@@ -74,16 +75,13 @@ export async function POST(req: NextRequest) {
       console.warn("[support] autoresponder failed", err);
     }
 
-    const webhook = process.env.AUTH_ALERT_WEBHOOK_URL;
-    if (webhook) {
-      void fetch(webhook, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: `📬 New support ticket [${ticket.ticketCode}] — ${ticket.subject}\nFrom: ${ticket.email}\n${ticket.body.slice(0, 400)}${ticket.body.length > 400 ? "…" : ""}`,
-        }),
-      }).catch(() => {});
-    }
+    page({
+      severity: "info",
+      title: `📬 New support ticket [${ticket.ticketCode}] — ${ticket.subject}`,
+      body: ticket.body.slice(0, 400) + (ticket.body.length > 400 ? "…" : ""),
+      context: { from: ticket.email, ticketCode: ticket.ticketCode },
+      fingerprint: ticket.ticketCode,
+    });
   })();
 
   return NextResponse.json(

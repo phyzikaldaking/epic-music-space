@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { rateLimit } from "@/lib/rateLimitInline";
+import { page } from "@/lib/pager";
 
 export const runtime = "nodejs";
 
@@ -45,16 +46,13 @@ export async function POST(req: Request) {
     }
   }
 
-  const webhook = process.env.AUTH_ALERT_WEBHOOK_URL;
-  if (webhook) {
-    fetch(webhook, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: `[global-error] ${body.message?.slice(0, 200) ?? "unknown"}\nhref: ${body.href ?? ""}\nref: ${body.digest ?? "n/a"}`,
-      }),
-    }).catch(() => {});
-  }
+  page({
+    severity: "error",
+    title: `global-error: ${body.message?.slice(0, 200) ?? "unknown"}`,
+    body: body.stack?.slice(0, 1000),
+    context: { href: body.href, digest: body.digest },
+    fingerprint: body.digest,
+  });
 
   return NextResponse.json({ ok: true });
 }

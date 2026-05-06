@@ -6,6 +6,7 @@ import { advanceMatchIfNeeded, tallyRounds } from "@/lib/verzuz";
 import VerzuzStage from "./VerzuzStage";
 import VerzuzChatPanel from "@/components/verzuz/VerzuzChatPanel";
 import VerzuzRSVPButton from "@/components/verzuz/VerzuzRSVPButton";
+import SectionErrorBoundary from "@/components/SectionErrorBoundary";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -69,6 +70,7 @@ export default async function VerzuzPage({ params }: Props) {
 
   return (
     <>
+      <SectionErrorBoundary title="Verzuz Stage">
       <VerzuzStage
         matchId={match.id}
         artistA={{
@@ -105,6 +107,7 @@ export default async function VerzuzPage({ params }: Props) {
         isViewerArtist={isViewerArtist}
         isAuthed={!!viewerId}
       />
+      </SectionErrorBoundary>
 
       <section className="mx-auto mt-8 grid max-w-5xl gap-6 px-4 pb-16 lg:grid-cols-[1.4fr_1fr]">
         <div className="space-y-4">

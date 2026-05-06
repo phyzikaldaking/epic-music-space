@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isLiveKitConfigured } from "@/lib/livekit";
 import { isRoomExpired } from "@/lib/roomTier";
 import RoomClient from "./RoomClient";
+import SectionErrorBoundary from "@/components/SectionErrorBoundary";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -39,6 +40,7 @@ export default async function RoomPage({ params }: Props) {
   const liveKitOnline = isLiveKitConfigured();
 
   return (
+    <SectionErrorBoundary title="Room">
     <RoomClient
       room={{
         id: room.id,
@@ -63,5 +65,6 @@ export default async function RoomPage({ params }: Props) {
       currentUserId={session.user.id}
       liveKitOnline={liveKitOnline}
     />
+    </SectionErrorBoundary>
   );
 }

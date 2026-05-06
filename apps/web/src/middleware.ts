@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildContentSecurityPolicy } from "@/lib/csp";
 
 /**
  * Next.js Edge Middleware - route protection for EMS.
@@ -10,6 +11,17 @@ import { NextRequest, NextResponse } from "next/server";
 export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isAuthed = hasSessionCookie(req);
+  const nonce = crypto.randomUUID().replaceAll("-", "");
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
+
+  function nextResponse() {
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    if (shouldAttachCsp(pathname)) {
+      res.headers.set("Content-Security-Policy", buildContentSecurityPolicy(nonce));
+    }
+    return res;
+  }
 
   function redirectToSignIn() {
     const signIn = new URL("/auth/signin", req.url);
@@ -21,7 +33,7 @@ export default async function middleware(req: NextRequest) {
     if (!isAuthed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.next();
+    return nextResponse();
   }
 
   const protectedPrefixes = [
@@ -41,7 +53,17 @@ export default async function middleware(req: NextRequest) {
     if (!isAuthed) return redirectToSignIn();
   }
 
-  return NextResponse.next();
+  return nextResponse();
+}
+
+function shouldAttachCsp(pathname: string) {
+  return !(
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/_next/") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname.includes(".")
+  );
 }
 
 function hasSessionCookie(req: NextRequest) {
