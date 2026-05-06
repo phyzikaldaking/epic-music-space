@@ -8,7 +8,7 @@
     "start": "next start",
     "audit:perf": "npx -y lighthouse http://localhost:3000 --output=json --output-path=./lhreport.json --chrome-flags='--headless'",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:auth": "vitest run src/lib/__tests__/authIdentity.test.ts src/lib/__tests__/criticalEnv.test.ts src/lib/__tests__/phoneAuth.test.ts",
     "test:e2e": "vitest run src/lib/__tests__/criticalFlows.e2e.test.ts src/lib/__tests__/adminRiskRoute.test.ts src/lib/__tests__/csp.test.ts",

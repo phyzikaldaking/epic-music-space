@@ -10,6 +10,25 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  {
+    // Build output, generated code, and third-party. Lint these and you get
+    // hundreds of false-positive `require()` errors from compiled Next.js
+    // chunks. This list is the parity with what `next lint` skipped by
+    // default — when migrating off `next lint` to `eslint .` directly, this
+    // is the missing piece.
+    ignores: [
+      ".next/**",
+      "node_modules/**",
+      "out/**",
+      "public/**",
+      "coverage/**",
+      "playwright-report/**",
+      "test-results/**",
+      ".turbo/**",
+      ".vercel/**",
+      "next-env.d.ts",
+    ],
+  },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     rules: {
