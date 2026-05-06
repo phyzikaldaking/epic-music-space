@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { appendCallbackParam, sanitizeCallbackPath } from "@/lib/safeCallback";
+import { isCapacitorWebView } from "@/lib/runtime";
 
 function SignInContent({
   googleEnabled,
@@ -22,6 +23,20 @@ function SignInContent({
   const resetSuccess = reset === "1" || reset === "ok";
   const oauthError = params.get("error") ?? "";
   const callbackUrl = sanitizeCallbackPath(params.get("callbackUrl"));
+
+  // Capacitor's WKWebView is an "embedded WebView" — Google explicitly
+  // blocks OAuth in that environment with a "This browser may not be
+  // secure" error. Apple sign-in works inside the WebView. So we hide
+  // Google when inside the mobile shell and surface a hint that
+  // explains where it lives. Detection has to run client-side because
+  // SSR doesn't know about the shell.
+  const [hideGoogleForWebView, setHideGoogleForWebView] = useState(false);
+  useEffect(() => {
+    setHideGoogleForWebView(isCapacitorWebView());
+  }, []);
+  const showGoogle = (typeof window === "undefined"
+    ? true
+    : !hideGoogleForWebView);
 
   const [mode, setMode] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
@@ -348,7 +363,7 @@ function SignInContent({
                   </button>
                 )}
 
-                {googleEnabled && (
+                {googleEnabled && showGoogle && (
                   <button
                     type="button"
                     onClick={() => signIn("google", { callbackUrl })}
@@ -362,6 +377,12 @@ function SignInContent({
                     </svg>
                     Continue with Google
                   </button>
+                )}
+                {googleEnabled && !showGoogle && (
+                  <p className="text-center text-[11px] text-white/45">
+                    Google sign-in only works on the web — Google blocks it in
+                    in-app browsers. Use Apple, email, or phone here.
+                  </p>
                 )}
               </div>
             </>
