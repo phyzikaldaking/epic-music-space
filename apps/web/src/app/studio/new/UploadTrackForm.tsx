@@ -9,6 +9,7 @@ import { classifyAudioSource } from "@/lib/audioSource";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 import { validateUpload } from "@/lib/uploadValidation";
+import { uploadImage, ClientUploadError } from "@/lib/clientImageUpload";
 
 type UploadState = "idle" | "uploading" | "done" | "error";
 
@@ -224,12 +225,6 @@ export default function UploadTrackForm() {
   async function handleCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const check = validateUpload("cover", file);
-    if (!check.ok) {
-      setCoverUploadState("error");
-      setError(check.reason);
-      return;
-    }
     setCoverFile(file);
     setCoverPreview((prev) => {
       // Revoke the previous blob URL so we don't leak memory across reuploads.
@@ -240,9 +235,20 @@ export default function UploadTrackForm() {
     setCoverProgress(0);
     setError(null);
     try {
-      const { signedUrl, publicUrl } = await getSignedUrl("cover", file);
-      await uploadDirect(signedUrl, file, setCoverProgress);
-      setCoverUrl(publicUrl);
+      // Bulletproof image pipeline: validates by MIME *or* extension
+      // (iPhone HEIC + iCloud empty-MIME picks both pass), downscales
+      // 12MP camera shots to 2048px on the long edge, re-encodes to
+      // JPEG, and PUTs to Supabase with up to 2 retries on flaky
+      // mobile networks.
+      const result = await uploadImage(file, {
+        kind: "cover",
+        onProgress: (p) => {
+          if (p.phase === "uploading" && typeof p.percent === "number") {
+            setCoverProgress(p.percent);
+          }
+        },
+      });
+      setCoverUrl(result.publicUrl);
       setCoverUploadState("done");
       buzz(20);
     } catch (err) {
@@ -253,7 +259,13 @@ export default function UploadTrackForm() {
       });
       setCoverFile(null);
       setCoverProgress(0);
-      setError(err instanceof Error ? err.message : "Cover upload failed. You can continue without a cover.");
+      setError(
+        err instanceof ClientUploadError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Cover upload failed. You can continue without a cover.",
+      );
     }
   }
 

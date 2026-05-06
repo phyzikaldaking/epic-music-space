@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { uploadImage, ClientUploadError } from "@/lib/clientImageUpload";
 
 interface ProfileData {
   name: string | null;
@@ -46,48 +47,24 @@ export default function ProfileEditPage() {
   async function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-    const MAX_BYTES = 10 * 1024 * 1024;
-    if (!ALLOWED.includes(file.type)) {
-      setError("Image must be JPEG, PNG, WebP, or GIF.");
-      return;
-    }
-    if (file.size > MAX_BYTES) {
-      setError("Image must be under 10 MB.");
-      return;
-    }
     setUploading(true);
     setError("");
     try {
-      // Step 1 — ask the server for a Supabase signed upload URL.
-      const initRes = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "cover",
-          fileName: file.name,
-          mimeType: file.type,
-          fileSize: file.size,
-        }),
-      });
-      const initData = (await initRes.json()) as {
-        signedUrl?: string;
-        publicUrl?: string;
-        error?: string;
-      };
-      if (!initRes.ok || !initData.signedUrl || !initData.publicUrl) {
-        throw new Error(initData.error ?? "Upload init failed.");
-      }
-      // Step 2 — PUT the file directly to Supabase Storage.
-      const putRes = await fetch(initData.signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-      if (!putRes.ok) throw new Error(`Upload failed (${putRes.status}).`);
-      setImageUrl(initData.publicUrl);
+      // Shared `uploadImage` helper: validates by MIME *or* extension
+      // (so iPhone HEIC/HEIF and empty-MIME picks from iCloud Drive both
+      // work), downscales huge camera shots to 2048px on the long edge,
+      // re-encodes to JPEG/PNG to stay under the 10 MB cap, and retries
+      // the PUT on transient mobile-network failures.
+      const result = await uploadImage(file, { kind: "cover" });
+      setImageUrl(result.publicUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed. Paste a URL instead.");
+      const msg =
+        err instanceof ClientUploadError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Upload failed. Paste a direct image URL below instead.";
+      setError(msg);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -449,7 +426,7 @@ export default function ProfileEditPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+            accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
             aria-label="Upload avatar image"
             className="hidden"
             onChange={handleAvatarFile}

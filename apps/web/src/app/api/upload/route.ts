@@ -142,8 +142,16 @@ export async function POST(req: NextRequest) {
   const extAllowed = !!safeExt && allowedExts.has(safeExt);
   if (!mimeAllowed && !extAllowed) {
     const human = mimeType || `.${safeExt ?? "?"}`;
+    // Tailor the suggestion to the upload type so an artist trying to
+    // upload a profile pic doesn't see "Try MP3, WAV, FLAC..." which
+    // makes them think the entire form is broken.
+    const suggestion = isStem
+      ? "Try ZIP, WAV, MP3, FLAC, or M4A."
+      : isAudio
+        ? "Try MP3, WAV, FLAC, M4A, AAC, or OGG."
+        : "Try JPG, PNG, WebP, GIF, or HEIC. (iPhone Live Photos / HEIC from your camera roll work too.)";
     return NextResponse.json(
-      { error: `We can't accept "${human}" yet. Try MP3, WAV, FLAC, M4A, AAC, or OGG.` },
+      { error: `We can't accept "${human}" yet. ${suggestion}` },
       { status: 415 }
     );
   }

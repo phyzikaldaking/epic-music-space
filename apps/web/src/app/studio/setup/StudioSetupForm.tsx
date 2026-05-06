@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { uploadImage, ClientUploadError } from "@/lib/clientImageUpload";
 
 type District = "INDIE_BLOCKS" | "DOWNTOWN_PRIME" | "LABEL_ROW";
 
@@ -41,46 +42,22 @@ export default function StudioSetupForm({
   async function handleBannerFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-    const MAX_BYTES = 10 * 1024 * 1024;
-    if (!ALLOWED.includes(file.type)) {
-      setError("Banner must be JPEG, PNG, WebP, or GIF.");
-      return;
-    }
-    if (file.size > MAX_BYTES) {
-      setError("Banner must be under 10 MB.");
-      return;
-    }
     setError(null);
     setUploadingBanner(true);
     try {
-      const initRes = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "cover",
-          fileName: file.name,
-          mimeType: file.type,
-          fileSize: file.size,
-        }),
-      });
-      const initData = (await initRes.json()) as {
-        signedUrl?: string;
-        publicUrl?: string;
-        error?: string;
-      };
-      if (!initRes.ok || !initData.signedUrl || !initData.publicUrl) {
-        throw new Error(initData.error ?? "Upload init failed.");
-      }
-      const putRes = await fetch(initData.signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-      if (!putRes.ok) throw new Error(`Upload failed (${putRes.status}).`);
-      setBannerUrl(initData.publicUrl);
+      // Shared `uploadImage` helper handles HEIC/HEIF, empty MIME from
+      // iCloud picks, auto-resize for camera-sized originals, and PUT
+      // retries — same pipeline track-cover and avatar uploads use.
+      const result = await uploadImage(file, { kind: "cover" });
+      setBannerUrl(result.publicUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Banner upload failed.");
+      const msg =
+        err instanceof ClientUploadError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Banner upload failed. Try again or paste a direct URL below.";
+      setError(msg);
     } finally {
       setUploadingBanner(false);
       if (bannerFileRef.current) bannerFileRef.current.value = "";
@@ -208,7 +185,7 @@ export default function StudioSetupForm({
           <input
             ref={bannerFileRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
+            accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
             aria-label="Upload studio banner"
             className="hidden"
             onChange={handleBannerFile}
