@@ -15,7 +15,15 @@ export type AuthEventName =
   | "verify_expired_link"
   | "verify_success"
   | "signin_invalid_credentials"
-  | "signin_email_unverified";
+  | "signin_email_unverified"
+  | "signin_rate_limited"
+  | "signin_suspended"
+  | "oauth_signin_success"
+  | "oauth_signin_failure"
+  | "phone_login_code_requested"
+  | "phone_login_code_failed"
+  | "phone_signin_invalid_code"
+  | "phone_signin_invalid_phone";
 
 export type AuthEventMeta = {
   email?: string;
