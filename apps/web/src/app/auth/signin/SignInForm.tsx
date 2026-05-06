@@ -9,40 +9,155 @@ import { appendCallbackParam, sanitizeCallbackPath } from "@/lib/safeCallback";
 function SignInContent({
   googleEnabled,
   appleEnabled,
+  phoneEnabled,
 }: {
   googleEnabled: boolean;
   appleEnabled: boolean;
+  phoneEnabled: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
   const verified = params.get("verified") === "true";
+  const reset = params.get("reset");
+  const resetSuccess = reset === "1" || reset === "ok";
+  const oauthError = params.get("error") ?? "";
   const callbackUrl = sanitizeCallbackPath(params.get("callbackUrl"));
 
+  const [mode, setMode] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [phoneCode, setPhoneCode] = useState("");
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Map every NextAuth-surfaced error to a specific actionable message.
+  // The previous catch-all "Sign-in failed. Please try again." was a
+  // dead-end for users who hit OAuthCallback (configuration), Verification
+  // (expired email link), AccessDenied (provider rejected), etc.
+  const oauthErrorMessage = oauthError
+    ? oauthErrorCopy(oauthError)
+    : "";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
+    const result =
+      mode === "email"
+        ? await signIn("credentials", {
+            email,
+            password,
+            redirect: false,
+          })
+        : await signIn("phone-otp", {
+            phone,
+            code: phoneCode,
+            redirect: false,
+          });
 
     if (result?.error) {
-      if (result.error.includes("EMAIL_NOT_VERIFIED")) {
-        setError("Please verify your email before signing in.");
+      // NextAuth v5 surfaces the CredentialsSignin subclass `code` field
+      // on result.code in beta.25+. Older releases left it only in the
+      // redirect URL — parse that as a fallback so the error mapping
+      // doesn't silently collapse to "Invalid email or password" for
+      // every specific failure case (rate-limited / unverified / etc.)
+      // the way it did before.
+      let urlCode: string | null = null;
+      try {
+        if (result.url && typeof window !== "undefined") {
+          urlCode = new URL(result.url, window.location.origin).searchParams.get("code");
+        }
+      } catch {
+        /* result.url missing or not parseable */
+      }
+      const authCode = (
+        ("code" in result ? (result as { code?: unknown }).code : undefined) ??
+        urlCode ??
+        result.error ??
+        ""
+      )
+        .toString()
+        .toLowerCase();
+
+      if (mode === "phone") {
+        if (authCode.includes("rate_limited")) {
+          setError("Too many sign-in attempts. Wait a minute, then request a fresh code.");
+        } else if (authCode.includes("account_suspended")) {
+          setError("This account is restricted. Contact support for help.");
+        } else {
+          setError("Invalid or expired code. Request a new code and try again.");
+        }
+      } else if (authCode.includes("email_not_verified")) {
+        setError("Please verify your email before signing in. Check your inbox — or use Resend below.");
+      } else if (authCode.includes("rate_limited")) {
+        setError("Too many sign-in attempts. Please wait a minute and try again.");
+      } else if (authCode.includes("account_suspended")) {
+        setError("This account is restricted. Contact support for help.");
       } else {
-        setError("Invalid email or password.");
+        setError("Email or password didn't match. Try again, or use Forgot password.");
       }
       setLoading(false);
     } else {
+      // router.refresh() forces the next page render to read the JWT
+      // cookie that was just set in the response headers — without it,
+      // a server-rendered destination might paint signed-out for one
+      // tick.
+      router.refresh();
       router.push(callbackUrl);
+    }
+  }
+
+  function oauthErrorCopy(code: string): string {
+    // NextAuth v5 + Auth.js core error codes plus our app-specific ones.
+    // Anything else falls through to a generic but still-actionable line.
+    switch (code) {
+      case "OAuthAccountNotLinked":
+        return "This email already has a different sign-in method. Use your original method (password or the other provider), then link this one from your account settings.";
+      case "AccessDenied":
+        return "Sign-in was cancelled or rejected by the provider. Try again, or use a different sign-in method.";
+      case "Verification":
+        return "That sign-in link expired or was already used. Request a fresh one and click it within 24 hours.";
+      case "OAuthCallback":
+      case "OAuthSignin":
+      case "OAuthCreateAccount":
+        return "Couldn't complete sign-in with that provider. Refresh and try again, or use a different method.";
+      case "Configuration":
+        return "Sign-in is temporarily misconfigured. Try again in a minute, or use a different provider.";
+      case "CredentialsSignin":
+        return "Email or password didn't match. Try again, or use Forgot password.";
+      case "account_suspended":
+        return "This account is restricted. Contact support for help.";
+      case "SessionRequired":
+        return "You need to be signed in for that.";
+      default:
+        return "Sign-in failed. Please try again, or use a different method below.";
+    }
+  }
+
+  async function handleRequestPhoneCode() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/auth/phone/request-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setError(data.error ?? "Could not send a login code. Please try again.");
+      } else {
+        setPhoneCodeSent(true);
+      }
+    } catch {
+      setError("Could not send a login code. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -58,6 +173,12 @@ function SignInContent({
           {verified && (
             <div className="mb-4 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">
               Email verified! You can now sign in.
+            </div>
+          )}
+
+          {resetSuccess && (
+            <div className="mb-4 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">
+              Password updated. Sign in with your new password.
             </div>
           )}
 
@@ -78,49 +199,129 @@ function SignInContent({
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-white/70">
+          {oauthErrorMessage && !error && (
+            <div className="mb-4 rounded-lg bg-red-500/20 px-4 py-3 text-sm text-red-400">
+              {oauthErrorMessage}
+            </div>
+          )}
+
+          {phoneEnabled && (
+            <div className="mb-4 grid grid-cols-2 rounded-xl border border-white/10 bg-white/5 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("email");
+                  setError("");
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  mode === "email" ? "bg-white text-black" : "text-white/70 hover:bg-white/10"
+                }`}
+              >
                 Email
-              </label>
-              <input
-                type="email"
-                name="email"
-                autoComplete="email"
-                inputMode="email"
-                autoCapitalize="none"
-                spellCheck={false}
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-base text-white placeholder-white/30 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                placeholder="you@example.com"
-              />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("phone");
+                  setError("");
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  mode === "phone" ? "bg-white text-black" : "text-white/70 hover:bg-white/10"
+                }`}
+              >
+                Phone code
+              </button>
             </div>
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label className="block text-sm font-medium text-white/70">Password</label>
-                <Link href="/auth/forgot-password" className="text-xs text-brand-300 hover:underline">
-                  Forgot?
-                </Link>
-              </div>
-              <input
-                type="password"
-                name="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-base text-white placeholder-white/30 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                placeholder="••••••••"
-              />
-            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {mode === "email" ? (
+              <>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-white/70">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    autoComplete="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-base text-white placeholder-white/30 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    placeholder="you@example.com"
+                  />
+                </div>
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <label className="block text-sm font-medium text-white/70">Password</label>
+                    <Link href="/auth/forgot-password" className="text-xs text-brand-300 hover:underline">
+                      Forgot?
+                    </Link>
+                  </div>
+                  <input
+                    type="password"
+                    name="password"
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-base text-white placeholder-white/30 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    placeholder="••••••••"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-white/70">Phone number</label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    autoComplete="tel"
+                    inputMode="tel"
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-base text-white placeholder-white/30 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    placeholder="+15551234567"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRequestPhoneCode}
+                  disabled={loading || !phone}
+                  className="rounded-xl border border-white/15 py-2.5 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-60 transition"
+                >
+                  {phoneCodeSent ? "Resend code" : "Send login code"}
+                </button>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-white/70">6-digit code</label>
+                  <input
+                    type="text"
+                    name="phone-code"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    required
+                    value={phoneCode}
+                    onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-base text-white placeholder-white/30 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    placeholder="123456"
+                  />
+                </div>
+              </>
+            )}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (mode === "phone" && !phoneCodeSent)}
               className="rounded-xl bg-brand-500 py-3 font-semibold text-white hover:bg-brand-600 disabled:opacity-60 transition"
             >
-              {loading ? "Signing in…" : "Sign in"}
+              {loading ? "Signing in…" : mode === "phone" ? "Sign in with code" : "Sign in"}
             </button>
           </form>
 
@@ -187,13 +388,19 @@ function SignInContent({
 export default function SignInForm({
   googleEnabled,
   appleEnabled,
+  phoneEnabled,
 }: {
   googleEnabled: boolean;
   appleEnabled: boolean;
+  phoneEnabled: boolean;
 }) {
   return (
     <Suspense>
-      <SignInContent googleEnabled={googleEnabled} appleEnabled={appleEnabled} />
+      <SignInContent
+        googleEnabled={googleEnabled}
+        appleEnabled={appleEnabled}
+        phoneEnabled={phoneEnabled}
+      />
     </Suspense>
   );
 }

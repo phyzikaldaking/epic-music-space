@@ -40,7 +40,18 @@ export function phoneManageGrantIdentifier(userId: string): string {
 }
 
 export function hashPhoneLoginCode(code: string, phone: string): string {
-  const pepper = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-phone-auth";
+  const pepper = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!pepper) {
+    // The dev fallback ("dev-phone-auth") used to silently apply if the
+    // secret was unset — that meant a misconfigured production deploy
+    // shipped with a known-attacker-readable pepper, letting anyone who
+    // knew that constant forge OTP hashes if they could write to the DB.
+    // Hard-fail in production, fall back only in development/test.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("AUTH_SECRET (or NEXTAUTH_SECRET) must be set in production for phone-OTP signing.");
+    }
+    return hashAuthToken(`${phone}:${code}:dev-phone-auth-DO-NOT-USE-IN-PROD`);
+  }
   return hashAuthToken(`${phone}:${code}:${pepper}`);
 }
 

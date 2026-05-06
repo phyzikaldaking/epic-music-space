@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
-import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
 import { strictLimiter } from "@/lib/rateLimit";
+import { completePasswordReset } from "@/lib/passwordReset";
+import { getClientIp } from "@/lib/authIdentity";
+import {
+  evaluatePassword,
+  MAX_LENGTH as PASSWORD_MAX_LENGTH,
+  MIN_LENGTH as PASSWORD_MIN_LENGTH,
+} from "@/lib/passwordStrength";
 
 export const runtime = "nodejs";
 
 const bodySchema = z.object({
   token: z.string().min(64).max(128),
-  password: z.string().min(8).max(200),
+  password: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
 });
 
 /**
@@ -21,8 +25,7 @@ const bodySchema = z.object({
  * the user's passwordHash and mark the token used in a single transaction.
  */
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(req.headers);
   try {
     await strictLimiter.consume(`reset-password:${ip}`);
   } catch {
@@ -47,38 +50,33 @@ export async function POST(req: NextRequest) {
   }
   const { token, password } = parsed.data;
 
-  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  // Reject weak / common passwords with the same rules signup uses, so a
+  // user can't reset *to* a password their original signup would have
+  // refused. We don't have name/email here without doing a DB lookup
+  // first — passing [] as personalTokens just skips the soft penalty,
+  // which is acceptable: the meter still enforces length + variety + the
+  // common-password blocklist.
+  const strength = evaluatePassword(password, []);
+  if (!strength.acceptable) {
+    return NextResponse.json(
+      {
+        error:
+          strength.hint ||
+          `Password must be at least ${PASSWORD_MIN_LENGTH} characters and mix letters with numbers.`,
+      },
+      { status: 400 },
+    );
+  }
 
-  const row = await prisma.passwordResetToken.findUnique({
-    where: { tokenHash },
-    select: { id: true, userId: true, expires: true, usedAt: true },
+  const outcome = await completePasswordReset(token, password, {
+    revokeSessions: true,
   });
-  if (!row || row.usedAt || row.expires.getTime() < Date.now()) {
+  if (!outcome.ok) {
     return NextResponse.json(
       { error: "This reset link has expired. Request a new one." },
       { status: 400 },
     );
   }
-
-  const passwordHash = await bcrypt.hash(password, 12);
-
-  // Mark used + update password atomically — also revoke any other
-  // outstanding reset tokens for this user so a stolen one can't be
-  // reused after rotation.
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: row.userId },
-      data: { passwordHash },
-    }),
-    prisma.passwordResetToken.update({
-      where: { id: row.id },
-      data: { usedAt: new Date() },
-    }),
-    prisma.passwordResetToken.updateMany({
-      where: { userId: row.userId, usedAt: null, id: { not: row.id } },
-      data: { usedAt: new Date() },
-    }),
-  ]);
 
   return NextResponse.json({ ok: true });
 }
