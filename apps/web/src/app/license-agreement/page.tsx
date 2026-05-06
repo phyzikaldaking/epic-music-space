@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Standard License Agreement — Epic Music Space",
+  title: "Standard License Agreement",
   description: "The standard non-exclusive license used for tracks purchased on Epic Music Space.",
 };
 

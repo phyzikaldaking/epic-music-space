@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Licensing Agreement — Epic Music Space",
+  title: "Licensing Agreement",
 };
 
 export default function LicensingPage() {

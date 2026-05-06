@@ -8,7 +8,7 @@ import AdActions from "./AdActions";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "My Ad Placements | Epic Music Space",
+  title: "My Ad Placements",
   description: "Live impressions, clicks, CTR, and flight time for your active ad placements.",
 };
 

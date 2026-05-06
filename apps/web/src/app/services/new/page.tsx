@@ -5,7 +5,7 @@ import { canListServices, kindsAllowedForRole } from "@/lib/serviceListings";
 import NewServiceForm from "./NewServiceForm";
 
 export const metadata = {
-  title: "List a Service | Epic Music Space",
+  title: "List a Service",
   description: "Engineers and producers: list a mix, master, beat, template, or lesson.",
 };
 

@@ -10,7 +10,7 @@ import ResendVerificationButton from "@/components/ResendVerificationButton";
 import DashboardTimingBeacon from "@/components/DashboardTimingBeacon";
 
 export const metadata: Metadata = {
-  title: "Dashboard | Epic Music Space",
+  title: "Dashboard",
   description: "Manage your licenses, transactions, tracks, and auction activity on Epic Music Space.",
 };
 import { redirect } from "next/navigation";

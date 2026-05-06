@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getMobileReleaseSummary, mobileStoreLinks } from "@/lib/mobileApp";
 
 export const metadata: Metadata = {
-  title: "Get the App — Epic Music Space",
+  title: "Get the App",
   description:
     "Download the Epic Music Space app for iOS and Android. License music, join live sessions, and battle in real-time — all from your phone.",
   openGraph: {

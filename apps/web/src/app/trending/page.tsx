@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import SongCard from "@/components/SongCard";
 
 export const metadata: Metadata = {
-  title: "Trending — Epic Music Space",
+  title: "Trending",
   description:
     "What artists, fans, and licensees are reaching for right now. Live ranking based on plays, sales, follows, and AI score.",
 };

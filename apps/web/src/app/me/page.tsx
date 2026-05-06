@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
-  title: "Your studio — Epic Music Space",
+  title: "Your studio",
   description: "Short-link to your own studio profile or dashboard.",
   robots: { index: false, follow: false },
 };

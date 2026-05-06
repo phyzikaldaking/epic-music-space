@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Creator Hub | Epic Music Space",
+  title: "Creator Hub",
   description: "Manage your artist career, track performance, wallet, and creator tools on Epic Music Space.",
 };
 

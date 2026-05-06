@@ -7,7 +7,7 @@ import { getWalletBalance } from "@/lib/revenueShare";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Wallet | Epic Music Space",
+  title: "Wallet",
   description: "Pending royalties, paid balance, and recent payouts.",
 };
 

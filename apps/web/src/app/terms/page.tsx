@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — Epic Music Space",
+  title: "Terms of Service",
   description: "Epic Music Space Terms of Service governing use of the platform, license purchases, and artist uploads.",
 };
 

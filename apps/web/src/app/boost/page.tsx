@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import BoostPurchaseSection from "./BoostPurchaseSection";
 
 export const metadata: Metadata = {
-  title: "Boost Your Track | Epic Music Space",
+  title: "Boost Your Track",
   description: "Amplify your music's reach with Boost — get your track featured in the marketplace, push notifications, and priority search placement on Epic Music Space.",
   robots: { index: false },
 };

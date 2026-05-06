@@ -3,7 +3,7 @@ import Link from "next/link";
 import ResetPasswordForm from "./ResetPasswordForm";
 
 export const metadata: Metadata = {
-  title: "Reset password — Epic Music Space",
+  title: "Reset password",
   description: "Set a new Epic Music Space password.",
 };
 

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import VerzuzNewClient from "./VerzuzNewClient";
 
 export const metadata: Metadata = {
-  title: "New Verzuz — Epic Music Space",
+  title: "New Verzuz",
   description: "Set up a 10-round Verzuz battle with another artist.",
 };
 

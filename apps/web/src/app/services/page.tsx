@@ -7,7 +7,7 @@ import { SERVICE_KIND_META } from "@/lib/serviceListings";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Services & Beats | Epic Music Space",
+  title: "Services & Beats",
   description: "Mixing, mastering, project templates, beats, and sample packs from working engineers and producers.",
 };
 

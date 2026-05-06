@@ -7,10 +7,10 @@ import AdSlot from "@/components/ads/AdSlot";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Leaderboard | Epic Music Space",
+  title: "Leaderboard",
   description: "Discover the top trending songs and most-played artists on Epic Music Space. Updated every minute with live fan vote data.",
   openGraph: {
-    title: "Leaderboard | Epic Music Space",
+    title: "Leaderboard",
     description: "Top trending songs and artists, ranked by fan votes and streams in real time.",
     url: "https://epicmusicspace.com/leaderboard",
   },

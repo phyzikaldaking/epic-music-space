@@ -7,7 +7,7 @@ import { auth } from "@/lib/auth";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "The Vault — Legacy Catalogs on Epic Music Space",
+  title: "The Vault — Legacy Catalogs",
   description:
     "Older releases, archived demos, and back-when-I-used-to-rap material from working artists. Stream it, license it, hear it like it's brand new.",
   openGraph: {

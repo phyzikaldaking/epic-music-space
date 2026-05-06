@@ -6,7 +6,7 @@ import { SERVICE_KIND_META } from "@/lib/serviceListings";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "My Orders | Epic Music Space" };
+export const metadata = { title: "My Orders" };
 
 const STATUS_BADGE: Record<string, string> = {
   PENDING: "border-white/15 bg-white/5 text-white/55",

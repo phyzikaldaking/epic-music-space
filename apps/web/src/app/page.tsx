@@ -17,7 +17,9 @@ const AudioPlayer = dynamic(() => import("@/components/LazyAudioPlayer"), {
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Epic Music Space — The Digital Headquarters for Music Creators",
+  // `absolute` opts out of the layout's `"%s | Epic Music Space"` template
+  // so the home title doesn't render as "Epic Music Space — … | Epic Music Space".
+  title: { absolute: "Epic Music Space — The Digital Headquarters for Music Creators" },
   description:
     "Build your profile, showcase your work, sell services, collaborate, and grow your music business. Step in the ring on Versus battles. Virtual studios and city districts coming next.",
   alternates: { canonical: "/" },

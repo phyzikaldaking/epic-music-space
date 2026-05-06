@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import SupportForm from "./SupportForm";
 
 export const metadata: Metadata = {
-  title: "Support — Epic Music Space",
+  title: "Support",
   description:
     "Open a support ticket. We respond within one business day to every artist, producer, engineer, and listener.",
 };

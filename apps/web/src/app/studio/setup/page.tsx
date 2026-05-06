@@ -8,7 +8,7 @@ import { sanitizeCallbackPath } from "@/lib/safeCallback";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Set Up Your Studio | Epic Music Space",
+  title: "Set Up Your Studio",
   description: "Complete your artist profile so fans can discover your music.",
 };
 

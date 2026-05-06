@@ -42,7 +42,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export const metadata = {
-  title: "Trust Center | Epic Music Space",
+  title: "Trust Center",
   description: "Your account security, payout status, and platform protections — all in one place.",
 };
 

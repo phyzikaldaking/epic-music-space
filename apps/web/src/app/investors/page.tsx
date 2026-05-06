@@ -3,11 +3,11 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
-  title: "Investors — Epic Music Space",
+  title: "Investors",
   description:
     "Live platform metrics, traction, and the thesis behind Epic Music Space.",
   openGraph: {
-    title: "Investors — Epic Music Space",
+    title: "Investors",
     description:
       "Live platform metrics, traction, and the thesis behind Epic Music Space.",
     type: "website",

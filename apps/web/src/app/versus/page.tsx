@@ -13,7 +13,7 @@ import AdSlot from "@/components/ads/AdSlot";
 import { tallyRounds } from "@/lib/verzuz";
 
 export const metadata = {
-  title: "Versus Battles | Epic Music Space",
+  title: "Versus Battles",
   description: "Vote on 1v1 track battles and Battle Royale showdowns. Discover the hottest music and help crown the next champion on Epic Music Space.",
 };
 

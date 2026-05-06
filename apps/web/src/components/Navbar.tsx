@@ -57,7 +57,11 @@ export default function Navbar() {
           href="/"
           aria-label="Epic Music Space — Home"
           title="Home"
-          className="flex min-w-0 items-center gap-2.5 text-xl font-extrabold tracking-tight focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+          // `flex-shrink-0` so the brand is never truncated by neighboring
+          // nav items competing for width. The nav links scroll / wrap
+          // before the brand loses characters — "Epic Music …" on the
+          // brand's own homepage was a credibility issue caught in audit.
+          className="flex flex-shrink-0 items-center gap-2.5 text-xl font-extrabold tracking-tight focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
         >
           <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-brand-500/30 bg-brand-500/20 glow-purple-sm">
             <svg
@@ -69,7 +73,7 @@ export default function Navbar() {
               <path d="M12 3v10.55A4 4 0 1 0 14 17V7h6V3h-8Z" />
             </svg>
           </span>
-          <span className="hidden truncate text-gradient-ems sm:inline">
+          <span className="hidden whitespace-nowrap text-gradient-ems sm:inline">
             Epic Music Space
           </span>
         </Link>

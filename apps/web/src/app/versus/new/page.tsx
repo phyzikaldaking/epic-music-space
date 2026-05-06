@@ -6,7 +6,7 @@ import VersusNewClient from "./VersusNewClient";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Send a versus challenge — Epic Music Space",
+  title: "Send a versus challenge",
   robots: { index: false, follow: false },
 };
 

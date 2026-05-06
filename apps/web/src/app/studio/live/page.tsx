@@ -11,7 +11,7 @@ import type { Metadata } from "next";
 export const revalidate = 30;
 
 export const metadata: Metadata = {
-  title: "Listening Sessions — Epic Music Space",
+  title: "Listening Sessions",
   description:
     "Drop into live listening rooms hosted by artists. Hear albums in real time, react in chat, raise your hand to take the floor, and license tracks while the music's still playing.",
 };

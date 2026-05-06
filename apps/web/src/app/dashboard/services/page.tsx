@@ -8,7 +8,7 @@ import OrderActions from "./OrderActions";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "My Services | Epic Music Space",
+  title: "My Services",
 };
 
 export default async function ServicesDashboard() {

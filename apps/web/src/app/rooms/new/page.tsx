@@ -6,7 +6,7 @@ import { isLiveKitConfigured } from "@/lib/livekit";
 import NewRoomForm from "./NewRoomForm";
 
 export const metadata = {
-  title: "Host a Listening Session — Epic Music Space",
+  title: "Host a Listening Session",
   description:
     "Open a live audio room. Press play on your album, talk between tracks, and welcome fans into the same room as you.",
 };

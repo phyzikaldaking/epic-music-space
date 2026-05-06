@@ -3,7 +3,7 @@ import FeedClient from "./FeedClient";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Feed — Epic Music Space",
+  title: "Feed",
   description: "Updates, clips, and behind-the-scenes from artists you follow.",
 };
 

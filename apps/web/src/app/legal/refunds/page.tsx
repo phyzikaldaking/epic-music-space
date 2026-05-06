@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Refund Policy | Epic Music Space",
+  title: "Refund Policy",
   description: "How refunds work on Epic Music Space — license purchases, ad placements, tips, and listening sessions.",
 };
 

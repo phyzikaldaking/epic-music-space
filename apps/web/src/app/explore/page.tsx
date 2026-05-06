@@ -11,7 +11,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   const { tag } = await searchParams;
   if (!tag) {
     return {
-      title: "Explore — Epic Music Space",
+      title: "Explore",
       description: "Browse hashtags trending across the Epic Music Space community.",
     };
   }

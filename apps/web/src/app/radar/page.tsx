@@ -4,7 +4,7 @@ import Link from "next/link";
 import { getArRadar } from "@/lib/arRadar";
 
 export const metadata: Metadata = {
-  title: "A&R Radar — Epic Music Space",
+  title: "A&R Radar",
   description:
     "Find artists gaining real traction before they hit the obvious charts.",
 };

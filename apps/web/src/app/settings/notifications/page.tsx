@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import NotificationSettingsClient from "./NotificationSettingsClient";
 
 export const metadata: Metadata = {
-  title: "Notifications — Settings · Epic Music Space",
+  title: "Notifications — Settings",
   robots: { index: false, follow: false },
 };
 

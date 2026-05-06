@@ -3,7 +3,7 @@ import { getSiteUrl } from "@/lib/site";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
-  title: "System status | Epic Music Space",
+  title: "System status",
   description: "Live health of every service powering Epic Music Space.",
 };
 

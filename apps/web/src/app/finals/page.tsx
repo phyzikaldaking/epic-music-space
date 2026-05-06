@@ -1,7 +1,7 @@
 import SpectatorFinalsExperience from "@/components/SpectatorFinalsExperience";
 
 export const metadata = {
-  title: "Live Finals | Epic Music Space",
+  title: "Live Finals",
   description: "Watch Epic Music Space finals with live reactions, chat, tipping, and crowd energy.",
 };
 

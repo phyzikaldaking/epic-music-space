@@ -8,7 +8,7 @@ import { isRoomExpired } from "@/lib/roomTier";
 export const revalidate = 30;
 
 export const metadata = {
-  title: "Listening Sessions | Epic Music Space",
+  title: "Listening Sessions",
   description: "Live audio rooms hosted by artists right now.",
 };
 

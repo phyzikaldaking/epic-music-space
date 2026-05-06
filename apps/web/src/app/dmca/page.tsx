@@ -3,7 +3,7 @@ import Link from "next/link";
 import DmcaForm from "./DmcaForm";
 
 export const metadata: Metadata = {
-  title: "DMCA Policy & Takedown — Epic Music Space",
+  title: "DMCA Policy & Takedown",
   description: "How to submit a DMCA takedown notice or counter-notice for content on Epic Music Space.",
 };
 

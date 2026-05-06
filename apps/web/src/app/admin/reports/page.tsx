@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import AdminReportsClient from "./AdminReportsClient";
 
 export const metadata: Metadata = {
-  title: "Reports — Admin · Epic Music Space",
+  title: "Reports — Admin",
   robots: { index: false, follow: false },
 };
 

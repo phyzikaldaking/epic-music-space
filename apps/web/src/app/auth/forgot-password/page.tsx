@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import ForgotPasswordForm from "./ForgotPasswordForm";
 
 export const metadata: Metadata = {
-  title: "Forgot password — Epic Music Space",
+  title: "Forgot password",
   description: "Reset your Epic Music Space password.",
 };
 

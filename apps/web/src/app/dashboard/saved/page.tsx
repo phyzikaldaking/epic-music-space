@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Saved tracks — Epic Music Space",
+  title: "Saved tracks",
   robots: { index: false, follow: false },
 };
 

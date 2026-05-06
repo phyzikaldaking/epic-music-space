@@ -7,7 +7,7 @@ import SendVerzuzChallengeForm from "./SendVerzuzChallengeForm";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Send a Verzuz challenge — Epic Music Space",
+  title: "Send a Verzuz challenge",
   robots: { index: false, follow: false },
 };
 

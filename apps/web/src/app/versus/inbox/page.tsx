@@ -7,7 +7,7 @@ import VersusInboxClient from "./VersusInboxClient";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Versus inbox — Epic Music Space",
+  title: "Versus inbox",
   robots: { index: false, follow: false },
 };
 

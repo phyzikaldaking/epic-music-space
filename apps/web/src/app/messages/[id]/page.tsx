@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import ThreadClient from "./ThreadClient";
 
 export const metadata: Metadata = {
-  title: "Conversation — Epic Music Space",
+  title: "Conversation",
   robots: { index: false, follow: false },
 };
 

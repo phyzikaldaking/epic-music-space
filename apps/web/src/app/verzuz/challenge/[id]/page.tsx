@@ -6,7 +6,7 @@ import RespondVerzuzClient from "./RespondVerzuzClient";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Verzuz challenge — Epic Music Space",
+  title: "Verzuz challenge",
   robots: { index: false, follow: false },
 };
 

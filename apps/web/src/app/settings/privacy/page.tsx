@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import PrivacySettingsClient from "./PrivacySettingsClient";
 
 export const metadata: Metadata = {
-  title: "Privacy & Data — Settings · Epic Music Space",
+  title: "Privacy & Data — Settings",
   robots: { index: false, follow: false },
 };
 

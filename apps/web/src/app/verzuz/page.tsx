@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { tallyRounds } from "@/lib/verzuz";
 
 export const metadata: Metadata = {
-  title: "Verzuz battles — Epic Music Space",
+  title: "Verzuz battles",
   description: "Live and upcoming 10-round artist showdowns on Epic Music Space.",
 };
 

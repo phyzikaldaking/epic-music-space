@@ -16,7 +16,7 @@ import type { RailCandidate } from "@/lib/personalizedRail";
 export const revalidate = 30;
 
 export const metadata: Metadata = {
-  title: "Marketplace | Epic Music Space",
+  title: "Marketplace",
   description:
     "A premium music licensing exchange for ranked tracks, studio drops, and creator-ready music.",
 };
@@ -506,7 +506,7 @@ export default async function MarketplacePage(props: {
           </aside>
           <div id="marketplace-catalog" className="space-y-8">
             <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/35 backdrop-blur-2xl"><div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-200/75">Ranked Catalog</p><h2 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white md:text-5xl">Studio monitor listings</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/50">Every screen represents a track competing for attention, licensing, and placement. Stronger score means stronger visibility.</p></div><div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/48">{displaySongs.length} {searchQuery ? "results" : "active listings"}</div></div></div>
-            <SectionErrorBoundary title="Waveform Compare"><MarketplaceConfidencePanel tracks={displaySongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore }))} /></SectionErrorBoundary>
+            <SectionErrorBoundary title="Waveform Compare"><MarketplaceConfidencePanel tracks={displaySongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore, soldLicenses: song.soldLicenses }))} /></SectionErrorBoundary>
             <SectionErrorBoundary title="Saved Searches"><MarketplaceRetentionTools tracks={displaySongs.map((song) => ({ id: song.id, title: song.title }))} /></SectionErrorBoundary>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
               {displaySongs.map((song, index) => (

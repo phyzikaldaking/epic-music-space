@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SearchClient from "./SearchClient";
 
 export const metadata: Metadata = {
-  title: "Search — Epic Music Space",
+  title: "Search",
   description: "Find tracks, artists, producers, and engineers on Epic Music Space.",
 };
 

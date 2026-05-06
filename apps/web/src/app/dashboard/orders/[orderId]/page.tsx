@@ -6,7 +6,7 @@ import OrderWorkspace from "./OrderWorkspace";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "Order | Epic Music Space" };
+export const metadata = { title: "Order" };
 
 export default async function OrderDetailPage({
   params,

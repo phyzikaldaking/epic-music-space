@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Privacy Policy — Epic Music Space",
+  title: "Privacy Policy",
 };
 
 export default function PrivacyPage() {

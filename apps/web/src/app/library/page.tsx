@@ -7,7 +7,7 @@ import SongCard from "@/components/SongCard";
 import { getStreamUrl } from "@/lib/audioStream";
 
 export const metadata: Metadata = {
-  title: "Library — Epic Music Space",
+  title: "Library",
   description: "Tracks you've saved on Epic Music Space.",
   robots: { index: false, follow: false },
 };

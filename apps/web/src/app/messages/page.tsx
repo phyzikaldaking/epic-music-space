@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import MessagesClient from "./MessagesClient";
 
 export const metadata: Metadata = {
-  title: "Messages — Epic Music Space",
+  title: "Messages",
   robots: { index: false, follow: false },
 };
 

@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import UploadTrackForm from "./UploadTrackForm";
 
 export const metadata = {
-  title: "Upload Track | Epic Music Space",
+  title: "Upload Track",
   description:
     "Publish your music to the EMS marketplace and start earning license royalties.",
 };

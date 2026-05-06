@@ -7,7 +7,7 @@ import type { Metadata } from "next";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: "Advertise | Epic Music Space",
+  title: "Advertise",
   description: "Promote your music on Epic Music Space. Buy billboard, marketplace banner, and Versus banner placements to reach thousands of listeners daily.",
 };
 
