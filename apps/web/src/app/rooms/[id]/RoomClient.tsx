@@ -12,6 +12,8 @@ import {
 } from "livekit-client";
 import { createBrowserSupabaseClient, CHANNELS } from "@/lib/supabase";
 import StudioBackdrop from "@/components/StudioBackdrop";
+import RoomReactions from "@/components/RoomReactions";
+import ShareRoomButton from "@/components/ShareRoomButton";
 
 type Host = {
   id: string;
@@ -176,7 +178,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           el.addEventListener("ended", clearActive);
 
           // store cleanup on the element for later
-          (el as any).__cleanup = () => {
+          (el as HTMLAudioElement & { __cleanup?: () => void }).__cleanup = () => {
             el.removeEventListener("playing", markActive);
             el.removeEventListener("pause", clearActive);
             el.removeEventListener("ended", clearActive);
@@ -186,8 +188,10 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       lkRoom.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
         track.detach().forEach((el) => {
           try {
-            (el as any).__cleanup?.();
-          } catch {}
+            (el as HTMLAudioElement & { __cleanup?: () => void }).__cleanup?.();
+          } catch {
+            /* listener already detached */
+          }
           el.remove();
         });
         audioElsRef.current.delete(participant.identity);
@@ -782,6 +786,63 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     };
   }, [room.id, currentUserId, connect, disconnect]);
 
+  // ── Media Session API ──────────────────────────────────────────────
+  // Surface the now-playing track on the lock screen, Bluetooth controls,
+  // car head units, AirPods double-tap, etc. Listeners get a near-native
+  // music-app experience without leaving the browser.
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+    if (!currentSong) {
+      navigator.mediaSession.metadata = null;
+      return;
+    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentSong.title,
+      artist: currentSong.artist,
+      album: room.title,
+      artwork: currentSong.coverUrl
+        ? [
+            { src: currentSong.coverUrl, sizes: "512x512", type: "image/jpeg" },
+            { src: currentSong.coverUrl, sizes: "256x256", type: "image/jpeg" },
+          ]
+        : [],
+    });
+    navigator.mediaSession.playbackState = trackPlaying ? "playing" : "paused";
+  }, [currentSong, trackPlaying, room.title]);
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────
+  // M  toggle mute (speakers/host only)
+  // R  toggle hand
+  // L  leave the room
+  // ?  show shortcut help
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // Skip when the user is typing in chat / picker.
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (ended) return;
+
+      const key = e.key.toLowerCase();
+      if (key === "m" && (role === "HOST" || role === "SPEAKER") && connected) {
+        e.preventDefault();
+        void toggleMute();
+      } else if (key === "r" && role === "LISTENER" && connected) {
+        e.preventDefault();
+        void toggleHand();
+      } else if (key === "l" && connected) {
+        e.preventDefault();
+        void disconnect();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, connected, ended]);
+
   // ── Render ──────────────────────────────────────────────────────────
   const speakers = Array.from(participants.values()).filter((p) => p.role !== "LISTENER");
   const handsUp = Array.from(participants.values()).filter((p) => p.handRaised && p.role === "LISTENER");
@@ -829,7 +890,12 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
             <p className="mt-2 max-w-2xl text-sm text-white/45">{room.description}</p>
           )}
         </div>
-        <div className="flex flex-shrink-0 flex-wrap gap-2">
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+          <ShareRoomButton
+            roomId={room.id}
+            roomTitle={room.title}
+            hostName={room.host.name ?? "An artist"}
+          />
           {!connected && !ended && (
             <button
               type="button"
@@ -1258,6 +1324,8 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           </form>
         </aside>
       </div>
+
+      {!ended && <RoomReactions roomId={room.id} disabled={!connected} />}
       </div>
     </div>
   );
