@@ -8,8 +8,32 @@ import EmbeddedAudioPreview from "@/components/EmbeddedAudioPreview";
 import { classifyAudioSource } from "@/lib/audioSource";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
+import { validateUpload } from "@/lib/uploadValidation";
 
 type UploadState = "idle" | "uploading" | "done" | "error";
+
+// `accept` strings include both MIME globs and explicit extensions because
+// mobile Safari's "Files" picker often delivers cloud-stored audio with an
+// empty MIME — without explicit extensions iOS hides those files entirely.
+const AUDIO_ACCEPT =
+  "audio/*,audio/mp4,audio/x-m4a,audio/aiff,.mp3,.wav,.flac,.aac,.m4a,.aif,.aiff,.ogg,.oga,.opus,.webm";
+const COVER_ACCEPT = "image/jpeg,image/jpg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif";
+const STEM_ACCEPT =
+  ".zip,.wav,.mp3,.flac,.m4a,.aif,.aiff,audio/*,application/zip";
+
+function buzz(ms = 30) {
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(ms);
+    }
+  } catch {
+    // Some browsers throw when not in a user gesture; safe to swallow.
+  }
+}
+
+function fmtMB(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export default function UploadTrackForm() {
   const router = useRouter();
@@ -140,16 +164,25 @@ export default function UploadTrackForm() {
       await attempt();
     }
   }, []);
-  async function handleAudioChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const lastAudioFileRef = useRef<File | null>(null);
+
+  const startAudioUpload = useCallback(async (file: File) => {
+    lastAudioFileRef.current = file;
+    const check = validateUpload("audio", file);
+    if (!check.ok) {
+      setAudioUploadState("error");
+      setAudioFile(file);
+      setError(check.reason);
+      return;
+    }
     const audioUploadStartedAt = performance.now();
     void postFunnelEvent({
       event: FUNNEL_EVENTS.artistUploadAudioSelected,
       source: "studio_new",
       properties: {
-        mimeType: file.type,
+        mimeType: file.type || "(empty)",
         fileSize: file.size,
+        fileName: file.name,
       },
     });
     setAudioFile(file);
@@ -162,6 +195,7 @@ export default function UploadTrackForm() {
       await uploadDirect(signedUrl, file, setAudioProgress);
       setAudioUrl(publicUrl);
       setAudioUploadState("done");
+      buzz(40);
       void postFunnelEvent({
         event: FUNNEL_EVENTS.artistUploadAudioCompleted,
         source: "studio_new",
@@ -173,13 +207,29 @@ export default function UploadTrackForm() {
     } catch (err) {
       setAudioUploadState("error");
       setAudioProgress(0);
-      setError(err instanceof Error ? err.message : "Audio upload failed");
+      setError(
+        err instanceof Error
+          ? `${err.message} Tap "Try again" — your file's still here.`
+          : "Audio upload failed. Tap \"Try again\".",
+      );
     }
+  }, [getSignedUrl, uploadDirect]);
+
+  async function handleAudioChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await startAudioUpload(file);
   }
 
   async function handleCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const check = validateUpload("cover", file);
+    if (!check.ok) {
+      setCoverUploadState("error");
+      setError(check.reason);
+      return;
+    }
     setCoverFile(file);
     setCoverPreview((prev) => {
       // Revoke the previous blob URL so we don't leak memory across reuploads.
@@ -194,6 +244,7 @@ export default function UploadTrackForm() {
       await uploadDirect(signedUrl, file, setCoverProgress);
       setCoverUrl(publicUrl);
       setCoverUploadState("done");
+      buzz(20);
     } catch (err) {
       setCoverUploadState("error");
       setCoverPreview((prev) => {
@@ -209,6 +260,12 @@ export default function UploadTrackForm() {
   async function handleStemChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const check = validateUpload("stem", file);
+    if (!check.ok) {
+      setStemUploadState("error");
+      setError(check.reason);
+      return;
+    }
     setStemFile(file);
     setStemUploadState("uploading");
     setStemProgress(0);
@@ -218,6 +275,7 @@ export default function UploadTrackForm() {
       await uploadDirect(signedUrl, file, setStemProgress);
       setStemUrl(publicUrl);
       setStemUploadState("done");
+      buzz(20);
     } catch (err) {
       setStemUploadState("error");
       setStemProgress(0);
@@ -428,7 +486,7 @@ export default function UploadTrackForm() {
           <input
             ref={coverRef}
             type="file"
-            accept="image/jpeg,image/jpg,image/png,image/webp"
+            accept={COVER_ACCEPT}
             aria-label="Cover art image file"
             className="hidden"
             onChange={handleCoverChange}
@@ -453,15 +511,10 @@ export default function UploadTrackForm() {
               e.preventDefault();
               e.currentTarget.classList.remove("border-brand-500/60", "bg-brand-500/5");
               const file = e.dataTransfer.files?.[0];
-              if (!file || !audioRef.current) return;
-              if (!file.type.startsWith("audio/")) {
-                alert("Please drop an audio file (MP3, WAV, FLAC, AAC).");
-                return;
-              }
-              const dt = new DataTransfer();
-              dt.items.add(file);
-              audioRef.current.files = dt.files;
-              audioRef.current.dispatchEvent(new Event("change", { bubbles: true }));
+              if (!file) return;
+              // Don't gate on file.type here — pre-flight validation handles it
+              // and gives a friendlier message than alert().
+              void startAudioUpload(file);
             }}
             className="w-full rounded-xl border-2 border-dashed border-white/15 p-6 text-center hover:border-brand-500/60 transition"
           >
@@ -470,9 +523,7 @@ export default function UploadTrackForm() {
                 <span className="text-2xl">🎵</span>
                 <div className="text-left">
                   <p className="text-sm font-medium truncate max-w-xs">{audioFile.name}</p>
-                  <p className="text-xs text-white/40">
-                    {(audioFile.size / (1024 * 1024)).toFixed(1)} MB
-                  </p>
+                  <p className="text-xs text-white/40">{fmtMB(audioFile.size)}</p>
                 </div>
                 {audioUploadState === "uploading" && (
                   <div className="h-5 w-5 rounded-full border-2 border-brand-400 border-t-transparent animate-spin ml-2" />
@@ -484,19 +535,32 @@ export default function UploadTrackForm() {
             ) : (
               <div className="text-white/40">
                 <p className="text-lg mb-1">🎵</p>
-                <p className="text-sm">Drop your audio file here, or click to browse</p>
-                <p className="text-xs mt-1">MP3, WAV, FLAC, AAC — max 200MB</p>
+                <p className="hidden sm:block text-sm">Drop your audio file here, or tap to browse</p>
+                <p className="block sm:hidden text-sm">Tap to add from Files, iCloud, or your music library</p>
+                <p className="text-xs mt-1">MP3, WAV, FLAC, AAC, M4A — up to 200 MB</p>
               </div>
             )}
           </button>
           <input
             ref={audioRef}
             type="file"
-            accept="audio/*"
+            accept={AUDIO_ACCEPT}
             aria-label="Audio track file"
             className="hidden"
             onChange={handleAudioChange}
           />
+          {audioUploadState === "error" && lastAudioFileRef.current && (
+            <button
+              type="button"
+              onClick={() => {
+                const f = lastAudioFileRef.current;
+                if (f) void startAudioUpload(f);
+              }}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-brand-500/35 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-300 hover:bg-brand-500/20"
+            >
+              ↻ Try again
+            </button>
+          )}
           <div className="mt-3">
             {/* Upload progress bar */}
             {audioUploadState === "uploading" && (
@@ -606,7 +670,7 @@ export default function UploadTrackForm() {
           <input
             ref={stemRef}
             type="file"
-            accept=".zip,.wav,.mp3,.flac,audio/*,application/zip"
+            accept={STEM_ACCEPT}
             aria-label="Trackout or stems file"
             className="hidden"
             onChange={handleStemChange}

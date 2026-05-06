@@ -4,16 +4,49 @@ import { createServerSupabaseClient } from "@/lib/supabase";
 import { moderateLimiter } from "@/lib/rateLimit";
 
 // ─── Allowed MIME types per upload type ────────────────────────────────────
+// iPhone Voice Memos and most iTunes-purchased songs report `audio/mp4` /
+// `audio/x-m4a`; AIFF is the default for some Mac/iOS audio apps. Some
+// browsers (Android Chrome, mobile Safari with cloud picks) report empty
+// or `application/octet-stream`. The route also accepts files by extension
+// further down so users don't get stuck when the OS forgets the MIME.
 const ALLOWED_AUDIO_TYPES = new Set([
-  "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav",
-  "audio/flac", "audio/aac", "audio/ogg", "audio/webm",
+  "audio/mpeg", "audio/mp3",
+  "audio/wav", "audio/x-wav", "audio/wave",
+  "audio/flac", "audio/x-flac",
+  "audio/aac", "audio/x-aac",
+  "audio/mp4", "audio/m4a", "audio/x-m4a",
+  "audio/ogg", "audio/x-ogg",
+  "audio/webm",
+  "audio/aiff", "audio/x-aiff",
+  "application/octet-stream",
 ]);
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+  "image/heic", "image/heif",
 ]);
 const ALLOWED_STEM_TYPES = new Set([
   "application/zip", "application/x-zip-compressed", "application/octet-stream",
-  "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/flac",
+  "audio/mpeg", "audio/mp3",
+  "audio/wav", "audio/x-wav", "audio/wave",
+  "audio/flac", "audio/x-flac",
+  "audio/mp4", "audio/m4a", "audio/x-m4a",
+  "audio/aiff", "audio/x-aiff",
+]);
+
+// Extension allowlist mirrors the MIME allowlist for the cases where
+// the OS reports no MIME at all (common when picking from cloud drives
+// on iOS / Android). The server must still trust *one* of the two so
+// it can route, but extension is a strong signal — Supabase will reject
+// hostile bytes regardless.
+const ALLOWED_AUDIO_EXTS = new Set([
+  "mp3", "wav", "wave", "flac", "aac", "m4a", "mp4",
+  "ogg", "oga", "opus", "webm", "aif", "aiff",
+]);
+const ALLOWED_IMAGE_EXTS = new Set([
+  "jpg", "jpeg", "png", "webp", "gif", "heic", "heif",
+]);
+const ALLOWED_STEM_EXTS = new Set([
+  "zip", "mp3", "wav", "flac", "m4a", "aif", "aiff",
 ]);
 
 const MAX_AUDIO_SIZE = 200 * 1024 * 1024; // 200 MB
@@ -77,11 +110,8 @@ export async function POST(req: NextRequest) {
   // so we can return a friendly 413 *before* the user uploads bytes that
   // will be rejected at the storage layer. Reject obviously bogus values
   // (zero/negative) that suggest a tampered request.
-  if (!mimeType || typeof mimeType !== "string") {
-    return NextResponse.json({ error: "mimeType is required" }, { status: 400 });
-  }
-  if (!allowedTypes.has(mimeType)) {
-    return NextResponse.json({ error: `Invalid file type: ${mimeType}` }, { status: 415 });
+  if (typeof mimeType !== "string") {
+    return NextResponse.json({ error: "mimeType must be a string" }, { status: 400 });
   }
   if (typeof fileSize !== "number" || !Number.isFinite(fileSize) || fileSize <= 0) {
     return NextResponse.json({ error: "fileSize must be a positive number" }, { status: 400 });
@@ -103,6 +133,20 @@ export async function POST(req: NextRequest) {
     ?.toLowerCase()
     .replace(/[^a-z0-9]/g, "")
     .slice(0, 8);
+
+  // Accept by MIME *or* by extension — iOS / Android cloud picks frequently
+  // arrive with an empty or generic MIME (octet-stream). Without the
+  // extension fallback, "Files → iCloud Drive → my-track.m4a" silently 415s.
+  const allowedExts = isStem ? ALLOWED_STEM_EXTS : isAudio ? ALLOWED_AUDIO_EXTS : ALLOWED_IMAGE_EXTS;
+  const mimeAllowed = mimeType.length > 0 && allowedTypes.has(mimeType);
+  const extAllowed = !!safeExt && allowedExts.has(safeExt);
+  if (!mimeAllowed && !extAllowed) {
+    const human = mimeType || `.${safeExt ?? "?"}`;
+    return NextResponse.json(
+      { error: `We can't accept "${human}" yet. Try MP3, WAV, FLAC, M4A, AAC, or OGG.` },
+      { status: 415 }
+    );
+  }
 
   // ── Create Supabase signed upload URL ────────────────────────────────────
   const supabase = createServerSupabaseClient();
