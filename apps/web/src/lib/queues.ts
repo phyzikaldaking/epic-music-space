@@ -58,6 +58,21 @@ export interface AnalyticsJobData {
   timestamp: string;
 }
 
+// Queue: retry a failed Stripe Connect transfer (artist payout) with backoff.
+// The idempotencyKey on stripe.transfers.create is keyed on the originating
+// transactionId, so retrying the same job is always safe — Stripe will return
+// the existing transfer rather than creating a duplicate.
+export interface PayoutTransferJobData {
+  payoutId: string;
+  transactionId: string;
+  artistId: string;
+  amountCents: number;
+  songId?: string | null;
+  licenseTokenId?: string | null;
+  /** Idempotency key used on the original (failed) transfer attempt. */
+  idempotencyKey: string;
+}
+
 export interface DeadLetterJobData {
   queue: string;
   reason: string;
@@ -74,8 +89,15 @@ export const notificationQueue = makeQueue<NotificationJobData>(
 export const analyticsQueue = makeQueue<AnalyticsJobData>(
   QUEUE_NAMES.analytics,
 );
-export const deadLetterQueue = makeQueue<DeadLetterJobData>(
+// Dedicated dead-letter queues per domain for clearer ownership
+export const analyticsDeadLetterQueue = makeQueue<DeadLetterJobData>(
   `${QUEUE_NAMES.analytics}:dead-letter`,
+);
+export const payoutDeadLetterQueue = makeQueue<DeadLetterJobData>(
+  `${QUEUE_NAMES.payoutTransfers}:dead-letter`,
+);
+export const payoutTransferQueue = makeQueue<PayoutTransferJobData>(
+  QUEUE_NAMES.payoutTransfers,
 );
 
 async function enqueueWithRetry<T>(
@@ -84,8 +106,11 @@ async function enqueueWithRetry<T>(
   queue: Queue<any, any, string> | null,
   jobName: string,
   data: T,
+  opts?: { deadLetterQueue?: Queue<DeadLetterJobData, DeadLetterJobData, string> | null },
 ) {
   if (!queue) return false;
+
+  const dlq = opts?.deadLetterQueue ?? analyticsDeadLetterQueue;
 
   try {
     await retry(() => queue.add(jobName, data), { retries: 2, baseDelayMs: 400 });
@@ -93,8 +118,8 @@ async function enqueueWithRetry<T>(
   } catch (error) {
     console.error(`[queue:${queueName}] enqueue failed`, error);
 
-    if (deadLetterQueue) {
-      await deadLetterQueue.add("dead-letter", {
+    if (dlq) {
+      await dlq.add("dead-letter", {
         queue: queueName,
         reason: error instanceof Error ? error.message : "unknown",
         payload: data as Record<string, unknown>,
@@ -281,6 +306,47 @@ function deepLinkForNotification(type: string, meta?: Record<string, unknown>): 
   if (type.includes("AUCTION_BID")) return "/auctions";
   if (type === "ROOM_LIVE" && matchId) return `/rooms/${matchId}`;
   return "/notifications";
+}
+
+/**
+ * Enqueue a retry of a failed Stripe artist transfer. The Payout row stays
+ * PENDING; the worker flips it to PAID once Stripe accepts the transfer
+ * (or to FAILED after BullMQ exhausts its retries — the periodic payout
+ * cron picks up FAILED rows for human review). When Redis is unavailable
+ * we record the failure to PayoutFailure so the cron job can sweep it.
+ */
+export async function enqueuePayoutTransfer(data: PayoutTransferJobData, reason: string) {
+  // Always record the failure so it's visible in dashboards / cron sweeps,
+  // regardless of whether Redis is up.
+  try {
+    await prisma.payoutFailure.create({
+      data: {
+        payoutId: data.payoutId,
+        userId: data.artistId,
+        period: "instant",
+        amountCents: data.amountCents,
+        reason: reason.slice(0, 500),
+      },
+    });
+  } catch (err) {
+    console.warn("[enqueuePayoutTransfer] failure-row write failed", err);
+  }
+
+  const queued = await enqueueWithRetry(
+    QUEUE_NAMES.payoutTransfers,
+    payoutTransferQueue,
+    "retry-transfer",
+    data,
+    { deadLetterQueue: payoutDeadLetterQueue },
+  );
+  if (queued) return;
+
+  // No Redis available — leave the PayoutFailure row in place. The
+  // process-payouts cron sweeps PENDING+failed payouts.
+  console.warn(
+    "[enqueuePayoutTransfer] queue unavailable; relying on cron sweep",
+    { payoutId: data.payoutId, transactionId: data.transactionId },
+  );
 }
 
 export async function enqueueAnalytics(data: AnalyticsJobData) {

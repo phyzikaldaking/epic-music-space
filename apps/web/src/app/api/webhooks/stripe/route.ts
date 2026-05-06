@@ -3,7 +3,7 @@ import { revalidateTag } from "next/cache";
 import { stripe, getStripeWebhookSecret } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { Prisma, TaxFormStatus } from "@ems/db";
-import { enqueueNotification } from "@/lib/queues";
+import { enqueueNotification, enqueuePayoutTransfer } from "@/lib/queues";
 
 /** Typed Prisma P2002 check — avoids brittle error message string matching. */
 function isUniqueConstraintError(err: unknown): boolean {
@@ -120,6 +120,33 @@ export async function POST(req: NextRequest) {
     case "identity.verification_session.canceled": {
       const vs = event.data.object as Stripe.Identity.VerificationSession;
       await handleIdentityVerificationEvent(vs, event.type);
+      break;
+    }
+    // Stripe (or the platform) reversed a transfer — common after a refund
+    // is issued and the platform reclaims funds from the artist. Without
+    // this handler the artist's Payout row stays PAID but the dollars left
+    // their account. Note: there's no async transfer.failed event in the
+    // Stripe model — transfers fail synchronously on create, or asynchronously
+    // get reversed; the connected-account payout.failed below covers the
+    // "artist's bank rejected the deposit" case.
+    case "transfer.reversed": {
+      const transfer = event.data.object as Stripe.Transfer;
+      await handleTransferReversed(transfer);
+      break;
+    }
+    // Connected-account events. Stripe payout = the connected account's
+    // own bank deposit. payout.paid is the strongest signal that the
+    // money actually landed in the artist's bank. payout.failed means
+    // their bank rejected it (closed account, wrong routing #, etc.) and
+    // is the most-reported reason for "where's my money?" tickets.
+    case "payout.paid": {
+      const payout = event.data.object as Stripe.Payout;
+      if (event.account) await handleConnectPayoutPaid(payout, event.account);
+      break;
+    }
+    case "payout.failed": {
+      const payout = event.data.object as Stripe.Payout;
+      if (event.account) await handleConnectPayoutFailed(payout, event.account);
       break;
     }
     default:
@@ -413,6 +440,11 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
     },
   });
 
+  const payoutRow = await prisma.payout.findFirst({
+    where: { userId: song.artistId, songId: song.id, licenseTokenId: license.id },
+    select: { id: true },
+  });
+
   try {
     const artist = await prisma.user.findUnique({ where: { id: song.artistId } });
     if (artist?.stripeConnectId && payoutAmount > 0) {
@@ -422,22 +454,40 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
       // application_fee_amount is needed (that's a destination-charges
       // concept). Idempotent via the transactionId in idempotencyKey so a
       // retried webhook doesn't double-pay.
-      await stripe.transfers.create(
+      const idempotencyKey = `license-transfer:${existing.id}`;
+      const transfer = await stripe.transfers.create(
         {
           amount: Math.round(payoutAmount * 100),
           currency: "usd",
           destination: artist.stripeConnectId,
           metadata: { songId: song.id, licenseId: license.id, transactionId: existing.id },
         },
-        { idempotencyKey: `license-transfer:${existing.id}` },
+        { idempotencyKey },
       );
       await prisma.payout.updateMany({
         where: { userId: artist.id, songId: song.id, licenseTokenId: license.id },
-        data: { status: "PAID", paidAt: new Date() },
+        data: { status: "PAID", paidAt: new Date(), stripeTransferId: transfer.id },
       });
     }
   } catch (err) {
+    // Transfer failed — record the failure and queue an async retry. The
+    // Payout row stays PENDING; the worker will flip it to PAID on success.
+    // Same idempotency key on retry so Stripe collapses duplicates.
     console.error("[stripe-webhook] artist payout transfer failed", err);
+    if (payoutRow && payoutAmount > 0) {
+      await enqueuePayoutTransfer(
+        {
+          payoutId: payoutRow.id,
+          transactionId: existing.id,
+          artistId: song.artistId,
+          amountCents: Math.round(payoutAmount * 100),
+          songId: song.id,
+          licenseTokenId: license.id,
+          idempotencyKey: `license-transfer:${existing.id}`,
+        },
+        err instanceof Error ? err.message : "transfer_failed",
+      );
+    }
   }
 
   track({ event: "license_purchased", userId, properties: { songId, licenseId: license.id, amount: Number(existing.amount) } });
@@ -1330,6 +1380,140 @@ async function handleIdentityVerificationEvent(
   }
   // requires_input → no DB mutation; the Identity URL itself surfaces the
   // remediation step to the user.
+}
+
+// ─── Transfer / connected-payout reliability handlers ─────────────────────
+
+/**
+ * Transfer was reversed — the platform reclaimed funds from the artist
+ * (typically after a refund/dispute). Flip Payout to FAILED so dashboards
+ * stop showing "PAID" for funds the artist no longer has, and notify the
+ * artist with the reason. The downstream refund/dispute handler already
+ * adjusts the buyer side.
+ */
+async function handleTransferReversed(transfer: Stripe.Transfer) {
+  const payout = await prisma.payout.findFirst({
+    where: { stripeTransferId: transfer.id },
+    select: { id: true, userId: true, amount: true, status: true, period: true },
+  });
+  if (!payout) {
+    console.warn("[stripe-webhook] transfer.reversed for unknown transfer", transfer.id);
+    return;
+  }
+
+  // amount_reversed equals amount when fully reversed.
+  const fullyReversed = transfer.amount_reversed >= transfer.amount;
+
+  await prisma.$transaction([
+    prisma.payout.update({
+      where: { id: payout.id },
+      data: {
+        status: fullyReversed ? "FAILED" : "PAID",
+      },
+    }),
+    prisma.payoutFailure.create({
+      data: {
+        payoutId: payout.id,
+        userId: payout.userId,
+        period: payout.period,
+        amountCents: transfer.amount_reversed,
+        reason: fullyReversed
+          ? "transfer_reversed_full"
+          : `transfer_reversed_partial:${transfer.amount_reversed}`,
+      },
+    }),
+  ]);
+
+  await enqueueNotification({
+    userId: payout.userId,
+    type: "PAYOUT_REVERSED",
+    title: fullyReversed ? "Payout reversed" : "Partial payout reversal",
+    body: fullyReversed
+      ? `A previous $${Number(payout.amount).toFixed(2)} payout was reversed (typically after a refund or dispute). See your dashboard for the linked transaction.`
+      : `Part of a previous payout was reversed: $${(transfer.amount_reversed / 100).toFixed(2)}.`,
+    metadata: { payoutId: payout.id, transferId: transfer.id, amountReversedCents: transfer.amount_reversed },
+  });
+}
+
+/**
+ * Connected-account event: the artist's bank confirmed the deposit landed.
+ * This is the single most artist-trust-building event we can surface. We
+ * log it on the artist's notification feed so they get an actual receipt,
+ * not just a number on a dashboard. (We don't track stripeBankPayoutId on
+ * Payout today — adding a separate signal table would add surface; for
+ * now the notification IS the receipt.)
+ */
+async function handleConnectPayoutPaid(payout: Stripe.Payout, connectedAccountId: string) {
+  const user = await prisma.user.findUnique({
+    where: { stripeConnectId: connectedAccountId },
+    select: { id: true },
+  });
+  if (!user) return;
+
+  const dollars = (payout.amount / 100).toFixed(2);
+  const arrivalDate = payout.arrival_date
+    ? new Date(payout.arrival_date * 1000).toLocaleDateString()
+    : "today";
+
+  await enqueueNotification({
+    userId: user.id,
+    type: "PAYOUT_LANDED",
+    title: `$${dollars} just landed in your bank`,
+    body: `Stripe confirmed your $${dollars} deposit arrived (expected ${arrivalDate}). It's in the bank account you connected.`,
+    metadata: {
+      stripePayoutId: payout.id,
+      amountCents: payout.amount,
+      arrivalDate: payout.arrival_date,
+      currency: payout.currency,
+    },
+  });
+}
+
+/**
+ * Connected-account event: the artist's bank rejected the deposit. This is
+ * the #1 source of "where's my money?" tickets on every payout-driven
+ * platform. We surface the precise reason from Stripe and a one-click path
+ * to the dashboard where they can re-add their bank.
+ */
+async function handleConnectPayoutFailed(payout: Stripe.Payout, connectedAccountId: string) {
+  const user = await prisma.user.findUnique({
+    where: { stripeConnectId: connectedAccountId },
+    select: { id: true, email: true },
+  });
+  if (!user) return;
+
+  const reason =
+    payout.failure_message ?? payout.failure_code ?? "Bank rejected the deposit.";
+  const dollars = (payout.amount / 100).toFixed(2);
+
+  // Page ops — bank rejections often need human follow-up if the artist
+  // can't self-serve (e.g., closed account requires re-onboarding KYC).
+  page({
+    severity: "warn",
+    title: `[payouts] connect payout.failed for ${user.id}`,
+    body: `Bank rejected $${dollars} payout to ${connectedAccountId}: ${reason}. Artist notified.`,
+    context: {
+      userId: user.id,
+      connectedAccountId,
+      stripePayoutId: payout.id,
+      reason,
+      amountCents: payout.amount,
+    },
+    fingerprint: `payouts:connect-payout-failed:${payout.id}`,
+  });
+
+  await enqueueNotification({
+    userId: user.id,
+    type: "PAYOUT_BANK_REJECTED",
+    title: `$${dollars} payout was bounced by your bank`,
+    body: `Reason: ${reason}. Add or fix your bank in Earnings & Payouts — Stripe will retry automatically once it's updated.`,
+    metadata: {
+      stripePayoutId: payout.id,
+      amountCents: payout.amount,
+      reason,
+      remediationPath: "/dashboard/payouts",
+    },
+  });
 }
 
 function escapeHtml(s: string) {
