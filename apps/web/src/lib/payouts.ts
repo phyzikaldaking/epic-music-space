@@ -14,6 +14,8 @@ const PAYOUT_LOCK_KEY_B = 0x504159; // 'PAY'
 export type PayoutResult = {
   userId: string;
   attemptedCents: number;
+  holdbackCents?: number;
+  payoutRiskScore?: number;
   payoutId?: string;
   status:
     | "PAID"
@@ -25,6 +27,12 @@ export type PayoutResult = {
     | "SKIPPED_CURRENCY"
     | "FAILED";
   error?: string;
+};
+
+type PendingSplitRow = {
+  id: string;
+  amountCents: number;
+  event: { type: string };
 };
 
 /** Acquire a Postgres advisory lock for the payout cron. Returns true if held. */
@@ -53,6 +61,90 @@ async function getYearToDatePaidCents(userId: string): Promise<number> {
   return agg._sum.amountCents ?? 0;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildHoldbackPlan(
+  splits: PendingSplitRow[],
+  suspicionScore: number,
+  payoutFailures: number,
+): {
+  payoutRiskScore: number;
+  holdbackCents: number;
+  payableCents: number;
+  paidSplitIds: string[];
+  heldSplitIds: string[];
+} {
+  const totalPending = splits.reduce((sum, split) => sum + split.amountCents, 0);
+  if (totalPending <= 0) {
+    return {
+      payoutRiskScore: 0,
+      holdbackCents: 0,
+      payableCents: totalPending,
+      paidSplitIds: [],
+      heldSplitIds: [],
+    };
+  }
+
+  const streamPending = splits
+    .filter((split) => split.event.type === "STREAM_ROYALTY")
+    .reduce((sum, split) => sum + split.amountCents, 0);
+  const streamShare = streamPending / totalPending;
+  const payoutRiskScore = clamp(
+    Math.round(suspicionScore * 1.2 + payoutFailures * 12 + streamShare * 35),
+    0,
+    100,
+  );
+
+  const holdbackRate =
+    payoutRiskScore >= 80 ? 0.6 :
+    payoutRiskScore >= 60 ? 0.4 :
+    payoutRiskScore >= 35 ? 0.2 :
+    0;
+
+  const holdbackTarget = Math.round(totalPending * holdbackRate);
+  if (holdbackTarget <= 0) {
+    return {
+      payoutRiskScore,
+      holdbackCents: 0,
+      payableCents: totalPending,
+      paidSplitIds: splits.map((split) => split.id),
+      heldSplitIds: [],
+    };
+  }
+
+  const rankedForHold = [...splits].sort((a, b) => {
+    const aStream = a.event.type === "STREAM_ROYALTY" ? 1 : 0;
+    const bStream = b.event.type === "STREAM_ROYALTY" ? 1 : 0;
+    if (aStream !== bStream) return bStream - aStream;
+    return b.amountCents - a.amountCents;
+  });
+
+  const heldSplitIds: string[] = [];
+  let held = 0;
+  for (const split of rankedForHold) {
+    if (held >= holdbackTarget) break;
+    heldSplitIds.push(split.id);
+    held += split.amountCents;
+  }
+
+  const heldSet = new Set(heldSplitIds);
+  const paidSplitIds = splits.filter((split) => !heldSet.has(split.id)).map((split) => split.id);
+  const holdbackCents = splits
+    .filter((split) => heldSet.has(split.id))
+    .reduce((sum, split) => sum + split.amountCents, 0);
+  const payableCents = totalPending - holdbackCents;
+
+  return {
+    payoutRiskScore,
+    holdbackCents,
+    payableCents,
+    paidSplitIds,
+    heldSplitIds,
+  };
+}
+
 /**
  * Process all PENDING revenue splits for a single user. Idempotent per
  * (userId, period) via a unique index on Payout.
@@ -71,6 +163,7 @@ export async function processPayoutsForUser(
       connectPayoutsEnabled: true,
       connectCountry: true,
       taxFormStatus: true,
+      suspicionScore: true,
     },
   });
 
@@ -83,41 +176,100 @@ export async function processPayoutsForUser(
 
   // Currency gate — Stripe destinations have a settlement currency. Today
   // the platform only books USD. Skip non-USD destinations until we add
-  // per-currency ledgering.
+  // per-currency ledgering. Retry up to 3× with exponential back-off so a
+  // transient Stripe hiccup doesn't create spurious PayoutFailure rows.
   let destinationCurrency = "usd";
-  try {
-    const account = await stripe.accounts.retrieve(user.stripeConnectId);
-    destinationCurrency = (account.default_currency ?? "usd").toLowerCase();
-  } catch {
-    // If we can't reach Stripe, fall through and let the transfer fail loudly.
+  {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const account = await stripe.accounts.retrieve(user.stripeConnectId);
+        destinationCurrency = (account.default_currency ?? "usd").toLowerCase();
+        lastErr = undefined;
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+        }
+      }
+    }
+    if (lastErr !== undefined) {
+      return {
+        userId,
+        attemptedCents: 0,
+        status: "FAILED",
+        error: `stripe account unavailable: ${lastErr instanceof Error ? lastErr.message : "unknown"}`,
+      };
+    }
   }
   if (destinationCurrency !== "usd") {
     return { userId, attemptedCents: 0, status: "SKIPPED_CURRENCY", error: `destination=${destinationCurrency}` };
   }
 
-  // Sum pending splits
-  const agg = await prisma.revenueSplit.aggregate({
+  const pendingSplits = await prisma.revenueSplit.findMany({
     where: {
       userId,
       status: "PENDING",
       role: { in: ["ARTIST", "HOLDER", "LABEL", "HOST"] },
     },
-    _sum: { amountCents: true },
+    select: {
+      id: true,
+      amountCents: true,
+      event: { select: { type: true } },
+    },
   });
-  const cents = agg._sum.amountCents ?? 0;
+  const totalPendingCents = pendingSplits.reduce((sum, split) => sum + split.amountCents, 0);
+  const payoutFailures = await prisma.payoutFailure.count({
+    where: { userId, createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) } },
+  });
+  const holdbackPlan = buildHoldbackPlan(
+    pendingSplits,
+    user.suspicionScore ?? 0,
+    payoutFailures,
+  );
+  const payableCents = holdbackPlan.payableCents;
 
-  if (cents < 0) return { userId, attemptedCents: cents, status: "SKIPPED_NEGATIVE" };
-  if (cents < MIN_PAYOUT_CENTS) return { userId, attemptedCents: cents, status: "SKIPPED_BELOW_MIN" };
+  if (payableCents < 0) {
+    return {
+      userId,
+      attemptedCents: payableCents,
+      holdbackCents: holdbackPlan.holdbackCents,
+      payoutRiskScore: holdbackPlan.payoutRiskScore,
+      status: "SKIPPED_NEGATIVE",
+    };
+  }
+  if (payableCents < MIN_PAYOUT_CENTS) {
+    return {
+      userId,
+      attemptedCents: payableCents,
+      holdbackCents: holdbackPlan.holdbackCents,
+      payoutRiskScore: holdbackPlan.payoutRiskScore,
+      status: "SKIPPED_BELOW_MIN",
+    };
+  }
 
   // Tax-form gate — ALWAYS gated above the 1099-NEC threshold for US users.
   // For others, COLLECTED or EXEMPT also unlocks payout.
   if (user.taxFormStatus !== "COLLECTED" && user.taxFormStatus !== "EXEMPT") {
     const yearToDate = await getYearToDatePaidCents(userId);
-    const projected = yearToDate + cents;
+    const projected = yearToDate + payableCents;
     if (projected >= TAX_REPORTABLE_THRESHOLD_CENTS) {
-      return { userId, attemptedCents: cents, status: "SKIPPED_TAX_THRESHOLD" };
+      return {
+        userId,
+        attemptedCents: payableCents,
+        holdbackCents: holdbackPlan.holdbackCents,
+        payoutRiskScore: holdbackPlan.payoutRiskScore,
+        status: "SKIPPED_TAX_THRESHOLD",
+      };
     }
-    return { userId, attemptedCents: cents, status: "SKIPPED_TAX_PENDING" };
+    return {
+      userId,
+      attemptedCents: payableCents,
+      holdbackCents: holdbackPlan.holdbackCents,
+      payoutRiskScore: holdbackPlan.payoutRiskScore,
+      status: "SKIPPED_TAX_PENDING",
+    };
   }
 
   const idempotencyKey = `payout:${userId}:${period}`;
@@ -128,14 +280,14 @@ export async function processPayoutsForUser(
     const payout = await prisma.payout.upsert({
       where: { userId_period: { userId, period } },
       create: {
-        amount: cents / 100,
+        amount: payableCents / 100,
         currency: "usd",
         period,
         status: "PENDING",
         userId,
       },
       update: {
-        amount: cents / 100,
+        amount: payableCents / 100,
         // Keep PENDING if a prior attempt errored; otherwise leave as-is.
         status: "PENDING",
       },
@@ -144,7 +296,7 @@ export async function processPayoutsForUser(
 
     const transfer = await stripe.transfers.create(
       {
-        amount: cents,
+        amount: payableCents,
         currency: "usd",
         destination: user.stripeConnectId,
         metadata: { userId, period, payoutId: payout.id },
@@ -159,9 +311,8 @@ export async function processPayoutsForUser(
       }),
       prisma.revenueSplit.updateMany({
         where: {
+          id: { in: holdbackPlan.paidSplitIds },
           userId,
-          status: "PENDING",
-          role: { in: ["ARTIST", "HOLDER", "LABEL", "HOST"] },
         },
         data: { status: "PAID", payoutId: payout.id, paidAt: new Date() },
       }),
@@ -172,21 +323,55 @@ export async function processPayoutsForUser(
       await enqueueNotification({
         userId,
         type: "PAYOUT",
-        title: `$${(cents / 100).toFixed(2)} paid out`,
+        title: `$${(payableCents / 100).toFixed(2)} paid out`,
         body: `Your weekly royalty payout for ${period} just hit your account.`,
-        metadata: { payoutId: payout.id, period, amountCents: cents },
+        metadata: {
+          payoutId: payout.id,
+          period,
+          amountCents: payableCents,
+          holdbackCents: holdbackPlan.holdbackCents,
+          payoutRiskScore: holdbackPlan.payoutRiskScore,
+        },
       });
+      if (holdbackPlan.holdbackCents > 0) {
+        await enqueueNotification({
+          userId,
+          type: "FRAUD_REVIEW_HOLDBACK",
+          title: `${(holdbackPlan.holdbackCents / 100).toFixed(2)} held for integrity review`,
+          body: "Part of your stream-based royalties is temporarily delayed while anti-fraud checks complete.",
+          metadata: {
+            period,
+            holdbackCents: holdbackPlan.holdbackCents,
+            payoutRiskScore: holdbackPlan.payoutRiskScore,
+            heldSplitCount: holdbackPlan.heldSplitIds.length,
+            totalPendingCents,
+          },
+        });
+      }
     } catch (err) {
       console.warn("[payouts] notification failed", err);
     }
 
-    return { userId, attemptedCents: cents, payoutId: payout.id, status: "PAID" };
+    return {
+      userId,
+      attemptedCents: payableCents,
+      holdbackCents: holdbackPlan.holdbackCents,
+      payoutRiskScore: holdbackPlan.payoutRiskScore,
+      payoutId: payout.id,
+      status: "PAID",
+    };
   } catch (err) {
     const reason = err instanceof Error ? err.message : "transfer failed";
     // Persist the failure for ops visibility + retry tooling.
     try {
       await prisma.payoutFailure.create({
-        data: { userId, payoutId, period, amountCents: cents, reason: reason.slice(0, 1000) },
+        data: {
+          userId,
+          payoutId,
+          period,
+          amountCents: payableCents,
+          reason: reason.slice(0, 1000),
+        },
       });
     } catch {
       console.warn("[payouts] could not persist failure record");
@@ -197,7 +382,14 @@ export async function processPayoutsForUser(
         data: { status: "FAILED" },
       }).catch(() => {});
     }
-    return { userId, attemptedCents: cents, status: "FAILED", error: reason };
+    return {
+      userId,
+      attemptedCents: payableCents,
+      holdbackCents: holdbackPlan.holdbackCents,
+      payoutRiskScore: holdbackPlan.payoutRiskScore,
+      status: "FAILED",
+      error: reason,
+    };
   }
 }
 

@@ -20,7 +20,17 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
       take: 25,
       include: {
-        event: { select: { type: true, occurredAt: true, songId: true } },
+        event: {
+          select: {
+            type: true,
+            occurredAt: true,
+            songId: true,
+            grossCents: true,
+            feeCents: true,
+            currency: true,
+            song: { select: { title: true, artist: true } },
+          },
+        },
       },
     }),
     prisma.payout.findMany({
@@ -29,6 +39,19 @@ export async function GET() {
       take: 10,
     }),
   ]);
+
+  // Per-role aggregates so clients can surface holder earnings separately.
+  const roleAggregates = recentSplits.reduce(
+    (acc, s) => {
+      if (!acc[s.role]) acc[s.role] = { pendingCents: 0, paidCents: 0, clawbackCents: 0, count: 0 };
+      if (s.status === "PENDING")      acc[s.role].pendingCents   += s.amountCents;
+      else if (s.status === "PAID")    acc[s.role].paidCents      += s.amountCents;
+      else if (s.status === "CLAWED_BACK") acc[s.role].clawbackCents += s.amountCents;
+      acc[s.role].count += 1;
+      return acc;
+    },
+    {} as Record<string, { pendingCents: number; paidCents: number; clawbackCents: number; count: number }>,
+  );
 
   return NextResponse.json({
     balance: {
@@ -39,6 +62,7 @@ export async function GET() {
       paidCents: balance.paidCents,
       clawbackCents: balance.clawbackCents,
     },
+    roleAggregates,
     recentSplits: recentSplits.map((s) => ({
       id: s.id,
       role: s.role,
@@ -47,6 +71,11 @@ export async function GET() {
       eventType: s.event.type,
       occurredAt: s.event.occurredAt,
       songId: s.event.songId,
+      grossDollars: s.event.grossCents / 100,
+      feeDollars: s.event.feeCents / 100,
+      currency: s.event.currency,
+      songTitle: s.event.song?.title ?? null,
+      songArtist: s.event.song?.artist ?? null,
       paidAt: s.paidAt,
     })),
     recentPayouts: recentPayouts.map((p) => ({

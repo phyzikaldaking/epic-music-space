@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { lenientLimiter } from "@/lib/rateLimit";
 import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 import { withQueryBudget } from "@/lib/queryBudget";
+import { computeRankingTransparency } from "@/lib/rankingTransparency";
 
 const EDGE_CACHE_LISTINGS = "public, s-maxage=15, stale-while-revalidate=60";
 
@@ -18,7 +19,8 @@ function listingsCacheHeaders() {
  * GET /api/market/listings
  *
  * Returns all active song listings that still have licenses available.
- * Sorted by AI score (highest first). Results are Redis-cached for 15 s.
+ * Sorted by transparent score (organic factors + capped paid influence).
+ * Results are Redis-cached for 15 s.
  */
 export async function GET(req: NextRequest) {
   const ip =
@@ -60,8 +62,11 @@ export async function GET(req: NextRequest) {
           totalLicenses: true,
           soldLicenses: true,
           aiScore: true,
+          boostScore: true,
+          streamCount: true,
           district: true,
           versusWins: true,
+          versusLosses: true,
           createdAt: true,
         },
         take: 200,
@@ -71,13 +76,32 @@ export async function GET(req: NextRequest) {
 
   const result = allActive
     .filter((s) => s.soldLicenses < s.totalLicenses)
-    .slice(0, 100)
-    .map((s) => ({
-      ...s,
-      availableLicenses: s.totalLicenses - s.soldLicenses,
-      licensePrice: Number(s.licensePrice),
-      revenueSharePct: Number(s.revenueSharePct),
-    }));
+    .map((song) => {
+      const ranking = computeRankingTransparency({
+        aiScore: Number(song.aiScore ?? 0),
+        boostScore: Number(song.boostScore ?? 0),
+        soldLicenses: song.soldLicenses,
+        totalLicenses: song.totalLicenses,
+        streamCount: song.streamCount,
+        versusWins: song.versusWins,
+        versusLosses: song.versusLosses,
+        createdAt: song.createdAt,
+      });
+      return {
+        ...song,
+        rankScore: ranking.finalScore,
+        paidBoostApplied: ranking.paidApplied,
+        paidBoostCap: ranking.paidCap,
+        paidInfluencePct: ranking.paidInfluencePct,
+        paidBoostCapped: ranking.paidBoostCapped,
+        rankingFactors: ranking.factors,
+        availableLicenses: song.totalLicenses - song.soldLicenses,
+        licensePrice: Number(song.licensePrice),
+        revenueSharePct: Number(song.revenueSharePct),
+      };
+    })
+    .sort((a, b) => b.rankScore - a.rankScore)
+    .slice(0, 100);
 
   await cacheSet(CACHE_KEYS.listings, result, CACHE_TTL.listings);
   return NextResponse.json(result, {

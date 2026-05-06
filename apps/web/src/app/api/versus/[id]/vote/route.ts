@@ -8,6 +8,7 @@ import { moderateLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics, enqueueNotification } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { CACHE_TAGS } from "@/lib/cacheTags";
+import { recordRiskEvent } from "@/lib/riskEvents";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -45,6 +46,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     await moderateLimiter.consume(`versus-vote:${ip}:${matchId}`);
   } catch {
+    await recordRiskEvent({
+      eventType: "fake_vote",
+      severity: "MEDIUM",
+      actorUserId: session.user.id,
+      ip,
+      reason: "versus_vote_ip_rate_limited",
+      metadata: { matchId },
+    });
     return NextResponse.json(
       { error: "Too many vote attempts on this match from your network. Try again in a minute." },
       { status: 429, headers: { "Retry-After": "60" } },

@@ -34,6 +34,26 @@ const STATUS_COLOR: Record<string, string> = {
   EXCLUDED: "text-white/40",
 };
 
+function nextMonday1300UTC(now = new Date()): Date {
+  const next = new Date(now);
+  next.setUTCHours(13, 0, 0, 0);
+  const day = next.getUTCDay();
+  const daysUntilMonday =
+    day === 1 && now.getTime() < next.getTime() ? 0 : (8 - day) % 7 || 7;
+  next.setUTCDate(next.getUTCDate() + daysUntilMonday);
+  return next;
+}
+
+function payoutEtaForStatus(status: string, paidAt: Date | null): string {
+  if (status === "PAID") {
+    return paidAt ? `Paid ${paidAt.toLocaleDateString()}` : "Paid";
+  }
+  if (status === "CLAWED_BACK") return "Reversed";
+  if (status !== "PENDING") return status;
+  const nextRun = nextMonday1300UTC();
+  return `Expected ${nextRun.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+}
+
 export default async function WalletPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin?callbackUrl=/dashboard/wallet");
@@ -46,7 +66,21 @@ export default async function WalletPage() {
       where: { userId, role: { in: ["ARTIST", "HOLDER", "LABEL", "HOST"] } },
       orderBy: { createdAt: "desc" },
       take: 25,
-      include: { event: { select: { type: true, occurredAt: true, songId: true } } },
+      include: {
+        event: {
+          select: {
+            type: true,
+            occurredAt: true,
+            songId: true,
+            grossCents: true,
+            feeCents: true,
+            currency: true,
+            song: {
+              select: { title: true, artist: true },
+            },
+          },
+        },
+      },
     }),
     prisma.payout.findMany({
       where: { userId },
@@ -59,6 +93,7 @@ export default async function WalletPage() {
         connectPayoutsEnabled: true,
         stripeConnectId: true,
         taxFormStatus: true,
+        suspicionScore: true,
       },
     }),
   ]);
@@ -72,6 +107,36 @@ export default async function WalletPage() {
     !user?.stripeConnectId ||
     !user.connectPayoutsEnabled ||
     (user.taxFormStatus !== "COLLECTED" && user.taxFormStatus !== "EXEMPT");
+
+  const sevenDaysAgo = Date.now() - 7 * 86_400_000;
+  const recentPositiveCents = splits
+    .filter((split) => split.amountCents > 0 && split.event.occurredAt.getTime() >= sevenDaysAgo)
+    .reduce((sum, split) => sum + split.amountCents, 0);
+  const dailyEstimate = recentPositiveCents / 100 / 7;
+
+  const holderSplits = splits.filter((s) => s.role === "HOLDER");
+  const holderPendingCents = holderSplits
+    .filter((s) => s.status === "PENDING")
+    .reduce((sum, s) => sum + s.amountCents, 0);
+  const holderPaidCents = holderSplits
+    .filter((s) => s.status === "PAID")
+    .reduce((sum, s) => sum + s.amountCents, 0);
+
+  const pendingStreamCents = splits
+    .filter((split) => split.status === "PENDING" && split.event.type === "STREAM_ROYALTY")
+    .reduce((sum, split) => sum + split.amountCents, 0);
+  const pendingCents = Math.max(balance.pendingCents, 1);
+  const streamShare = pendingStreamCents / pendingCents;
+  const estimatedRiskScore = Math.max(
+    0,
+    Math.min(100, Math.round((user?.suspicionScore ?? 0) * 1.2 + streamShare * 35)),
+  );
+  const estimatedHoldbackRate =
+    estimatedRiskScore >= 80 ? 0.6 :
+    estimatedRiskScore >= 60 ? 0.4 :
+    estimatedRiskScore >= 35 ? 0.2 :
+    0;
+  const estimatedHoldback = (pendingStreamCents / 100) * estimatedHoldbackRate;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
@@ -106,7 +171,7 @@ export default async function WalletPage() {
       )}
 
       {/* Balance cards */}
-      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-2xl border border-white/10 bg-white/3 p-5">
           <p className="text-xs font-bold uppercase tracking-widest text-white/45">Pending</p>
           <p className="mt-2 text-3xl font-black text-amber-300">
@@ -134,7 +199,67 @@ export default async function WalletPage() {
             Pending + paid {clawback < 0 ? `(${clawback.toFixed(2)} reversed)` : ""}
           </p>
         </div>
+        <div className="rounded-2xl border border-white/10 bg-white/3 p-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-white/45">Daily estimate</p>
+          <p className="mt-2 text-3xl font-black text-cyan-200">
+            ${dailyEstimate.toFixed(2)}
+          </p>
+          <p className="mt-1 text-xs text-white/40">
+            Last 7 days average
+          </p>
+        </div>
       </div>
+
+      {pendingStreamCents > 0 && (
+        <div className="mb-8 rounded-2xl border border-cyan-400/25 bg-cyan-400/10 px-5 py-4 text-sm text-cyan-100">
+          <p className="font-semibold">Fraud-weighted payout preview</p>
+          <p className="mt-1 text-cyan-100/80">
+            Stream-royalty pending balance: ${(pendingStreamCents / 100).toFixed(2)} · Risk score {estimatedRiskScore}/100.
+            {estimatedHoldbackRate > 0
+              ? ` Estimated integrity holdback: $${estimatedHoldback.toFixed(2)} until review clears.`
+              : " No integrity holdback currently projected."}
+          </p>
+        </div>
+      )}
+
+      {/* Token holder royalties — shown only when the user holds licenses */}
+      {holderSplits.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-widest text-white/60">
+            Token holder royalties
+          </h2>
+          <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-5">
+            <p className="mb-4 text-xs text-cyan-100/60">
+              You hold licenses on tracks that pay royalties to token holders whenever new licenses sell or streams accrue. These earnings settle in the weekly payout cycle.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-white/40">Pending holder earnings</p>
+                <p className="mt-1 text-2xl font-black text-amber-300">${(holderPendingCents / 100).toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-white/40">Paid to you</p>
+                <p className="mt-1 text-2xl font-black text-emerald-300">${(holderPaidCents / 100).toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-white/40">Royalty events</p>
+                <p className="mt-1 text-2xl font-black">{holderSplits.length}</p>
+              </div>
+            </div>
+            {holderSplits.slice(0, 5).map((s) => (
+              <div key={s.id} className="mt-3 flex items-center justify-between border-t border-white/5 pt-3 text-sm">
+                <div>
+                  <p className="font-medium text-white/80">{s.event.song?.title ?? "Platform event"}</p>
+                  <p className="text-xs text-white/40">{new Date(s.event.occurredAt).toLocaleDateString()} · {s.event.type === "LICENSE_SALE" ? "License sale" : "Stream royalty"}</p>
+                </div>
+                <p className={`font-bold tabular-nums ${s.status === "PAID" ? "text-emerald-300" : "text-amber-300"}`}>
+                  +${(s.amountCents / 100).toFixed(2)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Recent splits */}
       <section className="mb-10">
@@ -175,6 +300,66 @@ export default async function WalletPage() {
                     </td>
                     <td className={`px-4 py-3 text-right text-xs font-bold ${STATUS_COLOR[s.status] ?? ""}`}>
                       {FRIENDLY_STATUS[s.status] ?? s.status}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Transparent payout receipts */}
+      <section className="mb-10">
+        <h2 className="mb-3 text-sm font-bold uppercase tracking-widest text-white/60">
+          Per-track payout receipts
+        </h2>
+        {splits.length === 0 ? (
+          <div className="rounded-2xl border border-white/8 bg-white/3 px-5 py-8 text-center text-sm text-white/40">
+            Receipts appear as soon as royalty events post to your ledger.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-white/8 bg-[#0d0d14]">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead className="bg-white/5 text-left text-xs font-bold uppercase tracking-widest text-white/45">
+                <tr>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Track</th>
+                  <th className="px-4 py-3">Source</th>
+                  <th className="px-4 py-3 text-right">Gross</th>
+                  <th className="px-4 py-3 text-right">Fees</th>
+                  <th className="px-4 py-3 text-right">Net</th>
+                  <th className="px-4 py-3 text-right">Payout ETA</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {splits.slice(0, 15).map((split) => (
+                  <tr key={`receipt-${split.id}`}>
+                    <td className="px-4 py-3 text-xs text-white/55">
+                      {new Date(split.event.occurredAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-white/90">
+                        {split.event.song?.title ?? "Platform event"}
+                      </p>
+                      <p className="text-xs text-white/45">
+                        {split.event.song?.artist ?? "Epic Music Space"}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-white/70">
+                      {FRIENDLY_TYPE[split.event.type] ?? split.event.type}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      ${(split.event.grossCents / 100).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-white/60">
+                      ${(split.event.feeCents / 100).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold tabular-nums">
+                      {split.amountCents < 0 ? "-" : ""}${(Math.abs(split.amountCents) / 100).toFixed(2)}
+                    </td>
+                    <td className={`px-4 py-3 text-right text-xs font-semibold ${STATUS_COLOR[split.status] ?? "text-white/55"}`}>
+                      {payoutEtaForStatus(split.status, split.paidAt)}
                     </td>
                   </tr>
                 ))}

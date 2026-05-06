@@ -6,6 +6,7 @@ import { moderateLimiter } from "@/lib/rateLimit";
 import { advanceMatchIfNeeded } from "@/lib/verzuz";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { getRedis } from "@/lib/redis";
+import { recordRiskEvent } from "@/lib/riskEvents";
 
 export const runtime = "nodejs";
 
@@ -40,6 +41,14 @@ export async function POST(
     await moderateLimiter.consume(`verzuz-vote:user:${session.user.id}:${matchId}`);
     await moderateLimiter.consume(`verzuz-vote:ip:${ip}:${matchId}`);
   } catch {
+    await recordRiskEvent({
+      eventType: "fake_vote",
+      severity: "MEDIUM",
+      actorUserId: session.user.id,
+      ip,
+      reason: "verzuz_vote_rate_limited",
+      metadata: { matchId },
+    });
     return NextResponse.json(
       { error: "Slow down on this match. Try again in a minute." },
       { status: 429, headers: { "Retry-After": "30" } },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { requireCronRequest } from "@/lib/routeAuth";
+import { page } from "@/lib/pager";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -63,20 +64,13 @@ export async function GET(req: NextRequest) {
       stripeCount,
     });
 
-    const webhookUrl = process.env.AUTH_ALERT_WEBHOOK_URL;
-    if (webhookUrl) {
-      try {
-        await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: `[reconcile-ledger] DRIFT detected: local=$${(localCents / 100).toFixed(2)} stripe=$${(stripeCents / 100).toFixed(2)} drift=$${(driftCents / 100).toFixed(2)} (${driftPct.toFixed(2)}%)`,
-          }),
-        });
-      } catch {
-        // alert webhook failures are noisy but not fatal
-      }
-    }
+    page({
+      severity: "critical",
+      title: "[reconcile-ledger] PAYOUT DRIFT detected",
+      body: `local=$${(localCents / 100).toFixed(2)} stripe=$${(stripeCents / 100).toFixed(2)} drift=$${(driftCents / 100).toFixed(2)} (${driftPct.toFixed(2)}%)`,
+      context: { localCents, stripeCents, driftCents, stripeCount },
+      fingerprint: `reconcile-payout-${since.toISOString().slice(0, 10)}`,
+    });
   }
 
   // Second check: gross revenue (charges) vs. local Transaction.SUCCEEDED rows.
@@ -122,20 +116,13 @@ export async function GET(req: NextRequest) {
       revenueDriftPct: revenueDriftPct.toFixed(3),
       chargesCount,
     });
-    const webhookUrl = process.env.AUTH_ALERT_WEBHOOK_URL;
-    if (webhookUrl) {
-      try {
-        await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: `[reconcile-ledger] REVENUE DRIFT: local=$${(localRevenueCents / 100).toFixed(2)} stripe=$${(chargesCents / 100).toFixed(2)} drift=$${(revenueDriftCents / 100).toFixed(2)} (${revenueDriftPct.toFixed(2)}%)`,
-          }),
-        });
-      } catch {
-        /* alert webhook failures non-fatal */
-      }
-    }
+    page({
+      severity: "critical",
+      title: "[reconcile-ledger] REVENUE DRIFT detected",
+      body: `local=$${(localRevenueCents / 100).toFixed(2)} stripe=$${(chargesCents / 100).toFixed(2)} drift=$${(revenueDriftCents / 100).toFixed(2)} (${revenueDriftPct.toFixed(2)}%)`,
+      context: { localRevenueCents, chargesCents, revenueDriftCents, chargesCount },
+      fingerprint: `reconcile-revenue-${since.toISOString().slice(0, 10)}`,
+    });
   }
 
   return NextResponse.json({

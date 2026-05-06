@@ -20,6 +20,7 @@ import { enqueueNotification } from "@/lib/queues";
  */
 
 const PLATFORM_FEE_BPS = 1000; // 10%
+const HOLDER_POOL_BPS  =  500; //  5% of gross distributed to existing token holders
 
 type Tx = Prisma.TransactionClient;
 
@@ -37,11 +38,39 @@ export async function recordLicenseSale(opts: {
   artistId: string;
   transactionId: string;
   grossDollars: number;
+  // Exclude the buyer from holder fan-out — their token is already committed
+  // when this runs but they shouldn't earn a royalty on their own purchase.
+  newBuyerId?: string;
 }): Promise<{ eventId: string; artistCents: number; platformCents: number }> {
   const grossCents = dollarsToCents(opts.grossDollars);
   const platformCents = Math.floor((grossCents * PLATFORM_FEE_BPS) / 10_000);
-  const artistCents = grossCents - platformCents;
   const db = opts.tx ?? prisma;
+
+  // Fan-out to existing active token holders. Use the global client so we
+  // read committed rows — the new buyer's token is persisted before this call.
+  const existingHolders = await prisma.licenseToken.findMany({
+    where: {
+      songId: opts.songId,
+      status: "ACTIVE",
+      ...(opts.newBuyerId ? { holderId: { not: opts.newBuyerId } } : {}),
+    },
+    select: { holderId: true },
+  });
+  // Deduplicate — a user holding N tokens still earns one proportional share.
+  const holderIds = [...new Set(existingHolders.map((h) => h.holderId))];
+  const holderPoolCents = holderIds.length > 0
+    ? Math.floor((grossCents * HOLDER_POOL_BPS) / 10_000)
+    : 0;
+  const artistCents = grossCents - platformCents - holderPoolCents;
+
+  const perHolderBase = holderIds.length > 0 ? Math.floor(holderPoolCents / holderIds.length) : 0;
+  const holderDust    = holderPoolCents - perHolderBase * holderIds.length;
+  const holderSplits  = holderIds.map((holderId, i) => ({
+    userId: holderId,
+    role: "HOLDER" as const,
+    amountCents: perHolderBase + (i === 0 ? holderDust : 0),
+    status: "PENDING" as const,
+  }));
 
   const event = await db.revenueEvent.create({
     data: {
@@ -64,6 +93,7 @@ export async function recordLicenseSale(opts: {
             amountCents: platformCents,
             status: "EXCLUDED",
           },
+          ...holderSplits,
         ],
       },
     },
@@ -414,9 +444,30 @@ export async function getWalletBalance(userId: string): Promise<{
   return { pendingCents, paidCents, clawbackCents };
 }
 
-export async function recordStreamRoyalty(_opts: {
+export async function recordStreamRoyalty(opts: {
   songId: string;
   pennies: number;
 }): Promise<void> {
-  // Unimplemented — needs stream-event ingestion first.
+  if (opts.pennies <= 0) return;
+  const song = await prisma.song.findUnique({
+    where: { id: opts.songId },
+    select: { artistId: true },
+  });
+  if (!song) return;
+
+  await prisma.revenueEvent.create({
+    data: {
+      type: "STREAM_ROYALTY",
+      songId: opts.songId,
+      grossCents: opts.pennies,
+      splits: {
+        create: {
+          userId: song.artistId,
+          role: "ARTIST",
+          amountCents: opts.pennies,
+          status: "PENDING",
+        },
+      },
+    },
+  });
 }

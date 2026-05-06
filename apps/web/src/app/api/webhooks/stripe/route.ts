@@ -14,6 +14,8 @@ import { track } from "@/lib/analytics";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import { recordLicenseSale, recordTip, recordAdPurchase, recordRefund, recordAuctionWin, recordBoost, recordSubscription, recordServiceSale } from "@/lib/revenueShare";
 import { sendArtistMilestoneEmail } from "@/lib/email";
+import { recordRiskEvent } from "@/lib/riskEvents";
+import { page } from "@/lib/pager";
 import type Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -390,6 +392,7 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
       artistId: song.artistId,
       transactionId: existing.id,
       grossDollars: Number(existing.amount),
+      newBuyerId: existing.userId,
     });
   } catch (err) {
     if (!isUniqueConstraintError(err)) {
@@ -602,7 +605,26 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
   ]);
 }
 async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
-  await prisma.transaction.updateMany({ where: { stripePaymentIntentId: pi.id }, data: { status: "FAILED" } });
+  const updated = await prisma.transaction.updateMany({ where: { stripePaymentIntentId: pi.id }, data: { status: "FAILED" } });
+  const tx = await prisma.transaction.findFirst({
+    where: { stripePaymentIntentId: pi.id },
+    select: { id: true, userId: true, songId: true, amount: true, type: true },
+  });
+  await recordRiskEvent({
+    eventType: "failed_payment",
+    severity: Number(pi.amount ?? 0) >= 50_000 ? "HIGH" : "MEDIUM",
+    actorUserId: tx?.userId ?? null,
+    songId: tx?.songId ?? null,
+    transactionId: tx?.id ?? null,
+    reason: pi.last_payment_error?.code ?? "payment_intent_failed",
+    metadata: {
+      paymentIntentId: pi.id,
+      amount: pi.amount,
+      currency: pi.currency,
+      transactionType: tx?.type ?? null,
+      updatedCount: updated.count,
+    },
+  });
 }
 async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
   await prisma.transaction.updateMany({ where: { stripeSessionId: session.id }, data: { status: "SUCCEEDED", stripePaymentIntentId: session.payment_intent as string | undefined } });
@@ -1043,16 +1065,13 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       }),
     ]);
     if (totalCount >= 5 && refundedCount / totalCount > 0.05) {
-      const webhook = process.env.AUTH_ALERT_WEBHOOK_URL;
-      if (webhook) {
-        fetch(webhook, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: `[fraud-alert] Refund rate ${(refundedCount / totalCount * 100).toFixed(1)}% (${refundedCount}/${totalCount}) over the last hour. Last refund: tx=${transaction.id} $${(charge.amount_refunded / 100).toFixed(2)}`,
-          }),
-        }).catch(() => {});
-      }
+      page({
+        severity: "critical",
+        title: "[fraud-alert] Refund rate spike",
+        body: `${(refundedCount / totalCount * 100).toFixed(1)}% (${refundedCount}/${totalCount}) over the last hour. Last refund: tx=${transaction.id} $${(charge.amount_refunded / 100).toFixed(2)}`,
+        context: { refundedCount, totalCount, ratio: refundedCount / totalCount },
+        fingerprint: "fraud-refund-rate-hour",
+      });
       console.warn("[stripe-webhook] FRAUD_ALERT refund_rate", {
         refunded: refundedCount,
         total: totalCount,
