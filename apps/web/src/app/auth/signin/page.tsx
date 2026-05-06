@@ -7,5 +7,16 @@ export default function SignInPage() {
   const appleEnabled = Boolean(
     process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET,
   );
-  return <SignInForm googleEnabled={googleEnabled} appleEnabled={appleEnabled} />;
+  const phoneEnabled = Boolean(
+    process.env.TWILIO_ACCOUNT_SID &&
+      process.env.TWILIO_AUTH_TOKEN &&
+      process.env.TWILIO_VERIFY_FROM,
+  );
+  return (
+    <SignInForm
+      googleEnabled={googleEnabled}
+      appleEnabled={appleEnabled}
+      phoneEnabled={phoneEnabled}
+    />
+  );
 }
