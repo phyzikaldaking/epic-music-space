@@ -47,10 +47,11 @@ const prismaMock = vi.hoisted(() => ({
     update: vi.fn(),
     updateMany: vi.fn(),
   },
-  payout: {
-    create: vi.fn(),
-    updateMany: vi.fn(),
-  },
+   payout: {
+     findFirst: vi.fn(),
+     create: vi.fn(),
+     updateMany: vi.fn(),
+   },
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: authMock }));

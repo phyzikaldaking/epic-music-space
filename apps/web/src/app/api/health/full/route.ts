@@ -6,7 +6,7 @@ import {
   aiScoringQueue,
   notificationQueue,
   analyticsQueue,
-  deadLetterQueue,
+  analyticsDeadLetterQueue,
 } from "@/lib/queues";
 
 export const runtime = "nodejs";
@@ -106,14 +106,14 @@ export async function GET(request: Request) {
 
   const queueSnapshots = (async (): Promise<QueueSnapshot[] | null> => {
     if (!aiScoringQueue || !notificationQueue || !analyticsQueue) return null;
-    const results = await Promise.all([
-      snapshotQueue("ai-scoring", aiScoringQueue as unknown as Queue<unknown>),
-      snapshotQueue("notifications", notificationQueue as unknown as Queue<unknown>),
-      snapshotQueue("analytics", analyticsQueue as unknown as Queue<unknown>),
-      deadLetterQueue
-        ? snapshotQueue("dead-letter", deadLetterQueue as unknown as Queue<unknown>)
-        : null,
-    ]);
+     const results = await Promise.all([
+       snapshotQueue("ai-scoring", aiScoringQueue as unknown as Queue<unknown>),
+       snapshotQueue("notifications", notificationQueue as unknown as Queue<unknown>),
+       snapshotQueue("analytics", analyticsQueue as unknown as Queue<unknown>),
+       analyticsDeadLetterQueue
+         ? snapshotQueue("analytics-dead-letter", analyticsDeadLetterQueue as unknown as Queue<unknown>)
+         : null,
+     ]);
     return results.filter((r): r is QueueSnapshot => r !== null);
   })();
 

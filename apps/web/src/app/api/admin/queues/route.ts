@@ -5,7 +5,7 @@ import {
   aiScoringQueue,
   notificationQueue,
   analyticsQueue,
-  deadLetterQueue,
+  analyticsDeadLetterQueue,
 } from "@/lib/queues";
 
 export const runtime = "nodejs";
@@ -65,8 +65,8 @@ export async function GET() {
     snapshot("ai-scoring", aiScoringQueue as unknown as Queue<unknown>),
     snapshot("notifications", notificationQueue as unknown as Queue<unknown>),
     snapshot("analytics", analyticsQueue as unknown as Queue<unknown>),
-    deadLetterQueue
-      ? snapshot("dead-letter", deadLetterQueue as unknown as Queue<unknown>)
+    analyticsDeadLetterQueue
+      ? snapshot("dead-letter", analyticsDeadLetterQueue as unknown as Queue<unknown>)
       : null,
   ]);
 

@@ -7,7 +7,7 @@ import {
   aiScoringQueue,
   notificationQueue,
   analyticsQueue,
-  deadLetterQueue,
+  analyticsDeadLetterQueue,
 } from "@/lib/queues";
 
 export const runtime = "nodejs";
@@ -109,8 +109,8 @@ export default async function AdminStatusPage() {
         snapshotQueue("ai-scoring", aiScoringQueue as unknown as Queue<unknown>),
         snapshotQueue("notifications", notificationQueue as unknown as Queue<unknown>),
         snapshotQueue("analytics", analyticsQueue as unknown as Queue<unknown>),
-        deadLetterQueue
-          ? snapshotQueue("dead-letter", deadLetterQueue as unknown as Queue<unknown>)
+        analyticsDeadLetterQueue
+          ? snapshotQueue("analytics-dead-letter", analyticsDeadLetterQueue as unknown as Queue<unknown>)
           : null,
       ]);
       return results.filter((r): r is QueueSnapshot => r !== null);
