@@ -21,6 +21,11 @@ export function sanitizeCallbackPath(
 }
 
 export function appendCallbackParam(url: string, callbackPath: string) {
+  // Defense-in-depth: re-run sanitizeCallbackPath inside this helper so a
+  // future caller who forgets to sanitize their input can't accidentally
+  // create an open-redirect. Trusted callers paying the (cheap) double-
+  // sanitize cost is fine; the result is idempotent.
+  const safePath = sanitizeCallbackPath(callbackPath);
   const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}callbackUrl=${encodeURIComponent(callbackPath)}`;
+  return `${url}${separator}callbackUrl=${encodeURIComponent(safePath)}`;
 }
