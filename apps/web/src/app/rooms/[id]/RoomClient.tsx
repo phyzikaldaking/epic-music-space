@@ -195,6 +195,42 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     };
   }
 
+  const stopPingLoop = useCallback(() => {
+    if (pingRef.current) {
+      window.clearInterval(pingRef.current);
+      pingRef.current = null;
+    }
+  }, []);
+
+  // Ping loop to measure RTT and set a simple connection quality indicator
+  const startPingLoop = useCallback(() => {
+    stopPingLoop();
+    let cancelled = false;
+    async function pingOnce() {
+      const t0 = performance.now();
+      try {
+        const res = await fetch(`/api/rooms/${room.id}/ping`, { cache: "no-store" });
+        if (!res.ok) throw new Error("ping failed");
+        const rtt = performance.now() - t0;
+        if (cancelled) return;
+        if (rtt < 150) setConnectionQuality("good");
+        else if (rtt < 400) setConnectionQuality("fair");
+        else setConnectionQuality("poor");
+      } catch {
+        if (cancelled) return;
+        setConnectionQuality("poor");
+      }
+    }
+    pingOnce();
+    const id = window.setInterval(pingOnce, 5000);
+    pingRef.current = id;
+    return () => {
+      cancelled = true;
+      if (pingRef.current) window.clearInterval(pingRef.current);
+      pingRef.current = null;
+    };
+  }, [room.id, stopPingLoop]);
+
   // ── Connect to LiveKit ─────────────────────────────────────────────
   const connect = useCallback(async () => {
     if (connecting || connected || ended) return;
@@ -309,43 +345,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     } finally {
       setConnecting(false);
     }
-  }, [connecting, connected, ended, room.id]);
-
-  // Ping loop to measure RTT and set a simple connection quality indicator
-  function startPingLoop() {
-    stopPingLoop();
-    let cancelled = false;
-    async function pingOnce() {
-      const t0 = performance.now();
-      try {
-        const res = await fetch(`/api/rooms/${room.id}/ping`, { cache: "no-store" });
-        if (!res.ok) throw new Error("ping failed");
-        const rtt = performance.now() - t0;
-        if (cancelled) return;
-        if (rtt < 150) setConnectionQuality("good");
-        else if (rtt < 400) setConnectionQuality("fair");
-        else setConnectionQuality("poor");
-      } catch {
-        if (cancelled) return;
-        setConnectionQuality("poor");
-      }
-    }
-    pingOnce();
-    const id = window.setInterval(pingOnce, 5000);
-    pingRef.current = id;
-    return () => {
-      cancelled = true;
-      if (pingRef.current) window.clearInterval(pingRef.current);
-      pingRef.current = null;
-    };
-  }
-
-  function stopPingLoop() {
-    if (pingRef.current) {
-      window.clearInterval(pingRef.current);
-      pingRef.current = null;
-    }
-  }
+  }, [connecting, connected, ended, room.id, startPingLoop]);
 
   const stopTrackPlayback = useCallback(async () => {
     const lkRoom = lkRoomRef.current;
@@ -392,7 +392,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
         await fetch(`/api/rooms/${room.id}/leave`, { method: "POST" }).catch(() => null);
       }
     }
-  }, [isHost, room.id, stopTrackPlayback]);
+  }, [isHost, room.id, stopTrackPlayback, stopPingLoop]);
 
   useEffect(() => {
     return () => {
@@ -584,7 +584,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   }
 
   // ── Host: grant / revoke / kick / ban ───────────────────────────────
-  async function grantFloor(userId: string) {
+  const grantFloor = useCallback(async (userId: string) => {
     const result = await roomAction(`/api/rooms/${room.id}/grant`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -595,9 +595,9 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       return;
     }
     await broadcast("floor_granted", { userId });
-  }
+  }, [room.id, broadcast]);
 
-  async function revokeFloor(userId: string) {
+  const revokeFloor = useCallback(async (userId: string) => {
     const result = await roomAction(`/api/rooms/${room.id}/revoke`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -608,7 +608,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       return;
     }
     await broadcast("floor_revoked", { userId });
-  }
+  }, [room.id, broadcast]);
 
   // Native confirm()/prompt() render flaky inside the Capacitor WebView
   // and aren't styleable. Open the in-app modal and wait for the user's
@@ -1274,7 +1274,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     const next = handsUp[0];
     if (!next) return;
     void grantFloor(next.userId);
-  }, [isHost, connected, autoQueueEnabled, quietMode, handsUp]);
+  }, [isHost, connected, autoQueueEnabled, quietMode, handsUp, grantFloor]);
 
   useEffect(() => {
     if (!isHost || !connected || !quietMode) return;
@@ -1282,7 +1282,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     nonHostSpeakers.forEach((p) => {
       void revokeFloor(p.userId);
     });
-  }, [isHost, connected, quietMode, speakers]);
+  }, [isHost, connected, quietMode, speakers, revokeFloor]);
   const roomCrew = [room.host, ...Array.from(participants.values()).filter((p) => p.userId !== room.hostId)];
   const visibleSeats = roomCrew.slice(0, 10);
   const vibeClass =
