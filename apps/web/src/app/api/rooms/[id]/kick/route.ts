@@ -54,7 +54,21 @@ export async function POST(
     return NextResponse.json({ error: "Listener is no longer in this room" }, { status: 409 });
   }
 
-  await removeRoomParticipant(id, body.userId);
+  // If LiveKit refused the removal, the user's audio is still flowing.
+  // Surface that — moderation theater is worse than a 502 the host can
+  // retry. The DB row stays "left" since we already updated it.
+  const lkResult = await removeRoomParticipant(id, body.userId);
+  if (!lkResult.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Marked left in the database but LiveKit refused the disconnect. They may still be audible briefly — try kick again.",
+        livekitReason: lkResult.reason,
+      },
+      { status: 502 },
+    );
+  }
 
   return NextResponse.json({ ok: true });
 }

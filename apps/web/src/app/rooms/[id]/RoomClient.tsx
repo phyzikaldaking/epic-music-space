@@ -107,6 +107,30 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   const audioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const pingRef = useRef<number | null>(null);
   const reconnectAttempts = useRef(0);
+  // Only attempt auto-reconnect after the user has explicitly joined at
+  // least once. Prevents the page from auto-joining LiveKit on first
+  // mount — which previously fired the mic-permission prompt before the
+  // user clicked Join Room and burned the per-user token rate limit.
+  const hasJoinedOnce = useRef(false);
+  // Cached "did the user/host explicitly leave" flag — auto-reconnect
+  // should not fire after a manual disconnect.
+  const explicitlyLeft = useRef(false);
+  // Modal state for kick / ban / end confirmations (replaces native
+  // confirm()/prompt() which render flaky inside the Capacitor WebView).
+  const [modal, setModal] = useState<
+    | { kind: "kick"; userId: string }
+    | { kind: "ban"; userId: string; reason: string }
+    | { kind: "end" }
+    | null
+  >(null);
+  // Whether the page is currently visible. Used to pause polling and
+  // suppress auto-reconnect attempts when the tab is hidden / WebView
+  // is backgrounded.
+  const [pageVisible, setPageVisible] = useState(true);
+  // True when the active <audio> source is CORS-tainted and captureStream
+  // would silently produce no audio frames. Surfaces a banner so the host
+  // doesn't think their track is reaching listeners.
+  const [trackPublishUnsupported, setTrackPublishUnsupported] = useState(false);
 
   async function roomAction(
     path: string,
@@ -182,48 +206,46 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           el.style.display = "none";
           document.body.appendChild(el);
           audioElsRef.current.set(participant.identity, el);
-
-          // Basic active-speaker detection: mark participant active while audio is playing
-          const markActive = () => {
-            setActiveSpeakers((prev) => new Set(prev).add(participant.identity));
-          };
-          const clearActive = () => {
-            setActiveSpeakers((prev) => {
-              const next = new Set(prev);
-              next.delete(participant.identity);
-              return next;
-            });
-          };
-          el.addEventListener("playing", markActive);
-          el.addEventListener("pause", clearActive);
-          el.addEventListener("ended", clearActive);
-
-          // store cleanup on the element for later
-          (el as HTMLAudioElement & { __cleanup?: () => void }).__cleanup = () => {
-            el.removeEventListener("playing", markActive);
-            el.removeEventListener("pause", clearActive);
-            el.removeEventListener("ended", clearActive);
-          };
         }
       });
       lkRoom.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
-        track.detach().forEach((el) => {
-          try {
-            (el as HTMLAudioElement & { __cleanup?: () => void }).__cleanup?.();
-          } catch {
-            /* listener already detached */
-          }
-          el.remove();
-        });
+        track.detach().forEach((el) => el.remove());
         audioElsRef.current.delete(participant.identity);
-        setActiveSpeakers((prev) => {
-          const next = new Set(prev);
-          next.delete(participant.identity);
-          return next;
-        });
+      });
+      // Use LiveKit's native active-speakers event instead of a brittle
+      // "playing/pause" hack on the <audio> element (which fires once and
+      // never again as long as the track stays subscribed).
+      lkRoom.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        setActiveSpeakers(new Set(speakers.map((p) => p.identity)));
       });
       lkRoom.on(RoomEvent.Disconnected, () => {
         setConnected(false);
+      });
+      lkRoom.on(RoomEvent.Reconnecting, () => {
+        setConnectionQuality("poor");
+      });
+      lkRoom.on(RoomEvent.Reconnected, () => {
+        setConnectionQuality("good");
+      });
+      lkRoom.on(RoomEvent.MediaDevicesError, (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(
+          /permission|denied|notallowed/i.test(msg)
+            ? "Microphone access was blocked. Click the lock icon in your address bar, allow mic, then try again."
+            : "Audio device error. Check your microphone is connected.",
+        );
+      });
+      lkRoom.on(RoomEvent.ConnectionQualityChanged, (quality, p) => {
+        // Only react to the local participant's quality — listeners' quality
+        // is informational but doesn't drive the host's status indicator.
+        if (p?.isLocal === false) return;
+        const q =
+          quality === "excellent" || quality === "good"
+            ? "good"
+            : quality === "poor"
+              ? "poor"
+              : "fair";
+        setConnectionQuality(q);
       });
 
       try {
@@ -245,6 +267,8 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       lkRoomRef.current = lkRoom;
       setConnected(true);
       setMuted(true);
+      hasJoinedOnce.current = true;
+      explicitlyLeft.current = false;
       // reset reconnect attempts and start pinging
       reconnectAttempts.current = 0;
       setConnectionQuality("good");
@@ -297,7 +321,11 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     const lkRoom = lkRoomRef.current;
     if (audioRef.current) {
       audioRef.current.pause();
-      audioRef.current.src = "";
+      // src="" triggers a synchronous load of an empty URL and throws
+      // MEDIA_ELEMENT_ERROR in the console. removeAttribute + load() is
+      // the documented teardown.
+      audioRef.current.removeAttribute("src");
+      audioRef.current.load();
       audioRef.current.remove();
       audioRef.current = null;
     }
@@ -325,8 +353,14 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     setMuted(true);
     stopPingLoop();
     setConnectionQuality("offline");
-    if (markLeft && !isHost) {
-      await fetch(`/api/rooms/${room.id}/leave`, { method: "POST" }).catch(() => null);
+    if (markLeft) {
+      explicitlyLeft.current = true;
+      // Listeners hit /leave to set leftAt. Hosts have nothing to mark
+      // here — host departure is handled by the page-unload beacon below
+      // (so a tab close ends the room rather than leaving it stale LIVE).
+      if (!isHost) {
+        await fetch(`/api/rooms/${room.id}/leave`, { method: "POST" }).catch(() => null);
+      }
     }
   }, [isHost, room.id, stopTrackPlayback]);
 
@@ -336,6 +370,35 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     };
   }, [disconnect]);
 
+  // Page unload — fire a sendBeacon so the server hears about the
+  // departure even though fetch() is unreliable during pagehide.
+  // Hosts: end the room implicitly so it doesn't sit LIVE in the lobby
+  // for hours after the host closes the tab.
+  useEffect(() => {
+    function onUnload() {
+      const path = isHost
+        ? `/api/rooms/${room.id}/end`
+        : `/api/rooms/${room.id}/leave`;
+      try {
+        navigator.sendBeacon?.(path, new Blob([], { type: "application/json" }));
+      } catch {
+        /* best-effort */
+      }
+    }
+    window.addEventListener("pagehide", onUnload);
+    return () => window.removeEventListener("pagehide", onUnload);
+  }, [isHost, room.id]);
+
+  // Visibility — pause auto-reconnect / polling while the tab is hidden
+  // so a backgrounded WebView on mobile doesn't burn the rate limit.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onChange = () => setPageVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", onChange);
+    setPageVisible(document.visibilityState === "visible");
+    return () => document.removeEventListener("visibilitychange", onChange);
+  }, []);
+
   // Auto-reconnect on unexpected disconnect with exponential backoff
   useEffect(() => {
     if (connected) {
@@ -343,14 +406,22 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       return;
     }
     if (ended) return;
-    // If disconnected unexpectedly (not manual leave), attempt reconnect
+    // Auto-reconnect is opt-in: only fires after the user explicitly
+    // clicked "Join Room" once and we successfully connected. Without
+    // this guard the page would auto-join on first mount and trigger
+    // the browser's mic-permission prompt with no user gesture.
+    if (!hasJoinedOnce.current) return;
+    if (explicitlyLeft.current) return;
+    // Don't burn battery / quota retrying while the tab is hidden.
+    if (!pageVisible) return;
+
     let cancelled = false;
     async function attempt() {
       if (connecting || connected) return;
       const attempts = reconnectAttempts.current ?? 0;
       const delay = Math.min(30_000, Math.pow(2, attempts) * 1000);
       await new Promise((res) => setTimeout(res, delay));
-      if (cancelled || connected) return;
+      if (cancelled || connected || explicitlyLeft.current) return;
       reconnectAttempts.current = attempts + 1;
       try {
         await connect();
@@ -358,12 +429,11 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
         // will try again on next effect run
       }
     }
-    // only start attempts if we previously connected at least once
-    if (reconnectAttempts.current >= 0) attempt();
+    attempt();
     return () => {
       cancelled = true;
     };
-  }, [connected, connecting, connect, ended]);
+  }, [connected, connecting, connect, ended, pageVisible]);
 
   // ── Toggle mic ──────────────────────────────────────────────────────
   async function toggleMute() {
@@ -389,35 +459,63 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     setError(null);
 
     try {
+      // Feature-detect captureStream up front. iOS Safari / WKWebView
+      // (Capacitor) don't expose it, and using crossOrigin="anonymous"
+      // on a non-CORS audioUrl silently mutes the captured stream so
+      // listeners hear nothing. Failing fast here surfaces the real
+      // limitation instead of producing silent published tracks.
+      type Captureable = HTMLMediaElement & {
+        captureStream?: () => MediaStream;
+        mozCaptureStream?: () => MediaStream;
+      };
+      if (
+        typeof HTMLAudioElement === "undefined" ||
+        (!("captureStream" in HTMLAudioElement.prototype) &&
+          !("mozCaptureStream" in HTMLAudioElement.prototype))
+      ) {
+        setTrackPublishUnsupported(true);
+        throw new Error(
+          "Track-to-room publish isn't supported on this browser. Use the desktop app to play tracks live to listeners.",
+        );
+      }
+
       const audio = new Audio(song.audioUrl);
-      audio.crossOrigin = "anonymous";
+      // Do NOT set crossOrigin — it makes captureStream silent when the
+      // audio source isn't CORS-enabled. Same-origin or default-cors
+      // sources work without it.
       audio.loop = false;
-      // Mute element output locally so it doesn't double-up with the
-      // subscribed LiveKit playback (we're publishing the captured stream).
-      audio.muted = false;
+      // Mute the local element so the host doesn't hear the song twice
+      // (once from this <audio>, once from their own LiveKit publish
+      // playing back through the subscribed audio elements).
+      audio.muted = true;
       audioRef.current = audio;
 
       // Need to await play() before captureStream gets audio frames.
       await audio.play();
 
-      type Captureable = HTMLMediaElement & {
-        captureStream?: () => MediaStream;
-        mozCaptureStream?: () => MediaStream;
-      };
       const cap = audio as Captureable;
       const stream = cap.captureStream?.() ?? cap.mozCaptureStream?.();
-      if (!stream) throw new Error("captureStream not supported in this browser");
+      if (!stream) {
+        setTrackPublishUnsupported(true);
+        throw new Error(
+          "Track publish isn't available on this browser. Use the desktop app to stream tracks to the room.",
+        );
+      }
 
       const [mediaTrack] = stream.getAudioTracks();
       if (!mediaTrack) throw new Error("No audio track to publish");
 
       const lkTrack = new LocalAudioTrack(mediaTrack);
+      // Source.Unknown so the host's mic publish (Source.Microphone) and
+      // this track-stream publish are clearly distinct on the wire — two
+      // Microphone tracks per identity would confuse LiveKit routing.
       const pub = await lkRoom.localParticipant.publishTrack(lkTrack, {
         name: `track:${song.id}`,
         source: Track.Source.Unknown,
       });
       trackPublicationRef.current = pub;
       setTrackPlaying(true);
+      setTrackPublishUnsupported(false);
 
       audio.addEventListener("ended", () => {
         void stopTrackPlayback();
@@ -482,8 +580,21 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     await broadcast("floor_revoked", { userId });
   }
 
-  async function kickUser(userId: string) {
-    if (!confirm("Kick this listener from the room?")) return;
+  // Native confirm()/prompt() render flaky inside the Capacitor WebView
+  // and aren't styleable. Open the in-app modal and wait for the user's
+  // explicit choice before firing the destructive action.
+  function kickUser(userId: string) {
+    setModal({ kind: "kick", userId });
+  }
+  function banUser(userId: string) {
+    setModal({ kind: "ban", userId, reason: "" });
+  }
+  function endRoom() {
+    setModal({ kind: "end" });
+  }
+
+  async function confirmKick(userId: string) {
+    setModal(null);
     const result = await roomAction(`/api/rooms/${room.id}/kick`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -496,13 +607,12 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     await broadcast("user_kicked", { userId });
   }
 
-  async function banUser(userId: string) {
-    const reason = prompt("Reason for ban (optional):", "");
-    if (reason === null) return; // cancelled
+  async function confirmBan(userId: string, reason: string) {
+    setModal(null);
     const result = await roomAction(`/api/rooms/${room.id}/ban`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, reason }),
+      body: JSON.stringify({ userId, reason: reason.trim() || undefined }),
     });
     if (!result.ok) {
       setError(result.error);
@@ -511,8 +621,8 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     await broadcast("user_banned", { userId });
   }
 
-  async function endRoom() {
-    if (!confirm("End this listening session for everyone?")) return;
+  async function confirmEnd() {
+    setModal(null);
     const result = await roomAction(`/api/rooms/${room.id}/end`, { method: "POST" });
     if (!result.ok) {
       setError(result.error);
@@ -1379,6 +1489,145 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       </div>
 
       {!ended && <RoomReactions roomId={room.id} disabled={!connected} />}
+
+      {/* Host nudge — your mic is muted and nobody can hear you */}
+      {isHost && connected && muted && !ended && !error && (
+        <div className="fixed inset-x-0 bottom-24 z-30 mx-auto w-fit max-w-md px-4">
+          <div className="flex items-center gap-3 rounded-full border border-amber-400/40 bg-amber-500/15 px-4 py-2.5 shadow-[0_18px_38px_-15px_rgba(245,158,11,0.5)] backdrop-blur-md">
+            <span aria-hidden className="text-base">🎤</span>
+            <p className="text-xs text-amber-100">
+              Your mic is muted — listeners can&apos;t hear you yet.
+            </p>
+            <button
+              type="button"
+              onClick={() => void toggleMute()}
+              className="rounded-full bg-amber-400 px-3 py-1 text-[11px] font-bold text-amber-950 hover:bg-amber-300"
+            >
+              Unmute
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Track-publish unsupported (iOS WebView, etc.) */}
+      {trackPublishUnsupported && isHost && (
+        <div className="fixed inset-x-0 bottom-24 z-30 mx-auto w-fit max-w-md px-4">
+          <div className="rounded-2xl border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-xs text-amber-100 backdrop-blur-md">
+            <p className="font-bold text-amber-200">⚠ Track playback not supported here.</p>
+            <p className="mt-0.5 text-amber-100/80">
+              This browser can&apos;t stream a track to listeners. Open the
+              session on desktop Chrome / Safari / Firefox to play tracks
+              live, or just use the mic.
+            </p>
+            <button
+              type="button"
+              onClick={() => setTrackPublishUnsupported(false)}
+              className="mt-1.5 text-[11px] font-semibold text-amber-300 hover:text-amber-200"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation modal — replaces native confirm()/prompt() */}
+      {modal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#0a0a0e] p-5 shadow-[0_30px_60px_-20px_rgba(0,0,0,0.85)]">
+            {modal.kind === "kick" && (
+              <>
+                <p className="text-base font-bold text-white">Kick this listener?</p>
+                <p className="mt-1 text-sm text-white/65">
+                  They&apos;ll be removed from the room. They can rejoin unless
+                  you also ban them.
+                </p>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModal(null)}
+                    className="flex-1 rounded-xl border border-white/15 bg-white/4 py-2 text-sm font-semibold text-white/70 hover:bg-white/8"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void confirmKick(modal.userId)}
+                    className="flex-1 rounded-xl bg-red-500 py-2 text-sm font-bold text-white hover:bg-red-400"
+                  >
+                    Kick
+                  </button>
+                </div>
+              </>
+            )}
+            {modal.kind === "ban" && (
+              <>
+                <p className="text-base font-bold text-white">Ban this listener?</p>
+                <p className="mt-1 text-sm text-white/65">
+                  They won&apos;t be able to rejoin this room. Optionally
+                  leave a reason — visible to moderators only.
+                </p>
+                <input
+                  type="text"
+                  value={modal.reason}
+                  onChange={(e) =>
+                    setModal({ ...modal, reason: e.target.value })
+                  }
+                  placeholder="Reason (optional)"
+                  maxLength={200}
+                  className="mt-3 w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/30 focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400/40"
+                  autoFocus
+                />
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModal(null)}
+                    className="flex-1 rounded-xl border border-white/15 bg-white/4 py-2 text-sm font-semibold text-white/70 hover:bg-white/8"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void confirmBan(modal.userId, modal.reason)}
+                    className="flex-1 rounded-xl bg-red-500 py-2 text-sm font-bold text-white hover:bg-red-400"
+                  >
+                    Ban
+                  </button>
+                </div>
+              </>
+            )}
+            {modal.kind === "end" && (
+              <>
+                <p className="text-base font-bold text-white">End this session?</p>
+                <p className="mt-1 text-sm text-white/65">
+                  Everyone will be disconnected. Any active recording stops
+                  and finalizes. You can&apos;t reopen the same room — you&apos;d
+                  start a fresh one.
+                </p>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModal(null)}
+                    className="flex-1 rounded-xl border border-white/15 bg-white/4 py-2 text-sm font-semibold text-white/70 hover:bg-white/8"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void confirmEnd()}
+                    className="flex-1 rounded-xl bg-red-500 py-2 text-sm font-bold text-white hover:bg-red-400"
+                  >
+                    End session
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

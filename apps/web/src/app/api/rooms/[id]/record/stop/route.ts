@@ -35,7 +35,25 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
-  await stopRoomRecording(active.egressId);
+  const lkResult = await stopRoomRecording(active.egressId);
+  if (!lkResult.ok) {
+    // Mark the recording row FAILED so the host's UI doesn't sit in
+    // "stopping" forever and the egress doesn't leak as a stuck
+    // RECORDING row that the webhook never finalizes.
+    await prisma.roomRecording.update({
+      where: { id: active.id },
+      data: { status: "FAILED" },
+    }).catch(() => null);
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "LiveKit didn't acknowledge the stop. The recording was marked failed — restart it if you want to try again.",
+        livekitReason: lkResult.reason,
+      },
+      { status: 502 },
+    );
+  }
 
   // We don't mark it READY here — the LiveKit webhook does that with the
   // final filesize/duration when egress is fully written.

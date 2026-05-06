@@ -31,19 +31,35 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
-  // If a recording is running, stop it so the file finalizes.
+  // If a recording is running, stop it so the file finalizes. If the stop
+  // fails the egress could keep running on LiveKit's side and cost money;
+  // mark the recording FAILED so the row doesn't sit RECORDING forever.
   const activeRecording = await prisma.roomRecording.findFirst({
     where: { roomId: id, status: { in: ["PENDING", "RECORDING"] } },
-    select: { egressId: true },
+    select: { id: true, egressId: true },
   });
   if (activeRecording?.egressId) {
-    await stopRoomRecording(activeRecording.egressId);
+    const lkStop = await stopRoomRecording(activeRecording.egressId);
+    if (!lkStop.ok) {
+      await prisma.roomRecording.update({
+        where: { id: activeRecording.id },
+        data: { status: "FAILED" },
+      }).catch(() => null);
+    }
   }
 
-  await prisma.room.update({
-    where: { id },
-    data: { status: "ENDED", endedAt: new Date() },
-  });
+  // Also flip every still-attached participant to leftAt=now so the
+  // /studio/live lobby capacity / counts don't show stale rows after end.
+  await Promise.allSettled([
+    prisma.room.update({
+      where: { id },
+      data: { status: "ENDED", endedAt: new Date() },
+    }),
+    prisma.roomParticipant.updateMany({
+      where: { roomId: id, leftAt: null },
+      data: { leftAt: new Date() },
+    }),
+  ]);
 
   return NextResponse.json({ ok: true });
 }

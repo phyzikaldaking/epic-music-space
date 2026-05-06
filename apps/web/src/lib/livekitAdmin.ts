@@ -44,12 +44,27 @@ function egressService(): EgressClient {
   return new EgressClient(httpUrl, cfg.apiKey, cfg.apiSecret);
 }
 
-export async function removeRoomParticipant(roomId: string, identity: string): Promise<void> {
+/**
+ * Disconnect a participant from the LiveKit room. Returns whether the
+ * removal was acknowledged. Caller decides what to do on failure —
+ * moderation actions must NOT silently succeed when LiveKit refused the
+ * removal, since the kicked user is then still streaming audio.
+ */
+export async function removeRoomParticipant(
+  roomId: string,
+  identity: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
     await roomService().removeParticipant(lkRoomName(roomId), identity);
+    return { ok: true };
   } catch (err) {
-    // Non-fatal: the participant may already be gone.
+    const message = err instanceof Error ? err.message : String(err);
+    // "participant doesn't exist" means they've already left — that's fine.
+    if (/does not exist|not found|404/i.test(message)) {
+      return { ok: true };
+    }
     console.warn("[livekitAdmin.removeRoomParticipant]", err);
+    return { ok: false, reason: message };
   }
 }
 
@@ -100,10 +115,22 @@ export async function startRoomRecording(roomId: string): Promise<StartedEgress>
   };
 }
 
-export async function stopRoomRecording(egressId: string): Promise<void> {
+/**
+ * Stop an egress. Returns whether LiveKit acknowledged the stop request.
+ * Egress that's already stopped / aborted is treated as success.
+ */
+export async function stopRoomRecording(
+  egressId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
     await egressService().stopEgress(egressId);
+    return { ok: true };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/not found|already|aborted|complete|404/i.test(message)) {
+      return { ok: true };
+    }
     console.warn("[livekitAdmin.stopRoomRecording]", err);
+    return { ok: false, reason: message };
   }
 }
