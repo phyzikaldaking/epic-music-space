@@ -47,6 +47,10 @@
     {
       "path": "/api/cron/advance-verzuz",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/verzuz-pre-start",
+      "schedule": "* * * * *"
     }
   ],
   "headers": [

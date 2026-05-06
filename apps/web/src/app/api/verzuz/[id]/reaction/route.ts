@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { moderateLimiter } from "@/lib/rateLimit";
 import { advanceMatchIfNeeded } from "@/lib/verzuz";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
@@ -61,6 +62,23 @@ export async function POST(
   if (match.status !== "LIVE") {
     return NextResponse.json({ error: "Reactions are only available while live." }, { status: 409 });
   }
+
+  // Persist the reaction so post-match recap UIs can render per-round
+  // emoji breakdowns. Best-effort; a DB write failure should never
+  // block the realtime broadcast (which is what fans see during the
+  // event). The route used to be broadcast-only — that left the
+  // VerzuzReaction model unwritten and "🔥 reactions in round 4" stats
+  // were impossible after the fact.
+  void prisma.verzuzReaction
+    .create({
+      data: {
+        matchId,
+        userId: session.user.id,
+        roundNumber: match.currentRound,
+        emoji: parsed.data.emoji,
+      },
+    })
+    .catch(() => null);
 
   const supabase = createServerSupabaseClient();
   if (!supabase) {

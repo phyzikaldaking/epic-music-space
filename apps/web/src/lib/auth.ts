@@ -372,6 +372,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
         }
 
+        // Clear the per-email failed-sign-in counter so a user who got
+        // locked out by wrong passwords isn't still locked out after
+        // they sign in successfully via Google / Apple. Audit nit #23.
+        if (dbUser.email) {
+          const ip = "oauth";
+          await clearSignInFailures(normalizeEmail(dbUser.email), ip).catch(
+            () => null,
+          );
+        }
+
         await emitAuthEvent("oauth_signin_success", {
           userId: dbUser.id,
           email: dbUser.email ?? undefined,
