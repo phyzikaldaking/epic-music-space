@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   // submitter). Reject obvious bot traffic before we forward to the agent
   // inbox. Soft-fails open if BotID is misconfigured so a real user with
   // a copyright claim is never locked out by infrastructure.
-  if (await isLikelyBot()) {
+  if (await isLikelyBot({ headers: req.headers, allowBrowserFallback: false })) {
     return NextResponse.json(
       { error: "Couldn't verify the request. Email dmca@epicmusicspace.com directly." },
       { status: 403 },

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import ModerationAppealPanel from "@/components/ModerationAppealPanel";
 
 function ShieldIcon({ className }: { className?: string }) {
   return (
@@ -66,6 +67,39 @@ export default async function TrustCenterPage() {
   });
 
   if (!user) redirect("/auth/signin");
+
+  const authoredPosts = await prisma.post.findMany({
+    where: { authorId: session.user.id },
+    select: { id: true },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  const authoredPostIds = authoredPosts.map((post) => post.id);
+  const reportWhere = authoredPostIds.length
+    ? {
+        OR: [
+          { reportedUserId: session.user.id },
+          { postId: { in: authoredPostIds } },
+        ],
+      }
+    : { reportedUserId: session.user.id };
+  const moderationReports = await prisma.userReport.findMany({
+    where: reportWhere,
+    orderBy: { createdAt: "desc" },
+    take: 8,
+    select: {
+      id: true,
+      reason: true,
+      status: true,
+      createdAt: true,
+      reviewedAt: true,
+    },
+  });
+  const appealableReports = moderationReports.filter((report) =>
+    ["SOFT_HOLD", "REVIEWED", "ACTIONED", "APPEAL_PENDING"].includes(report.status),
+  );
+  const softHoldCount = moderationReports.filter((report) => report.status === "SOFT_HOLD").length;
+  const appealPendingCount = moderationReports.filter((report) => report.status === "APPEAL_PENDING").length;
 
   const accountAgeDays = Math.floor(
     (Date.now() - user.createdAt.getTime()) / 86_400_000,
@@ -205,6 +239,55 @@ export default async function TrustCenterPage() {
           <p className="mt-4 text-xs text-white/30">
             Account created {accountAgeDays} day{accountAgeDays !== 1 ? "s" : ""} ago.
           </p>
+        </div>
+
+        {/* Moderation + appeals */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 sm:col-span-2">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white">Moderation Timeline</p>
+              <p className="text-xs text-white/50">
+                Soft hold first on borderline cases, then human review before harsh penalties.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-white/55">
+              <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2.5 py-1">
+                Soft hold: {softHoldCount}
+              </span>
+              <span className="rounded-full border border-cyan-400/40 bg-cyan-400/10 px-2.5 py-1">
+                Appeals pending: {appealPendingCount}
+              </span>
+            </div>
+          </div>
+
+          <div className="mb-5 space-y-2">
+            {moderationReports.length === 0 ? (
+              <p className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/50">
+                No moderation reports involving your profile or posts.
+              </p>
+            ) : (
+              moderationReports.map((report) => (
+                <div key={report.id} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/65">
+                  <p className="font-semibold text-white/85">
+                    {report.reason} · {report.status}
+                  </p>
+                  <p className="mt-1 text-white/45">
+                    Opened {new Date(report.createdAt).toLocaleString()}
+                    {report.reviewedAt ? ` · last reviewed ${new Date(report.reviewedAt).toLocaleString()}` : ""}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+
+          <ModerationAppealPanel
+            reports={appealableReports.map((report) => ({
+              id: report.id,
+              reason: report.reason,
+              status: report.status,
+              createdAt: report.createdAt.toISOString(),
+            }))}
+          />
         </div>
       </div>
 

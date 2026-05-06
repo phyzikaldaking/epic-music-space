@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
   // BotID gate before we accept body bytes / spend a Mux upload slot. Soft
   // fail (helper returns false on errors) so a flaky check can't lock real
   // users out.
-  if (await isLikelyBot()) {
+  if (await isLikelyBot({ headers: req.headers })) {
     return NextResponse.json(
       { error: "Couldn't verify the request. Try again from a normal browser." },
       { status: 403 },

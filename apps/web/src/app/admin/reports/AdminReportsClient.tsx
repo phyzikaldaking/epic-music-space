@@ -16,7 +16,7 @@ interface ReportRow {
   reportedUser: { id: string; name: string | null; email: string } | null;
 }
 
-const STATUSES = ["PENDING", "REVIEWED", "DISMISSED", "ACTIONED"] as const;
+const STATUSES = ["PENDING", "SOFT_HOLD", "APPEAL_PENDING", "REVIEWED", "DISMISSED", "ACTIONED"] as const;
 type Status = (typeof STATUSES)[number];
 
 export default function AdminReportsClient() {
@@ -44,7 +44,10 @@ export default function AdminReportsClient() {
     void load();
   }, [load]);
 
-  async function action(id: string, next: "REVIEWED" | "DISMISSED" | "ACTIONED") {
+  async function action(
+    id: string,
+    next: "SOFT_HOLD" | "REVIEWED" | "DISMISSED" | "ACTIONED" | "APPEAL_PENDING",
+  ) {
     try {
       const res = await fetch("/api/admin/reports", {
         method: "PATCH",
@@ -131,8 +134,15 @@ export default function AdminReportsClient() {
                 </p>
               )}
 
-              {status === "PENDING" && (
+              {(status === "PENDING" || status === "APPEAL_PENDING") && (
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => action(r.id, "SOFT_HOLD")}
+                    className="rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-500/25"
+                  >
+                    Soft hold
+                  </button>
                   <button
                     type="button"
                     onClick={() => action(r.id, "DISMISSED")}
@@ -152,7 +162,7 @@ export default function AdminReportsClient() {
                     onClick={() => action(r.id, "ACTIONED")}
                     className="rounded-lg border border-red-500/40 bg-red-500/15 px-3 py-1.5 text-xs font-bold text-red-200 hover:bg-red-500/25"
                   >
-                    Action taken
+                    Enforce penalty
                   </button>
                 </div>
               )}

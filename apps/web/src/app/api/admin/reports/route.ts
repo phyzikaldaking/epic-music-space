@@ -6,11 +6,11 @@ import { prisma } from "@/lib/prisma";
 export const runtime = "nodejs";
 
 /**
- * GET  /api/admin/reports?status=PENDING|REVIEWED|DISMISSED|ACTIONED
+ * GET  /api/admin/reports?status=PENDING|SOFT_HOLD|APPEAL_PENDING|REVIEWED|DISMISSED|ACTIONED
  * PATCH /api/admin/reports  body: { id, status }
  *
  * Admin-only. Returns the moderation queue or transitions a single report
- * row's status (REVIEWED / DISMISSED / ACTIONED).
+ * row's status (SOFT_HOLD / REVIEWED / DISMISSED / ACTIONED / APPEAL_PENDING).
  */
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
 const patchSchema = z.object({
   id: z.string().cuid(),
-  status: z.enum(["REVIEWED", "DISMISSED", "ACTIONED"]),
+  status: z.enum(["SOFT_HOLD", "REVIEWED", "DISMISSED", "ACTIONED", "APPEAL_PENDING"]),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -66,9 +66,9 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  // ACTIONED is the "we agree, it's bad" terminal state — also unpublish
-  // the reported post (if any) so it stops showing up in feeds. We don't
-  // hard-delete so the audit trail and the moderator's decision survive.
+  // Two-lane moderation:
+  //  - SOFT_HOLD: temporarily unpublish while fast human review runs.
+  //  - ACTIONED : confirmed violation (terminal enforcement state).
   const existing = await prisma.userReport.findUnique({
     where: { id: parsed.data.id },
     select: { postId: true },
@@ -92,7 +92,7 @@ export async function PATCH(req: NextRequest) {
       data: { status: parsed.data.status, reviewedAt: new Date() },
       select: { id: true, status: true, reviewedAt: true, postId: true },
     });
-    if (parsed.data.status === "ACTIONED" && existing.postId) {
+    if ((parsed.data.status === "SOFT_HOLD" || parsed.data.status === "ACTIONED") && existing.postId) {
       await tx.post.updateMany({
         where: { id: existing.postId, isPublished: true },
         data: { isPublished: false },
@@ -106,7 +106,7 @@ export async function PATCH(req: NextRequest) {
           reportId: r.id,
           postId: existing.postId,
           action: "POST_UNPUBLISHED",
-          metadata: { via: "report_actioned" },
+          metadata: { via: parsed.data.status === "SOFT_HOLD" ? "report_soft_hold" : "report_actioned" },
         },
       });
       await tx.adminActionLog.create({
@@ -116,7 +116,10 @@ export async function PATCH(req: NextRequest) {
           action: "post.unpublish",
           target: existing.postId,
           ip,
-          metadata: { reportId: r.id, via: "report_actioned" },
+          metadata: {
+            reportId: r.id,
+            via: parsed.data.status === "SOFT_HOLD" ? "report_soft_hold" : "report_actioned",
+          },
         },
       });
     }

@@ -49,6 +49,18 @@ export default async function AdminPage({
             Songs
           </a>
           <a
+            href="/admin/ops"
+            className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-500/20"
+          >
+            Ops
+          </a>
+          <a
+            href="/admin/risk"
+            className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-sm font-semibold text-yellow-300 transition hover:bg-yellow-500/20"
+          >
+            Risk
+          </a>
+          <a
             href="/admin/moderation"
             className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20 transition"
           >

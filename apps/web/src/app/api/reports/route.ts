@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { strictLimiter } from "@/lib/rateLimit";
+import { recordRiskEvent } from "@/lib/riskEvents";
 
 const reportSchema = z
   .object({
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  await prisma.userReport.create({
+  const report = await prisma.userReport.create({
     data: {
       reporterId: session.user.id,
       reportedUserId: reportedUserId ?? null,
@@ -70,6 +71,16 @@ export async function POST(req: NextRequest) {
       reason,
       details: details ?? null,
     },
+  });
+
+  await recordRiskEvent({
+    eventType: "content_report",
+    severity: reason === "ABUSE" || reason === "IMPERSONATION" ? "MEDIUM" : "LOW",
+    actorUserId: session.user.id,
+    targetUserId: reportedUserId ?? null,
+    reportId: report.id,
+    reason,
+    metadata: { postId: postId ?? null, hasDetails: Boolean(details) },
   });
 
   return NextResponse.json({ ok: true });
