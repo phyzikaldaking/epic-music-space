@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { sanitizeCallbackPath } from "@/lib/safeCallback";
+import {
+  evaluatePassword,
+  personalTokensFor,
+  MIN_LENGTH as PASSWORD_MIN_LENGTH,
+} from "@/lib/passwordStrength";
 
 const ROLES = [
   {
@@ -65,7 +70,12 @@ function SignUpContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedRole, setSelectedRole] = useState<RoleValue>("LISTENER");
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [buyerGuide, setBuyerGuide] = useState({
@@ -113,6 +123,21 @@ function SignUpContent() {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  const personalTokens = useMemo(
+    () => personalTokensFor({ name: form.name, email: form.email }),
+    [form.name, form.email],
+  );
+
+  const strength = useMemo(
+    () => evaluatePassword(form.password, personalTokens),
+    [form.password, personalTokens],
+  );
+
+  const passwordsMatch =
+    confirmPassword.length > 0 && form.password === confirmPassword;
+  const showMatchError =
+    confirmTouched && confirmPassword.length > 0 && !passwordsMatch;
+
   const roleTasks =
     selectedRole === "ARTIST"
       ? ["Create profile", "Upload first song", "Set price"]
@@ -131,6 +156,17 @@ function SignUpContent() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!strength.acceptable) {
+      setError(
+        strength.hint ||
+          `Password must be at least ${PASSWORD_MIN_LENGTH} characters and mix letters with numbers.`,
+      );
+      return;
+    }
+    if (!passwordsMatch) {
+      setError("Passwords don't match. Re-type the same password in both fields.");
+      return;
+    }
     if (!ageConfirmed) {
       setError("You must confirm you are at least 13 years old.");
       return;
@@ -147,6 +183,7 @@ function SignUpContent() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
+        confirmPassword,
         role: selectedRole,
         inviteCode: inviteCode || undefined,
         callbackUrl,
@@ -391,19 +428,183 @@ function SignUpContent() {
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-white/40">
-                Password
+                Phone (optional)
               </label>
               <input
-                type="password"
+                type="tel"
+                name="phone"
+                autoComplete="tel"
+                inputMode="tel"
+                value={form.phone}
+                onChange={(e) => update("phone", e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
+                placeholder="+15551234567"
+              />
+              <p className="mt-1 text-xs text-white/45">Use international format. We only use this for secure login codes.</p>
+            </div>
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label
+                  htmlFor="signup-password"
+                  className="block text-xs font-semibold uppercase tracking-widest text-white/40"
+                >
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-pressed={showPassword}
+                  className="text-[11px] font-semibold text-white/55 hover:text-white/85 focus:outline-none focus-visible:underline"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+              <input
+                id="signup-password"
+                type={showPassword ? "text" : "password"}
                 name="new-password"
                 autoComplete="new-password"
+                autoCapitalize="off"
+                spellCheck={false}
                 required
-                minLength={8}
+                minLength={PASSWORD_MIN_LENGTH}
                 value={form.password}
                 onChange={(e) => update("password", e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
-                placeholder="Min. 8 characters"
+                onBlur={() => setPasswordTouched(true)}
+                onKeyUp={(e) =>
+                  setCapsLockOn(e.getModifierState && e.getModifierState("CapsLock"))
+                }
+                aria-describedby="signup-password-meter signup-password-checks"
+                aria-invalid={passwordTouched && !strength.acceptable}
+                className={`w-full rounded-xl border bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:outline-none focus:ring-1 ${
+                  passwordTouched && !strength.acceptable
+                    ? "border-red-500/45 focus:border-red-400 focus:ring-red-400/40"
+                    : "border-white/10 focus:border-brand-500/60 focus:ring-brand-500/40"
+                }`}
+                placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`}
               />
+
+              {capsLockOn && (
+                <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-amber-300">
+                  <span aria-hidden>⚠</span> Caps Lock is on
+                </p>
+              )}
+
+              {form.password.length > 0 && (
+                <>
+                  <div
+                    id="signup-password-meter"
+                    className="mt-2 flex items-center gap-2"
+                    aria-live="polite"
+                  >
+                    <div className="flex h-1.5 flex-1 gap-1">
+                      {[1, 2, 3, 4].map((step) => {
+                        const reached = step <= strength.score;
+                        const color =
+                          strength.score <= 1
+                            ? "bg-red-500"
+                            : strength.score === 2
+                              ? "bg-amber-400"
+                              : strength.score === 3
+                                ? "bg-lime-400"
+                                : "bg-emerald-400";
+                        return (
+                          <span
+                            key={step}
+                            className={`h-1.5 flex-1 rounded-full transition ${
+                              reached ? color : "bg-white/8"
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <span
+                      className={`min-w-[3.25rem] text-right text-[11px] font-bold uppercase tracking-widest ${
+                        strength.score <= 1
+                          ? "text-red-300"
+                          : strength.score === 2
+                            ? "text-amber-300"
+                            : strength.score === 3
+                              ? "text-lime-300"
+                              : "text-emerald-300"
+                      }`}
+                    >
+                      {strength.label}
+                    </span>
+                  </div>
+
+                  <ul
+                    id="signup-password-checks"
+                    className="mt-2 grid grid-cols-1 gap-y-0.5 sm:grid-cols-2"
+                  >
+                    {strength.requirements.map((req) => (
+                      <li
+                        key={req.id}
+                        className={`flex items-center gap-1.5 text-[11px] ${
+                          req.met ? "text-emerald-300" : "text-white/45"
+                        }`}
+                      >
+                        <span aria-hidden className="font-bold">
+                          {req.met ? "✓" : "•"}
+                        </span>
+                        {req.label}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {strength.hint && (
+                    <p className="mt-1 text-[11px] text-white/55">{strength.hint}</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label
+                  htmlFor="signup-confirm"
+                  className="block text-xs font-semibold uppercase tracking-widest text-white/40"
+                >
+                  Confirm password
+                </label>
+                {confirmPassword.length > 0 && (
+                  <span
+                    className={`text-[11px] font-bold ${
+                      passwordsMatch ? "text-emerald-300" : "text-red-300"
+                    }`}
+                    aria-live="polite"
+                  >
+                    {passwordsMatch ? "✓ Matches" : "✕ Doesn't match"}
+                  </span>
+                )}
+              </div>
+              <input
+                id="signup-confirm"
+                type={showPassword ? "text" : "password"}
+                name="confirm-password"
+                autoComplete="new-password"
+                autoCapitalize="off"
+                spellCheck={false}
+                required
+                minLength={PASSWORD_MIN_LENGTH}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                onBlur={() => setConfirmTouched(true)}
+                aria-invalid={showMatchError}
+                className={`w-full rounded-xl border bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:outline-none focus:ring-1 ${
+                  showMatchError
+                    ? "border-red-500/45 focus:border-red-400 focus:ring-red-400/40"
+                    : passwordsMatch
+                      ? "border-emerald-500/45 focus:border-emerald-400 focus:ring-emerald-400/40"
+                      : "border-white/10 focus:border-brand-500/60 focus:ring-brand-500/40"
+                }`}
+                placeholder="Re-type your password"
+              />
+              {showMatchError && (
+                <p className="mt-1 text-[11px] text-red-300">
+                  These don&apos;t match yet.
+                </p>
+              )}
             </div>
 
             <label className="flex items-start gap-2 text-xs text-white/65">
@@ -439,8 +640,14 @@ function SignUpContent() {
 
             <button
               type="submit"
-              disabled={loading || !ageConfirmed || !termsAccepted}
-              className="rounded-xl bg-brand-500 py-3 font-bold text-white transition hover:bg-brand-600 disabled:opacity-50 glow-purple-sm"
+              disabled={
+                loading ||
+                !ageConfirmed ||
+                !termsAccepted ||
+                !strength.acceptable ||
+                !passwordsMatch
+              }
+              className="rounded-xl bg-brand-500 py-3 font-bold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50 glow-purple-sm"
             >
               {loading ? "Creating account…" : "Create account →"}
             </button>

@@ -9,15 +9,27 @@ import { strictLimiter } from "@/lib/rateLimit";
 import { isLikelyBot } from "@/lib/botCheck";
 import { emitAuthEvent } from "@/lib/authObservability";
 import { sanitizeCallbackPath } from "@/lib/safeCallback";
+import { getClientIp, hashAuthToken, normalizeEmail } from "@/lib/authIdentity";
+import { normalizePhone } from "@/lib/phoneAuth";
+import {
+  evaluatePassword,
+  personalTokensFor,
+  MAX_LENGTH as PASSWORD_MAX_LENGTH,
+  MIN_LENGTH as PASSWORD_MIN_LENGTH,
+} from "@/lib/passwordStrength";
 
 function generateCode(): string {
   return randomBytes(5).toString("hex").toUpperCase(); // 10-char hex code
 }
 
 const registerSchema = z.object({
-  name:       z.string().min(1).max(100),
-  email:      z.string().email(),
-  password:   z.string().min(8).max(128),
+  name:            z.string().min(1).max(100),
+  email:           z.string().email(),
+  password:        z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
+  // Optional on the server because legacy clients (mobile, etc.) don't
+  // post it. When present we hard-fail on mismatch.
+  confirmPassword: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH).optional(),
+  phone:           z.string().max(32).optional(),
   role:       z.enum(["LISTENER", "ARTIST", "PRODUCER", "ENGINEER", "LABEL"]).default("LISTENER"),
   inviteCode: z.string().max(20).optional(),
   callbackUrl: z.string().max(500).optional(),
@@ -34,10 +46,7 @@ const registerSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "unknown";
+  const ip = getClientIp(req.headers);
 
   try {
     await strictLimiter.consume(`register:${ip}`);
@@ -53,8 +62,15 @@ export async function POST(req: NextRequest) {
   // signup that's almost certainly going to be deleted in moderation. Soft
   // fail: if BotID is misconfigured the helper returns false (not bot) so
   // we never lock real users out.
-  if (await isLikelyBot()) {
-    await emitAuthEvent("register_bot_blocked", { ip });
+  if (await isLikelyBot({ headers: req.headers })) {
+    await emitAuthEvent("register_bot_blocked", {
+      ip,
+      reason: "botid_block",
+      userAgent: req.headers.get("user-agent") ?? "unknown",
+      secFetchSite: req.headers.get("sec-fetch-site") ?? "unknown",
+      origin: req.headers.get("origin") ?? "unknown",
+      referer: req.headers.get("referer") ?? "unknown",
+    });
     return NextResponse.json(
       { error: "Couldn't verify the request. Try again from a normal browser." },
       { status: 403 },
@@ -76,9 +92,85 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, email, password, role, inviteCode, callbackUrl } = parsed.data;
-    const normalizedEmail = email.trim().toLowerCase();
+    const { name, email, password, confirmPassword, phone, role, inviteCode, callbackUrl } = parsed.data;
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedPhone = phone ? normalizePhone(phone) : null;
     const safeCallbackUrl = sanitizeCallbackPath(callbackUrl);
+
+    if (confirmPassword !== undefined && confirmPassword !== password) {
+      await emitAuthEvent("register_invalid_input", {
+        ip,
+        reason: "password_mismatch",
+      });
+      return NextResponse.json(
+        { error: "Passwords don't match. Re-type the same password in both fields." },
+        { status: 400 },
+      );
+    }
+
+    const strength = evaluatePassword(
+      password,
+      personalTokensFor({ name, email: normalizedEmail }),
+    );
+    if (!strength.acceptable) {
+      await emitAuthEvent("register_invalid_input", {
+        ip,
+        reason: "password_too_weak",
+      });
+      return NextResponse.json(
+        {
+          error:
+            strength.hint ||
+            `Password must be at least ${PASSWORD_MIN_LENGTH} characters and mix letters with numbers.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    if (phone && !normalizedPhone) {
+      return NextResponse.json(
+        { error: "Phone must be in international format, for example +15551234567." },
+        { status: 400 },
+      );
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: normalizedEmail,
+          mode: "insensitive",
+        },
+      },
+      select: { id: true },
+    });
+    if (existingUser) {
+      await emitAuthEvent("register_existing_email", {
+        ip,
+        email: normalizedEmail,
+      });
+      return NextResponse.json(
+        { error: "An account with this email already exists." },
+        { status: 409 },
+      );
+    }
+
+    if (normalizedPhone) {
+      const existingPhone = await prisma.connectedAccount.findUnique({
+        where: {
+          provider_providerAccountId: {
+            provider: "phone",
+            providerAccountId: normalizedPhone,
+          },
+        },
+        select: { id: true },
+      });
+      if (existingPhone) {
+        return NextResponse.json(
+          { error: "That phone number is already linked to another account." },
+          { status: 409 },
+        );
+      }
+    }
 
     const passwordHash = await bcrypt.hash(password, 12);
 
@@ -87,13 +179,46 @@ export async function POST(req: NextRequest) {
     // P2002 and report it as a regular "already exists" instead of a 500.
     let user;
     try {
-      user = await prisma.user.create({
-        data: { name, email: normalizedEmail, passwordHash, role },
-        select: { id: true, email: true, name: true, role: true },
+      user = await prisma.$transaction(async (tx) => {
+        const createdUser = await tx.user.create({
+          data: { name, email: normalizedEmail, passwordHash, role },
+          select: { id: true, email: true, name: true, role: true },
+        });
+
+        if (normalizedPhone) {
+          await tx.connectedAccount.create({
+            data: {
+              userId: createdUser.id,
+              provider: "phone",
+              providerAccountId: normalizedPhone,
+            },
+          });
+        }
+
+        return createdUser;
       });
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (code === "P2002") {
+        if (normalizedPhone) {
+          const existingPhone = await prisma.connectedAccount.findUnique({
+            where: {
+              provider_providerAccountId: {
+                provider: "phone",
+                providerAccountId: normalizedPhone,
+              },
+            },
+            select: { id: true },
+          });
+
+          if (existingPhone) {
+            return NextResponse.json(
+              { error: "That phone number is already linked to another account." },
+              { status: 409 },
+            );
+          }
+        }
+
         await emitAuthEvent("register_existing_email", {
           ip,
           email: normalizedEmail,
@@ -161,7 +286,7 @@ export async function POST(req: NextRequest) {
     await prisma.verificationToken.create({
       data: {
         identifier: normalizedEmail,
-        token: verifyToken,
+        token: hashAuthToken(verifyToken),
         expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
     });
