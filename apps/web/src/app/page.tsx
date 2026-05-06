@@ -7,7 +7,6 @@ import { getDemoTracks } from "@/lib/demoTracks";
 import { prisma } from "@/lib/prisma";
 import { formatPrice } from "@ems/utils";
 import { CACHE_TAGS } from "@/lib/cacheTags";
-import { auth } from "@/lib/auth";
 import HomeVersusRail from "@/components/HomeVersusRail";
 
 const AudioPlayer = dynamic(() => import("@/components/LazyAudioPlayer"), {
@@ -180,10 +179,6 @@ function formatRevenue(n: number) {
 export default async function HomePage() {
   const { songCount, licenseCount, totalRevenue, sampleSongs } =
     await getHomeData();
-
-  // Check if user is logged in as an artist for Vault CTA routing
-  const session = await auth();
-  const isArtist = session?.user?.role === "ARTIST" || session?.user?.role === "LABEL";
 
   const displayStats = [
     {
