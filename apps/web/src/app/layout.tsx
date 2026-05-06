@@ -1,6 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import dynamic from "next/dynamic";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import Providers from "@/components/Providers";
+import CookieConsent from "@/components/CookieConsent";
+import { ClientOnlyDynamics } from "@/components/ClientDynamics";
+import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 
 const bebasNeue = Bebas_Neue({
@@ -23,19 +31,13 @@ const audiowide = Audiowide({
   display: "swap",
   variable: "--font-audiowide",
 });
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
-import Providers from "@/components/Providers";
-import CookieConsent from "@/components/CookieConsent";
-import { ClientOnlyDynamics } from "@/components/ClientDynamics";
-import { getSiteUrl } from "@/lib/site";
-
 const siteUrl = getSiteUrl();
 const GlobalAudioPlayer = dynamic(() => import("@/components/GlobalAudioPlayer"));
 const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"));
 const KeyboardShortcuts = dynamic(() => import("@/components/KeyboardShortcuts"));
 const MobileBottomNav = dynamic(() => import("@/components/MobileBottomNav"));
 const OfflineBanner = dynamic(() => import("@/components/OfflineBanner"));
+const ChatbotWidget = dynamic(() => import("@/components/ChatbotWidget"));
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -165,8 +167,11 @@ export default function RootLayout({
           <CookieConsent />
           <MobileBottomNav />
           <OfflineBanner />
+          <ChatbotWidget />
           <ClientOnlyDynamics />
         </Providers>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
