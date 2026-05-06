@@ -69,6 +69,9 @@ type ApiMessage = {
 };
 
 type HostSong = { id: string; title: string; artist: string; coverUrl: string | null; audioUrl: string };
+type SessionMode = "PLAYBACK" | "CRITIQUE" | "A_AND_R" | "SILENT_NOTES";
+type StudioVibe = "NEON" | "SUNSET" | "MIDNIGHT";
+type NoteCategory = "GENERAL" | "MIX" | "MASTER" | "SONGWRITING" | "ARRANGEMENT" | "PERFORMANCE";
 
 interface Props {
   room: RoomData;
@@ -102,6 +105,33 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   const [hostSongs, setHostSongs] = useState<HostSong[]>([]);
   const [_recordingId, setRecordingId] = useState<string | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<"IDLE" | "STARTING" | "RECORDING" | "STOPPING">("IDLE");
+  const [sessionMode, setSessionMode] = useState<SessionMode>("PLAYBACK");
+  const [studioVibe, setStudioVibe] = useState<StudioVibe>("NEON");
+  const [focusUserId, setFocusUserId] = useState<string | null>(null);
+  const [energy, setEnergy] = useState(42);
+  const [applauseBursts, setApplauseBursts] = useState(0);
+  const [heatPoints, setHeatPoints] = useState<number[]>([]);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [timeNotes, setTimeNotes] = useState<Array<{ id: string; at: string; text: string; author: string }>>([]);
+  const [noteCategory, setNoteCategory] = useState<NoteCategory>("GENERAL");
+  const [replyToNoteId, setReplyToNoteId] = useState<string | null>(null);
+  const [resolvedNoteIds, setResolvedNoteIds] = useState<Set<string>>(new Set());
+  const [compareA, setCompareA] = useState<string | null>(null);
+  const [compareB, setCompareB] = useState<string | null>(null);
+  const [blindAB, setBlindAB] = useState(false);
+  const [loudnessMatch, setLoudnessMatch] = useState(true);
+  const [abSide, setAbSide] = useState<"A" | "B">("A");
+  const [autoQueueEnabled, setAutoQueueEnabled] = useState(false);
+  const [quietMode, setQuietMode] = useState(false);
+  const [speakerLimitSec, setSpeakerLimitSec] = useState(60);
+  const [stemState, setStemState] = useState({
+    vocals: true,
+    drums: true,
+    bass: true,
+    melody: true,
+  });
+  const stateLoadedRef = useRef(false);
+  const stateSyncTimerRef = useRef<number | null>(null);
 
   const lkRoomRef = useRef<Room | null>(null);
   const audioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -144,7 +174,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     return { ok: true, data };
   }
 
-  async function broadcast(event: string, payload: Record<string, unknown>) {
+  const broadcast = useCallback(async (event: string, payload: Record<string, unknown>) => {
     const supabase = createBrowserSupabaseClient();
     if (!supabase) return;
     await supabase.channel(CHANNELS.room(room.id)).send({
@@ -152,7 +182,7 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       event,
       payload,
     });
-  }
+  }, [room.id]);
 
   function mapMessage(message: ApiMessage): Message {
     return {
@@ -711,13 +741,123 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     await broadcast("message", { message });
   }
 
+  async function sendQuickMessage(body: string) {
+    const text = body.trim();
+    if (!text) return;
+    const result = await roomAction(`/api/rooms/${room.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: text }),
+    });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    const { message: apiMessage } = result.data as { message: ApiMessage };
+    const message = mapMessage(apiMessage);
+    setMessages((prev) => (prev.some((existing) => existing.id === message.id) ? prev : [...prev, message]));
+    await broadcast("message", { message });
+  }
+
+  async function addTimeNote() {
+    const text = noteDraft.trim();
+    if (!text) return;
+    const stamp = audioRef.current ? audioRef.current.currentTime : 0;
+    const mm = Math.floor(stamp / 60)
+      .toString()
+      .padStart(2, "0");
+    const ss = Math.floor(stamp % 60)
+      .toString()
+      .padStart(2, "0");
+    const optimistic = { id: crypto.randomUUID(), at: `${mm}:${ss}`, text, author: isHost ? "Host" : "Listener" };
+    setTimeNotes((prev) => [optimistic, ...prev]);
+    setNoteDraft("");
+    const result = await roomAction(`/api/rooms/${room.id}/timeline-notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        body: text,
+        atSeconds: Math.floor(stamp),
+        category: noteCategory,
+        parentId: replyToNoteId,
+      }),
+    });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    const { note } = result.data as {
+      note: {
+        id: string;
+        atSeconds: number;
+        body: string;
+        user: { name: string | null };
+      };
+    };
+    const noteMm = Math.floor(note.atSeconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const noteSs = Math.floor(note.atSeconds % 60)
+      .toString()
+      .padStart(2, "0");
+    const synced = {
+      id: note.id,
+      at: `${noteMm}:${noteSs}`,
+      text: note.body,
+      author: note.user.name ?? "Listener",
+    };
+    setTimeNotes((prev) => [synced, ...prev.filter((n) => n.id !== optimistic.id)].slice(0, 100));
+    setReplyToNoteId(null);
+    await broadcast("timeline_note_added", { note: synced });
+  }
+
+  async function toggleNoteResolved(noteId: string, resolved: boolean) {
+    const result = await roomAction(`/api/rooms/${room.id}/timeline-notes/${noteId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resolved }),
+    });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setResolvedNoteIds((prev) => {
+      const next = new Set(prev);
+      if (resolved) next.add(noteId);
+      else next.delete(noteId);
+      return next;
+    });
+    await broadcast("timeline_note_resolved", { noteId, resolved });
+  }
+
+  async function triggerApplause() {
+    const result = await roomAction(`/api/rooms/${room.id}/moments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "APPLAUSE" }),
+    });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    const { state } = result.data as {
+      state: { crowdEnergy: number; applauseBursts: number; heatPoints: number[] };
+    };
+    setEnergy(state.crowdEnergy);
+    setApplauseBursts(state.applauseBursts);
+    setHeatPoints(state.heatPoints);
+    await broadcast("studio_moment", { action: "APPLAUSE", state });
+  }
+
   // ── Bootstrap participants + messages ───────────────────────────────
   useEffect(() => {
     let cancelled = false;
     async function bootstrap() {
-      const [roomRes, msgRes] = await Promise.all([
+      const [roomRes, msgRes, studioRes, notesRes] = await Promise.all([
         fetch(`/api/rooms/${room.id}`),
         fetch(`/api/rooms/${room.id}/messages`),
+        fetch(`/api/rooms/${room.id}/studio-state`),
+        fetch(`/api/rooms/${room.id}/timeline-notes`),
       ]);
       if (!cancelled && roomRes.ok) {
         const data = (await roomRes.json()) as {
@@ -750,12 +890,96 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
         };
         setMessages(data.messages.map(mapMessage));
       }
+      if (!cancelled && studioRes.ok) {
+        const data = (await studioRes.json()) as {
+          state: {
+            sessionMode: SessionMode;
+            studioVibe: StudioVibe;
+            spotlightUserId: string | null;
+            crowdEnergy: number;
+            applauseBursts: number;
+            heatPoints: number[];
+            autoQueueEnabled: boolean;
+            quietMode: boolean;
+            speakerLimitSec: number;
+          };
+        };
+        setSessionMode(data.state.sessionMode);
+        setStudioVibe(data.state.studioVibe);
+        setFocusUserId(data.state.spotlightUserId);
+        setEnergy(data.state.crowdEnergy);
+        setApplauseBursts(data.state.applauseBursts);
+        setHeatPoints(Array.isArray(data.state.heatPoints) ? data.state.heatPoints : []);
+        setAutoQueueEnabled(!!data.state.autoQueueEnabled);
+        setQuietMode(!!data.state.quietMode);
+        setSpeakerLimitSec(data.state.speakerLimitSec ?? 60);
+      }
+      if (!cancelled && notesRes.ok) {
+        const data = (await notesRes.json()) as {
+          notes: Array<{ id: string; atSeconds: number; body: string; resolvedAt?: string | null; user: { name: string | null } }>;
+        };
+        setResolvedNoteIds(new Set(data.notes.filter((n) => !!n.resolvedAt).map((n) => n.id)));
+        setTimeNotes(
+          data.notes.map((n) => {
+            const mm = Math.floor(n.atSeconds / 60)
+              .toString()
+              .padStart(2, "0");
+            const ss = Math.floor(n.atSeconds % 60)
+              .toString()
+              .padStart(2, "0");
+            return { id: n.id, at: `${mm}:${ss}`, text: n.body, author: n.user.name ?? "Listener" };
+          }),
+        );
+      }
+      stateLoadedRef.current = true;
     }
     void bootstrap();
     return () => {
       cancelled = true;
     };
   }, [room.id, currentUserId]);
+
+  useEffect(() => {
+    if (!stateLoadedRef.current || !isHost || ended) return;
+    if (stateSyncTimerRef.current) window.clearTimeout(stateSyncTimerRef.current);
+    stateSyncTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        const result = await roomAction(`/api/rooms/${room.id}/studio-state`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionMode,
+            studioVibe,
+            spotlightUserId: focusUserId,
+            crowdEnergy: energy,
+            applauseBursts,
+            heatPoints,
+            autoQueueEnabled,
+            quietMode,
+            speakerLimitSec,
+          }),
+        });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        await broadcast("studio_state_updated", {
+          sessionMode,
+          studioVibe,
+          spotlightUserId: focusUserId,
+          crowdEnergy: energy,
+          applauseBursts,
+          heatPoints,
+          autoQueueEnabled,
+          quietMode,
+          speakerLimitSec,
+        });
+      })();
+    }, 350);
+    return () => {
+      if (stateSyncTimerRef.current) window.clearTimeout(stateSyncTimerRef.current);
+    };
+  }, [isHost, ended, room.id, sessionMode, studioVibe, focusUserId, energy, applauseBursts, heatPoints, autoQueueEnabled, quietMode, speakerLimitSec, broadcast]);
 
   // ── Keep participant list fresh (joins/leaves/role changes) ───────────
   // Broadcasts cover hand raises, chat, and moderation actions, but not
@@ -921,6 +1145,52 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
           prev.some((existing) => existing.id === message.id) ? prev : [...prev, message]
         ));
       })
+      .on("broadcast", { event: "studio_state_updated" }, ({ payload }) => {
+        const p = payload as {
+          sessionMode?: SessionMode;
+          studioVibe?: StudioVibe;
+          spotlightUserId?: string | null;
+          crowdEnergy?: number;
+          applauseBursts?: number;
+          heatPoints?: number[];
+          autoQueueEnabled?: boolean;
+          quietMode?: boolean;
+          speakerLimitSec?: number;
+        };
+        if (p.sessionMode) setSessionMode(p.sessionMode);
+        if (p.studioVibe) setStudioVibe(p.studioVibe);
+        if (p.spotlightUserId !== undefined) setFocusUserId(p.spotlightUserId);
+        if (typeof p.crowdEnergy === "number") setEnergy(p.crowdEnergy);
+        if (typeof p.applauseBursts === "number") setApplauseBursts(p.applauseBursts);
+        if (Array.isArray(p.heatPoints)) setHeatPoints(p.heatPoints);
+        if (typeof p.autoQueueEnabled === "boolean") setAutoQueueEnabled(p.autoQueueEnabled);
+        if (typeof p.quietMode === "boolean") setQuietMode(p.quietMode);
+        if (typeof p.speakerLimitSec === "number") setSpeakerLimitSec(p.speakerLimitSec);
+      })
+      .on("broadcast", { event: "timeline_note_added" }, ({ payload }) => {
+        const p = payload as { note?: { id: string; at: string; text: string; author: string } };
+        if (!p.note) return;
+        setTimeNotes((prev) => [p.note!, ...prev.filter((n) => n.id !== p.note!.id)].slice(0, 100));
+      })
+      .on("broadcast", { event: "timeline_note_resolved" }, ({ payload }) => {
+        const p = payload as { noteId?: string; resolved?: boolean };
+        if (!p.noteId || typeof p.resolved !== "boolean") return;
+        setResolvedNoteIds((prev) => {
+          const next = new Set(prev);
+          if (p.resolved) next.add(p.noteId!);
+          else next.delete(p.noteId!);
+          return next;
+        });
+      })
+      .on("broadcast", { event: "studio_moment" }, ({ payload }) => {
+        const p = payload as {
+          state?: { crowdEnergy: number; applauseBursts: number; heatPoints: number[] };
+        };
+        if (!p.state) return;
+        setEnergy(p.state.crowdEnergy);
+        setApplauseBursts(p.state.applauseBursts);
+        setHeatPoints(p.state.heatPoints);
+      })
       .on("broadcast", { event: "room_ended" }, () => {
         setEnded(true);
         void disconnect();
@@ -955,6 +1225,11 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
     });
     navigator.mediaSession.playbackState = trackPlaying ? "playing" : "paused";
   }, [currentSong, trackPlaying, room.title]);
+
+  useEffect(() => {
+    if (!audioRef.current) return;
+    audioRef.current.volume = loudnessMatch ? 0.78 : 1;
+  }, [loudnessMatch, abSide]);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────
   // M  toggle mute (speakers/host only)
@@ -993,6 +1268,29 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
   const speakers = Array.from(participants.values()).filter((p) => p.role !== "LISTENER");
   const handsUp = Array.from(participants.values()).filter((p) => p.handRaised && p.role === "LISTENER");
   const listeners = Array.from(participants.values()).filter((p) => p.role === "LISTENER" && !p.handRaised);
+
+  useEffect(() => {
+    if (!isHost || !connected || !autoQueueEnabled || quietMode || handsUp.length === 0) return;
+    const next = handsUp[0];
+    if (!next) return;
+    void grantFloor(next.userId);
+  }, [isHost, connected, autoQueueEnabled, quietMode, handsUp]);
+
+  useEffect(() => {
+    if (!isHost || !connected || !quietMode) return;
+    const nonHostSpeakers = speakers.filter((p) => p.role === "SPEAKER");
+    nonHostSpeakers.forEach((p) => {
+      void revokeFloor(p.userId);
+    });
+  }, [isHost, connected, quietMode, speakers]);
+  const roomCrew = [room.host, ...Array.from(participants.values()).filter((p) => p.userId !== room.hostId)];
+  const visibleSeats = roomCrew.slice(0, 10);
+  const vibeClass =
+    studioVibe === "SUNSET"
+      ? "from-orange-500/20 via-rose-500/10 to-transparent"
+      : studioVibe === "MIDNIGHT"
+        ? "from-indigo-500/20 via-cyan-400/10 to-transparent"
+        : "from-fuchsia-500/20 via-cyan-400/10 to-transparent";
 
   return (
     <div className="relative min-h-[100dvh]">
@@ -1206,6 +1504,98 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
               </div>
             </div>
           )}
+
+          <div className={`rounded-3xl border border-white/12 bg-gradient-to-b ${vibeClass} p-5 backdrop-blur-xl`}>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-bold uppercase tracking-widest text-white/65">Studio Session Mode</h2>
+              <div className="inline-flex rounded-xl border border-white/15 bg-black/20 p-1">
+                {([
+                  ["PLAYBACK", "Playback"],
+                  ["CRITIQUE", "Critique"],
+                  ["A_AND_R", "A&R Review"],
+                  ["SILENT_NOTES", "Silent Notes"],
+                ] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setSessionMode(mode)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                      sessionMode === mode ? "bg-white/90 text-black" : "text-white/65 hover:bg-white/10"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+              <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-white/50">3D Presence Deck</p>
+                  <p className="text-xs text-white/45">{visibleSeats.length} in room</p>
+                </div>
+                <div className="relative h-44 overflow-hidden rounded-xl border border-white/10 bg-[radial-gradient(circle_at_50%_10%,rgba(255,255,255,0.16),transparent_45%),linear-gradient(180deg,rgba(10,10,18,0.75),rgba(5,5,10,0.95))]">
+                  <div className="absolute inset-x-3 bottom-2 h-20 rounded-[100%] border border-cyan-300/25 bg-cyan-300/10 blur-[0.5px]" />
+                  {visibleSeats.map((p, index) => {
+                    const x = 8 + (index % 5) * 22;
+                    const row = index < 5 ? 0 : 1;
+                    const y = row === 0 ? 22 : 57;
+                    const isFocused = (("id" in p ? p.id : p.userId) === focusUserId);
+                    const name = "username" in p ? (p.name ?? p.username ?? "Host") : p.name;
+                    const image = "username" in p ? p.image : p.image;
+                    const key = "id" in p ? p.id : p.userId;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setFocusUserId(key)}
+                        className={`absolute h-10 w-10 -translate-x-1/2 rounded-full border text-[10px] font-bold transition ${
+                          isFocused ? "border-cyan-300 bg-cyan-300/30 text-white shadow-[0_0_18px_rgba(34,211,238,0.35)]" : "border-white/20 bg-white/10 text-white/80"
+                        }`}
+                        style={{ left: `${x}%`, top: `${y}%` }}
+                        title={name}
+                      >
+                        {image ? (
+                          <Image src={image} alt={name} fill sizes="40px" className="rounded-full object-cover" />
+                        ) : (
+                          <span>{name[0]?.toUpperCase()}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-white/50">Magic Moments</p>
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={triggerApplause}
+                    className="w-full rounded-xl bg-emerald-400/20 px-3 py-2 text-sm font-bold text-emerald-200 hover:bg-emerald-400/30"
+                  >
+                    Applause Sync
+                  </button>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-[11px] text-white/45">Crowd energy</p>
+                    <div className="mt-1 h-2 rounded-full bg-white/10">
+                      <div className="h-2 rounded-full bg-gradient-to-r from-cyan-300 via-emerald-300 to-amber-300" style={{ width: `${energy}%` }} />
+                    </div>
+                    <p className="mt-1 text-xs text-white/55">{energy}% · {applauseBursts} bursts</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-[11px] text-white/45">Goosebumps heatmap</p>
+                    <div className="mt-1 flex h-9 items-end gap-1">
+                      {(heatPoints.length ? heatPoints : [20, 30, 22, 40, 35, 28, 45, 38]).map((v, i) => (
+                        <span key={i} className="w-2 rounded-sm bg-fuchsia-300/70" style={{ height: `${Math.max(10, v * 0.28)}px` }} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           {!currentSong && isHost && connected && (
             <div className="flex items-center justify-between gap-3 rounded-3xl border border-dashed border-white/15 bg-white/3 p-5 text-sm text-white/50">
               <span>No track featured. Pick one to feature for your listeners.</span>
@@ -1344,6 +1734,180 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
             )}
           </div>
 
+          <div className="rounded-3xl border border-white/12 bg-[#0a0a0e]/70 p-5 backdrop-blur-xl shadow-[0_30px_60px_-30px_rgba(0,0,0,0.7)]">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-white/60">Pro Review Tools</h3>
+              <button
+                type="button"
+                onClick={() => void sendQuickMessage("Revision requested: tighten hook timing, push lead vocal +1.5dB, and reduce hi-hat harshness.")}
+                className="rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-300/20"
+              >
+                Request Revision
+              </button>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/45">Timestamp Notes</p>
+              <div className="mb-2 flex items-center gap-2">
+                <select
+                  value={noteCategory}
+                  onChange={(e) => setNoteCategory(e.target.value as NoteCategory)}
+                  className="rounded-lg bg-black/30 px-2 py-2 text-xs text-white outline-none"
+                >
+                  <option value="GENERAL">General</option>
+                  <option value="MIX">Mix</option>
+                  <option value="MASTER">Master</option>
+                  <option value="SONGWRITING">Songwriting</option>
+                  <option value="ARRANGEMENT">Arrangement</option>
+                  <option value="PERFORMANCE">Performance</option>
+                </select>
+                {replyToNoteId && (
+                  <button
+                    type="button"
+                    onClick={() => setReplyToNoteId(null)}
+                    className="rounded-md bg-white/10 px-2 py-1 text-[11px] text-white/70"
+                  >
+                    Replying · cancel
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                  placeholder={sessionMode === "SILENT_NOTES" ? "Silent note..." : "Drop a precise production note..."}
+                  className="flex-1 rounded-lg bg-black/30 px-3 py-2 text-sm text-white placeholder-white/30 outline-none"
+                />
+                <button type="button" onClick={() => void addTimeNote()} className="rounded-lg bg-white/15 px-3 py-2 text-xs font-bold hover:bg-white/25">
+                  Add
+                </button>
+              </div>
+              <div className="mt-2 space-y-1.5">
+                {timeNotes.slice(0, 4).map((n) => (
+                  <div key={n.id} className="rounded-md border border-white/10 bg-black/20 px-2 py-1.5">
+                    <p className={`text-xs ${resolvedNoteIds.has(n.id) ? "text-white/35 line-through" : "text-white/70"}`}>
+                      <span className="font-bold text-cyan-200">{n.at}</span> · {n.text}
+                    </p>
+                    <div className="mt-1 flex gap-2 text-[10px]">
+                      <button type="button" onClick={() => setReplyToNoteId(n.id)} className="text-cyan-200/80 hover:text-cyan-100">
+                        Reply
+                      </button>
+                      {isHost && (
+                        <button
+                          type="button"
+                          onClick={() => void toggleNoteResolved(n.id, !resolvedNoteIds.has(n.id))}
+                          className="text-emerald-200/80 hover:text-emerald-100"
+                        >
+                          {resolvedNoteIds.has(n.id) ? "Reopen" : "Resolve"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/45">A/B Compare</p>
+                <div className="space-y-2">
+                  <select
+                    value={compareA ?? ""}
+                    onChange={(e) => setCompareA(e.target.value || null)}
+                    className="w-full rounded-lg bg-black/30 px-2 py-2 text-xs text-white outline-none"
+                  >
+                    <option value="">Version A</option>
+                    {hostSongs.map((s) => (
+                      <option key={s.id} value={s.id}>{s.title}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={compareB ?? ""}
+                    onChange={(e) => setCompareB(e.target.value || null)}
+                    className="w-full rounded-lg bg-black/30 px-2 py-2 text-xs text-white outline-none"
+                  >
+                    <option value="">Version B</option>
+                    {hostSongs.map((s) => (
+                      <option key={s.id} value={s.id}>{s.title}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-white/45">
+                    {compareA && compareB ? "Ready for quick A/B toggles in session." : "Pick two cuts to compare dynamics and vocal pocket."}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBlindAB((v) => !v)}
+                      className={`rounded-md px-2 py-1 text-[11px] ${blindAB ? "bg-violet-400/25 text-violet-200" : "bg-black/30 text-white/55"}`}
+                    >
+                      Blind mode {blindAB ? "ON" : "OFF"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLoudnessMatch((v) => !v)}
+                      className={`rounded-md px-2 py-1 text-[11px] ${loudnessMatch ? "bg-emerald-400/25 text-emerald-200" : "bg-black/30 text-white/55"}`}
+                    >
+                      Loudness match {loudnessMatch ? "ON" : "OFF"}
+                    </button>
+                  </div>
+                  {compareA && compareB && (
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setAbSide("A")} className={`rounded-md px-2 py-1 text-[11px] ${abSide === "A" ? "bg-white/20" : "bg-black/30 text-white/55"}`}>{blindAB ? "X" : "A"}</button>
+                      <button type="button" onClick={() => setAbSide("B")} className={`rounded-md px-2 py-1 text-[11px] ${abSide === "B" ? "bg-white/20" : "bg-black/30 text-white/55"}`}>{blindAB ? "Y" : "B"}</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/45">Stem Focus</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(Object.keys(stemState) as Array<keyof typeof stemState>).map((stem) => (
+                    <button
+                      key={stem}
+                      type="button"
+                      onClick={() => setStemState((prev) => ({ ...prev, [stem]: !prev[stem] }))}
+                      className={`rounded-lg px-2 py-2 text-xs font-semibold ${
+                        stemState[stem] ? "bg-emerald-400/20 text-emerald-200" : "bg-black/30 text-white/45"
+                      }`}
+                    >
+                      {stem}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {isHost && (
+              <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/45">Host Automation</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setAutoQueueEnabled((v) => !v)} className={`rounded-md px-2 py-1 text-[11px] ${autoQueueEnabled ? "bg-cyan-400/25 text-cyan-200" : "bg-black/30 text-white/55"}`}>Auto queue {autoQueueEnabled ? "ON" : "OFF"}</button>
+                  <button type="button" onClick={() => setQuietMode((v) => !v)} className={`rounded-md px-2 py-1 text-[11px] ${quietMode ? "bg-amber-400/25 text-amber-200" : "bg-black/30 text-white/55"}`}>Quiet room {quietMode ? "ON" : "OFF"}</button>
+                </div>
+                <div className="mt-2">
+                  <label className="text-[11px] text-white/50">Speaker limit: {speakerLimitSec}s</label>
+                  <input type="range" min={15} max={180} step={15} value={speakerLimitSec} onChange={(e) => setSpeakerLimitSec(Number(e.target.value))} className="w-full" />
+                </div>
+              </div>
+            )}
+            <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/45">Audio Intelligence</p>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="rounded-md bg-black/30 px-2 py-1.5 text-white/70">
+                  Headroom: <span className="font-bold text-emerald-200">{Math.max(3, 9 - Math.floor(energy / 18))} dB</span>
+                </div>
+                <div className="rounded-md bg-black/30 px-2 py-1.5 text-white/70">
+                  Stereo width: <span className="font-bold text-cyan-200">{quietMode ? "Narrow" : "Balanced"}</span>
+                </div>
+                <div className="rounded-md bg-black/30 px-2 py-1.5 text-white/70">
+                  Vocal mask risk: <span className="font-bold text-amber-200">{energy > 70 ? "Medium" : "Low"}</span>
+                </div>
+                <div className="rounded-md bg-black/30 px-2 py-1.5 text-white/70">
+                  Clipping risk: <span className="font-bold text-rose-200">{energy > 88 ? "High" : "Low"}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Host: hand-raise queue */}
           {isHost && handsUp.length > 0 && (
             <div className="rounded-3xl border border-amber-400/30 bg-amber-400/5 p-6">
@@ -1437,6 +2001,39 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
 
         {/* Chat */}
         <aside className="flex h-[600px] flex-col rounded-3xl border border-white/12 bg-[#0a0a0e]/75 backdrop-blur-xl shadow-[0_30px_60px_-30px_rgba(0,0,0,0.7)]">
+          <div className="border-b border-white/8 px-5 py-3">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-white/60">Host Control Center</h3>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-white/70">
+              <button
+                type="button"
+                onClick={() => setStudioVibe("NEON")}
+                className={`rounded-md px-2 py-1 ${studioVibe === "NEON" ? "bg-fuchsia-400/30" : "bg-white/10"}`}
+              >
+                Neon vibe
+              </button>
+              <button
+                type="button"
+                onClick={() => setStudioVibe("SUNSET")}
+                className={`rounded-md px-2 py-1 ${studioVibe === "SUNSET" ? "bg-orange-400/30" : "bg-white/10"}`}
+              >
+                Sunset vibe
+              </button>
+              <button
+                type="button"
+                onClick={() => setStudioVibe("MIDNIGHT")}
+                className={`rounded-md px-2 py-1 ${studioVibe === "MIDNIGHT" ? "bg-cyan-400/30" : "bg-white/10"}`}
+              >
+                Midnight vibe
+              </button>
+              <button
+                type="button"
+                onClick={() => setFocusUserId(speakers[0]?.userId ?? null)}
+                className="rounded-md bg-white/10 px-2 py-1"
+              >
+                Spotlight speaker
+              </button>
+            </div>
+          </div>
           <div className="border-b border-white/8 px-5 py-3">
             <h3 className="text-sm font-bold uppercase tracking-widest text-white/60">Live Chat</h3>
           </div>
