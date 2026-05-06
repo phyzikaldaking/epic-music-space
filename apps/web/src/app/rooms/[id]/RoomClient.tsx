@@ -953,11 +953,28 @@ export default function RoomClient({ room, currentUserId, liveKitOnline }: Props
       </div>
 
       {!liveKitOnline && (
-        <div className="mb-6 rounded-2xl border border-amber-400/25 bg-amber-400/8 px-5 py-4 text-sm text-amber-200">
-          <span className="font-bold">Live audio infrastructure isn&apos;t configured yet.</span>{" "}
-          Set <code className="rounded bg-black/30 px-1">LIVEKIT_API_KEY</code>,{" "}
-          <code className="rounded bg-black/30 px-1">LIVEKIT_API_SECRET</code>, and{" "}
-          <code className="rounded bg-black/30 px-1">NEXT_PUBLIC_LIVEKIT_URL</code> to enable real-time audio. Chat works.
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/8 px-5 py-4 text-sm text-amber-100 backdrop-blur-md">
+          <span aria-hidden className="text-lg">🎙️</span>
+          <div className="flex-1">
+            <p className="font-bold text-amber-200">
+              Voice is warming up — chat is live in the meantime.
+            </p>
+            <p className="mt-0.5 text-xs text-amber-100/75">
+              {isHost
+                ? "Connect a LiveKit project in your Vercel env vars to turn on real-time audio. Until then your room runs as a text-and-track session — fans can still join, react, and license tracks."
+                : "The host hasn't switched on real-time voice for this room yet. You can still chat, react, and license tracks while you're here."}
+            </p>
+            {isHost && (
+              <a
+                href="https://livekit.io/cloud"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-amber-200 underline decoration-dotted underline-offset-2 hover:text-white"
+              >
+                Set up LiveKit in 60 seconds →
+              </a>
+            )}
+          </div>
         </div>
       )}
 
