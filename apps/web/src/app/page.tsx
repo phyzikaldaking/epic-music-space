@@ -788,6 +788,7 @@ export default async function HomePage() {
                         fill
                         sizes="(max-width: 768px) 100vw, 33vw"
                         className="vc-track-cover-img object-cover"
+                        loading="lazy"
                       />
                     )}
                     <div className="vc-play" aria-hidden="true">

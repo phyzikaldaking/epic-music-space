@@ -74,17 +74,23 @@ export default function UploadTrackForm() {
   const [audioUrl, setAudioUrl] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
   const [stemUrl, setStemUrl] = useState("");
+  const [audioDuration, setAudioDuration] = useState<string | null>(null);
+  const [coverDragActive, setCoverDragActive] = useState(false);
 
   const [audioUploadState, setAudioUploadState] = useState<UploadState>("idle");
 
-    const [audioProgress, setAudioProgress] = useState(0);
-    const [coverProgress, setCoverProgress] = useState(0);
-    const [stemProgress, setStemProgress] = useState(0);
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [coverProgress, setCoverProgress] = useState(0);
+  const [stemProgress, setStemProgress] = useState(0);
 
   const [coverUploadState, setCoverUploadState] = useState<UploadState>("idle");
   const [stemUploadState, setStemUploadState] = useState<UploadState>("idle");
   const [submitState, setSubmitState] = useState<UploadState>("idle");
   const [error, setError] = useState<string | null>(null);
+
+  // XHR references for cancel support
+  const audioXhrRef = useRef<XMLHttpRequest | null>(null);
+  const stemXhrRef = useRef<XMLHttpRequest | null>(null);
 
   // True when audioUrl was set by *our* upload pipeline (vs a pasted URL).
   // Critical: when the artist just successfully uploaded, we MUST trust
@@ -142,18 +148,21 @@ export default function UploadTrackForm() {
     signedUrl: string,
     file: File,
     onProgress: (pct: number) => void,
+    xhrRef?: React.MutableRefObject<XMLHttpRequest | null>,
   ): Promise<void> => {
     // One retry with exponential backoff on transient failures (network
     // hiccup, transient 5xx). Fatal client errors (4xx) bail immediately.
     async function attempt(): Promise<void> {
       return new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+        if (xhrRef) xhrRef.current = xhr;
         xhr.open("PUT", signedUrl);
         xhr.setRequestHeader("Content-Type", file.type);
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
         };
         xhr.onload = () => {
+          if (xhrRef) xhrRef.current = null;
           if (xhr.status >= 200 && xhr.status < 300) {
             onProgress(100);
             resolve();
@@ -166,9 +175,14 @@ export default function UploadTrackForm() {
           }
         };
         xhr.onerror = () => {
+          if (xhrRef) xhrRef.current = null;
           const err = new Error("Network error during upload.");
           (err as Error & { retryable?: boolean }).retryable = true;
           reject(err);
+        };
+        xhr.onabort = () => {
+          if (xhrRef) xhrRef.current = null;
+          reject(new Error("Upload cancelled."));
         };
         xhr.send(file);
       });
@@ -183,6 +197,27 @@ export default function UploadTrackForm() {
       await new Promise((r) => setTimeout(r, delay));
       onProgress(0);
       await attempt();
+    }
+  }, []);
+
+  // Detect audio duration client-side using Web Audio API
+  const detectAudioDuration = useCallback((file: File) => {
+    try {
+      const url = URL.createObjectURL(file);
+      const audio = new Audio();
+      audio.preload = "metadata";
+      audio.onloadedmetadata = () => {
+        if (audio.duration && isFinite(audio.duration)) {
+          const mins = Math.floor(audio.duration / 60);
+          const secs = Math.floor(audio.duration % 60);
+          setAudioDuration(`${mins}:${secs.toString().padStart(2, "0")}`);
+        }
+        URL.revokeObjectURL(url);
+      };
+      audio.onerror = () => URL.revokeObjectURL(url);
+      audio.src = url;
+    } catch {
+      // Can't detect duration — not critical
     }
   }, []);
   const lastAudioFileRef = useRef<File | null>(null);
@@ -211,10 +246,12 @@ export default function UploadTrackForm() {
     setAudioProgress(0);
     setAudioUrl("");
     setAudioFromOurUpload(false);
+    setAudioDuration(null);
     setError(null);
+    detectAudioDuration(file);
     try {
       const { signedUrl, publicUrl } = await getSignedUrl("audio", file);
-      await uploadDirect(signedUrl, file, setAudioProgress);
+      await uploadDirect(signedUrl, file, setAudioProgress, audioXhrRef);
       setAudioUrl(publicUrl);
       setAudioFromOurUpload(true);
       setAudioUploadState("done");
@@ -306,7 +343,7 @@ export default function UploadTrackForm() {
     setError(null);
     try {
       const { signedUrl, publicUrl } = await getSignedUrl("stem", file);
-      await uploadDirect(signedUrl, file, setStemProgress);
+      await uploadDirect(signedUrl, file, setStemProgress, stemXhrRef);
       setStemUrl(publicUrl);
       setStemUploadState("done");
       buzz(20);
@@ -449,81 +486,136 @@ export default function UploadTrackForm() {
             <button
               type="button"
               onClick={() => coverRef.current?.click()}
-              className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:border-brand-500/60 transition"
+              onDragOver={(e) => { e.preventDefault(); setCoverDragActive(true); }}
+              onDragLeave={() => setCoverDragActive(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setCoverDragActive(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) {
+                  // Synthesize a change event through handleCoverChange-like logic
+                  setCoverFile(file);
+                  setCoverPreview((prev) => {
+                    if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+                    return URL.createObjectURL(file);
+                  });
+                  setCoverUploadState("uploading");
+                  setCoverProgress(0);
+                  setError(null);
+                  uploadImage(file, {
+                    kind: "cover",
+                    onProgress: (p) => {
+                      if (p.phase === "uploading" && typeof p.percent === "number") setCoverProgress(p.percent);
+                    },
+                  }).then((result) => {
+                    setCoverUrl(result.publicUrl);
+                    setCoverUploadState("done");
+                    buzz(20);
+                  }).catch((err) => {
+                    setCoverUploadState("error");
+                    setCoverPreview((prev) => { if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev); return null; });
+                    setCoverFile(null);
+                    setCoverProgress(0);
+                    setError(err instanceof Error ? err.message : "Cover upload failed.");
+                  });
+                }
+              }}
+              className={`relative h-32 w-32 flex-shrink-0 overflow-hidden rounded-2xl bg-white/5 border-2 border-dashed flex items-center justify-center transition ${
+                coverDragActive ? "border-brand-500/60 bg-brand-500/5 scale-105" : coverPreview ? "border-white/20" : "border-white/10 hover:border-brand-500/40"
+              }`}
             >
               {coverPreview ? (
-                // Local blob preview — next/image can't optimize blob: URLs
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={coverPreview} alt="cover preview" className="h-full w-full object-cover" />
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={coverPreview} alt="cover preview" className="h-full w-full object-cover rounded-xl" />
+                  {coverUploadState === "done" && (
+                    <div className="absolute inset-0 bg-black/0 hover:bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity rounded-xl">
+                      <span className="text-xs font-bold text-white">Replace</span>
+                    </div>
+                  )}
+                </>
               ) : (
-                <span className="text-3xl">🎨</span>
+                <div className="text-center p-2">
+                  <svg className="mx-auto h-8 w-8 text-white/20" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" /></svg>
+                  <p className="mt-1 text-[10px] text-white/25">Drop or tap</p>
+                </div>
               )}
               {coverUploadState === "uploading" && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                  <div className="h-5 w-5 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
+                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1 rounded-xl">
+                  <div className="h-6 w-6 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
+                  <span className="text-[10px] text-brand-400 font-bold">{coverProgress}%</span>
                 </div>
               )}
             </button>
-            <div className="flex-1 text-sm text-white/40">
-              <p>Click to upload a cover image (JPG, PNG, WebP — max 5MB)</p>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!title.trim()) {
-                    alert("Add a track title first — the AI uses it to compose the cover.");
-                    return;
-                  }
-                  setCoverUploadState("uploading");
-                  setCoverProgress(0);
-                  try {
-                    const res = await fetch("/api/cover/generate", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ title: title.trim(), genre: genre.trim() || undefined }),
-                    });
-                    const data = (await res.json()) as { imageBase64?: string; error?: string };
-                    if (!res.ok || !data.imageBase64) {
-                      throw new Error(data.error ?? "Cover generation failed.");
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-white/40">JPG, PNG, WebP, HEIC — max 10 MB. Square 1:1 recommended.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!title.trim()) {
+                      setError("Add a track title first — the AI uses it to compose the cover.");
+                      return;
                     }
-                    // Convert base64 to a File and run through the existing upload pipeline.
-                    const bin = atob(data.imageBase64);
-                    const buf = new Uint8Array(bin.length);
-                    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-                    const file = new File([buf], `cover-${Date.now()}.png`, { type: "image/png" });
-                    setCoverFile(file);
-                    setCoverPreview((prev) => {
-                      if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
-                      return URL.createObjectURL(file);
-                    });
-                    const { signedUrl, publicUrl } = await getSignedUrl("cover", file);
-                    await uploadDirect(signedUrl, file, setCoverProgress);
-                    setCoverUrl(publicUrl);
-                    setCoverUploadState("done");
-                  } catch (err) {
-                    setCoverUploadState("error");
-                    setError(err instanceof Error ? err.message : "Cover generation failed.");
-                  }
-                }}
-                disabled={coverUploadState === "uploading"}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-brand-500/35 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-50"
-              >
-                ✨ Generate cover with AI
-              </button>
+                    setCoverUploadState("uploading");
+                    setCoverProgress(0);
+                    try {
+                      const res = await fetch("/api/cover/generate", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ title: title.trim(), genre: genre.trim() || undefined }),
+                      });
+                      const data = (await res.json()) as { imageBase64?: string; error?: string };
+                      if (!res.ok || !data.imageBase64) {
+                        throw new Error(data.error ?? "Cover generation failed.");
+                      }
+                      const bin = atob(data.imageBase64);
+                      const buf = new Uint8Array(bin.length);
+                      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+                      const file = new File([buf], `cover-${Date.now()}.png`, { type: "image/png" });
+                      setCoverFile(file);
+                      setCoverPreview((prev) => {
+                        if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+                        return URL.createObjectURL(file);
+                      });
+                      const { signedUrl, publicUrl } = await getSignedUrl("cover", file);
+                      await uploadDirect(signedUrl, file, setCoverProgress);
+                      setCoverUrl(publicUrl);
+                      setCoverUploadState("done");
+                    } catch (err) {
+                      setCoverUploadState("error");
+                      setError(err instanceof Error ? err.message : "Cover generation failed.");
+                    }
+                  }}
+                  disabled={coverUploadState === "uploading"}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-brand-500/35 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-50"
+                >
+                  ✨ Generate with AI
+                </button>
+                {coverUploadState === "done" && (
+                  <button
+                    type="button"
+                    onClick={() => coverRef.current?.click()}
+                    className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-white/50 transition hover:text-white hover:bg-white/10"
+                  >
+                    ↻ Replace
+                  </button>
+                )}
+              </div>
               {coverUploadState === "done" && (
-                <p className="mt-1 text-green-400">✓ Cover uploaded</p>
+                <p className="mt-2 text-xs text-green-400 font-medium">✓ Cover uploaded</p>
               )}
               {coverUploadState === "error" && (
-                <p className="mt-1 text-red-400">Upload failed — you can continue without a cover</p>
+                <p className="mt-2 text-xs text-red-400">Upload failed — you can continue without a cover, or try again.</p>
               )}
               {coverUploadState === "uploading" && (
                 <div className="mt-2">
-                  <div className="h-1.5 w-full rounded-full bg-white/10">
+                  <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                     <div
-                      className="h-1.5 rounded-full bg-brand-400 transition-all duration-200"
+                      className="h-2 rounded-full bg-gradient-to-r from-brand-400 to-accent-400 transition-all duration-300"
                       style={{ width: `${coverProgress}%` }}
                     />
                   </div>
-                  <p className="mt-1 text-xs text-brand-400">{coverProgress}%</p>
                 </div>
               )}
             </div>

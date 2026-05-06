@@ -174,7 +174,7 @@ function BattleSide({
         }`}
       >
         {coverUrl ? (
-          <Image src={coverUrl} alt="" fill sizes="56px" className="object-cover" />
+          <Image src={coverUrl} alt="" fill sizes="56px" className="object-cover" loading="lazy" />
         ) : (
           <div className="h-full w-full bg-[radial-gradient(circle_at_30%_20%,rgba(108,92,231,0.4),transparent_55%),linear-gradient(135deg,#0a0a14,#000)]" />
         )}

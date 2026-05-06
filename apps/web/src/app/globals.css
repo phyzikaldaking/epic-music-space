@@ -425,9 +425,9 @@
 .vc-track-card:hover .vc-play { background: var(--vc-hot-pink); border-color: var(--vc-hot-pink); transform: scale(1.1); box-shadow: 0 0 30px var(--vc-hot-pink); }
 .vc-track-meta { display: flex; justify-content: space-between; margin-bottom: 6px; }
 .vc-track-genre { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.25em; color: var(--vc-cyan); text-transform: uppercase; }
-.vc-track-bpm { font-size: 11px; color: rgba(255,255,255,0.5); font-family: var(--font-orbitron), 'Orbitron', sans-serif; letter-spacing: 0.1em; }
+.vc-track-bpm { font-size: 11px; color: rgba(255,255,255,0.7); font-family: var(--font-orbitron), 'Orbitron', sans-serif; letter-spacing: 0.1em; }
 .vc-track-name { font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif; font-size: 30px; line-height: 1; letter-spacing: 0.005em; margin-bottom: 4px; color: #fff; }
-.vc-track-artist { font-size: 13px; color: rgba(255,255,255,0.56); margin-bottom: 18px; }
+.vc-track-artist { font-size: 13px; color: rgba(255,255,255,0.75); margin-bottom: 18px; }
 .vc-track-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); }
 .vc-track-price { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-weight: 700; font-size: 14px; color: var(--vc-gold); }
 .vc-track-license { font-size: 11px; color: rgba(255,255,255,0.5); letter-spacing: 0.18em; text-transform: uppercase; font-family: var(--font-orbitron), 'Orbitron', sans-serif; }
@@ -469,7 +469,7 @@
 .vc-lb-row.top2 .vc-lb-rank { color: var(--vc-neon-pink); text-shadow: 0 0 16px var(--vc-neon-pink); }
 .vc-lb-row.top3 .vc-lb-rank { color: var(--vc-purple); text-shadow: 0 0 16px var(--vc-purple); }
 .vc-lb-track-name { font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 0.04em; color: #fff; }
-.vc-lb-track-artist { font-size: 12px; color: rgba(255,255,255,0.5); }
+.vc-lb-track-artist { font-size: 12px; color: rgba(255,255,255,0.7); }
 .vc-lb-streams { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-size: 13px; font-weight: 700; color: var(--vc-hot-pink); letter-spacing: 0.1em; }
 
 /* ─ Split CTA ─ */
@@ -503,7 +503,7 @@
 .vc-split-card p { color: rgba(255,255,255,0.78); font-size: 16px; max-width: 380px; margin-bottom: 32px; }
 .vc-split-stats { display: flex; gap: 28px; margin-bottom: 32px; }
 .vc-stat .num { font-family: var(--font-bebas-neue), 'Bebas Neue', sans-serif; font-size: 44px; line-height: 1; color: #fff; }
-.vc-stat .label { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: rgba(255,255,255,0.6); margin-top: 4px; }
+.vc-stat .label { font-family: var(--font-orbitron), 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: rgba(255,255,255,0.75); margin-top: 4px; }
 
 /* ─ Feature cards ─ */
 .vc-feat-section { background: linear-gradient(180deg, var(--vc-void) 0%, #0d0420 100%); }
@@ -1328,34 +1328,39 @@ select:-moz-autofill {
     animation-duration: 1060ms;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .glitch,
-    .glitch::before,
-    .glitch::after,
-    .crt-flicker,
-    .neon-pulse,
-    .digital-noise::before,
-    .holo-shimmer,
-    .typing-cursor::after,
-    .scan-sweep::after,
-    .city-grid,
-    .city-tower,
-    .city-sun,
-    .city-district,
-    .waveform-bar,
-    .animate-fade-up,
-    .animate-pulse,
-    .animate-pulse-glow,
-    .animate-float,
-    .animate-shimmer {
-      animation: none !important;
-      transform: none !important;
-    }
+   @media (prefers-reduced-motion: reduce) {
+     .glitch,
+     .glitch::before,
+     .glitch::after,
+     .crt-flicker,
+     .neon-pulse,
+     .digital-noise::before,
+     .holo-shimmer,
+     .typing-cursor::after,
+     .scan-sweep::after,
+     .city-grid,
+     .city-tower,
+     .city-sun,
+     .city-district,
+     .waveform-bar,
+     .animate-fade-up,
+     .animate-pulse,
+     .animate-pulse-glow,
+     .animate-float,
+     .animate-shimmer,
+     .vc-eyebrow,
+     .vc-marquee-track,
+     .vc-grid-floor,
+     .vc-stars,
+     .vc-grain {
+       animation: none !important;
+       transform: none !important;
+     }
 
-    .scan-sweep::after {
-      display: none;
-    }
-  }
+     .scan-sweep::after {
+       display: none;
+     }
+   }
 }
 
 /* ─── Dynamic dimension helpers (CSS custom property targets) ─────────── */
