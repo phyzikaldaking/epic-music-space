@@ -20,6 +20,7 @@ import { serve } from "@hono/node-server";
 import { marketRouter } from "./routes/market";
 import { songsRouter } from "./routes/songs";
 import { versusRouter } from "./routes/versus";
+import { riskRouter } from "./routes/risk";
 
 // ─────────────────────────────────────────────────────────
 // App
@@ -60,6 +61,7 @@ app.get("/health", (c) =>
 app.route("/api/market", marketRouter);
 app.route("/api/song", songsRouter);
 app.route("/api/versus", versusRouter);
+app.route("/api/risk", riskRouter);
 
 // ── 404 fallback ───────────────────────────────────────────────────────────
 

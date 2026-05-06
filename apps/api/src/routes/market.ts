@@ -8,6 +8,8 @@ import {
   lenientLimiter,
 } from "../middleware/rateLimit";
 import { authMiddleware } from "../middleware/auth";
+import { riskScoringMiddleware } from "../middleware/riskScoring";
+import type { RiskAssessment } from "../middleware/riskScoring";
 
 // ─────────────────────────────────────────────────────────
 // Stripe
@@ -35,6 +37,7 @@ const buySchema = z.object({
 type ApiVariables = {
   Variables: {
     userId: string;
+    riskAssessment?: RiskAssessment;
   };
 };
 
@@ -97,6 +100,7 @@ marketRouter.post(
   "/buy",
   rateLimit(strictLimiter),
   authMiddleware,
+  riskScoringMiddleware,
   async (c) => {
     const userId = c.get("userId");
 
@@ -173,19 +177,29 @@ marketRouter.post(
       cancel_url: `${baseUrl}/studio/${songId}?checkout=cancelled`,
     });
 
-    // ── Record pending transaction ─────────────────────────────────────────
-    await prisma.transaction.create({
-      data: {
-        userId,
-        songId,
-        amount: Number(song.licensePrice) * quantity,
-        type: "LICENSE_PURCHASE",
-        status: "PENDING",
-        stripeSessionId: session.id,
-        metadata: { quantity },
-      },
-    });
+     // ── Record pending transaction ─────────────────────────────────────────
+     await prisma.transaction.create({
+       data: {
+         userId,
+         songId,
+         amount: Number(song.licensePrice) * quantity,
+         type: "LICENSE_PURCHASE",
+         status: "PENDING",
+         stripeSessionId: session.id,
+         metadata: { quantity },
+       },
+     });
 
-    return c.json({ checkoutUrl: session.url }, 201);
+     // ── Small suspicionScore reduction for passing risk check ─────────────────
+     // Decrement by 1, but never below 0
+     const assessment = c.get("riskAssessment") as RiskAssessment | undefined;
+     if (assessment && assessment.suspicionScore > 0) {
+       await prisma.user.update({
+         where: { id: userId },
+         data: { suspicionScore: { decrement: 1 } },
+       });
+     }
+
+     return c.json({ checkoutUrl: session.url }, 201);
   },
 );
