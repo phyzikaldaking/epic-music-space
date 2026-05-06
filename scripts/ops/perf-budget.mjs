@@ -8,8 +8,12 @@ const manifestPath = path.join(webRoot, ".next/app-build-manifest.json");
 
 const routeBudgets = {
   "/": Number(process.env.PERF_BUDGET_HOME_KB ?? 40),
+  "/dashboard": Number(process.env.PERF_BUDGET_DASHBOARD_KB ?? 70),
   "/marketplace": Number(process.env.PERF_BUDGET_MARKETPLACE_KB ?? 60),
   "/radar": Number(process.env.PERF_BUDGET_RADAR_KB ?? 30),
+  "/studio/new": Number(process.env.PERF_BUDGET_STUDIO_NEW_KB ?? 85),
+  "/studio/setup": Number(process.env.PERF_BUDGET_STUDIO_SETUP_KB ?? 50),
+  "/studio/[username]": Number(process.env.PERF_BUDGET_STUDIO_PROFILE_KB ?? 60),
   "/trending": Number(process.env.PERF_BUDGET_TRENDING_KB ?? 30),
   "/admin/ops": Number(process.env.PERF_BUDGET_ADMIN_OPS_KB ?? 30),
   "/admin/risk": Number(process.env.PERF_BUDGET_ADMIN_RISK_KB ?? 30),
@@ -17,8 +21,11 @@ const routeBudgets = {
 
 const latencyBudgets = {
   "/": Number(process.env.PERF_LATENCY_HOME_MS ?? 900),
+  "/dashboard": Number(process.env.PERF_LATENCY_DASHBOARD_MS ?? 1300),
   "/marketplace": Number(process.env.PERF_LATENCY_MARKETPLACE_MS ?? 1200),
   "/radar": Number(process.env.PERF_LATENCY_RADAR_MS ?? 1200),
+  "/studio/new": Number(process.env.PERF_LATENCY_STUDIO_NEW_MS ?? 1200),
+  "/studio/setup": Number(process.env.PERF_LATENCY_STUDIO_SETUP_MS ?? 1200),
   "/api/health/ready": Number(process.env.PERF_LATENCY_READY_MS ?? 600),
 };
 

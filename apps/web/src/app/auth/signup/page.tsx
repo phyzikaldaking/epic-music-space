@@ -11,6 +11,8 @@ import {
   personalTokensFor,
   MIN_LENGTH as PASSWORD_MIN_LENGTH,
 } from "@/lib/passwordStrength";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
@@ -104,24 +106,18 @@ function SignUpContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    void fetch("/api/analytics/funnel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event: "funnel_visitor_to_signup_view",
-      }),
-    }).catch(() => null);
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.visitorToSignupView,
+      source: "web_signup",
+    });
   }, []);
 
   useEffect(() => {
-    void fetch("/api/analytics/funnel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event: "funnel_signup_role_selected",
-        role: selectedRole,
-      }),
-    }).catch(() => null);
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.signupRoleSelected,
+      role: selectedRole,
+      source: "web_signup",
+    });
   }, [selectedRole]);
 
   function update(field: string, value: string) {

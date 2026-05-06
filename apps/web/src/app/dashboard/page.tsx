@@ -7,6 +7,7 @@ import NextPayoutWidget from "@/components/NextPayoutWidget";
 import ProviderDashboardCard from "@/components/ProviderDashboardCard";
 import ContinueListeningRail from "@/components/ContinueListeningRail";
 import ResendVerificationButton from "@/components/ResendVerificationButton";
+import DashboardTimingBeacon from "@/components/DashboardTimingBeacon";
 
 export const metadata: Metadata = {
   title: "Dashboard | Epic Music Space",
@@ -309,6 +310,7 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen bg-[#050509]">
       <div className="mx-auto max-w-7xl px-4 py-10">
+        <DashboardTimingBeacon />
         {/* ── Trial expiry banner ──────────────────────── */}
         {trialDaysLeft !== null && trialDaysLeft > 0 && (
           <div className="mb-6 flex items-center justify-between rounded-2xl border border-brand-500/30 bg-brand-500/10 px-5 py-3.5">

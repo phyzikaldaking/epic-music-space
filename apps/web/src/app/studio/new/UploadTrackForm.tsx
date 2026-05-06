@@ -6,6 +6,8 @@ import Link from "next/link";
 import CompactAudioPlayer from "@/components/CompactAudioPlayer";
 import EmbeddedAudioPreview from "@/components/EmbeddedAudioPreview";
 import { classifyAudioSource } from "@/lib/audioSource";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 type UploadState = "idle" | "uploading" | "done" | "error";
 
@@ -50,6 +52,7 @@ export default function UploadTrackForm() {
   const audioRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const stemRef = useRef<HTMLInputElement>(null);
+  const pageOpenedAtRef = useRef<number>(0);
 
   // Revoke any in-flight cover blob URL on unmount so we don't leak memory
   // if the user navigates away mid-upload.
@@ -60,6 +63,14 @@ export default function UploadTrackForm() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.artistUploadView,
+      source: "studio_new",
+    });
+    pageOpenedAtRef.current = performance.now();
   }, []);
 
   // ── Upload helpers ─────────────────────────────────────────────────────────
@@ -132,6 +143,15 @@ export default function UploadTrackForm() {
   async function handleAudioChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const audioUploadStartedAt = performance.now();
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.artistUploadAudioSelected,
+      source: "studio_new",
+      properties: {
+        mimeType: file.type,
+        fileSize: file.size,
+      },
+    });
     setAudioFile(file);
     setAudioUploadState("uploading");
     setAudioProgress(0);
@@ -142,6 +162,14 @@ export default function UploadTrackForm() {
       await uploadDirect(signedUrl, file, setAudioProgress);
       setAudioUrl(publicUrl);
       setAudioUploadState("done");
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.artistUploadAudioCompleted,
+        source: "studio_new",
+        properties: {
+          durationMs: Math.round(performance.now() - audioUploadStartedAt),
+          fileSize: file.size,
+        },
+      });
     } catch (err) {
       setAudioUploadState("error");
       setAudioProgress(0);
@@ -200,6 +228,16 @@ export default function UploadTrackForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.artistUploadSubmitAttempt,
+      source: "studio_new",
+      properties: {
+        hasAudioUrl: Boolean(audioUrl.trim()),
+        hasCover: Boolean(coverUrl.trim() || coverPreview),
+        hasStems: Boolean(stemUrl.trim()),
+      },
+    });
 
     const finalAudioUrl = audioUrl.trim();
     const finalCoverUrl = coverUrl.trim() || "";
@@ -263,6 +301,14 @@ export default function UploadTrackForm() {
     }
 
     setSubmitState("done");
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.artistUploadPublishCompleted,
+      source: "studio_new",
+      properties: {
+        publishDurationMs: Math.round(performance.now() - pageOpenedAtRef.current),
+        hasStems: Boolean(stemUrl.trim()),
+      },
+    });
     router.push("/studio");
   }
 

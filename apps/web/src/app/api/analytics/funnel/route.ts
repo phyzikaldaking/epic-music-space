@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { strictLimiter } from "@/lib/rateLimit";
 import { track } from "@/lib/analytics";
+import type { FunnelEventName } from "@/lib/funnelEvents";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
-const allowedEvents = new Set([
-  "funnel_visitor_to_signup_view",
-  "funnel_signup_role_selected",
-]);
+const allowedEvents = new Set<FunnelEventName>(Object.values(FUNNEL_EVENTS));
 
 export async function POST(req: NextRequest) {
   const ip =
@@ -22,8 +21,13 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const event = typeof body.event === "string" ? body.event : "";
   const role = typeof body.role === "string" ? body.role : undefined;
+  const source = typeof body.source === "string" ? body.source : undefined;
+  const properties =
+    body.properties && typeof body.properties === "object" && !Array.isArray(body.properties)
+      ? (body.properties as Record<string, unknown>)
+      : undefined;
 
-  if (!allowedEvents.has(event)) {
+  if (!allowedEvents.has(event as FunnelEventName)) {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
@@ -32,7 +36,8 @@ export async function POST(req: NextRequest) {
     properties: {
       role,
       ip,
-      source: "web_signup",
+      source,
+      ...(properties ?? {}),
     },
   });
 

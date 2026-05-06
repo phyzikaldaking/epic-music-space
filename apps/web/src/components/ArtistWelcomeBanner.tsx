@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 const STORAGE_KEY = "ems_artist_welcome_dismissed_v1";
+const VARIANT_KEY = "ems_artist_welcome_variant_v1";
+
+type WelcomeVariant = "control" | "speedrun";
 
 interface Props {
   hasUploadedSong: boolean;
@@ -21,8 +27,10 @@ export default function ArtistWelcomeBanner({
   hasStudio,
   payoutsReady,
 }: Props) {
+  const searchParams = useSearchParams();
   const allDone = hasUploadedSong && hasStudio && payoutsReady;
   const [dismissed, setDismissed] = useState(true);
+  const [variant, setVariant] = useState<WelcomeVariant>("control");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -33,6 +41,28 @@ export default function ArtistWelcomeBanner({
     setDismissed(window.localStorage.getItem(STORAGE_KEY) === "1");
   }, [allDone]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const forced = searchParams.get("welcomeVariant");
+    const forcedVariant = forced === "speedrun" || forced === "control" ? forced : null;
+    const storedVariant = window.localStorage.getItem(VARIANT_KEY);
+    const stored = storedVariant === "speedrun" || storedVariant === "control" ? storedVariant : null;
+    const assigned = forcedVariant ?? stored ?? (Math.random() < 0.5 ? "control" : "speedrun");
+
+    window.localStorage.setItem(VARIANT_KEY, assigned);
+    setVariant(assigned);
+
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.artistWelcomeVariantAssigned,
+      source: "artist_welcome_banner",
+      properties: {
+        variant: assigned,
+        forced: Boolean(forcedVariant),
+      },
+    });
+  }, [searchParams]);
+
   if (dismissed) return null;
 
   function dismiss() {
@@ -42,11 +72,19 @@ export default function ArtistWelcomeBanner({
     }
   }
 
-  const steps = [
+  const controlSteps = [
     { label: "Claim your studio username", done: hasStudio, href: "/profile/edit" },
     { label: "Upload your first song", done: hasUploadedSong, href: "/studio/new" },
     { label: "Connect Stripe to get paid", done: payoutsReady, href: "/dashboard?connect=start" },
   ];
+
+  const speedrunSteps = [
+    { label: "Upload your first song", done: hasUploadedSong, href: "/studio/new" },
+    { label: "Connect Stripe to get paid", done: payoutsReady, href: "/dashboard?connect=start" },
+    { label: "Claim your studio username", done: hasStudio, href: "/profile/edit" },
+  ];
+
+  const steps = variant === "speedrun" ? speedrunSteps : controlSteps;
 
   const completed = steps.filter((s) => s.done).length;
   const pct = Math.round((completed / steps.length) * 100);
@@ -56,7 +94,7 @@ export default function ArtistWelcomeBanner({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-300">
-            Welcome to Epic Music Space
+            {variant === "speedrun" ? "Artist Speedrun" : "Welcome to Epic Music Space"}
           </p>
           <p className="mt-1 text-base font-semibold">
             {completed}/{steps.length} steps to your first payout
@@ -99,9 +137,17 @@ export default function ArtistWelcomeBanner({
             {!s.done && (
               <Link
                 href={s.href}
+                onClick={() => {
+                  if (s.href === "/studio/new") {
+                    void postFunnelEvent({
+                      event: FUNNEL_EVENTS.artistDashboardToUploadClick,
+                      source: "artist_welcome_banner",
+                    });
+                  }
+                }}
                 className="rounded-lg bg-white/10 px-3 py-1 text-xs font-bold hover:bg-white/20"
               >
-                Start
+                {variant === "speedrun" ? "Do it now" : "Start"}
               </Link>
             )}
           </li>
