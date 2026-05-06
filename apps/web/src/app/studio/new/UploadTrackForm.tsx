@@ -10,6 +10,7 @@ import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 import { validateUpload } from "@/lib/uploadValidation";
 import { uploadImage, ClientUploadError } from "@/lib/clientImageUpload";
+import { validateTrackSubmission } from "@/lib/trackPublishValidation";
 
 type UploadState = "idle" | "uploading" | "done" | "error";
 
@@ -21,6 +22,17 @@ const AUDIO_ACCEPT =
 const COVER_ACCEPT = "image/jpeg,image/jpg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif";
 const STEM_ACCEPT =
   ".zip,.wav,.mp3,.flac,.m4a,.aif,.aiff,audio/*,application/zip";
+
+// File inputs use `sr-only` (Tailwind's screen-reader-only class) rather
+// than `hidden` (display:none). Several mobile browsers — notably iOS
+// Safari on older iOS, and certain Android Chrome accessibility configs
+// — refuse to open the file picker for a `display:none` input when
+// triggered programmatically; the click silently no-ops, the artist
+// taps the upload button and "nothing happens." `sr-only` keeps the
+// input rendered (size 1px, clipped, opacity 0) so the picker opens
+// reliably. Don't change this back to `hidden`.
+const HIDDEN_INPUT_CLASS = "sr-only";
+
 
 function buzz(ms = 30) {
   try {
@@ -73,6 +85,14 @@ export default function UploadTrackForm() {
   const [stemUploadState, setStemUploadState] = useState<UploadState>("idle");
   const [submitState, setSubmitState] = useState<UploadState>("idle");
   const [error, setError] = useState<string | null>(null);
+
+  // True when audioUrl was set by *our* upload pipeline (vs a pasted URL).
+  // Critical: when the artist just successfully uploaded, we MUST trust
+  // that publicUrl unconditionally on submit. Re-running classifyAudioSource
+  // on it has caused real "I uploaded, why is publish blocked?" failures
+  // when Supabase URLs change shape (custom CDN domain, query params, etc.).
+  // A pasted URL still gets the strict classify check.
+  const [audioFromOurUpload, setAudioFromOurUpload] = useState(false);
 
   const audioRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
@@ -190,11 +210,13 @@ export default function UploadTrackForm() {
     setAudioUploadState("uploading");
     setAudioProgress(0);
     setAudioUrl("");
+    setAudioFromOurUpload(false);
     setError(null);
     try {
       const { signedUrl, publicUrl } = await getSignedUrl("audio", file);
       await uploadDirect(signedUrl, file, setAudioProgress);
       setAudioUrl(publicUrl);
+      setAudioFromOurUpload(true);
       setAudioUploadState("done");
       buzz(40);
       void postFunnelEvent({
@@ -309,48 +331,40 @@ export default function UploadTrackForm() {
       },
     });
 
-    const finalAudioUrl = audioUrl.trim();
-    const finalCoverUrl = coverUrl.trim() || "";
-
-    if (!finalAudioUrl) {
-      setError("Please upload an audio file or provide a direct audio URL.");
-      return;
-    }
-
-    // Pasted URL: must classify as a known stream/embed source — reject
-    // anything else (random https://attacker.com/foo.html). This prevents
-    // unrecognised URLs from being persisted to the DB and later proxied.
-    const audioClass = classifyAudioSource(finalAudioUrl);
-    if (audioClass.type === "unknown") {
-      setError(
-        "We can't recognize that audio URL. Upload the file directly, or paste a YouTube / Vimeo / SoundCloud / Spotify link.",
-      );
-      return;
-    }
-
     if (audioUploadState === "uploading" || coverUploadState === "uploading" || stemUploadState === "uploading") {
       setError("Please wait for uploads to complete.");
       return;
     }
 
-    setSubmitState("uploading");
-
-    const payload = {
-      title: title.trim(),
-      artist: artistName.trim(),
-      genre: genre.trim() || undefined,
-      description: description.trim() || undefined,
-      audioUrl: finalAudioUrl,
-      coverUrl: finalCoverUrl || undefined,
-      stemUrl: stemUrl.trim() || undefined,
-      hasStems: !!stemUrl.trim(),
+    // Single source of truth — every gating decision lives in
+    // validateTrackSubmission, fully unit-tested. Adding a new gate?
+    // Add it there, with a test, so "publish silently blocks" can't
+    // regress in a refactor.
+    const check = validateTrackSubmission({
+      title,
+      artistName,
+      genre,
+      description,
+      audioUrl,
+      audioFromOurUpload,
+      coverUrl,
+      stemUrl,
+      bpm,
+      key,
+      licensePrice,
+      revenueSharePct,
+      totalLicenses,
       allowFreeDownload,
-      bpm: bpm ? Number(bpm) : undefined,
-      key: key.trim() || undefined,
-      licensePrice: Number(licensePrice),
-      revenueSharePct: Number(revenueSharePct),
-      totalLicenses: Number(totalLicenses),
-    };
+      isLegacy,
+      originalReleaseYear,
+    });
+    if (!check.ok) {
+      setError(check.reason);
+      return;
+    }
+
+    setSubmitState("uploading");
+    const payload = check.payload;
 
     const res = await fetch("/api/songs/create", {
       method: "POST",
@@ -384,6 +398,25 @@ export default function UploadTrackForm() {
 
   const uploading = audioUploadState === "uploading" || coverUploadState === "uploading" || stemUploadState === "uploading";
   const submitting = submitState === "uploading";
+
+  // Live "what's missing" hint. Renders below the submit button so
+  // artists always know exactly what to fix — the submit button itself
+  // is left enabled whenever there's *any* possible reason to click it,
+  // so we never leave the user staring at a disabled button with no
+  // explanation. If they click before the form is valid, handleSubmit
+  // surfaces the same specific message inline.
+  const blockingHint: string | null = (() => {
+    if (submitting) return null;
+    // `uploading` already covers audio/cover/stem === "uploading", so the
+    // only remaining audio state worth calling out distinctly is "error".
+    if (uploading) return "Files are still uploading. Hold tight.";
+    if (!title.trim()) return "Add a track title to publish.";
+    if (!artistName.trim()) return "Add your artist name.";
+    if (!audioUrl.trim()) return "Upload an audio file (or paste an audio URL).";
+    if (audioUploadState === "error")
+      return "The audio upload failed — tap Try again, or paste a URL instead.";
+    return null;
+  })();
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12">
@@ -500,7 +533,7 @@ export default function UploadTrackForm() {
             type="file"
             accept={COVER_ACCEPT}
             aria-label="Cover art image file"
-            className="hidden"
+            className={HIDDEN_INPUT_CLASS}
             onChange={handleCoverChange}
           />
         </div>
@@ -558,7 +591,7 @@ export default function UploadTrackForm() {
             type="file"
             accept={AUDIO_ACCEPT}
             aria-label="Audio track file"
-            className="hidden"
+            className={HIDDEN_INPUT_CLASS}
             onChange={handleAudioChange}
           />
           {audioUploadState === "error" && lastAudioFileRef.current && (
@@ -620,6 +653,9 @@ export default function UploadTrackForm() {
               onChange={(e) => {
                 const v = e.target.value;
                 setAudioUrl(v);
+                // Pasted URLs go through strict classification — uploaded
+                // URLs from our own pipeline are trusted unconditionally.
+                setAudioFromOurUpload(false);
                 // Only mark "done" once the pasted URL classifies as a known
                 // stream or embed source. Unknown URLs stay in idle so the
                 // submit button keeps the user honest.
@@ -684,7 +720,7 @@ export default function UploadTrackForm() {
             type="file"
             accept={STEM_ACCEPT}
             aria-label="Trackout or stems file"
-            className="hidden"
+            className={HIDDEN_INPUT_CLASS}
             onChange={handleStemChange}
           />
           {stemUploadState === "uploading" && (
@@ -922,7 +958,14 @@ export default function UploadTrackForm() {
 
         <button
           type="submit"
+          // Only ever disabled while we're *actively doing work* (a PUT in
+          // flight or the create call is mid-air). We never leave the
+          // button disabled for "form not valid" reasons — handleSubmit
+          // surfaces a specific inline error instead. An always-clickable
+          // submit is the cure for "I'm filling everything in and the
+          // button just doesn't work."
           disabled={submitting || uploading}
+          aria-describedby={blockingHint ? "publish-hint" : undefined}
           className="w-full rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 py-4 text-base font-bold text-white hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed glow-purple"
         >
           {submitting ? (
@@ -936,6 +979,16 @@ export default function UploadTrackForm() {
             "Publish to Marketplace ⚡"
           )}
         </button>
+        {blockingHint && (
+          <p
+            id="publish-hint"
+            className="-mt-2 text-center text-xs text-amber-300/85"
+            role="status"
+            aria-live="polite"
+          >
+            ⚠ {blockingHint}
+          </p>
+        )}
 
         <p className="text-center text-xs text-white/20">
           By publishing, you agree to the{" "}
