@@ -138,7 +138,7 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
   }
 
   return (
-    <article className={`group relative transform-gpu transition duration-500 [transform-style:preserve-3d] hover:z-20 hover:scale-[1.035] hover:rotate-y-0 ${wallTilt}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <article className={`group relative transform-gpu transition duration-500 [transform-style:preserve-3d] hover:z-20 hover:scale-[1.035] hover:rotate-y-0 ${wallTilt} ${playing ? "now-playing-ring z-10" : ""}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       {(isChampion || rankPosition) && <div className={`absolute -top-5 left-1/2 z-30 -translate-x-1/2 rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.18em] shadow-2xl ${isChampion ? "border-gold-300/40 bg-black text-gold-100 shadow-gold-500/20" : "border-cyan-300/30 bg-black text-cyan-100 shadow-cyan-500/10"}`}>{isChampion ? "Crowned Champion" : `Rank #${rankPosition}`}</div>}
       <div className={`absolute -inset-3 rounded-[2rem] bg-gradient-to-br blur-2xl transition duration-500 ${isChampion ? "from-gold-300/45 via-gold-500/24 to-accent-300/20 opacity-100" : tier === "ELITE" ? "from-cyan-300/34 via-brand-400/18 to-gold-300/12 opacity-90" : tier === "RISING" ? "from-accent-400/24 via-brand-500/18 to-transparent opacity-80" : "from-brand-500/0 via-accent-400/0 to-gold-300/0 opacity-0 group-hover:from-brand-500/28 group-hover:via-accent-400/18 group-hover:to-gold-300/18 group-hover:opacity-100"}`} style={{ opacity: playing ? Math.max(0.35, energy / 100) : undefined }} />
       <div className={`relative overflow-hidden rounded-[1.35rem] border bg-gradient-to-b from-zinc-800 via-[#101118] to-black p-2 shadow-2xl shadow-black/60 transition duration-500 ${getTierClass(tier)}`}>
@@ -173,13 +173,30 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
                 Dominance {dominancePercent}%
               </span>
             </div>
-            <Link
-              href={`/track/${id}`}
-              className="line-clamp-1 font-black text-white transition hover:text-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
-            >
-              {title}
-            </Link>
-            <p className="mt-1 line-clamp-1 text-sm text-white/50">{artist}</p>
+            <div className="flex items-center gap-2">
+              {playing && (
+                <span className="flex items-end gap-[2px] h-3 shrink-0">
+                  {[1, 2, 3].map((b) => (
+                    <span
+                      key={b}
+                      className="w-[3px] rounded-full bg-accent-400"
+                      style={{
+                        height: `${40 + b * 20}%`,
+                        animation: `equalize 0.${5 + b}s ease-in-out infinite alternate`,
+                        animationDelay: `${b * 0.08}s`,
+                      }}
+                    />
+                  ))}
+                </span>
+              )}
+              <Link
+                href={`/track/${id}`}
+                className={`line-clamp-1 font-black transition hover:text-accent-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${playing ? "text-accent-300" : "text-white"}`}
+              >
+                {title}
+              </Link>
+            </div>
+            <p className={`mt-1 line-clamp-1 text-sm ${playing ? "text-accent-300/60" : "text-white/50"}`}>{artist}</p>
           </div>
 
           <div className="flex min-h-7 flex-wrap gap-1.5">
