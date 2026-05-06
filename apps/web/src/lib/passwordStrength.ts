@@ -10,6 +10,11 @@
 
 export const MIN_LENGTH = 8;
 export const MAX_LENGTH = 128;
+// Personal-token substring match minimum length. 3-char tokens (Joe, Tom,
+// Lee, etc.) generated way too many false positives so we only flag
+// tokens >= 5 chars. Empirically this still catches the things people
+// actually leak (their full first name or email local-part).
+const PERSONAL_TOKEN_MIN_LENGTH = 5;
 
 // A tiny blocklist of passwords that show up in every breach corpus.
 // The full HIBP list is too big to ship to the browser, but this catches
@@ -111,49 +116,59 @@ export function evaluatePassword(
   const hasSymbol = /[^A-Za-z0-9]/.test(password);
   const classes = [hasLower, hasUpper, hasDigit, hasSymbol].filter(Boolean).length;
 
-  // Penalise passwords that contain personal info — common mistake.
+  // Soft personal-info penalty. We only consider tokens >= 5 chars so
+  // short common name fragments like "Joe" / "Tom" / "Lee" don't trip
+  // every password that happens to contain those letters. The match is
+  // a soft penalty (drop one rank) rather than a hard cap, so a long
+  // strong password isn't slammed to Weak just because it contains the
+  // user's email's local-part.
   const personalHit = personalTokens.some(
-    (t) => t.length >= 3 && lower.includes(t.toLowerCase()),
+    (t) => t.length >= PERSONAL_TOKEN_MIN_LENGTH && lower.includes(t.toLowerCase()),
   );
-  if (personalHit) {
-    return {
-      score: 1,
-      label: "Weak",
-      hint: "Don't include your name or email in the password.",
-      requirements: requirements.map((r) =>
-        r.id === "notPersonal" ? { ...r, met: false } : r,
-      ),
-      acceptable: false,
-    };
+
+  // Score bands — length is the primary signal per NIST SP 800-63B.
+  // A long all-letter passphrase is strong; a short complex password
+  // isn't. Two character classes earn a bonus rank.
+  let raw: 0 | 1 | 2 | 3 | 4;
+  if (len >= 20) {
+    raw = 4;                            // Strong regardless of classes
+  } else if (len >= 16) {
+    raw = classes >= 2 ? 4 : 3;         // 16+ : Good or Strong
+  } else if (len >= 12) {
+    raw = classes >= 2 ? 3 : 2;         // 12-15: OK or Good
+  } else if (len >= 10) {
+    raw = classes >= 2 ? 2 : 1;         // 10-11: Weak or OK
+  } else {
+    // len 8-9
+    raw = classes >= 2 ? 2 : 1;
   }
 
-  // Score bands — length-first per NIST guidance, with a small bump for
-  // character-class variety.
-  let score: 0 | 1 | 2 | 3 | 4;
-  if (len >= 16 && classes >= 2) score = 4;
-  else if (len >= 12 && classes >= 2) score = 3;
-  else if (len >= 10 && classes >= 2) score = 3;
-  else if (len >= 8 && classes >= 2) score = 2;
-  else if (len >= 12) score = 2; // long but single-class — still passable
-  else score = 1;
+  // Soft personal-info penalty: drop one rank, floor at 1.
+  const score = (personalHit ? Math.max(1, raw - 1) : raw) as 0 | 1 | 2 | 3 | 4;
 
   const label =
     score === 4 ? "Strong" : score === 3 ? "Good" : score === 2 ? "OK" : "Weak";
 
-  const hint =
-    score >= 3
+  const hint = personalHit
+    ? "Avoid using your name or email in the password — that's the first thing attackers try."
+    : score >= 3
       ? ""
-      : classes < 2
-        ? "Mix in letters and numbers (or a symbol) to harden it."
-        : len < 12
-          ? "Make it a few characters longer for extra strength."
-          : "Add a number or symbol to harden it.";
+      : score === 2
+        ? "Add a few more characters or a symbol to push it up to Good."
+        : classes < 2
+          ? "Mix in letters and numbers (or a symbol) to harden it."
+          : "Make it a few characters longer for extra strength.";
+
+  // Surface the personal-info miss in the requirements list.
+  const finalRequirements = personalHit
+    ? requirements.map((r) => (r.id === "notPersonal" ? { ...r, met: false } : r))
+    : requirements;
 
   return {
     score,
     label,
     hint,
-    requirements,
+    requirements: finalRequirements,
     acceptable: score >= 2,
   };
 }
@@ -166,7 +181,7 @@ function baseRequirements(
   const hasLetter = /[a-zA-Z]/.test(password);
   const hasDigit = /\d/.test(password);
   const personalHit = personalTokens.some(
-    (t) => t.length >= 3 && lower.includes(t.toLowerCase()),
+    (t) => t.length >= PERSONAL_TOKEN_MIN_LENGTH && lower.includes(t.toLowerCase()),
   );
   return [
     {
