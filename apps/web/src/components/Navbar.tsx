@@ -4,6 +4,7 @@ import NavbarAuth from "@/components/NavbarAuth";
 import NavbarMobileMenu from "@/components/NavbarMobileMenu";
 import NavbarSearch from "@/components/NavbarSearch";
 import NotificationBell from "@/components/NotificationBell";
+import UISfxToggleButton from "@/components/UISfxToggleButton";
 
 const PUBLIC_LINKS = [
   { href: "/", label: "Home", icon: "🏠", description: "Back to the front page" },
@@ -63,6 +64,7 @@ export default function Navbar() {
           href="/"
           aria-label="Epic Music Space — Home"
           title="Home"
+          data-ui-sfx="page"
           // `flex-shrink-0` so the brand is never truncated by neighboring
           // nav items competing for width. The nav links scroll / wrap
           // before the brand loses characters — "Epic Music …" on the
@@ -92,9 +94,11 @@ export default function Navbar() {
 
         <div className="flex items-center gap-3">
           <NavbarSearch />
+          <UISfxToggleButton />
           <Link
             href="/ai"
             aria-label="Open AI assistant"
+            data-ui-sfx="page"
             title="AI assistant"
             className="hidden h-9 w-9 items-center justify-center rounded-lg border border-white/12 text-white/60 transition hover:border-white/24 hover:bg-white/6 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 sm:flex"
           >

@@ -51,6 +51,7 @@ export default function MobileBottomNav() {
             <li key={item.href} className="flex-1">
               <Link
                 href={item.href}
+                data-ui-sfx="page"
                 className={`relative flex flex-col items-center gap-0.5 px-1 py-2 text-[10px] font-bold uppercase tracking-widest transition ${
                   active ? "text-brand-400" : "text-white/55 hover:text-white"
                 }`}

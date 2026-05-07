@@ -29,6 +29,7 @@ export default function NavbarLinks({ publicLinks, authedLinks, adminLink }: Pro
         <Link
           key={link.href}
           href={link.href}
+          data-ui-sfx="page"
           className="rounded-lg px-3 py-2 text-white/60 transition hover:bg-white/6 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
         >
           {link.label}

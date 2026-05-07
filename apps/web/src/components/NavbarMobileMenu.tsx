@@ -163,6 +163,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                 <Link
                   href="/"
                   onClick={close}
+                  data-ui-sfx="page"
                   className="flex items-center gap-2.5 text-lg font-extrabold tracking-tight"
                 >
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-500/40 bg-brand-500/20 text-accent-300 shadow-[0_0_24px_rgba(124,58,237,0.35)]">
@@ -177,6 +178,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                   type="button"
                   onClick={close}
                   aria-label="Close menu"
+                  data-ui-sfx="menu-close"
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-white/4 text-white/65 hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
@@ -190,6 +192,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                 <Link
                   href="/dashboard"
                   onClick={close}
+                  data-ui-sfx="page"
                   className="relative mx-5 mb-5 flex items-center gap-3 rounded-2xl border border-white/12 bg-white/4 p-3 text-left backdrop-blur transition hover:bg-white/8"
                 >
                   <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-brand-500 to-accent-500 text-base font-black">
@@ -214,6 +217,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                   <Link
                     href="/auth/signin"
                     onClick={close}
+                    data-ui-sfx="page"
                     className="flex items-center justify-center rounded-xl border border-white/15 bg-white/4 py-2.5 text-sm font-semibold text-white/85 hover:bg-white/8"
                   >
                     Sign in
@@ -221,6 +225,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                   <Link
                     href="/auth/signup"
                     onClick={close}
+                    data-ui-sfx="page"
                     className="flex items-center justify-center rounded-xl bg-brand-500 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand-500/35 hover:bg-brand-600"
                   >
                     Get started
@@ -241,6 +246,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                       <Link
                         href={link.href}
                         onClick={close}
+                        data-ui-sfx="page"
                         aria-current={active ? "page" : undefined}
                         className={`flex items-center gap-3 rounded-xl px-3 py-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${
                           active
@@ -288,6 +294,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                         <Link
                           href={link.href}
                           onClick={close}
+                          data-ui-sfx="page"
                           className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-white/65 transition hover:bg-white/5 hover:text-white"
                         >
                           <span aria-hidden className="text-base">
@@ -300,6 +307,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                     <li>
                       <button
                         type="button"
+                        data-ui-sfx="accent"
                         onClick={() => {
                           close();
                           void signOut({ callbackUrl: "/" });
@@ -317,7 +325,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
               {/* Footer / legal */}
               <div className="mx-5 mb-5 mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-white/8 pt-4 text-[11px] text-white/35">
                 {LEGAL_LINKS.map((l) => (
-                  <Link key={l.href} href={l.href} onClick={close} className="hover:text-white/70">
+                  <Link key={l.href} href={l.href} onClick={close} data-ui-sfx="page" className="hover:text-white/70">
                     {l.label}
                   </Link>
                 ))}
@@ -338,6 +346,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
           ref={btnRef}
           type="button"
           aria-label="Close navigation menu"
+          data-ui-sfx="menu-close"
           aria-expanded="true"
           aria-controls="mobile-nav"
           onClick={close}
@@ -352,6 +361,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
           ref={btnRef}
           type="button"
           aria-label="Open navigation menu"
+          data-ui-sfx="menu-open"
           aria-expanded="false"
           aria-controls="mobile-nav"
           onClick={() => setOpen(true)}
