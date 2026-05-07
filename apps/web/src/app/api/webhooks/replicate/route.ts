@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@ems/db";
 import {
   mirrorStemsToSupabase,
   verifyReplicateSignature,
@@ -118,12 +119,18 @@ export async function POST(req: Request) {
         return data.publicUrl;
       },
     );
+    const stemFilesForDb: Prisma.InputJsonObject = {
+      vocals: stems.vocals,
+      drums: stems.drums,
+      bass: stems.bass,
+      other: stems.other,
+    };
 
     await prisma.song.update({
       where: { id: song.id },
       data: {
         stemSeparationStatus: "READY",
-        stemFiles: stems,
+        stemFiles: stemFilesForDb,
         hasStems: true,
         stemSeparationCompletedAt: new Date(),
         stemSeparationError: null,
