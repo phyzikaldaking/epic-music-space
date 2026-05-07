@@ -260,6 +260,24 @@ function fmtTime(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function safeLocalStorageGet(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeLocalStorageSet(key: string, value: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage failures in restricted/private browser contexts.
+  }
+}
+
 function isFocusMode(value: unknown): value is FocusMode {
   return value === "all" || value === "record" || value === "arrange" || value === "mix" || value === "publish";
 }
@@ -457,18 +475,18 @@ export default function DawWorkspace() {
 
   useEffect(() => {
     const key = "ems-studio-guide-dismissed-v1";
-    const dismissed = typeof window !== "undefined" ? localStorage.getItem(key) : null;
+    const dismissed = safeLocalStorageGet(key);
     setShowGuide(dismissed !== "1");
   }, []);
 
   useEffect(() => {
     const key = "ems-studio-session-notes-v1";
-    const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
+    const saved = safeLocalStorageGet(key);
     if (saved) setSessionNotes(saved);
   }, []);
 
   useEffect(() => {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(STUDIO_COMMENTS_KEY) : null;
+    const raw = safeLocalStorageGet(STUDIO_COMMENTS_KEY);
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as unknown[];
@@ -485,22 +503,20 @@ export default function DawWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(STUDIO_COMMENTS_KEY, JSON.stringify(comments.slice(0, 80)));
+    safeLocalStorageSet(STUDIO_COMMENTS_KEY, JSON.stringify(comments.slice(0, 80)));
   }, [comments]);
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem(STUDIO_COMPACT_STRIPS_KEY) : null;
+    const saved = safeLocalStorageGet(STUDIO_COMPACT_STRIPS_KEY);
     if (saved === "1") setCompactStrips(true);
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(STUDIO_COMPACT_STRIPS_KEY, compactStrips ? "1" : "0");
+    safeLocalStorageSet(STUDIO_COMPACT_STRIPS_KEY, compactStrips ? "1" : "0");
   }, [compactStrips]);
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem(STUDIO_RECORD_WIZARD_KEY) : null;
+    const saved = safeLocalStorageGet(STUDIO_RECORD_WIZARD_KEY);
     if (saved === "dismissed") setShowRecordWizard(false);
   }, []);
 
@@ -1194,7 +1210,7 @@ export default function DawWorkspace() {
         <QuickStartGuide
           onClose={() => {
             setShowGuide(false);
-            localStorage.setItem("ems-studio-guide-dismissed-v1", "1");
+            safeLocalStorageSet("ems-studio-guide-dismissed-v1", "1");
           }}
         />
       )}
@@ -1655,7 +1671,7 @@ export default function DawWorkspace() {
           }}
           onDismiss={() => {
             setShowRecordWizard(false);
-            if (typeof window !== "undefined") localStorage.setItem(STUDIO_RECORD_WIZARD_KEY, "dismissed");
+            safeLocalStorageSet(STUDIO_RECORD_WIZARD_KEY, "dismissed");
           }}
         />
       )}
@@ -1931,7 +1947,7 @@ export default function DawWorkspace() {
             value={sessionNotes}
             onChange={(next) => {
               setSessionNotes(next);
-              localStorage.setItem("ems-studio-session-notes-v1", next);
+              safeLocalStorageSet("ems-studio-session-notes-v1", next);
             }}
             onSave={() => setNotesSavedAt(Date.now())}
             savedAt={notesSavedAt}

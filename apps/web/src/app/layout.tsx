@@ -5,7 +5,6 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
 import DeferredGlobalWidgets from "@/components/DeferredGlobalWidgets";
-import RouteTransition from "@/components/RouteTransition";
 import { getSiteUrl } from "@/lib/site";
 import { assertRequiredEnvOnBoot } from "@/lib/requiredEnv";
 import "./globals.css";
@@ -158,7 +157,6 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
         <Providers>
-          <RouteTransition />
           <Navbar />
           {/* Bottom-nav adds 56px on mobile so we pad <main> a bit more there. */}
           <main id="main-content" className="pb-32 md:pb-20">{children}</main>
