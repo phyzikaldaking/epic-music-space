@@ -12,6 +12,12 @@ interface Props {
   eqMidDb: number;
   eqHighDb: number;
   onSetEq: (band: "low" | "mid" | "high", db: number) => void;
+  /** Reference track for mastering A/B. */
+  referenceEnabled: boolean;
+  referenceLevel: number;
+  onSetReferenceEnabled: (enabled: boolean) => void;
+  onSetReferenceLevel: (level: number) => void;
+  onLoadReference: (file: Blob) => void;
 }
 
 /**
@@ -37,6 +43,11 @@ export default function MasterPanel({
   eqMidDb,
   eqHighDb,
   onSetEq,
+  referenceEnabled,
+  referenceLevel,
+  onSetReferenceEnabled,
+  onSetReferenceLevel,
+  onLoadReference,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -136,6 +147,52 @@ export default function MasterPanel({
           <EqKnob label="Mid" db={eqMidDb} onChange={(v) => onSetEq("mid", v)} />
           <EqKnob label="High" db={eqHighDb} onChange={(v) => onSetEq("high", v)} />
         </div>
+      </div>
+
+      {/* Reference track for A/B mastering comparison */}
+      <div className="rounded-lg border border-white/10 bg-black/30 p-3">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={referenceEnabled}
+              onChange={(e) => onSetReferenceEnabled(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <span className="text-xs font-semibold uppercase tracking-wider text-white/70">
+              Reference Track
+            </span>
+          </label>
+          <label className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20 cursor-pointer transition">
+            Upload
+            <input
+              type="file"
+              accept="audio/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onLoadReference(file);
+              }}
+            />
+          </label>
+        </div>
+        {referenceEnabled && (
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-mono text-white/45">Level:</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={referenceLevel}
+              onChange={(e) => onSetReferenceLevel(Number(e.target.value))}
+              className="flex-1 accent-cyan-400"
+            />
+            <span className="text-[9px] font-mono text-white/65 w-10 text-right">
+              {Math.round(referenceLevel * 100)}%
+            </span>
+          </div>
+        )}
       </div>
     </section>
   );

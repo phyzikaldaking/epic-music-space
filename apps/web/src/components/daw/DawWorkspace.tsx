@@ -66,6 +66,13 @@ type VersionEntry = {
   savedAt: string;
 };
 
+type TimelineMarker = {
+  id: string;
+  label: string;
+  timeSec: number;
+  color: string;
+};
+
 type StudioAuditEvent = {
   id: string;
   at: number;
@@ -215,7 +222,11 @@ export default function DawWorkspace() {
   const [lastAutosaveAt, setLastAutosaveAt] = useState<number | null>(null);
   const [postingForum, setPostingForum] = useState(false);
   const [auditEvents, setAuditEvents] = useState<StudioAuditEvent[]>([]);
+  const [countInBars, setCountInBars] = useState(1);
+  const [countInActive, setCountInActive] = useState<number | null>(null);
+  const [markers, setMarkers] = useState<TimelineMarker[]>([]);
   const sessionStartedAt = useRef<number>(Date.now());
+  const countInTimerRef = useRef<number | null>(null);
   const clientPresenceId = useMemo(() => {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
     return `studio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -335,7 +346,26 @@ export default function DawWorkspace() {
     if (saved) setSessionNotes(saved);
   }, []);
 
-  function ensureInit(): boolean {
+  useEffect(() => {
+    const key = "ems-studio-markers-v1";
+    const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
+    if (!saved) return;
+    try {
+      setMarkers(JSON.parse(saved) as TimelineMarker[]);
+    } catch {
+      setMarkers([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (countInTimerRef.current !== null) {
+        window.clearInterval(countInTimerRef.current);
+      }
+    };
+  }, []);
+
+  const ensureInit = useCallback((): boolean => {
     const engine = engineRef.current;
     if (!engine) return false;
     if (snapshot) return true;
@@ -365,7 +395,7 @@ export default function DawWorkspace() {
     setFocusedId(firstId);
     setSnapshot(engine.getSnapshot());
     return true;
-  }
+  }, [snapshot]);
 
   // ── Stems handoff ───────────────────────────────────────────────────────
   // When the DAW is opened with `?stems=<songId>` (from a track page's
@@ -441,7 +471,7 @@ export default function DawWorkspace() {
         setNotice({ tone: "error", message: "Couldn't load stems. Try again from the track page." });
       }
     })();
-  }, [stemsSongId]);
+  }, [stemsSongId, ensureInit]);
 
   const transport = snapshot?.transport;
   const tracks = useMemo(() => snapshot?.tracks ?? [], [snapshot]);
@@ -620,6 +650,11 @@ export default function DawWorkspace() {
           e.preventDefault();
           engine?.rewind();
           break;
+        case "i":
+        case "I":
+          e.preventDefault();
+          addMarker();
+          break;
         case "?":
           e.preventDefault();
           setShowShortcuts((v) => !v);
@@ -654,6 +689,11 @@ export default function DawWorkspace() {
     if (!ensureInit()) return;
     const engine = engineRef.current!;
     if (transport?.isRecording) {
+      if (countInTimerRef.current !== null) {
+        window.clearInterval(countInTimerRef.current);
+        countInTimerRef.current = null;
+      }
+      setCountInActive(null);
       await engine.stopRecording();
       setStats((s) => ({ ...s, takes: s.takes + 1 }));
       pushAuditEvent("record", "Captured new recording take");
@@ -665,18 +705,73 @@ export default function DawWorkspace() {
       setNotice({ tone: "warning", message: "Arm at least one track before recording." });
       return;
     }
-    const ok = await engine.startRecording();
-    if (!ok) {
-      const missingMic = browserHealth && (!browserHealth.mediaDevices || !browserHealth.mediaRecorder);
-      setNotice({
-        tone: "error",
-        message: missingMic
-          ? "This browser cannot access mic recording here. Try Chrome or Safari over HTTPS."
-          : "Recording could not start. Check mic permission, then try again.",
-      });
+    const startRecordingNow = async () => {
+      const ok = await engine.startRecording();
+      if (!ok) {
+        const missingMic = browserHealth && (!browserHealth.mediaDevices || !browserHealth.mediaRecorder);
+        setNotice({
+          tone: "error",
+          message: missingMic
+            ? "This browser cannot access mic recording here. Try Chrome or Safari over HTTPS."
+            : "Recording could not start. Check mic permission, then try again.",
+        });
+        return;
+      }
+      setNotice({ tone: "info", message: "Recording is live. Keep the tab open until you stop." });
+    };
+
+    const beatsToCount = Math.max(0, countInBars) * 4;
+    if (beatsToCount === 0) {
+      await startRecordingNow();
       return;
     }
-    setNotice({ tone: "info", message: "Recording is live. Keep the tab open until you stop." });
+
+    if (countInTimerRef.current !== null) {
+      window.clearInterval(countInTimerRef.current);
+    }
+    setCountInActive(beatsToCount);
+    setNotice({ tone: "info", message: `Count-in started: ${beatsToCount} beats before record.` });
+    countInTimerRef.current = window.setInterval(() => {
+      setCountInActive((current) => {
+        if (current === null) return null;
+        if (current <= 1) {
+          if (countInTimerRef.current !== null) {
+            window.clearInterval(countInTimerRef.current);
+            countInTimerRef.current = null;
+          }
+          void startRecordingNow();
+          return null;
+        }
+        return current - 1;
+      });
+    }, (60 / (transport?.bpm ?? 90)) * 1000);
+  }
+
+  function persistMarkers(next: TimelineMarker[]) {
+    setMarkers(next);
+    localStorage.setItem("ems-studio-markers-v1", JSON.stringify(next));
+  }
+
+  function addMarker() {
+    const timeSec = transport?.positionSec ?? 0;
+    const marker: TimelineMarker = {
+      id: `marker-${Date.now()}`,
+      label: `Marker ${markers.length + 1}`,
+      timeSec,
+      color: ["#22d3ee", "#a78bfa", "#f59e0b", "#ec4899"][markers.length % 4] ?? "#22d3ee",
+    };
+    const next = [...markers, marker].sort((left, right) => left.timeSec - right.timeSec);
+    persistMarkers(next);
+    pushAuditEvent("save", `Dropped ${marker.label} at ${timeSec.toFixed(2)}s`);
+    setNotice({ tone: "success", message: `${marker.label} saved at ${timeSec.toFixed(2)}s.` });
+  }
+
+  function updateMarker(id: string, patch: Partial<TimelineMarker>) {
+    persistMarkers(markers.map((marker) => (marker.id === id ? { ...marker, ...patch } : marker)));
+  }
+
+  function removeMarker(id: string) {
+    persistMarkers(markers.filter((marker) => marker.id !== id));
   }
 
   // ── Gear rack: apply preset to focused track ────────────────────────────
@@ -972,6 +1067,29 @@ export default function DawWorkspace() {
 
         <button
           type="button"
+          onClick={addMarker}
+          className="rounded-md border border-white/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-white/65 transition hover:bg-white/10"
+          title="Drop a timeline marker at the current playhead (I)"
+        >
+          Marker
+        </button>
+
+        <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
+          Count-in
+          <select
+            value={countInBars}
+            onChange={(e) => setCountInBars(Number(e.target.value))}
+            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-sm font-semibold"
+            title="How many bars to count before recording starts."
+          >
+            <option value={0}>Off</option>
+            <option value={1}>1 bar</option>
+            <option value={2}>2 bars</option>
+          </select>
+        </label>
+
+        <button
+          type="button"
           onClick={() => {
             if (!ensureInit()) return;
             engineRef.current?.setLoopEnabled(!(transport?.loopEnabled ?? false));
@@ -1082,6 +1200,11 @@ export default function DawWorkspace() {
             label="Loop Region"
             value={transport?.loopEnabled ? `${transport.loopStartSec.toFixed(2)}s → ${transport.loopEndSec.toFixed(2)}s` : "Off"}
             tone={transport?.loopEnabled ? "ok" : "neutral"}
+          />
+          <StatusPill
+            label="Count-in"
+            value={countInActive !== null ? `${countInActive} beats` : countInBars === 0 ? "Off" : `${countInBars} bar${countInBars > 1 ? "s" : ""}`}
+            tone={countInActive !== null || countInBars > 0 ? "ok" : "neutral"}
           />
           <button
             type="button"
@@ -1212,6 +1335,25 @@ export default function DawWorkspace() {
             onStartClipRec={() => engineRef.current?.startMidiClipRec()}
             onStopClipRec={() => engineRef.current?.stopMidiClipRec()}
             onClearClip={() => engineRef.current?.clearMidiClip()}
+            onQuantizeClip={() => engineRef.current?.quantizeMidiClip()}
+            onHumanizeClip={() => engineRef.current?.humanizeMidiClip()}
+            onTransposeClip={(semitones) => engineRef.current?.transposeMidiClip(semitones)}
+            onNudgeClip={(beats) => engineRef.current?.nudgeMidiClip(beats)}
+            onDuplicateClip={() => engineRef.current?.duplicateMidiClip()}
+            onSetClipLength={(beats) => engineRef.current?.setMidiClipLength(beats)}
+          />
+        </div>
+      )}
+
+      {!showSplash && (
+        <div className="mb-6">
+          <TimelineMarkersPanel
+            markers={markers}
+            positionSec={transport?.positionSec ?? 0}
+            onJump={(timeSec) => engineRef.current?.seek(timeSec)}
+            onRename={(id, label) => updateMarker(id, { label })}
+            onDelete={removeMarker}
+            onUpdateTime={(id, timeSec) => updateMarker(id, { timeSec })}
           />
         </div>
       )}
@@ -1227,6 +1369,13 @@ export default function DawWorkspace() {
             eqMidDb={transport.masterEqMidDb}
             eqHighDb={transport.masterEqHighDb}
             onSetEq={(band, db) => engineRef.current?.setMasterEq(band, db)}
+            referenceEnabled={snapshot?.aux.referenceTrack.enabled ?? false}
+            referenceLevel={snapshot?.aux.referenceTrack.level ?? 0.5}
+            onSetReferenceEnabled={(enabled) => engineRef.current?.setReferenceTrackEnabled(enabled)}
+            onSetReferenceLevel={(level) => engineRef.current?.setReferenceTrackLevel(level)}
+            onLoadReference={(file) => {
+              void engineRef.current?.setReferenceTrack(file);
+            }}
           />
         </div>
       )}
@@ -1318,6 +1467,7 @@ export default function DawWorkspace() {
               <ShortcutRow combo="L" action="Toggle loop mode" />
               <ShortcutRow combo="M" action="Toggle metronome" />
               <ShortcutRow combo="T" action="Tap tempo" />
+              <ShortcutRow combo="I" action="Drop timeline marker" />
               <ShortcutRow combo="Home" action="Rewind to start" />
               <ShortcutRow combo="?" action="Toggle this help panel" />
             </div>
@@ -1635,6 +1785,80 @@ function AuxCard({ title, value, detail }: { title: string; value: string; detai
   );
 }
 
+function TimelineMarkersPanel({
+  markers,
+  positionSec,
+  onJump,
+  onRename,
+  onDelete,
+  onUpdateTime,
+}: {
+  markers: TimelineMarker[];
+  positionSec: number;
+  onJump: (timeSec: number) => void;
+  onRename: (id: string, label: string) => void;
+  onDelete: (id: string) => void;
+  onUpdateTime: (id: string, timeSec: number) => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/60">Timeline markers</p>
+          <p className="mt-1 text-xs text-white/45">
+            Save verse, hook, bridge, and drop positions so arrangement decisions become repeatable.
+          </p>
+        </div>
+        <span className="rounded-full border border-white/10 px-3 py-1 text-[10px] font-mono uppercase tracking-widest text-white/65">
+          Playhead {positionSec.toFixed(2)}s
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {markers.map((marker) => (
+          <div key={marker.id} className="grid gap-2 rounded-xl border border-white/10 bg-black/25 p-3 lg:grid-cols-[minmax(170px,1fr)_110px_auto_auto] lg:items-center">
+            <input
+              type="text"
+              value={marker.label}
+              onChange={(e) => onRename(marker.id, e.target.value)}
+              aria-label={`Marker label for ${marker.label}`}
+              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-semibold text-white outline-none focus:border-white/25"
+            />
+            <input
+              type="number"
+              min={0}
+              step={0.25}
+              value={marker.timeSec.toFixed(2)}
+              onChange={(e) => onUpdateTime(marker.id, Number(e.target.value))}
+              aria-label={`Marker time for ${marker.label}`}
+              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-mono text-white outline-none focus:border-white/25"
+            />
+            <button
+              type="button"
+              onClick={() => onJump(marker.timeSec)}
+              className="rounded-lg border border-white/12 px-3 py-2 text-xs font-bold uppercase tracking-widest text-white/75 hover:bg-white/10"
+            >
+              Jump
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(marker.id)}
+              className="rounded-lg border border-red-400/25 px-3 py-2 text-xs font-bold uppercase tracking-widest text-red-200 hover:bg-red-500/10"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        {markers.length === 0 && (
+          <div className="rounded-xl border border-dashed border-white/12 bg-black/20 px-3 py-4 text-sm text-white/45">
+            No markers yet. Drop one from the transport while the playhead is on a section you want to revisit.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function CollaborationPresencePanel({
   collaborators,
   connected,
@@ -1931,6 +2155,25 @@ function TrackStrip({
               onChange={(e) => onPan(Number(e.target.value))}
               className="w-full accent-accent-500"
             />
+            {/* Automation recording toggle for pan */}
+            <button
+              onClick={() => {
+                const isRecording = track.automationLanes["pan"]?.length ?? 0 > 0;
+                if (isRecording) {
+                  engineRef.current?.stopAutomationRecording(track.id, "pan");
+                } else {
+                  engineRef.current?.startAutomationRecording(track.id, "pan");
+                }
+              }}
+              title={`${(track.automationLanes["pan"]?.length ?? 0) > 0 ? "Stop" : "Start"} pan automation`}
+              className={`px-2 py-0.5 text-[8px] font-semibold rounded transition whitespace-nowrap ${
+                (track.automationLanes["pan"]?.length ?? 0) > 0
+                  ? "bg-violet-500/40 text-violet-100 border border-violet-400"
+                  : "bg-white/5 text-white/40 hover:bg-white/10"
+              }`}
+            >
+              A
+            </button>
           </label>
 
           <label className="flex flex-1 items-center gap-2 text-[10px] uppercase tracking-wider text-white/50">
@@ -1947,6 +2190,25 @@ function TrackStrip({
             <span className="w-10 text-right font-mono text-[10px] tabular-nums text-white/65">
               {track.gainDb.toFixed(1)}
             </span>
+            {/* Automation recording toggle for gain */}
+            <button
+              onClick={() => {
+                const isRecording = track.automationLanes["gain"]?.length ?? 0 > 0;
+                if (isRecording) {
+                  engineRef.current?.stopAutomationRecording(track.id, "gain");
+                } else {
+                  engineRef.current?.startAutomationRecording(track.id, "gain");
+                }
+              }}
+              title={`${(track.automationLanes["gain"]?.length ?? 0) > 0 ? "Stop" : "Start"} gain automation`}
+              className={`px-2 py-0.5 text-[8px] font-semibold rounded transition ${
+                (track.automationLanes["gain"]?.length ?? 0) > 0
+                  ? "bg-violet-500/40 text-violet-100 border border-violet-400"
+                  : "bg-white/5 text-white/40 hover:bg-white/10"
+              }`}
+            >
+              A
+            </button>
           </label>
         </div>
       </div>
@@ -1954,6 +2216,34 @@ function TrackStrip({
       {peaks.length > 0 && (
         <div className="mt-3">
           <WaveformView peaks={peaks} color={track.color} progress={progress} />
+        </div>
+      )}
+
+      {/* Take lanes - show when multiple takes exist */}
+      {track.takes && track.takes.length > 1 && (
+        <div className="mt-2 text-[10px]">
+          <label className="block mb-1 uppercase tracking-wider text-white/40">
+            Takes ({track.takes.length})
+          </label>
+          <div className="flex flex-wrap gap-1">
+            {track.takes.map((take, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  // Call engine method to select this take
+                  engineRef.current?.selectTake(track.id, idx);
+                }}
+                className={`px-2 py-1 rounded text-[9px] font-mono transition ${
+                  track.selectedTakeIndex === idx
+                    ? "bg-brand-500/40 text-brand-100 border border-brand-400"
+                    : "bg-white/5 text-white/60 hover:bg-white/10 border border-white/5"
+                }`}
+                title={take.name || `Take ${idx + 1}`}
+              >
+                {take.name || `T${idx + 1}`}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
