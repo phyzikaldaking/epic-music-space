@@ -101,6 +101,16 @@ const CHECKS: EnvCheck[] = [
     severity: "recommended",
     purpose: "Apple sign-in — flow falls back to Google-only without it",
   },
+  {
+    key: "REPLICATE_API_TOKEN",
+    severity: "recommended",
+    purpose: "Demucs stem separation — /studio/board?stems= and /track 'Open in Studio' fail without it",
+  },
+  {
+    key: "REPLICATE_WEBHOOK_SECRET",
+    severity: "recommended",
+    purpose: "Replicate webhook signature verification — required in prod, optional locally",
+  },
 ];
 
 export interface EnvIssue {

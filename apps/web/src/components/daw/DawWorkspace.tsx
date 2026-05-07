@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { DawEngine, type EngineSnapshot, type MidiSynthState, type TrackId } from "./dawEngine";
 import { demoPattern, emptyPattern as emptyBeatPattern, renderPatternToBuffer } from "./beatMachine";
 import BeatMachineGrid from "./BeatMachineGrid";
@@ -64,6 +64,13 @@ type VersionEntry = {
   id: string;
   name: string;
   savedAt: string;
+};
+
+type StudioAuditEvent = {
+  id: string;
+  at: number;
+  kind: "save" | "load" | "autosave" | "record" | "import" | "beat" | "export" | "publish";
+  detail: string;
 };
 
 const FOCUS_MODES: Array<{ id: FocusMode; label: string; detail: string }> = [
@@ -172,6 +179,9 @@ function fmtTime(sec: number): string {
 export default function DawWorkspace() {
   const { data: session } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  /** Song id to import as 4 stem tracks (passed by /track/[id] "Open in Studio"). */
+  const stemsSongId = searchParams.get("stems");
   const engineRef = useRef<DawEngine | null>(null);
   const [snapshot, setSnapshot] = useState<EngineSnapshot | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
@@ -204,6 +214,7 @@ export default function DawWorkspace() {
   const [autosaveOn, setAutosaveOn] = useState(true);
   const [lastAutosaveAt, setLastAutosaveAt] = useState<number | null>(null);
   const [postingForum, setPostingForum] = useState(false);
+  const [auditEvents, setAuditEvents] = useState<StudioAuditEvent[]>([]);
   const sessionStartedAt = useRef<number>(Date.now());
   const clientPresenceId = useMemo(() => {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -356,6 +367,86 @@ export default function DawWorkspace() {
     return true;
   }
 
+  // ── Stems handoff ───────────────────────────────────────────────────────
+  // When the DAW is opened with `?stems=<songId>` (from a track page's
+  // "Open in Studio" button), we boot the engine, replace the default
+  // tracks with Vocals/Drums/Bass/Other, and decode each Demucs output
+  // into its track. The user lands on a remix-ready board.
+  const stemsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!stemsSongId || stemsLoadedRef.current) return;
+    stemsLoadedRef.current = true;
+
+    void (async () => {
+      const ok = ensureInit();
+      if (!ok) return;
+      const engine = engineRef.current;
+      if (!engine) return;
+
+      try {
+        const res = await fetch(`/api/songs/${stemsSongId}/stems`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          setNotice({
+            tone: "error",
+            message:
+              res.status === 403
+                ? "You need a license to this track to load its stems."
+                : `Couldn't load stems (${res.status}).`,
+          });
+          return;
+        }
+        const data = (await res.json()) as {
+          status: string;
+          stems?: { vocals: string; drums: string; bass: string; other: string };
+        };
+        if (data.status !== "READY" || !data.stems) {
+          setNotice({
+            tone: "warning",
+            message: "Stems aren't ready yet — check back from the track page.",
+          });
+          return;
+        }
+
+        const palette: Record<keyof typeof data.stems, { name: string; color: string }> = {
+          vocals: { name: "Vocals", color: "#ec4899" },
+          drums: { name: "Drums", color: "#22d3ee" },
+          bass: { name: "Bass", color: "#a78bfa" },
+          other: { name: "Other", color: "#f59e0b" },
+        };
+
+        const order: (keyof typeof data.stems)[] = ["vocals", "drums", "bass", "other"];
+        let firstNewId: TrackId | null = null;
+        for (const kind of order) {
+          const url = data.stems[kind];
+          const meta = palette[kind];
+          const trackId = engine.addTrack(meta.name, meta.color);
+          if (firstNewId === null) firstNewId = trackId;
+          try {
+            const blob = await (await fetch(url)).blob();
+            await engine.importAudioFile(trackId, blob);
+          } catch (err) {
+            console.warn(`[DawWorkspace] stem load failed for ${kind}`, err);
+          }
+        }
+        if (firstNewId) setFocusedId(firstNewId);
+        setSnapshot(engine.getSnapshot());
+        setNotice({
+          tone: "success",
+          message: "4 stems loaded — solo a track to mute the others, then remix.",
+        });
+      } catch (err) {
+        console.warn("[DawWorkspace] stems handoff failed", err);
+        setNotice({ tone: "error", message: "Couldn't load stems. Try again from the track page." });
+      }
+    })();
+    // ensureInit is stable for the lifetime of the component (it reads
+    // engineRef + snapshot via closure, both refs of state we own). Adding
+    // it to deps would re-fire the effect every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stemsSongId]);
+
   const transport = snapshot?.transport;
   const tracks = useMemo(() => snapshot?.tracks ?? [], [snapshot]);
   const beat = snapshot?.beat;
@@ -376,6 +467,16 @@ export default function DawWorkspace() {
     [tracks, focusedId],
   );
 
+  const pushAuditEvent = useCallback((kind: StudioAuditEvent["kind"], detail: string) => {
+    const entry: StudioAuditEvent = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      at: Date.now(),
+      kind,
+      detail,
+    };
+    setAuditEvents((prev) => [entry, ...prev].slice(0, 24));
+  }, []);
+
   // ── Project save / load ─────────────────────────────────────────────────
   async function handleSave(name: string) {
     if (!ensureInit()) return;
@@ -389,6 +490,7 @@ export default function DawWorkspace() {
       await saveProject(versionId, `${name} [v${new Date().toLocaleTimeString()}]`, file);
       setProjectId(id);
       setProjectName(name);
+      pushAuditEvent("save", `Saved "${name}"`);
       setNotice({ tone: "success", message: `Saved "${name}".` });
     } catch (err) {
       console.warn("[DawWorkspace] save failed", err);
@@ -414,6 +516,7 @@ export default function DawWorkspace() {
       if (beatT) setBeatTrackId(beatT.id);
       setProjectId(id);
       setFocusedId(snap.tracks[0]?.id ?? null);
+      pushAuditEvent("load", `Loaded project ${id.slice(0, 8)}`);
       setNotice({ tone: "success", message: "Project loaded." });
     } catch (err) {
       console.warn("[DawWorkspace] load failed", err);
@@ -458,10 +561,11 @@ export default function DawWorkspace() {
       await saveProject(versionId, `${name} [v${new Date().toLocaleTimeString()}]`, file);
       if (!projectId) setProjectId(id);
       setLastAutosaveAt(Date.now());
+      pushAuditEvent("autosave", `Autosaved "${name}"`);
     } catch {
       // Silent on autosave failures to avoid interrupting recording flow.
     }
-  }, [autosaveOn, projectId, projectName]);
+  }, [autosaveOn, projectId, projectName, pushAuditEvent]);
 
   useEffect(() => {
     if (!autosaveOn) return;
@@ -540,6 +644,7 @@ export default function DawWorkspace() {
       const buf = await renderPatternToBuffer(beat.pattern, transport.bpm, 1);
       engine.setTrackBuffer(beatTrackId, buf);
       setStats((s) => ({ ...s, beatRenders: s.beatRenders + 1 }));
+      pushAuditEvent("beat", "Rendered beat pattern to Beat track");
       setNotice({ tone: "success", message: "Beat rendered to the Beat track." });
     } catch (err) {
       console.warn("[DawWorkspace] beat render failed", err);
@@ -555,6 +660,7 @@ export default function DawWorkspace() {
     if (transport?.isRecording) {
       await engine.stopRecording();
       setStats((s) => ({ ...s, takes: s.takes + 1 }));
+      pushAuditEvent("record", "Captured new recording take");
       setNotice({ tone: "success", message: "Recording captured. Review the armed track, then mix or publish." });
       return;
     }
@@ -630,6 +736,7 @@ export default function DawWorkspace() {
       const audioUrl = signJson.publicUrl ?? "";
       const target = `/studio/new?audioUrl=${encodeURIComponent(audioUrl)}&from=board`;
       setStats((s) => ({ ...s, publishes: s.publishes + 1 }));
+      pushAuditEvent("publish", "Uploaded mix and moved to publish flow");
       router.push(target);
       return { ok: true, message: "Uploaded — finish the details on the next page." };
     } catch (err) {
@@ -689,6 +796,7 @@ export default function DawWorkspace() {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? "Forum post failed.");
       }
+      pushAuditEvent("publish", "Posted preview clip to forum timeline");
       setNotice({ tone: "success", message: "Posted to forum timeline with preview clip." });
     } catch (err) {
       setNotice({
@@ -751,6 +859,30 @@ export default function DawWorkspace() {
       <BlueprintStatusPanel ready={!showSplash} />
 
       <FocusModeBar value={focusMode} onChange={setFocusMode} />
+      {!showSplash && (
+        <StudioExecutionBar
+          onTemplate={(preset) => {
+            if (!ensureInit()) return;
+            if (preset === "vocal") {
+              engineRef.current?.setBpm(92);
+              setFocusMode("record");
+              pushAuditEvent("record", "Loaded Vocal template (92 BPM)");
+              return;
+            }
+            if (preset === "club") {
+              engineRef.current?.setBpm(128);
+              engineRef.current?.setBeatEnabled(true);
+              setFocusMode("arrange");
+              pushAuditEvent("beat", "Loaded Club template (128 BPM + beat enabled)");
+              return;
+            }
+            engineRef.current?.setBpm(72);
+            setFocusMode("mix");
+            pushAuditEvent("export", "Loaded Master template (72 BPM)");
+          }}
+          onForum={() => router.push("/forum")}
+        />
+      )}
 
       {initError && (
         <div className="mb-4 rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -1014,6 +1146,7 @@ export default function DawWorkspace() {
                   const ok = await engineRef.current?.importAudioFile(track.id, file);
                   if (ok) {
                     setStats((s) => ({ ...s, imports: s.imports + 1 }));
+                    pushAuditEvent("import", `Imported audio into ${track.name}`);
                     setNotice({ tone: "success", message: `Imported into ${track.name}.` });
                   }
                   else setNotice({ tone: "error", message: "Couldn't decode that file." });
@@ -1116,6 +1249,7 @@ export default function DawWorkspace() {
             if (!engine) throw new Error("Engine not initialized");
             const wav = await engine.exportWav();
             setStats((s) => ({ ...s, exports: s.exports + 1 }));
+            pushAuditEvent("export", "Exported WAV mixdown");
             return wav;
           }}
           onPublish={publishMix}
@@ -1134,6 +1268,7 @@ export default function DawWorkspace() {
           onPublishForum={postPreviewToForum}
           postingForum={postingForum}
           canPost={canExport}
+          auditEvents={auditEvents}
         />
       )}
 
@@ -1257,6 +1392,26 @@ function FocusModeBar({
         })}
       </div>
     </div>
+  );
+}
+
+function StudioExecutionBar({
+  onTemplate,
+  onForum,
+}: {
+  onTemplate: (preset: "vocal" | "club" | "master") => void;
+  onForum: () => void;
+}) {
+  return (
+    <section className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-[10px] font-black uppercase tracking-[0.2em] text-white/55">Fast launch</span>
+        <button type="button" onClick={() => onTemplate("vocal")} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10">Vocal template</button>
+        <button type="button" onClick={() => onTemplate("club")} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10">Club template</button>
+        <button type="button" onClick={() => onTemplate("master")} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10">Master template</button>
+        <button type="button" onClick={onForum} className="ml-auto rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-brand-600">Open forum timeline</button>
+      </div>
+    </section>
   );
 }
 
@@ -1495,6 +1650,7 @@ function CollaborationPresencePanel({
   onPublishForum,
   postingForum,
   canPost,
+  auditEvents,
 }: {
   collaborators: CollaboratorPresence[];
   connected: boolean;
@@ -1506,10 +1662,11 @@ function CollaborationPresencePanel({
   onPublishForum: () => Promise<void>;
   postingForum: boolean;
   canPost: boolean;
+  auditEvents: StudioAuditEvent[];
 }) {
   return (
     <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-4">
         <div className="rounded-xl border border-white/10 bg-black/25 p-3">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-200/85">Collaboration</p>
@@ -1575,6 +1732,18 @@ function CollaborationPresencePanel({
           >
             {postingForum ? "Posting..." : "Post preview to forum"}
           </button>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-200/85">Session audit</p>
+          <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto">
+            {auditEvents.map((e) => (
+              <li key={e.id} className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1 text-[11px] text-white/75">
+                <span className="font-mono text-white/50">{new Date(e.at).toLocaleTimeString()}</span> · {e.kind} · {e.detail}
+              </li>
+            ))}
+            {auditEvents.length === 0 && <li className="text-xs text-white/45">No actions logged yet.</li>}
+          </ul>
         </div>
       </div>
     </section>

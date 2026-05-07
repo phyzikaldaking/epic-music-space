@@ -17,6 +17,7 @@ import EmbeddedAudioPreview from "@/components/EmbeddedAudioPreview";
 import { classifyAudioSource } from "@/lib/audioSource";
 import TrackCommentThread from "@/components/TrackCommentThread";
 import TrackLikeButton from "@/components/TrackLikeButton";
+import StemsOpenInStudioButton from "@/components/StemsOpenInStudioButton";
 import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
@@ -399,11 +400,15 @@ export default async function TrackPage({ params, searchParams }: Props) {
             </div>
           )}
 
-          {/* Save / Like (only for real songs, not demos) */}
+          {/* Save / Like / Open in Studio (only for real songs, not demos) */}
           {!song.isDemo && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <SaveTrackButton songId={song.id} initiallySaved={initialSaved} />
               <TrackLikeButton songId={song.id} />
+              <StemsOpenInStudioButton
+                songId={song.id}
+                hasAccess={isOwner || Boolean(userLicense)}
+              />
             </div>
           )}
 

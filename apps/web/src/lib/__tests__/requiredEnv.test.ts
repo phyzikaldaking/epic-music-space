@@ -15,6 +15,8 @@ const validEnv = {
   SUPABASE_SERVICE_ROLE_KEY: "eyJ...",
   APPLE_CLIENT_ID: "com.epicmusicspace.app",
   APPLE_CLIENT_SECRET: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+  REPLICATE_API_TOKEN: "r8_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9",
+  REPLICATE_WEBHOOK_SECRET: "whsec_replicate_a1b2c3d4e5",
 } as Record<string, string | undefined>;
 
 describe("inspectEnv", () => {
