@@ -3,8 +3,10 @@ import * as Sentry from "@sentry/nextjs";
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { assertCriticalEnvironment } = await import("./src/lib/criticalEnv");
+    const { assertRequiredEnvOnBoot } = await import("./src/lib/requiredEnv");
     const { assertStripeEnvironment } = await import("./src/lib/stripeEnv");
     assertCriticalEnvironment(process.env, { productionOnly: true });
+    assertRequiredEnvOnBoot();
     assertStripeEnvironment(process.env, { productionOnly: true });
     await import("./sentry.server.config");
   }

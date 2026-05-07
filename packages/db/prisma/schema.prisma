@@ -774,6 +774,7 @@ model UserFollow {
   following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   @@unique([followerId, followingId])
+  @@index([followingId])
 }
 
 // One user blocking another. When A blocks B, B's posts are filtered out

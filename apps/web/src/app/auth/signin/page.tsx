@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { sanitizeCallbackPath } from "@/lib/safeCallback";
 import SignInForm from "./SignInForm";
 
 export default async function SignInPage({
@@ -13,13 +14,12 @@ export default async function SignInPage({
   const params = await searchParams;
   const hasOauthError = typeof params.error === "string" && params.error.length > 0;
   if (!hasOauthError) {
-    const session = await auth();
+    const session = await auth().catch((error) => {
+      console.error("[auth/signin] session lookup failed; rendering sign-in form", error);
+      return null;
+    });
     if (session?.user?.id) {
-      const callbackUrl =
-        typeof params.callbackUrl === "string" && params.callbackUrl.startsWith("/")
-          ? params.callbackUrl
-          : "/dashboard";
-      redirect(callbackUrl);
+      redirect(sanitizeCallbackPath(typeof params.callbackUrl === "string" ? params.callbackUrl : null));
     }
   }
 

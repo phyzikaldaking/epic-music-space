@@ -19,6 +19,7 @@ export type AuthEventName =
   | "verify_success"
   | "signin_invalid_credentials"
   | "signin_email_unverified"
+  | "signin_email_unverified_allowed"
   | "signin_rate_limited"
   | "signin_suspended"
   | "oauth_signin_success"

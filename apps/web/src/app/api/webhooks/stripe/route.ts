@@ -400,8 +400,8 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
   const license = reservation;
 
   // License sale changed soldLicenses — bust home + track caches.
-  revalidateTag(CACHE_TAGS.songs);
-  revalidateTag(CACHE_TAGS.homepage);
+  revalidateTag(CACHE_TAGS.songs, "max");
+  revalidateTag(CACHE_TAGS.homepage, "max");
 
   await prisma.transaction.update({
     where: { id: existing.id },
@@ -836,8 +836,8 @@ async function handleAuctionWinCheckoutCompleted(session: Stripe.Checkout.Sessio
   if (!settled) return;
 
   // Auction settlement changes listing availability and ranking projections.
-  revalidateTag(CACHE_TAGS.songs);
-  revalidateTag(CACHE_TAGS.homepage);
+  revalidateTag(CACHE_TAGS.songs, "max");
+  revalidateTag(CACHE_TAGS.homepage, "max");
 
   try {
     await recordAuctionWin({
@@ -1087,8 +1087,8 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       where: { id: transaction.songId },
       data: { soldLicenses: { decrement: 1 } },
     });
-    revalidateTag(CACHE_TAGS.songs);
-    revalidateTag(CACHE_TAGS.homepage);
+    revalidateTag(CACHE_TAGS.songs, "max");
+    revalidateTag(CACHE_TAGS.homepage, "max");
   }
 
   // Mirror clawback into the revenue ledger so the wallet view reflects the
@@ -1188,8 +1188,8 @@ async function handleChargeDispute(dispute: Stripe.Dispute, eventType: string) {
       where: { id: transaction.songId },
       data: { soldLicenses: { decrement: 1 } },
     });
-    revalidateTag(CACHE_TAGS.songs);
-    revalidateTag(CACHE_TAGS.homepage);
+    revalidateTag(CACHE_TAGS.songs, "max");
+    revalidateTag(CACHE_TAGS.homepage, "max");
   }
 
   if (eventType === "charge.dispute.created") {

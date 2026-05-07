@@ -1,4 +1,4 @@
-import Mux from "@mux/mux-node";
+import type Mux from "@mux/mux-node";
 
 let client: Mux | null = null;
 let lastConfigKey: string | null = null;
@@ -13,7 +13,10 @@ export function getMuxClient(): Mux | null {
   const configKey = `${tokenId}:${tokenSecret}`;
   if (!client || lastConfigKey !== configKey) {
     lastConfigKey = configKey;
-    client = new Mux({ tokenId, tokenSecret });
+    // Defer the SDK require so routes that never use Mux skip the load.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const MuxCtor = (require("@mux/mux-node") as typeof import("@mux/mux-node")).default;
+    client = new MuxCtor({ tokenId, tokenSecret });
   }
 
   return client;

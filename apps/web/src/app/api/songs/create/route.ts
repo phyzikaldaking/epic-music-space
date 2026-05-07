@@ -176,8 +176,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Bust cached homepage / track / songs surfaces so the new track shows up immediately.
-  revalidateTag(CACHE_TAGS.songs);
-  revalidateTag(CACHE_TAGS.homepage);
+  revalidateTag(CACHE_TAGS.songs, "max");
+  revalidateTag(CACHE_TAGS.homepage, "max");
   // /vault uses route-level `export const revalidate = 60` rather than a
   // tagged cache, so revalidateTag alone won't bust it. Path-level
   // revalidation guarantees an artist returning to /vault after a

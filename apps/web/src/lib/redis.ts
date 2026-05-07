@@ -1,4 +1,4 @@
-import Redis from "ioredis";
+import type Redis from "ioredis";
 
 let redis: Redis | null = null;
 let redisUrl: string | null = null;
@@ -31,7 +31,11 @@ export function getRedis(): Redis | null {
 
   if (!redis || redisUrl !== url) {
     redisUrl = url;
-    redis = new Redis(url, {
+    // Defer the ioredis require until first use — saves cold-start weight on
+    // routes that never touch Redis.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const RedisCtor = (require("ioredis") as typeof import("ioredis")).default;
+    redis = new RedisCtor(url, {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       lazyConnect: true,

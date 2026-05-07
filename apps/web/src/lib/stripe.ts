@@ -1,17 +1,23 @@
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { assertStripeEnvironment } from "@/lib/stripeEnv";
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 let stripeClient: Stripe | null = null;
 
-export function getStripe() {
+export function getStripe(): Stripe {
   assertStripeEnvironment(process.env, { productionOnly: true });
 
+  if (stripeClient) return stripeClient;
+
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeSecretKey) {
     throw new Error("STRIPE_SECRET_KEY environment variable is not set");
   }
 
-  stripeClient ??= new Stripe(stripeSecretKey, {
+  // Defer the SDK require until first use so routes that never touch Stripe
+  // don't pay the ~2.5MB cold-start cost.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const StripeCtor = (require("stripe") as typeof import("stripe")).default;
+  stripeClient = new StripeCtor(stripeSecretKey, {
     apiVersion: "2025-02-24.acacia",
     typescript: true,
   });

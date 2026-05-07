@@ -202,6 +202,46 @@ function formatRevenue(n: number) {
   return `$${n}`;
 }
 
+const faqStructuredData = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: [
+    {
+      "@type": "Question",
+      name: "How do listening sessions work on Epic Music Space?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "You start a live room, queue your tracks, and your community joins in real time. Chat, reactions, and mic handoffs make every session feel like a release party, Q&A, and fan meetup at once.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "How big can my listening room get?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Free rooms are built for your core supporters. Paid tiers unlock larger audiences, priority queue controls, and advanced host tools so you can run bigger events as your community scales.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "How do artists make money on Epic Music Space?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Revenue comes from multiple social touchpoints: license sales, live-room tips, battle visibility, and streaming royalties. Fans can move from discovery to purchase in one tap. Artists keep 100% of each license sale, with a transparent 10% platform fee itemized on every payout.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Do I keep my rights?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Yes. You own the master. Buyers receive a digital license under transparent terms — they don't own your music. Your catalog stays yours forever.",
+      },
+    },
+  ],
+};
+const faqStructuredDataJson = JSON.stringify(faqStructuredData);
+
 export default async function HomePage() {
   const {
     songCount,
@@ -228,51 +268,12 @@ export default async function HomePage() {
   ];
   const displayStats = candidateStats.filter((s) => s.value >= s.threshold);
 
-  const faqStructuredData = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: [
-      {
-        "@type": "Question",
-        name: "How do listening sessions work on Epic Music Space?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "You start a live room, queue your tracks, and your community joins in real time. Chat, reactions, and mic handoffs make every session feel like a release party, Q&A, and fan meetup at once.",
-        },
-      },
-      {
-        "@type": "Question",
-        name: "How big can my listening room get?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "Free rooms are built for your core supporters. Paid tiers unlock larger audiences, priority queue controls, and advanced host tools so you can run bigger events as your community scales.",
-        },
-      },
-      {
-        "@type": "Question",
-        name: "How do artists make money on Epic Music Space?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "Revenue comes from multiple social touchpoints: license sales, live-room tips, battle visibility, and streaming royalties. Fans can move from discovery to purchase in one tap. Artists keep 100% of each license sale, with a transparent 10% platform fee itemized on every payout.",
-        },
-      },
-      {
-        "@type": "Question",
-        name: "Do I keep my rights?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "Yes. You own the master. Buyers receive a digital license under transparent terms — they don't own your music. Your catalog stays yours forever.",
-        },
-      },
-    ],
-  };
-
   return (
     <div className="vc-page">
       <HomeVisualEffectsGate />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
+        dangerouslySetInnerHTML={{ __html: faqStructuredDataJson }}
       />
 
       <section className="vc-hero">

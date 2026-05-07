@@ -1,16 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-import OnboardingTour from "@/components/OnboardingTour";
-import KeyboardShortcuts from "@/components/KeyboardShortcuts";
-import MobileBottomNav from "@/components/MobileBottomNav";
-import OfflineBanner from "@/components/OfflineBanner";
-import ChatbotWidget from "@/components/ChatbotWidget";
-import InstallAppPrompt from "@/components/InstallAppPrompt";
-import CookieConsent from "@/components/CookieConsent";
-import { ClientOnlyDynamics } from "@/components/ClientDynamics";
+import dynamic from "next/dynamic";
+
+const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"));
+const KeyboardShortcuts = dynamic(() => import("@/components/KeyboardShortcuts"));
+const MobileBottomNav = dynamic(() => import("@/components/MobileBottomNav"));
+const OfflineBanner = dynamic(() => import("@/components/OfflineBanner"));
+const ChatbotWidget = dynamic(() => import("@/components/ChatbotWidget"));
+const InstallAppPrompt = dynamic(() => import("@/components/InstallAppPrompt"));
+const CookieConsent = dynamic(() => import("@/components/CookieConsent"));
+const ClientOnlyDynamics = dynamic(
+  () => import("@/components/ClientDynamics").then((m) => m.ClientOnlyDynamics),
+);
+const GlobalAudioPlayer = dynamic(() => import("@/components/GlobalAudioPlayer"));
+const VercelAnalytics =
+  process.env.NODE_ENV === "production"
+    ? dynamic(() => import("@vercel/analytics/next").then((m) => m.Analytics), { ssr: false })
+    : function DisabledAnalytics() {
+        return null;
+      };
+const VercelSpeedInsights =
+  process.env.NODE_ENV === "production"
+    ? dynamic(() => import("@vercel/speed-insights/next").then((m) => m.SpeedInsights), { ssr: false })
+    : function DisabledSpeedInsights() {
+        return null;
+      };
 
 export default function DeferredGlobalWidgets() {
   const [ready, setReady] = useState(false);
@@ -37,16 +52,17 @@ export default function DeferredGlobalWidgets() {
 
   return (
     <>
+      <GlobalAudioPlayer />
+      <MobileBottomNav />
+      <OfflineBanner />
       <OnboardingTour />
       <KeyboardShortcuts />
       <CookieConsent />
-      <MobileBottomNav />
-      <OfflineBanner />
       <ChatbotWidget />
       <InstallAppPrompt />
       <ClientOnlyDynamics />
-      <Analytics />
-      <SpeedInsights />
+      <VercelAnalytics />
+      <VercelSpeedInsights />
     </>
   );
 }

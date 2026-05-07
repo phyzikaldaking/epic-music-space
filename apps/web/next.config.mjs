@@ -62,9 +62,11 @@ const nextConfig = {
   experimental: {},
   images: {
     formats: ["image/avif", "image/webp"],
-    minimumCacheTTL: 60 * 60 * 24 * 30,
+    minimumCacheTTL: 60 * 60 * 24 * 365,
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;" ,
     remotePatterns: [
       {
         protocol: "https",
@@ -101,8 +103,11 @@ const nextConfig = {
       },
     ],
   },
-  webpack(config) {
+  webpack(config, { dev }) {
     config.resolve.alias["@"] = srcDir;
+    if (dev) {
+      config.cache = false;
+    }
     config.ignoreWarnings = config.ignoreWarnings ?? [];
     config.ignoreWarnings.push({
       module:
@@ -117,12 +122,30 @@ const nextConfig = {
         source: "/(.*)",
         headers: securityHeaders,
       },
+      // Auth pages: no-cache + revalidate every request (prevent stale sign-in)
       {
-        source: "/_next/static/:path*",
+        source: "/auth/:path*",
         headers: [
           {
             key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
+            value: "public, max-age=0, must-revalidate",
+          },
+        ],
+      },
+      // Performance hints: preconnect to critical third-party origins so the
+      // browser can warm up the TCP/TLS handshake while the HTML is still
+      // streaming. Saves 100-300ms on first byte for fonts/Stripe.
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Link",
+            value: [
+              "<https://fonts.googleapis.com>; rel=preconnect",
+              "<https://fonts.gstatic.com>; rel=preconnect; crossorigin",
+              "<https://cdn.jsdelivr.net>; rel=preconnect",
+              "<https://api.stripe.com>; rel=preconnect",
+            ].join(", "),
           },
         ],
       },

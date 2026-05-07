@@ -1,18 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import dynamic from "next/dynamic";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
 import DeferredGlobalWidgets from "@/components/DeferredGlobalWidgets";
 import { getSiteUrl } from "@/lib/site";
-import { assertRequiredEnvOnBoot } from "@/lib/requiredEnv";
 import "./globals.css";
-
-// Validate required env on cold-start. In production this throws when a
-// key is missing/empty/placeholder so the cold start is loud rather than
-// the app silently 500ing on the first OAuth redirect.
-assertRequiredEnvOnBoot();
 
 const bebasNeue = Bebas_Neue({
   weight: "400",
@@ -33,9 +26,31 @@ const audiowide = Audiowide({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-audiowide",
+  preload: true,
 });
 const siteUrl = getSiteUrl();
-const GlobalAudioPlayer = dynamic(() => import("@/components/GlobalAudioPlayer"));
+
+const structuredData = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "Epic Music Space",
+    url: siteUrl,
+    email: "legal@epicmusicspace.com",
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "Epic Music Space",
+    url: siteUrl,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: `${siteUrl}/marketplace?search={search_term_string}`,
+      "query-input": "required name=search_term_string",
+    },
+  },
+];
+const structuredDataJson = JSON.stringify(structuredData);
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -119,33 +134,12 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const structuredData = [
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      name: "Epic Music Space",
-      url: siteUrl,
-      email: "legal@epicmusicspace.com",
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      name: "Epic Music Space",
-      url: siteUrl,
-      potentialAction: {
-        "@type": "SearchAction",
-        target: `${siteUrl}/marketplace?search={search_term_string}`,
-        "query-input": "required name=search_term_string",
-      },
-    },
-  ];
-
   return (
     <html
       lang="en"
       className={`${bebasNeue.variable} ${orbitron.variable} ${audiowide.variable}`}
     >
-      <body className="min-h-screen bg-[#0a0a0a] text-white">
+      <body className="min-h-screen bg-[#0a0a0a] text-white antialiased" suppressHydrationWarning>
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[200] focus:rounded-md focus:bg-brand-500 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:outline-none focus:ring-2 focus:ring-accent-400"
@@ -154,14 +148,13 @@ export default function RootLayout({
         </a>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+          dangerouslySetInnerHTML={{ __html: structuredDataJson }}
         />
         <Providers>
           <Navbar />
           {/* Bottom-nav adds 56px on mobile so we pad <main> a bit more there. */}
           <main id="main-content" className="pb-32 md:pb-20">{children}</main>
           <Footer />
-          <GlobalAudioPlayer />
           <DeferredGlobalWidgets />
         </Providers>
       </body>

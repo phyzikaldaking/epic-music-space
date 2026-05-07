@@ -77,8 +77,14 @@ export default function MagicLinkClient() {
           });
         } catch { /* non-blocking */ }
       }
-      router.refresh();
-      router.push(callbackUrl);
+      // Hard-navigate so the destination renders with the just-set
+      // session cookie. router.push() races with the RSC cache and can
+      // briefly render the destination as signed-out.
+      if (typeof window !== "undefined") {
+        window.location.assign(callbackUrl);
+      } else {
+        router.push(callbackUrl);
+      }
     })();
   }, [email, token, callbackUrl, router]);
 

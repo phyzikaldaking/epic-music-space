@@ -78,22 +78,34 @@ function SignInContent({
       return;
     }
 
-    const result =
-      mode === "email"
-        ? await signIn("credentials", {
-            email,
-            password,
-            turnstileToken: turnstileToken ?? "",
-            redirect: false,
-          })
-        : await signIn("phone-otp", {
-            phone,
-            code: phoneCode,
-            turnstileToken: turnstileToken ?? "",
-            redirect: false,
-          });
+    let result: Awaited<ReturnType<typeof signIn>>;
+    try {
+      result =
+        mode === "email"
+          ? await signIn("credentials", {
+              email,
+              password,
+              turnstileToken: turnstileToken ?? "",
+              redirect: false,
+            })
+          : await signIn("phone-otp", {
+              phone,
+              code: phoneCode,
+              turnstileToken: turnstileToken ?? "",
+              redirect: false,
+            });
+    } catch {
+      setError("Sign-in is taking longer than expected. Check your connection and try again.");
+      setLoading(false);
+      return;
+    }
 
-    if (result?.error) {
+    // NextAuth v5 returns `result.error` as a string code on failure. On
+    // success it can return either `{ ok: true, error: null }` or a
+    // `{ url }` shape — never assume the absence of `error` means success.
+    // We additionally probe `/api/auth/session` so we never navigate to a
+    // signed-in destination unless the cookie actually committed.
+    if (result?.error || (!result?.ok && !result?.url)) {
       // NextAuth v5 surfaces the CredentialsSignin subclass `code` field
       // on result.code in beta.25+. Older releases left it only in the
       // redirect URL — parse that as a fallback so the error mapping
@@ -129,7 +141,7 @@ function SignInContent({
         setError("Bot-check didn't pass. Re-solve the challenge below and try again.");
         setTurnstileToken(null);
       } else if (authCode.includes("email_not_verified")) {
-        setError("Please verify your email before signing in. Check your inbox — or use Resend below.");
+        setError("Your email still needs verification, but that should not block sign-in anymore. Try once more; if it keeps happening, use the email link option below.");
       } else if (authCode.includes("rate_limited")) {
         setError("Too many sign-in attempts. Please wait a minute and try again.");
       } else if (authCode.includes("account_suspended")) {
@@ -139,12 +151,67 @@ function SignInContent({
       }
       setLoading(false);
     } else {
-      // router.refresh() forces the next page render to read the JWT
-      // cookie that was just set in the response headers — without it,
-      // a server-rendered destination might paint signed-out for one
-      // tick.
-      router.refresh();
-      router.push(callbackUrl);
+      // Confirm the session cookie actually committed before we navigate.
+      // NextAuth's `signIn(redirect:false)` resolves before the browser has
+      // necessarily flushed the Set-Cookie response from /api/auth/callback,
+      // and a tiny minority of browsers race with the next request. A
+      // single GET to /api/auth/session warms the cookie jar and tells us
+      // whether we have a session id we can trust.
+      let sessionConfirmed = false;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+        try {
+          const sessionRes = await fetch("/api/auth/session", {
+            credentials: "include",
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          if (sessionRes.ok) {
+            const sessionData = (await sessionRes.json().catch(() => null)) as
+              | { user?: { id?: string } | null }
+              | null;
+            sessionConfirmed = Boolean(sessionData?.user);
+          }
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          // Timeout or network error — still proceed with navigation
+          // since the signIn succeeded; the cookie is likely there.
+          if (fetchError instanceof Error && fetchError.name === "AbortError") {
+            console.warn("Session confirmation timed out, proceeding with navigation");
+          }
+        }
+      } catch {
+        /* unexpected error — fall through to hard nav anyway */
+      }
+
+      if (!sessionConfirmed) {
+        // Cookie didn't show up. Most common cause: third-party-cookie
+        // blockers + cross-origin Set-Cookie. Surface a clear, actionable
+        // error instead of bouncing the user to a signed-out landing page.
+        setError(
+          "Signed in, but your browser didn't accept the session cookie. " +
+            "Disable strict tracking protection for this site (or try a " +
+            "different browser) and sign in again.",
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Hard-navigate so every server component on the next page renders
+      // with the new cookie. router.refresh()+router.push() races with the
+      // RSC payload cache and occasionally lands users on a signed-out
+      // version of their destination.
+      // Add a 50ms microtask delay to ensure Set-Cookie is flushed in
+      // browsers that batch microtasks before the request is sent.
+      if (typeof window !== "undefined") {
+        setTimeout(() => {
+          window.location.assign(callbackUrl);
+        }, 50);
+      } else {
+        router.push(callbackUrl);
+      }
     }
   }
 
@@ -174,6 +241,47 @@ function SignInContent({
         return "You need to be signed in for that.";
       default:
         return "Sign-in failed. Please try again, or use a different method below.";
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setOauthLoading("google");
+    setError("");
+
+    try {
+      // Google sign-in uses a top-level redirect here, not a popup. The real
+      // client-side failure modes are embedded browsers and blocked cookies.
+      if (isCapacitorWebView()) {
+        setError(
+          "Google sign-in is blocked inside this in-app browser. Open Epic Music Space in Safari or Chrome, or use Apple, email, or phone instead.",
+        );
+        setOauthLoading(null);
+        return;
+      }
+
+      let canSetCookies = false;
+      try {
+        document.cookie = "ems_google_probe=1; Max-Age=60; Path=/; SameSite=Lax";
+        canSetCookies = document.cookie.includes("ems_google_probe=1");
+        document.cookie = "ems_google_probe=; Max-Age=0; Path=/; SameSite=Lax";
+      } catch {
+        canSetCookies = false;
+      }
+
+      if (!navigator.cookieEnabled || !canSetCookies) {
+        setError(
+          "Your browser is blocking third-party cookies, which are required for sign-in. " +
+          "Disable strict tracking protection for this site and try again."
+        );
+        setOauthLoading(null);
+        return;
+      }
+
+      await signIn("google", { redirectTo: callbackUrl });
+    } catch (err) {
+      console.error("Google sign-in error:", err);
+      setError("Google sign-in encountered an error. Please try a different method.");
+      setOauthLoading(null);
     }
   }
 
@@ -267,7 +375,7 @@ function SignInContent({
           {error && (
             <div className="mb-4 rounded-lg bg-red-500/20 px-4 py-3 text-sm text-red-400">
               {error}
-              {error.includes("verify your email") && (
+              {error.includes("needs verification") && (
                 <div className="mt-2">
                   <Link
                     href={`/auth/verify-email?email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`}
@@ -427,9 +535,7 @@ function SignInContent({
           {mode === "email" && (
             <div className="mt-3">
               {magicLinkSent ? (
-                <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-300">
-                  If an account matches <span className="font-semibold">{email}</span>, a one-time sign-in link is on its way. Check your inbox (and spam) — links expire in 15 minutes.
-                </div>
+                <MagicLinkSuccess email={email} onResend={handleSendMagicLink} resending={magicLinkSending} />
               ) : (
                 <button
                   type="button"
@@ -474,7 +580,7 @@ function SignInContent({
                 {googleEnabled && showGoogle && (
                   <button
                     type="button"
-                    onClick={() => { setOauthLoading("google"); signIn("google", { redirectTo: callbackUrl }); }}
+                    onClick={handleGoogleSignIn}
                     disabled={oauthLoading !== null || loading}
                     className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 py-3 text-sm font-medium hover:bg-white/10 disabled:opacity-60 transition"
                   >
@@ -493,8 +599,8 @@ function SignInContent({
                 )}
                 {googleEnabled && !showGoogle && (
                   <p className="text-center text-[11px] text-white/45">
-                    Google sign-in only works on the web — Google blocks it in
-                    in-app browsers. Use Apple, email, or phone here.
+                    Google sign-in works best on the web — some in-app browsers may not support it. 
+                    Try Apple, email, or phone instead.
                   </p>
                 )}
               </div>
@@ -531,6 +637,94 @@ function SignInContent({
   );
 }
 
+function MagicLinkSuccess({
+  email,
+  onResend,
+  resending,
+}: {
+  email: string;
+  onResend: () => void | Promise<void>;
+  resending: boolean;
+}) {
+  // Show a 30-second cooldown before allowing resend so the API rate
+  // limiter doesn't 429 a panicked user mashing the button.
+  const [secondsLeft, setSecondsLeft] = useState(30);
+  useEffect(() => {
+    if (secondsLeft <= 0) return;
+    const id = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [secondsLeft]);
+
+  return (
+    <div className="space-y-2">
+      <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-300">
+        If an account matches <span className="font-semibold">{email}</span>, a one-time sign-in link is on its way. Check your inbox (and spam) — links expire in 15 minutes.
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          if (secondsLeft > 0) return;
+          setSecondsLeft(30);
+          void onResend();
+        }}
+        disabled={resending || secondsLeft > 0}
+        className="w-full rounded-xl border border-white/10 bg-white/5 py-2 text-xs font-semibold text-white/70 hover:bg-white/10 disabled:opacity-50 transition"
+      >
+        {resending
+          ? "Resending…"
+          : secondsLeft > 0
+            ? `Didn't get it? Resend in ${secondsLeft}s`
+            : "Didn't get it? Resend the link"}
+      </button>
+    </div>
+  );
+}
+
+function SignInFallback() {
+  return (
+    <div className="flex min-h-[80vh] items-center justify-center px-4 bg-gradient-to-br from-brand-900 to-card">
+      <div className="w-full max-w-md space-y-4">
+        <div className="glass rounded-3xl p-8 animate-pulse">
+          {/* Header skeleton */}
+          <div className="h-8 w-32 rounded-lg bg-white/10 mb-2" />
+          <div className="h-4 w-48 rounded-lg bg-white/10 mb-6" />
+          
+          {/* Email input skeleton */}
+          <div className="space-y-3 mb-4">
+            <div className="h-4 w-16 rounded bg-white/10" />
+            <div className="h-10 w-full rounded-xl bg-white/10" />
+          </div>
+          
+          {/* Password input skeleton */}
+          <div className="space-y-3 mb-4">
+            <div className="h-4 w-20 rounded bg-white/10" />
+            <div className="h-10 w-full rounded-xl bg-white/10" />
+          </div>
+          
+          {/* Submit button skeleton */}
+          <div className="h-10 w-full rounded-xl bg-brand-500/30" />
+        </div>
+        <p className="text-center text-xs text-white/40">Loading sign-in…</p>
+      </div>
+    </div>
+  );
+  return (
+    <div className="flex min-h-[80vh] items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        <div className="glass rounded-3xl p-8">
+          <h1 className="mb-2 text-2xl font-extrabold">Sign in</h1>
+          <p className="mb-6 text-sm text-white/50">Welcome back to Epic Music Space</p>
+          <div className="space-y-4">
+            <div className="h-11 w-full animate-pulse rounded-xl bg-white/6" />
+            <div className="h-11 w-full animate-pulse rounded-xl bg-white/6" />
+            <div className="h-11 w-full animate-pulse rounded-xl bg-white/8" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SignInForm({
   googleEnabled,
   appleEnabled,
@@ -541,7 +735,7 @@ export default function SignInForm({
   phoneEnabled: boolean;
 }) {
   return (
-    <Suspense>
+    <Suspense fallback={<SignInFallback />}>
       <SignInContent
         googleEnabled={googleEnabled}
         appleEnabled={appleEnabled}

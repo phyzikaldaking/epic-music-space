@@ -150,9 +150,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   });
 
   // Vote shifted scores — bust homepage / track / battles caches.
-  revalidateTag(CACHE_TAGS.songs);
-  revalidateTag(CACHE_TAGS.battles);
-  revalidateTag(CACHE_TAGS.homepage);
+  revalidateTag(CACHE_TAGS.songs, "max");
+  revalidateTag(CACHE_TAGS.battles, "max");
+  revalidateTag(CACHE_TAGS.homepage, "max");
 
   // Track vote event
   await enqueueAnalytics({

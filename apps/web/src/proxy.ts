@@ -2,22 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildContentSecurityPolicy } from "@/lib/csp";
 
 /**
- * Next.js Edge Middleware — route protection for EMS.
+ * Next.js proxy — route protection for EMS.
  *
  * Auth wall: anonymous users are redirected to /auth/signin from every page
  * except a small set of public routes (auth flows, legal, static, marketing).
  * Server pages and API routes still perform the authoritative auth/role
- * checks; middleware only handles fast redirects.
+ * checks; proxy only handles fast redirects.
  */
 
-// Routes anonymous users CAN reach. Everything else requires sign-in.
-// IMPORTANT: keep this in sync with the actual public surface — anything
-// that exists to drive new-user acquisition (marketing, public profiles,
-// public track pages, the studio landing) MUST live here, otherwise the
-// middleware silently 307s anonymous traffic to /auth/signin before the
-// page ever renders. We hit that bug in production once already.
 const PUBLIC_PATHS = [
-  "/auth",                  // signin, signup, verify-email, reset-password, error
+  "/auth",
   "/legal",
   "/privacy",
   "/terms",
@@ -31,34 +25,27 @@ const PUBLIC_PATHS = [
   "/status",
   "/sitemap.xml",
   "/robots.txt",
-  // Marketing + acquisition surfaces. These pages render their own
-  // public-vs-authed split server-side, so middleware must let them
-  // through unauthed.
-  "/studio",                // /studio renders PublicStudioLanding for anon
-  "/track",                 // public track pages drive license discovery
-  "/pro",                   // public engineer/producer profiles
-  "/u",                     // public user profiles (vanity URLs)
-  "/marketplace",           // browse-before-buy
-  "/search",                // public search
-  "/versus",                // public live battles
-  "/rooms",                 // public listening rooms (ticketed entry on the page)
-  "/forum",                 // public community forum
-  "/services",              // public services marketplace
-  "/share",                 // public guest-share listen pages
+  "/studio",
+  "/track",
+  "/pro",
+  "/u",
+  "/marketplace",
+  "/search",
+  "/versus",
+  "/rooms",
+  "/forum",
+  "/services",
+  "/share",
 ];
 
-// Public PAGES (exact match only, not prefixes — keeps marketing/landing open
-// without exposing /search, /marketplace, etc.)
-const PUBLIC_EXACT = new Set<string>([
-  "/",                      // homepage / landing
-]);
+const PUBLIC_EXACT = new Set<string>(["/"]);
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_EXACT.has(pathname)) return true;
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-export default async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isAuthed = hasSessionCookie(req);
   const nonce = crypto.randomUUID().replaceAll("-", "");
@@ -79,7 +66,6 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.redirect(signIn);
   }
 
-  // API auth checks first
   if (pathname.startsWith("/api/stripe-connect")) {
     if (!isAuthed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -87,10 +73,8 @@ export default async function middleware(req: NextRequest) {
     return nextResponse();
   }
 
-  // API routes carry their own auth. Middleware only handles HTML pages.
   if (pathname.startsWith("/api/")) return nextResponse();
 
-  // Static / framework assets
   if (
     pathname.startsWith("/_next/") ||
     pathname === "/favicon.ico" ||
@@ -106,7 +90,6 @@ export default async function middleware(req: NextRequest) {
     return nextResponse();
   }
 
-  // The auth wall: signed-out users can ONLY reach public paths.
   if (!isAuthed && !isPublicPath(pathname)) {
     return redirectToSignIn();
   }
@@ -125,17 +108,21 @@ function shouldAttachCsp(pathname: string) {
 }
 
 function hasSessionCookie(req: NextRequest) {
-  return [
+  const sessionCookies = [
     "authjs.session-token",
     "__Secure-authjs.session-token",
     "next-auth.session-token",
     "__Secure-next-auth.session-token",
-  ].some((name) => Boolean(req.cookies.get(name)?.value));
+  ];
+
+  for (const name of sessionCookies) {
+    const cookie = req.cookies.get(name);
+    if (cookie?.value) return true;
+  }
+  return false;
 }
 
 export const config = {
-  // Run on every request EXCEPT internal Next.js paths and obvious static files.
-  // The function above does the public-vs-protected sorting.
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|woff|woff2|ttf|otf|map)$).*)",
   ],

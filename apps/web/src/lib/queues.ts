@@ -1,4 +1,4 @@
-import { Queue } from "bullmq";
+import type { Queue } from "bullmq";
 import { getRedis } from "./redis";
 import { QUEUE_NAMES } from "./queueNames";
 import { prisma } from "./prisma";
@@ -6,16 +6,26 @@ import type { Prisma } from "@ems/db";
 import { retry } from "./resilience";
 import { outboxMessageId } from "./emailOutbox";
 
-const connection = getRedis();
-
 // ---------------------------------------------------------
 // Queue definitions
 // ---------------------------------------------------------
+//
+// BullMQ is a heavy dependency. We avoid loading it at all when Redis is not
+// configured, and otherwise defer the require until the first queue is
+// constructed.
+
+const connection = getRedis();
+let bullmqModule: typeof import("bullmq") | null = null;
 
 /** Only instantiate queues when Redis is available */
-function makeQueue<T>(name: string) {
+function makeQueue<T>(name: string): Queue<T> | null {
   if (!connection) return null;
-  return new Queue<T>(name, {
+  if (!bullmqModule) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    bullmqModule = require("bullmq") as typeof import("bullmq");
+  }
+  const QueueCtor = bullmqModule.Queue;
+  return new QueueCtor<T>(name, {
     connection,
     defaultJobOptions: {
       attempts: 3,

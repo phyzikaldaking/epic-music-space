@@ -208,22 +208,29 @@ function SignUpContent({
     setLoading(true);
     setError("");
 
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        confirmPassword,
-        role: selectedRole,
-        inviteCode: inviteCode || undefined,
-        callbackUrl: resolvedCallbackUrl,
-        ageConfirmed,
-        termsAccepted,
-        turnstileToken: turnstileToken ?? undefined,
-      }),
-    });
-
-    const data = await res.json();
+    let res: Response;
+    let data: { error?: string; autoVerified?: boolean; verificationEmailSent?: boolean };
+    try {
+      res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          confirmPassword,
+          role: selectedRole,
+          inviteCode: inviteCode || undefined,
+          callbackUrl: resolvedCallbackUrl,
+          ageConfirmed,
+          termsAccepted,
+          turnstileToken: turnstileToken ?? undefined,
+        }),
+      });
+      data = await res.json().catch(() => ({}));
+    } catch {
+      setError("Could not reach signup. Check your connection and try again.");
+      setLoading(false);
+      return;
+    }
 
     if (!res.ok) {
       setError(data.error ?? "Something went wrong.");
@@ -241,19 +248,40 @@ function SignUpContent({
       },
     });
 
-    if (data.autoVerified) {
-      // Email failed but account was auto-verified — go straight to sign-in
-      router.push(`/auth/signin?accountCreated=1&email=${encodeURIComponent(form.email)}&callbackUrl=${encodeURIComponent(resolvedCallbackUrl)}`);
+    try {
+      const result = await signIn("credentials", {
+        email: form.email,
+        password: form.password,
+        turnstileToken: turnstileToken ?? "",
+        redirect: false,
+      });
+
+      if (!result?.error && (result?.ok || result?.url)) {
+        // Hard-navigate so every server component on the next page reads
+        // the freshly-set session cookie. router.push uses a cached RSC
+        // payload that occasionally lands the user on a signed-out view
+        // and bounces them back to /signin.
+        if (typeof window !== "undefined") {
+          window.location.assign(resolvedCallbackUrl);
+          return;
+        }
+        router.push(resolvedCallbackUrl);
+        return;
+      }
+    } catch {
+      // Fall through to the sign-in screen with the email prefilled.
+    }
+
+    if (data.autoVerified || data.verificationEmailSent === false) {
+      router.push(
+        `/auth/signin?accountCreated=1&email=${encodeURIComponent(form.email)}&callbackUrl=${encodeURIComponent(resolvedCallbackUrl)}`,
+      );
       return;
     }
 
-    if (data.verificationEmailSent === false) {
-      // Email not sent — redirect to verify page with flag so user can resend
-      router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}&emailFailed=1&callbackUrl=${encodeURIComponent(resolvedCallbackUrl)}`);
-      return;
-    }
-
-    router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}&callbackUrl=${encodeURIComponent(resolvedCallbackUrl)}`);
+    router.push(
+      `/auth/signin?accountCreated=1&email=${encodeURIComponent(form.email)}&callbackUrl=${encodeURIComponent(resolvedCallbackUrl)}`,
+    );
   }
 
   return (
@@ -286,7 +314,7 @@ function SignUpContent({
                 {appleEnabled && (
                   <button
                     type="button"
-                    onClick={() => signIn("apple", { callbackUrl })}
+                    onClick={() => signIn("apple", { redirectTo: resolvedCallbackUrl })}
                     className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-white py-3 text-sm font-semibold text-black hover:bg-white/90 transition"
                     aria-label="Continue with Apple"
                   >
@@ -300,7 +328,7 @@ function SignUpContent({
                 {googleEnabled && showGoogle && (
                   <button
                     type="button"
-                    onClick={() => signIn("google", { callbackUrl })}
+                    onClick={() => signIn("google", { redirectTo: resolvedCallbackUrl })}
                     className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 py-3 text-sm font-medium hover:bg-white/10 transition"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 24 24">

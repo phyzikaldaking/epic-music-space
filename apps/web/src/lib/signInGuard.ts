@@ -1,5 +1,5 @@
 import type { RateLimiterRes } from "rate-limiter-flexible";
-import { moderateLimiter, strictLimiter } from "@/lib/rateLimit";
+import { signInAttemptLimiter, strictLimiter } from "@/lib/rateLimit";
 
 function attemptIpKey(ip: string) {
   return `signin:attempt:ip:${ip}`;
@@ -11,10 +11,6 @@ function failedEmailKey(email: string) {
 
 function failedEmailIpKey(email: string, ip: string) {
   return `signin:failed:email-ip:${email}:${ip}`;
-}
-
-function failedIpKey(ip: string) {
-  return `signin:failed:ip:${ip}`;
 }
 
 function retryAfterSecondsFrom(value: unknown, fallback = 60): number {
@@ -41,8 +37,13 @@ async function safeGet(
 }
 
 export async function assertSignInAllowed(email: string, ip: string) {
+  // Per-IP attempt ceiling. We use the dedicated sign-in limiter (300/min)
+  // so corporate NATs and carrier-grade NATs don't lock everyone out the
+  // way the old 30/min moderate limiter did. The per-email and
+  // per-(email,IP) failure ceilings below still defend against credential
+  // stuffing.
   try {
-    await moderateLimiter.consume(attemptIpKey(ip));
+    await signInAttemptLimiter.consume(attemptIpKey(ip));
   } catch (err) {
     return {
       allowed: false as const,
@@ -54,19 +55,20 @@ export async function assertSignInAllowed(email: string, ip: string) {
     get: (key: string) => Promise<RateLimiterRes | null>;
   };
 
-  const [emailState, emailIpState, ipState] = await Promise.all([
+  // We deliberately do NOT apply a per-IP failure ceiling — that punishes
+  // every legitimate user behind a shared NAT for one attacker's bad
+  // password attempts. Per-email and per-(email,IP) ceilings still apply.
+  const [emailState, emailIpState] = await Promise.all([
     safeGet(limiter, failedEmailKey(email)),
     safeGet(limiter, failedEmailIpKey(email, ip)),
-    safeGet(limiter, failedIpKey(ip)),
   ]);
 
-  if (isBlocked(emailState) || isBlocked(emailIpState) || isBlocked(ipState)) {
+  if (isBlocked(emailState) || isBlocked(emailIpState)) {
     return {
       allowed: false as const,
       retryAfterSeconds: Math.max(
         retryAfterSecondsFrom(emailState, 0),
         retryAfterSecondsFrom(emailIpState, 0),
-        retryAfterSecondsFrom(ipState, 0),
         60,
       ),
     };
@@ -79,7 +81,6 @@ export async function recordFailedSignIn(email: string, ip: string) {
   await Promise.allSettled([
     strictLimiter.consume(failedEmailKey(email)),
     strictLimiter.consume(failedEmailIpKey(email, ip)),
-    strictLimiter.consume(failedIpKey(ip)),
   ]);
 }
 
@@ -92,6 +93,5 @@ export async function clearSignInFailures(email: string, ip: string) {
   await Promise.allSettled([
     limiter.delete(failedEmailKey(email)),
     limiter.delete(failedEmailIpKey(email, ip)),
-    limiter.delete(failedIpKey(ip)),
   ]);
 }

@@ -52,10 +52,6 @@ const appleClientId = process.env.APPLE_CLIENT_ID;
 const appleClientSecret = process.env.APPLE_CLIENT_SECRET;
 const appleEnabled = Boolean(appleClientId && appleClientSecret);
 
-class EmailNotVerifiedError extends CredentialsSignin {
-  code = "email_not_verified";
-}
-
 class AccountSuspendedError extends CredentialsSignin {
   code = "account_suspended";
 }
@@ -224,14 +220,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           throw new AccountSuspendedError();
         }
 
-        // Block unverified credential accounts (OAuth sets emailVerified automatically)
+        // Let a correct password get the user into the product even if
+        // verification email delivery failed, landed in spam, or was delayed.
+        // The dashboard keeps the verification banner visible and risk scoring
+        // still treats unverified email as a negative signal; it just is not a
+        // login-killing wall anymore.
         if (!user.emailVerified) {
-          await emitAuthEvent("signin_email_unverified", {
+          await emitAuthEvent("signin_email_unverified_allowed", {
             email: normalizedEmail,
             userId: user.id,
             ip,
           });
-          throw new EmailNotVerifiedError();
         }
 
         await clearSignInFailures(normalizedEmail, ip);

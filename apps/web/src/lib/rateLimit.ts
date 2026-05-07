@@ -40,6 +40,22 @@ export const lenientLimiter = createLimiter({
   duration: 60,
 });
 
+/**
+ * Sign-in attempt ceiling: 300 req / 60 s per IP.
+ *
+ * Sign-in is the highest-stakes route on the platform. Under-tightening
+ * lets attackers credential-stuff; over-tightening locks out everyone
+ * behind a shared NAT (corporate networks, mobile carriers, universities).
+ * 300/min/IP is high enough that real co-tenants don't collide and low
+ * enough to slow a single attacker. Per-email and per-(email,IP) failure
+ * counters still defend each individual account.
+ */
+export const signInAttemptLimiter = createLimiter({
+  keyPrefix: "rl:signin",
+  points: 300,
+  duration: 60,
+});
+
 // ─────────────────────────────────────────────────────────
 // Route-level helper
 // ─────────────────────────────────────────────────────────
