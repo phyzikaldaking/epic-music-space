@@ -23,6 +23,7 @@ const STEP_LABELS: Record<Step, string> = { 1: "Audio", 2: "Details", 3: "Pricin
 
 type Step = 1 | 2 | 3;
 type AudioState = "idle" | "uploading" | "done" | "error";
+const DRAFT_KEY = "ems_studio_quick_upload_draft_v1";
 
 function buzz(ms = 30) {
   try {
@@ -66,6 +67,84 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const startedAtRef = useRef<number>(0);
+
+  // Preserve progress if the tab refreshes mid-flow.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        step?: Step;
+        title?: string;
+        artist?: string;
+        coverUrl?: string;
+        licensePrice?: string;
+        totalLicenses?: string;
+        revenueSharePct?: string;
+        audioUrl?: string;
+      };
+      if (parsed.step) setStep(parsed.step);
+      if (parsed.title) setTitle(parsed.title);
+      if (parsed.artist) setArtist(parsed.artist);
+      if (parsed.coverUrl) setCoverUrl(parsed.coverUrl);
+      if (parsed.licensePrice) setLicensePrice(parsed.licensePrice);
+      if (parsed.totalLicenses) setTotalLicenses(parsed.totalLicenses);
+      if (parsed.revenueSharePct) setRevenueSharePct(parsed.revenueSharePct);
+      if (parsed.audioUrl) {
+        setAudioUrl(parsed.audioUrl);
+        setAudioState("done");
+      }
+    } catch {
+      // ignore corrupted local draft
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          step,
+          title,
+          artist,
+          coverUrl,
+          licensePrice,
+          totalLicenses,
+          revenueSharePct,
+          audioUrl,
+        }),
+      );
+    } catch {
+      // best effort only
+    }
+  }, [step, title, artist, coverUrl, licensePrice, totalLicenses, revenueSharePct, audioUrl]);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (publishing) return;
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.tagName === "SELECT";
+      if (e.key === "Escape") {
+        setError(null);
+      }
+      if (e.key !== "Enter" || !isTyping) return;
+      if (step === 2) {
+        const current = target as HTMLInputElement;
+        if (current.name === "artist") {
+          e.preventDefault();
+          if (!title.trim()) return setError("Add a track title.");
+          if (!artist.trim()) return setError("Add your artist name.");
+          setError(null);
+          setStep(3);
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [step, title, artist, publishing]);
 
   useEffect(() => {
     startedAtRef.current = performance.now();
@@ -274,6 +353,7 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
         },
       });
       buzz(80);
+      localStorage.removeItem(DRAFT_KEY);
       router.push(`/studio?published=${data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Publish failed. Try again.");
@@ -283,9 +363,11 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
 
   const projectedEarnings =
     Number(licensePrice || 0) * Number(totalLicenses || 0);
+  const creatorTakeRate = 1 - Number(revenueSharePct || 0) / 100;
+  const projectedCreatorGross = projectedEarnings * creatorTakeRate;
 
   return (
-    <div className="mx-auto max-w-md px-4 py-8 sm:py-12">
+    <div className="mx-auto max-w-xl px-4 py-8 sm:py-10">
       {/* Header — track count + step indicator + expert escape hatch */}
       <div className="mb-6 flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/45">
@@ -418,6 +500,7 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                name="title"
                 placeholder="Track title"
                 autoFocus
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder-white/25 focus:border-brand-500/60 focus:outline-none"
@@ -431,6 +514,7 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
               <input
                 value={artist}
                 onChange={(e) => setArtist(e.target.value)}
+                name="artist"
                 placeholder="Your artist name"
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder-white/25 focus:border-brand-500/60 focus:outline-none"
               />
@@ -612,6 +696,12 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
               <p className="text-xs uppercase tracking-wider text-white/55">If all licenses sell</p>
               <p className="mt-1 text-3xl font-extrabold text-white">
                 ${projectedEarnings.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+              </p>
+              <p className="mt-2 text-xs text-white/60">
+                Estimated creator side before platform/payment fees:{" "}
+                <span className="font-semibold text-white">
+                  ${projectedCreatorGross.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                </span>
               </p>
             </div>
           </div>
