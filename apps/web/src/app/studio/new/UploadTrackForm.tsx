@@ -477,7 +477,7 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
     if (uploading) return "Files are still uploading. Hold tight.";
     if (!title.trim()) return "Add a track title to publish.";
     if (!artistName.trim()) return "Add your artist name.";
-    if (!audioUrl.trim()) return "Upload an audio file (or paste an audio URL).";
+    if (!audioUrl.trim()) return "Pick your MP3 / WAV file to upload.";
     if (audioUploadState === "error")
       return "The audio upload failed — tap Try again, or paste a URL instead.";
     return null;
@@ -818,33 +818,38 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
               );
             })()}
 
-            <p className="text-xs text-white/30 mb-1">— or paste an audio URL (direct file, YouTube, Vimeo, SoundCloud, Spotify) —</p>
-            <input
-              type="url"
-              placeholder="https://..."
-              value={audioUrl}
-              onChange={(e) => {
-                const v = e.target.value;
-                setAudioUrl(v);
-                // Pasted URLs go through strict classification — uploaded
-                // URLs from our own pipeline are trusted unconditionally.
-                setAudioFromOurUpload(false);
-                // Only mark "done" once the pasted URL classifies as a known
-                // stream or embed source. Unknown URLs stay in idle so the
-                // submit button keeps the user honest.
-                if (!v) {
-                  if (audioUploadState === "done") setAudioUploadState("idle");
-                  return;
-                }
-                const cls = classifyAudioSource(v);
-                if (cls.type !== "unknown") {
-                  setAudioUploadState("done");
-                } else if (audioUploadState === "done") {
-                  setAudioUploadState("idle");
-                }
-              }}
-              className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60"
-            />
+            <details className="mt-3 group">
+              <summary className="cursor-pointer list-none text-xs text-white/30 hover:text-white/50 transition select-none">
+                <span className="group-open:hidden">Have a link instead? (YouTube, SoundCloud, etc.) →</span>
+                <span className="hidden group-open:inline">↑ Hide link option</span>
+              </summary>
+              <div className="mt-2">
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={audioUrl}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setAudioUrl(v);
+                    setAudioFromOurUpload(false);
+                    if (!v) {
+                      if (audioUploadState === "done") setAudioUploadState("idle");
+                      return;
+                    }
+                    const cls = classifyAudioSource(v);
+                    if (cls.type !== "unknown") {
+                      setAudioUploadState("done");
+                    } else if (audioUploadState === "done") {
+                      setAudioUploadState("idle");
+                    }
+                  }}
+                  className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60"
+                />
+                <p className="mt-1 text-[10px] text-white/25">
+                  Paste a direct audio URL, or a YouTube/Vimeo/SoundCloud/Spotify link (preview only).
+                </p>
+              </div>
+            </details>
           </div>
         </div>
 

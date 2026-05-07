@@ -10,7 +10,7 @@
     "test": "npm --workspace apps/web run test && npm --workspace apps/api run test && npm --workspace packages/db run test && npm --workspace packages/utils run test",
     "preflight": "bash scripts/preflight.sh",
     "smoke": "node scripts/smoke.mjs",
-    "prepare": "git config core.hooksPath .husky",
+    "prepare": "if [ -d .git ]; then git config core.hooksPath .husky; fi",
     "test:web": "npm --workspace apps/web run test",
     "test:api": "npm --workspace apps/api run test",
     "test:watch": "vitest",

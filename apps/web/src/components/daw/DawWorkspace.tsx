@@ -46,6 +46,12 @@ type Notice = {
   message: string;
 };
 
+type RecordReviewState = {
+  trackId: TrackId;
+  durationSec: number;
+  deleted: boolean;
+};
+
 type BrowserHealth = {
   webAudio: boolean;
   mediaRecorder: boolean;
@@ -319,7 +325,9 @@ export default function DawWorkspace() {
   const [postingForum, setPostingForum] = useState(false);
   const [auditEvents, setAuditEvents] = useState<StudioAuditEvent[]>([]);
   const [comments, setComments] = useState<StudioComment[]>([]);
+  const [recordReview, setRecordReview] = useState<RecordReviewState | null>(null);
   const sessionStartedAt = useRef<number>(Date.now());
+  const wasRecordingRef = useRef(false);
   const clientPresenceId = useMemo(() => {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
     return `studio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -601,6 +609,28 @@ export default function DawWorkspace() {
     () => tracks.find((t) => t.id === focusedId) ?? tracks[0] ?? null,
     [tracks, focusedId],
   );
+  const reviewTrack = useMemo(
+    () => (recordReview ? tracks.find((track) => track.id === recordReview.trackId) ?? null : null),
+    [recordReview, tracks],
+  );
+
+  useEffect(() => {
+    if (transport?.isRecording) {
+      wasRecordingRef.current = true;
+      return;
+    }
+    if (!wasRecordingRef.current) return;
+    wasRecordingRef.current = false;
+    const trackId = transport?.lastRecordedTrackId;
+    if (!trackId) return;
+    const track = tracks.find((candidate) => candidate.id === trackId);
+    if (!track) return;
+    setRecordReview({
+      trackId,
+      durationSec: track.durationSec,
+      deleted: !track.hasAudio,
+    });
+  }, [tracks, transport?.isRecording, transport?.lastRecordedTrackId]);
 
   const pushAuditEvent = useCallback((kind: StudioAuditEvent["kind"], detail: string) => {
     const entry: StudioAuditEvent = {
@@ -836,12 +866,26 @@ export default function DawWorkspace() {
       await engine.stopRecording();
       setStats((s) => ({ ...s, takes: s.takes + 1 }));
       pushAuditEvent("record", "Captured new recording take");
-      setNotice({ tone: "success", message: "Recording captured. Review the armed track, then mix or publish." });
+      setNotice({ tone: "success", message: "Take captured — playing back now. Use ▶ or 🗑 on the track to review or delete." });
+      engine.seek(0);
+      void engine.play();
       return;
     }
     const currentTracks = snapshot?.tracks ?? [];
     if (currentTracks.length > 0 && !currentTracks.some((track) => track.armed)) {
       setNotice({ tone: "warning", message: "Arm at least one track before recording." });
+      return;
+    }
+    if (transport?.punchInEnabled) {
+      const punchInSec = transport.punchInSec;
+      const punchOutSec = transport.punchOutSec;
+      const leadInSec = Math.max(0, punchInSec - 1);
+      if ((transport.positionSec ?? 0) >= punchOutSec || !transport.isPlaying) engine.seek(leadInSec);
+      if (!transport.isPlaying) void engine.play();
+      setNotice({
+        tone: "info",
+        message: `Punch-in armed from ${punchInSec.toFixed(1)}s to ${punchOutSec.toFixed(1)}s. Playback will record only in that window.`,
+      });
       return;
     }
     const ok = await engine.startRecording();
@@ -1168,6 +1212,78 @@ export default function DawWorkspace() {
 
       {notice && <StudioNotice notice={notice} onDismiss={() => setNotice(null)} />}
 
+      {recordReview && !transport?.isRecording && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-50 shadow-[0_0_0_1px_rgba(34,211,238,0.06)]">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100/75">Latest take</p>
+            <p className="truncate font-semibold text-white">
+              {reviewTrack?.name ?? "Recorded track"} · {recordReview.durationSec.toFixed(1)}s
+            </p>
+            <p className="text-xs text-cyan-50/75">
+              {recordReview.deleted
+                ? "Take removed. Undo it here if you want the audio back."
+                : "Quick review before you keep the take or delete it."}
+            </p>
+          </div>
+
+          {!recordReview.deleted && reviewTrack?.hasAudio && (
+            <button
+              type="button"
+              onClick={() => engineRef.current?.previewTake(recordReview.trackId)}
+              className="rounded-full border border-cyan-200/25 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-cyan-50 transition hover:bg-cyan-200/10"
+            >
+              Hear take
+            </button>
+          )}
+
+          {!recordReview.deleted && reviewTrack?.hasAudio && (
+            <button
+              type="button"
+              onClick={() => {
+                const ok = engineRef.current?.deleteTrackAudio(recordReview.trackId);
+                if (!ok) return;
+                setRecordReview((current) =>
+                  current && current.trackId === recordReview.trackId
+                    ? { ...current, deleted: true }
+                    : current,
+                );
+                setNotice({ tone: "success", message: "Take deleted. Hit Undo if you want it back." });
+              }}
+              className="rounded-full border border-red-400/30 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-red-100 transition hover:bg-red-400/10"
+            >
+              Delete take
+            </button>
+          )}
+
+          {recordReview.deleted && (
+            <button
+              type="button"
+              onClick={() => {
+                const ok = engineRef.current?.undoDeleteTrackAudio(recordReview.trackId);
+                if (!ok) return;
+                setRecordReview((current) =>
+                  current && current.trackId === recordReview.trackId
+                    ? { ...current, deleted: false }
+                    : current,
+                );
+                setNotice({ tone: "success", message: "Take restored." });
+              }}
+              className="rounded-full border border-emerald-300/30 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-emerald-100 transition hover:bg-emerald-300/10"
+            >
+              Undo delete
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setRecordReview(null)}
+            className="rounded-full border border-white/15 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white/80 transition hover:bg-white/10"
+          >
+            Keep
+          </button>
+        </div>
+      )}
+
       {/* ── Transport ──────────────────────────────────────────────────────── */}
       <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-r from-[#0c0c14] via-[#0a0a12] to-[#0c0c14] p-4 shadow-inner">
         <button
@@ -1266,6 +1382,26 @@ export default function DawWorkspace() {
           Loop
         </button>
 
+        <button
+          type="button"
+          onClick={() => {
+            if (!ensureInit()) return;
+            engineRef.current?.setPunchIn(
+              !(transport?.punchInEnabled ?? false),
+              transport?.punchInSec ?? 0,
+              transport?.punchOutSec ?? 4,
+            );
+          }}
+          className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition ${
+            transport?.punchInEnabled
+              ? "bg-cyan-300 text-black"
+              : "border border-white/15 text-white/70 hover:bg-white/10"
+          }`}
+          title="When enabled, Record starts playback and only captures inside the punch window."
+        >
+          Punch-in
+        </button>
+
         {transport?.loopEnabled && (
           <span className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-emerald-200">
             <input
@@ -1296,6 +1432,37 @@ export default function DawWorkspace() {
               }
               className="w-12 bg-transparent text-right outline-none"
               aria-label="Loop end (seconds)"
+            />
+            s
+          </span>
+        )}
+
+        {transport?.punchInEnabled && (
+          <span className="flex items-center gap-1 rounded-md border border-cyan-400/30 bg-cyan-500/5 px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-cyan-100">
+            <input
+              type="number"
+              min={0}
+              step={0.25}
+              value={transport.punchInSec.toFixed(2)}
+              onChange={(e) => {
+                if (!ensureInit()) return;
+                engineRef.current?.setPunchIn(true, Number(e.target.value), transport.punchOutSec);
+              }}
+              className="w-12 bg-transparent text-right outline-none"
+              aria-label="Punch-in start (seconds)"
+            />
+            →
+            <input
+              type="number"
+              min={0.5}
+              step={0.25}
+              value={transport.punchOutSec.toFixed(2)}
+              onChange={(e) => {
+                if (!ensureInit()) return;
+                engineRef.current?.setPunchIn(true, transport.punchInSec, Number(e.target.value));
+              }}
+              className="w-12 bg-transparent text-right outline-none"
+              aria-label="Punch-in end (seconds)"
             />
             s
           </span>
@@ -1447,6 +1614,14 @@ export default function DawWorkspace() {
                   }
                   else setNotice({ tone: "error", message: "Couldn't decode that file." });
                 }}
+                onPreviewTake={track.hasAudio ? () => engineRef.current?.previewTake(track.id) : null}
+                onDeleteTake={track.hasAudio ? () => {
+                  const ok = engineRef.current?.deleteTrackAudio(track.id);
+                  if (ok) {
+                    setRecordReview({ trackId: track.id, durationSec: track.durationSec, deleted: true });
+                    setNotice({ tone: "success", message: `Take deleted. Hit ↩ Undo in the banner to restore.` });
+                  }
+                } : null}
               />
             ))}
           </div>
@@ -2589,6 +2764,8 @@ function TrackStrip({
   onSetDelay,
   onSetSidechain,
   onImportFile,
+  onDeleteTake,
+  onPreviewTake,
 }: {
   track: EngineSnapshot["tracks"][number];
   focused: boolean;
@@ -2615,6 +2792,8 @@ function TrackStrip({
   onSetDelay: (params: { wet?: number; beats?: number; feedback?: number }) => void;
   onSetSidechain: (sourceId: TrackId | null, amount?: number) => void;
   onImportFile: (file: Blob) => void;
+  onDeleteTake: (() => void) | null;
+  onPreviewTake: (() => void) | null;
 }) {
   const [dragging, setDragging] = useState(false);
 
@@ -2709,6 +2888,31 @@ function TrackStrip({
 
           <Meter level={track.level} className="h-2 w-24" />
         </div>
+
+        {track.hasAudio && (
+          <div className="flex items-center gap-1.5 ml-auto">
+            {onPreviewTake && (
+              <button
+                type="button"
+                onClick={onPreviewTake}
+                title="Preview take"
+                className="min-h-9 min-w-9 rounded-md px-2.5 py-1.5 text-[11px] font-bold border border-white/15 text-white/70 hover:bg-white/10 transition"
+              >
+                ▶
+              </button>
+            )}
+            {onDeleteTake && (
+              <button
+                type="button"
+                onClick={onDeleteTake}
+                title="Delete take"
+                className="min-h-9 min-w-9 rounded-md px-2.5 py-1.5 text-[11px] font-bold border border-red-500/30 text-red-400 hover:bg-red-500/10 transition"
+              >
+                🗑
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="grid gap-2 sm:grid-cols-[minmax(120px,160px)_minmax(180px,1fr)] sm:items-center">
           <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/50">

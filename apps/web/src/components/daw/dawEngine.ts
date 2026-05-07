@@ -100,7 +100,10 @@ interface TrackInternal {
   panNode: StereoPannerNode;
   meterAnalyser: AnalyserNode;
   meterBuf: Uint8Array;
+  /** Current audio buffer for playback/export. */
   buffer: AudioBuffer | null;
+  /** Saved copy of the last take, used for undo-delete. */
+  previousBuffer: AudioBuffer | null;
   blob: Blob | null;
   source: AudioBufferSourceNode | null;
   liveSource: MediaStreamAudioSourceNode | null;
@@ -142,6 +145,16 @@ export interface TransportState {
   masterLufs: number;
   /** Linear true-peak amplitude 0..1 of the most recent frame. */
   masterTruePeak: number;
+  /** Punch-in / punch-out recording mode. When enabled, recording only
+   *  captures between punchInSec and punchOutSec, leaving the rest of
+   *  the existing take intact. */
+  punchInEnabled: boolean;
+  punchInSec: number;
+  punchOutSec: number;
+  /** ID of the track captured in the most recent recording pass.
+   *  Cleared when the user dismisses the post-record action banner or
+   *  starts a new recording. */
+  lastRecordedTrackId: string | null;
 }
 
 // Re-export the canonical DrumKitId so consumers don't need to reach
@@ -409,6 +422,10 @@ export class DawEngine {
     masterSpectrum: new Array(32).fill(0),
     masterLufs: -Infinity,
     masterTruePeak: 0,
+    punchInEnabled: false,
+    punchInSec: 0,
+    punchOutSec: 4,
+    lastRecordedTrackId: null,
   };
 
   private playStartCtxTime = 0;
@@ -661,9 +678,26 @@ export class DawEngine {
         void this.play();
         return; // play() called notify
       }
+
+      this.checkPunchIn();
     }
 
     this.notify();
+  }
+
+  /** Automatically arm/disarm recording when punch-in is enabled and playback crosses the punch window. */
+  private checkPunchIn(): void {
+    if (!this.transport.punchInEnabled || !this.transport.isPlaying) return;
+    const pos = this.transport.positionSec;
+    if (!this.transport.isRecording) {
+      if (pos >= this.transport.punchInSec && pos < this.transport.punchOutSec) {
+        void this.startRecording();
+      }
+    } else {
+      if (pos >= this.transport.punchOutSec) {
+        void this.stopRecording();
+      }
+    }
   }
 
   /** Stop just the buffer sources without flipping isPlaying. Used by
@@ -796,6 +830,7 @@ export class DawEngine {
       meterAnalyser,
       meterBuf,
       buffer: null,
+      previousBuffer: null,
       blob: null,
       source: null,
       liveSource: null,
@@ -1381,7 +1416,6 @@ export class DawEngine {
         audio: {
           channelCount: 1,
           sampleRate: this.ctx.sampleRate,
-          sampleSize: 16,
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
@@ -1408,7 +1442,8 @@ export class DawEngine {
       const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : "audio/webm";
-      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      // 256 kbps keeps Opus compression artifacts well below audible threshold.
+      const recorder = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 256_000 });
       track.recordedChunks = [];
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) track.recordedChunks.push(e.data);
@@ -1498,10 +1533,66 @@ export class DawEngine {
     this.recordingAlignmentTrimSec = 0;
     this.stop();
     this.transport.positionSec = 0;
+    this.transport.lastRecordedTrackId = recordingTrack.state.id;
     this.notify();
   }
 
   /** Trim N seconds from the front of a buffer, preserving channel count/rate. */
+
+  /** Permanently discard the audio on a track (saved in previousBuffer for undo). */
+  deleteTrackAudio(id: TrackId): boolean {
+    const t = this.tracks.get(id);
+    if (!t || !t.buffer) return false;
+    t.previousBuffer = t.buffer;
+    t.buffer = null;
+    t.blob = null;
+    t.recordedChunks = [];
+    t.state.hasAudio = false;
+    t.state.durationSec = 0;
+    this.waveformCache.delete(id);
+    this.transport.lastRecordedTrackId = null;
+    this.notify();
+    return true;
+  }
+
+  /** Restore the most recently deleted audio on a track. */
+  undoDeleteTrackAudio(id: TrackId): boolean {
+    const t = this.tracks.get(id);
+    if (!t || !t.previousBuffer) return false;
+    t.buffer = t.previousBuffer;
+    t.previousBuffer = null;
+    t.state.hasAudio = true;
+    t.state.durationSec = t.buffer.duration;
+    this.waveformCache.delete(id);
+    this.notify();
+    return true;
+  }
+
+  /**
+   * Immediately play back the recorded audio on a track through the master bus,
+   * independent of transport state (useful for quick "hear-back" after recording).
+   */
+  previewTake(id: TrackId): void {
+    if (!this.ctx) return;
+    const out = this.master ?? this.ctx.destination;
+    const t = this.tracks.get(id);
+    if (!t?.buffer) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = t.buffer;
+    src.connect(out);
+    src.start(0);
+  }
+
+  /** Enable/disable punch-in recording and set the time window. */
+  setPunchIn(enabled: boolean, startSec?: number, endSec?: number): void {
+    this.transport.punchInEnabled = enabled;
+    if (startSec !== undefined)
+      this.transport.punchInSec = Math.max(0, startSec);
+    if (endSec !== undefined)
+      this.transport.punchOutSec = Math.max(this.transport.punchInSec + 0.5, endSec);
+    this.notify();
+  }
+
   private trimBufferStart(buffer: AudioBuffer, trimSec: number): AudioBuffer {
     if (!this.ctx) return buffer;
     const trimFrames = Math.max(0, Math.floor(trimSec * buffer.sampleRate));
@@ -1594,8 +1685,8 @@ export class DawEngine {
     } else if (profile === "punchy") {
       targetPeak = 0.86;
       gainCeiling = 1.6;
-      gateThreshold = 0.002;
-      gateAmount = 0.8;
+      gateThreshold = 0;
+      gateAmount = 1;
       saturate = true;
     } else if (profile === "smooth") {
       targetPeak = rms > 0.16 ? 0.72 : 0.76;

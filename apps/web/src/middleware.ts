@@ -2,12 +2,43 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildContentSecurityPolicy } from "@/lib/csp";
 
 /**
- * Next.js Edge Middleware - route protection for EMS.
+ * Next.js Edge Middleware — route protection for EMS.
  *
- * Keep this file Edge-safe. Server pages and API routes perform the
- * authoritative auth/role checks; middleware only handles fast redirects for
- * obviously signed-out requests.
+ * Auth wall: anonymous users are redirected to /auth/signin from every page
+ * except a small set of public routes (auth flows, legal, static, marketing).
+ * Server pages and API routes still perform the authoritative auth/role
+ * checks; middleware only handles fast redirects.
  */
+
+// Routes anonymous users CAN reach. Everything else requires sign-in.
+const PUBLIC_PATHS = [
+  "/auth",                  // signin, signup, verify-email, reset-password, error
+  "/legal",
+  "/privacy",
+  "/terms",
+  "/license-agreement",
+  "/dmca",
+  "/trust",
+  "/get-the-app",
+  "/investors",
+  "/pricing",
+  "/support",
+  "/status",
+  "/sitemap.xml",
+  "/robots.txt",
+];
+
+// Public PAGES (exact match only, not prefixes — keeps marketing/landing open
+// without exposing /search, /marketplace, etc.)
+const PUBLIC_EXACT = new Set<string>([
+  "/welcome",
+]);
+
+function isPublicPath(pathname: string): boolean {
+  if (PUBLIC_EXACT.has(pathname)) return true;
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isAuthed = hasSessionCookie(req);
@@ -25,10 +56,11 @@ export default async function middleware(req: NextRequest) {
 
   function redirectToSignIn() {
     const signIn = new URL("/auth/signin", req.url);
-    signIn.searchParams.set("callbackUrl", pathname);
+    signIn.searchParams.set("callbackUrl", pathname + req.nextUrl.search);
     return NextResponse.redirect(signIn);
   }
 
+  // API auth checks first
   if (pathname.startsWith("/api/stripe-connect")) {
     if (!isAuthed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -36,21 +68,28 @@ export default async function middleware(req: NextRequest) {
     return nextResponse();
   }
 
-  const protectedPrefixes = [
-    "/dashboard",
-    "/boost",
-    "/analytics",
-    "/profile",
-    "/invite",
-    "/notifications",
-    "/admin",
-    "/label",
-    "/studio/new",
-    "/versus/new",
-  ];
+  // API routes carry their own auth. Middleware only handles HTML pages.
+  if (pathname.startsWith("/api/")) return nextResponse();
 
-  if (protectedPrefixes.some((prefix) => pathname.startsWith(prefix))) {
-    if (!isAuthed) return redirectToSignIn();
+  // Static / framework assets
+  if (
+    pathname.startsWith("/_next/") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname.endsWith(".png") ||
+    pathname.endsWith(".jpg") ||
+    pathname.endsWith(".jpeg") ||
+    pathname.endsWith(".svg") ||
+    pathname.endsWith(".webp") ||
+    pathname.endsWith(".ico") ||
+    pathname.endsWith(".txt")
+  ) {
+    return nextResponse();
+  }
+
+  // The auth wall: signed-out users can ONLY reach public paths.
+  if (!isAuthed && !isPublicPath(pathname)) {
+    return redirectToSignIn();
   }
 
   return nextResponse();
@@ -76,17 +115,9 @@ function hasSessionCookie(req: NextRequest) {
 }
 
 export const config = {
+  // Run on every request EXCEPT internal Next.js paths and obvious static files.
+  // The function above does the public-vs-protected sorting.
   matcher: [
-    "/dashboard/:path*",
-    "/boost/:path*",
-    "/analytics/:path*",
-    "/studio/new",
-    "/versus/new",
-    "/label/:path*",
-    "/profile/:path*",
-    "/invite/:path*",
-    "/notifications/:path*",
-    "/admin/:path*",
-    "/api/stripe-connect/:path*",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|woff|woff2|ttf|otf|map)$).*)",
   ],
 };

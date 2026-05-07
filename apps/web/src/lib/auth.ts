@@ -70,7 +70,29 @@ class MagicLinkInvalidError extends CredentialsSignin {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 }, // 30 days — persistent across browser restarts
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days — persistent across browser restarts
+    updateAge: 24 * 60 * 60,   // Refresh JWT once per day, not on every request
+  },
+  // Explicit cookie config: path "/" so the cookie travels with EVERY page
+  // (including the marketplace, feed, track pages, etc.), sameSite "lax" so
+  // it survives back-button navigation and external links into the app.
+  // Without this, browsers would sometimes drop the session on cross-page
+  // navigations, forcing users to "re-login" on every page switch.
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === "production"
+        ? "__Secure-authjs.session-token"
+        : "authjs.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
   pages: {
     signIn: "/auth/signin",
     error: "/auth/signin",
