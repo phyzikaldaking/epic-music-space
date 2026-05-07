@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { auth } from "@/lib/auth";
-import DawWorkspace from "@/components/daw/DawWorkspace";
-import GuestStudioBanner from "./GuestStudioBanner";
-import FirstBeatCoach from "./FirstBeatCoach";
+import StudioTryClient from "./StudioTryClient";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +19,9 @@ export const metadata: Metadata = {
  * moment they actually try to save), so the only real shift is *when*
  * we ask for the email — at "I want to keep this" instead of at "I'm
  * curious."
+ *
+ * The actual DAW vs. PhoneStudio swap happens in StudioTryClient since
+ * viewport detection is client-side.
  */
 export default async function StudioTryPage() {
   const session = await auth();
@@ -27,9 +29,9 @@ export default async function StudioTryPage() {
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
-      {!isAuthed && <GuestStudioBanner />}
-      {!isAuthed && <FirstBeatCoach />}
-      <DawWorkspace isGuest={!isAuthed} />
+      <Suspense fallback={null}>
+        <StudioTryClient isAuthed={isAuthed} />
+      </Suspense>
     </div>
   );
 }
