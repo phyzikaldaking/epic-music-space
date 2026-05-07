@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import AdminUsersClient from "./AdminUsersClient";
 import AdminSongsClient from "./AdminSongsClient";
+import AdminExperimentsCard from "./AdminExperimentsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,7 @@ export default async function AdminPage({
       </div>
 
       {activeTab === "songs" ? <AdminSongsClient /> : <AdminUsersClient />}
+      <AdminExperimentsCard />
     </main>
   );
 }
