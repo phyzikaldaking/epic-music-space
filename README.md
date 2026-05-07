@@ -1,6 +1,6 @@
 # 🎵 Epic Music Space
 
-**Digital Music Licensing + Revenue Participation Platform**
+**The biggest social media platform for music in the world**
 
 Independent artists release limited digital licenses for their music. Fans and supporters purchase those licenses and receive a contractually defined share of the song's streaming revenue — forever.
 
@@ -26,6 +26,19 @@ epic-music-space/
 ├── turbo.json
 └── package.json
 ```
+
+## 🎛️ Next-Generation DAW Vision
+
+Epic Music Space is evolving beyond licensing to become the world's first social media platform for music creation. Our roadmap includes developing a next-generation Digital Audio Workstation (DAW) that solves historical weaknesses of industry standards through:
+
+- **Send-first FX architecture** to eliminate CPU overload from insert-heavy workflows
+- **Cloud-native collaboration** with real-time multi-user editing and version control
+- **AI-assisted workflow** for arrangement ideas, intelligent EQ, and automated gain staging
+- **Universal plugin compatibility** via WebAssembly wrappers that run identically on all platforms
+- **GPU-accelerated interface** for smooth visualization of complex projects
+- **Integrated social features** allowing fans to collaborate on tracks and participate in the creative process
+
+See [DAW_BLUEPRINT.md](./DAW_BLUEPRINT.md) for the complete technical specification and strategic framework.
 
 ## 🧩 Multi-Entity Separation
 

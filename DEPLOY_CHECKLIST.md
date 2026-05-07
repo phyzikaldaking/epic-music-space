@@ -97,6 +97,11 @@ Verify:
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API |
 | `CRON_SECRET` | Generate: `openssl rand -base64 32` (Vercel cron sends this as bearer) |
 
+Database pooling note:
+
+- Vercel serverless runtime: keep `DATABASE_URL` on the transaction pooler and use `connection_limit=1`.
+- Local dev and long-lived workers/services: use a higher pool floor (for example `connection_limit=5` or set `PRISMA_MIN_CONNECTION_LIMIT=5`) to avoid local pool starvation.
+
 ### Strongly recommended
 
 | Variable | Where to get it | Why |
