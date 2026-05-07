@@ -158,6 +158,7 @@ npm run agent:doctor
 ```
 
 The full operator guide lives in `docs/AI_COMMAND_WORKFLOW.md`.
+Release history is tracked in `docs/RELEASE_NOTES.md`.
 
 ## 🔌 API Routes
 
