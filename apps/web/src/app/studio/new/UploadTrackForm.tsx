@@ -48,10 +48,22 @@ function fmtMB(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function UploadTrackForm() {
+interface UploadTrackFormProps {
+  /**
+   * Audio URL pre-filled by an upstream uploader (e.g. the DAW's
+   * MasterPublishBar). When present, the audio field starts populated.
+   */
+  prefillAudioUrl?: string;
+}
+
+export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFormProps = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const legacyParam = searchParams.get("legacy") === "1";
+  const audioUrlParam = searchParams.get("audioUrl") ?? "";
+  const initialAudioUrl =
+    prefillAudioUrl ||
+    (audioUrlParam && /^https?:\/\//.test(audioUrlParam) ? audioUrlParam : "");
   // Set by /vault/new so we know to return the artist to the vault
   // after a successful publish — they came from there, they should land
   // there (and see their tape sitting in the room they just left).
@@ -75,13 +87,15 @@ export default function UploadTrackForm() {
   const [_coverFile, setCoverFile] = useState<File | null>(null);
   const [stemFile, setStemFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
-  const [audioUrl, setAudioUrl] = useState("");
+  const [audioUrl, setAudioUrl] = useState(initialAudioUrl);
   const [coverUrl, setCoverUrl] = useState("");
   const [stemUrl, setStemUrl] = useState("");
   const [audioDuration, setAudioDuration] = useState<string | null>(null);
   const [coverDragActive, setCoverDragActive] = useState(false);
 
-  const [audioUploadState, setAudioUploadState] = useState<UploadState>("idle");
+  const [audioUploadState, setAudioUploadState] = useState<UploadState>(
+    initialAudioUrl ? "done" : "idle",
+  );
 
   const [audioProgress, setAudioProgress] = useState(0);
   const [coverProgress, setCoverProgress] = useState(0);

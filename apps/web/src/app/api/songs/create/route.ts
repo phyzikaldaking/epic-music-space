@@ -34,10 +34,11 @@ const createSongSchema = z.object({
     .number()
     .min(0.5, "License price must be at least $0.50")
     .max(100_000),
-  revenueSharePct: z.coerce
-    .number()
-    .min(0.01, "Revenue share must be at least 0.01%")
-    .max(100),
+  // 0% means "no future revenue share is granted to license holders" — a
+  // valid creator choice for one-time license sales. The slider in the
+  // quick flow caps the floor at 1%, but we accept 0 here so power users
+  // and the API can opt out cleanly.
+  revenueSharePct: z.coerce.number().min(0, "Revenue share cannot be negative").max(100),
   totalLicenses: z.coerce.number().int().min(1).max(10_000).default(100),
 });
 

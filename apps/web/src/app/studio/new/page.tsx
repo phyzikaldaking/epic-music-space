@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { shouldUseExpertUploadMode } from "@/lib/studioNewMode";
 import UploadTrackForm from "./UploadTrackForm";
 import QuickUploadFlow from "./QuickUploadFlow";
@@ -14,12 +16,16 @@ export const metadata = {
 export default async function StudioNewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ expert?: string }>;
+  searchParams: Promise<{ expert?: string; audioUrl?: string; from?: string }>;
 }) {
   const session = await auth();
   const params = await searchParams;
   const expertMode = shouldUseExpertUploadMode(params.expert);
   const defaultArtistName = session?.user?.name?.trim() || "";
+  const prefillAudioUrl =
+    typeof params.audioUrl === "string" && /^https?:\/\//.test(params.audioUrl)
+      ? params.audioUrl
+      : "";
 
   if (!session?.user?.id) {
     return (
@@ -67,12 +73,32 @@ export default async function StudioNewPage({
     );
   }
 
+  // Role gate — only ARTIST/LABEL/PRODUCER/ENGINEER/ADMIN can publish.
+  // LISTENERs are routed through /studio/setup, which promotes them to ARTIST
+  // on first save (api/studio PUT). Without this gate they'd fill out the
+  // entire upload flow only to be 403'd at /api/songs/create with no path
+  // forward. We pass the audioUrl prefill through so a DAW publish-handoff
+  // doesn't get lost.
+  const userRow = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true },
+  });
+  if (!userRow || userRow.role === "LISTENER") {
+    const next = prefillAudioUrl
+      ? `/studio/new?audioUrl=${encodeURIComponent(prefillAudioUrl)}`
+      : "/studio/new";
+    redirect(`/studio/setup?next=${encodeURIComponent(next)}`);
+  }
+
   return (
     <Suspense fallback={null}>
       {expertMode ? (
-        <UploadTrackForm />
+        <UploadTrackForm prefillAudioUrl={prefillAudioUrl} />
       ) : (
-        <QuickUploadFlow defaultArtistName={defaultArtistName} />
+        <QuickUploadFlow
+          defaultArtistName={defaultArtistName}
+          prefillAudioUrl={prefillAudioUrl}
+        />
       )}
     </Suspense>
   );

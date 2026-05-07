@@ -332,7 +332,7 @@ export default async function StudioProfilePage({ params }: Props) {
       {/* Stats */}
       <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
         {[
-          { label: "Songs", value: user.songs.length },
+          { label: "Songs", value: user._count.songs },
           { label: "Avg EMS Score", value: avgScore.toFixed(1) },
           { label: "Licenses Sold", value: totalLicensesSold },
           { label: "Licenses Held", value: user.licenses.length },

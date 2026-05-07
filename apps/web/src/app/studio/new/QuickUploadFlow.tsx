@@ -38,18 +38,34 @@ function buzz(ms = 30) {
 interface Props {
   /** Logged-in user's display name, used to default the artist field. */
   defaultArtistName: string;
+  /**
+   * Audio URL pre-filled by an upstream uploader (e.g. the DAW's
+   * MasterPublishBar). When present, step 1 is skipped and we land on
+   * step 2 with the audio already marked done.
+   */
+  prefillAudioUrl?: string;
 }
 
-export default function QuickUploadFlow({ defaultArtistName }: Props) {
+export default function QuickUploadFlow({
+  defaultArtistName,
+  prefillAudioUrl = "",
+}: Props) {
   const router = useRouter();
 
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<Step>(prefillAudioUrl ? 2 : 1);
 
   // Step 1
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [audioState, setAudioState] = useState<AudioState>("idle");
+  const [audioState, setAudioState] = useState<AudioState>(
+    prefillAudioUrl ? "done" : "idle",
+  );
   const [audioProgress, setAudioProgress] = useState(0);
-  const [audioUrl, setAudioUrl] = useState("");
+  const [audioUrl, setAudioUrl] = useState(prefillAudioUrl);
+  // Filename + size to display when the File object isn't around (e.g.
+  // a localStorage draft restoration or a DAW-handoff prefill).
+  const [audioMeta, setAudioMeta] = useState<{ name: string; size?: number } | null>(
+    prefillAudioUrl ? { name: "Mix from DAW" } : null,
+  );
   const audioInputRef = useRef<HTMLInputElement>(null);
 
   // Step 2
@@ -65,11 +81,15 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
 
   // shared
   const [error, setError] = useState<string | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const startedAtRef = useRef<number>(0);
 
-  // Preserve progress if the tab refreshes mid-flow.
+  // Preserve progress if the tab refreshes mid-flow. A DAW-handoff prefill
+  // takes precedence — we don't want a stale draft to override a fresh
+  // mix the user just published.
   useEffect(() => {
+    if (prefillAudioUrl) return;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
@@ -82,6 +102,8 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
         totalLicenses?: string;
         revenueSharePct?: string;
         audioUrl?: string;
+        audioName?: string;
+        audioSize?: number;
       };
       if (parsed.step) setStep(parsed.step);
       if (parsed.title) setTitle(parsed.title);
@@ -93,11 +115,15 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
       if (parsed.audioUrl) {
         setAudioUrl(parsed.audioUrl);
         setAudioState("done");
+        setAudioMeta({
+          name: parsed.audioName ?? "Saved upload",
+          size: parsed.audioSize,
+        });
       }
     } catch {
       // ignore corrupted local draft
     }
-  }, []);
+  }, [prefillAudioUrl]);
 
   useEffect(() => {
     try {
@@ -112,12 +138,25 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
           totalLicenses,
           revenueSharePct,
           audioUrl,
+          audioName: audioFile?.name ?? audioMeta?.name,
+          audioSize: audioFile?.size ?? audioMeta?.size,
         }),
       );
     } catch {
       // best effort only
     }
-  }, [step, title, artist, coverUrl, licensePrice, totalLicenses, revenueSharePct, audioUrl]);
+  }, [
+    step,
+    title,
+    artist,
+    coverUrl,
+    licensePrice,
+    totalLicenses,
+    revenueSharePct,
+    audioUrl,
+    audioFile,
+    audioMeta,
+  ]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -165,6 +204,7 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
     }
     setError(null);
     setAudioFile(file);
+    setAudioMeta({ name: file.name, size: file.size });
     setAudioState("uploading");
     setAudioProgress(0);
     const startedAt = performance.now();
@@ -341,6 +381,15 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
           router.push("/auth/signin?callbackUrl=/studio/new");
           return;
         }
+        if (res.status === 403) {
+          // Server says this user is still LISTENER. The /studio/setup
+          // promotion (api/studio PUT) hasn't synced into their JWT yet,
+          // OR they reached this page directly with no studio at all.
+          // Surface a recovery CTA instead of the raw API error.
+          setNeedsSetup(true);
+          setPublishing(false);
+          return;
+        }
         throw new Error(data.error ?? "Publish failed. Try again.");
       }
 
@@ -430,11 +479,11 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
                 </p>
               </>
             )}
-{audioState === "uploading" && audioFile && (
+{audioState === "uploading" && (audioFile || audioMeta) && (
                <div className="w-full">
                  <div className="flex items-center gap-3">
                    <div className="h-5 w-5 flex-shrink-0 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
-                   <p className="truncate text-sm font-medium">{audioFile.name}</p>
+                   <p className="truncate text-sm font-medium">{audioFile?.name ?? audioMeta?.name}</p>
                  </div>
                  <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
                    <progress
@@ -447,11 +496,11 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
                  <p className="mt-1 text-xs text-brand-400">{audioProgress}%</p>
                </div>
              )}
-            {audioState === "done" && audioFile && (
+            {audioState === "done" && (audioFile || audioMeta) && (
               <div className="flex items-center gap-3">
                 <span className="text-2xl">✓</span>
                 <p className="truncate text-sm font-medium text-green-400">
-                  {audioFile.name} uploaded
+                  {(audioFile?.name ?? audioMeta?.name) ?? "Audio"} uploaded
                 </p>
               </div>
             )}
@@ -678,7 +727,7 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
               </span>
               <input
                 type="range"
-                min="0"
+                min="1"
                 max="50"
                 step="1"
                 value={revenueSharePct}
@@ -712,6 +761,23 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
             </p>
           )}
 
+          {needsSetup && (
+            <div className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+              <p className="font-bold">One quick step before you publish.</p>
+              <p className="mt-1 text-amber-200/85">
+                Complete your studio profile (a username + bio, takes 30s) and
+                EMS will mark you as an artist. Your draft is saved — you&apos;ll come
+                right back here.
+              </p>
+              <Link
+                href={`/studio/setup?next=${encodeURIComponent("/studio/new")}`}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-amber-950 transition hover:bg-amber-300"
+              >
+                Finish studio setup →
+              </Link>
+            </div>
+          )}
+
           <div className="mt-6 flex gap-3">
             <button
               type="button"
@@ -724,7 +790,7 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
             <button
               type="button"
               onClick={publish}
-              disabled={publishing}
+              disabled={publishing || needsSetup}
               className="flex-1 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 py-3 text-base font-bold text-white transition hover:opacity-90 disabled:opacity-50"
             >
               {publishing ? (

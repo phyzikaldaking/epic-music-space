@@ -57,16 +57,9 @@ const nextConfig = {
   },
   poweredByHeader: false,
   transpilePackages: ["@ems/utils"],
-  experimental: {
-    optimizePackageImports: [
-      "@stripe/stripe-js",
-      "openai",
-      "@mux/mux-player-react",
-      "livekit-client",
-      "@sentry/nextjs",
-      "@supabase/supabase-js",
-    ],
-  },
+  // Keep build stability first for deployment. This optimization can
+  // regress build reliability on some dependency graphs.
+  experimental: {},
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 60 * 60 * 24 * 30,
