@@ -111,6 +111,16 @@ const CHECKS: EnvCheck[] = [
     severity: "recommended",
     purpose: "Replicate webhook signature verification — required in prod, optional locally",
   },
+  {
+    key: "PAYPAL_CLIENT_ID",
+    severity: "recommended",
+    purpose: "PayPal checkout for services — buyers who prefer PayPal cannot pay without it",
+  },
+  {
+    key: "PAYPAL_CLIENT_SECRET",
+    severity: "recommended",
+    purpose: "PayPal checkout for services — server-side capture cannot complete without it",
+  },
 ];
 
 export interface EnvIssue {

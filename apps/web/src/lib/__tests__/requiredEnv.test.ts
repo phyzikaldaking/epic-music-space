@@ -17,6 +17,8 @@ const validEnv = {
   APPLE_CLIENT_SECRET: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
   REPLICATE_API_TOKEN: "r8_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9",
   REPLICATE_WEBHOOK_SECRET: "whsec_replicate_a1b2c3d4e5",
+  PAYPAL_CLIENT_ID: "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890",
+  PAYPAL_CLIENT_SECRET: "EeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz",
 } as Record<string, string | undefined>;
 
 describe("inspectEnv", () => {
