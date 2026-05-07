@@ -130,6 +130,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
             role="dialog"
             aria-modal="true"
             aria-label="Mobile navigation"
+            data-ui-sfx-menu="true"
             onKeyDown={handlePanelKeyDown}
             onTouchStart={(ev) => {
               touchStartX.current = ev.touches?.[0]?.clientX ?? null;

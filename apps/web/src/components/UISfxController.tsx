@@ -2,18 +2,13 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { getUiSfx, type UiSfxKind } from "@/lib/uiSfx";
-
-function readSfxKindFromElement(el: HTMLElement | null): UiSfxKind | null {
-  if (!el) return null;
-  const node = el.closest<HTMLElement>("[data-ui-sfx]");
-  if (!node) return null;
-  const val = node.dataset.uiSfx;
-  if (val === "tap" || val === "page" || val === "menu-open" || val === "menu-close" || val === "accent") {
-    return val;
-  }
-  return null;
-}
+import { getUiSfx } from "@/lib/uiSfx";
+import {
+  readSfxKindFromElement,
+  routeKindFromPath,
+  shouldPlayArrowTone,
+  shouldPlayHoverTone,
+} from "@/lib/uiSfxRouting";
 
 export default function UISfxController() {
   const pathname = usePathname();
@@ -36,10 +31,10 @@ export default function UISfxController() {
 
     const onMouseOver = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
-      const node = target?.closest<HTMLElement>("[data-ui-sfx]");
+      const node = target?.closest<HTMLElement>("[data-ui-sfx], [data-ui-sfx-hover='true']");
       if (!node) return;
       const now = Date.now();
-      if (lastHoverEl.current === node && now - lastHoverTime.current < 120) return;
+      if (!shouldPlayHoverTone(lastHoverEl.current, lastHoverTime.current, node, now)) return;
       lastHoverEl.current = node;
       lastHoverTime.current = now;
       void sfx.play("hover");
@@ -48,9 +43,7 @@ export default function UISfxController() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
       const active = document.activeElement as HTMLElement | null;
-      if (!active) return;
-      const inNav = active.closest("nav, [role='menu'], [role='menubar'], [data-ui-sfx]");
-      if (!inNav) return;
+      if (!shouldPlayArrowTone(active)) return;
       void sfx.play(event.key === "ArrowUp" ? "arrow-up" : "arrow-down");
     };
 
@@ -75,7 +68,7 @@ export default function UISfxController() {
     }
     if (previousPath.current !== pathname) {
       previousPath.current = pathname;
-      void getUiSfx().play("page");
+      void getUiSfx().play(routeKindFromPath(pathname));
     }
   }, [pathname]);
 

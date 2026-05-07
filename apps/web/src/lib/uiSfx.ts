@@ -1,51 +1,166 @@
-type UiSfxKind = "tap" | "page" | "menu-open" | "menu-close" | "accent" | "hover" | "arrow-up" | "arrow-down";
+type UiSfxKind =
+  | "tap"
+  | "page"
+  | "page-studio"
+  | "page-auth"
+  | "page-dashboard"
+  | "menu-open"
+  | "menu-close"
+  | "accent"
+  | "hover"
+  | "arrow-up"
+  | "arrow-down";
 
-type UiSfxListener = (enabled: boolean) => void;
+type UiSfxLevel = "off" | "subtle" | "full";
+type UiSfxCategory = "navigation" | "menu" | "accent" | "hover";
 
-const STORAGE_KEY = "ems-ui-sfx-enabled-v1";
+type UiSfxSettings = {
+  level: UiSfxLevel;
+  categories: Record<UiSfxCategory, boolean>;
+  haptics: boolean;
+};
 
-function readStoredEnabled(): boolean {
-  if (typeof window === "undefined") return true;
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  return raw !== "0";
+type UiSfxListener = (settings: UiSfxSettings) => void;
+
+const SETTINGS_STORAGE_KEY = "ems-ui-sfx-settings-v2";
+
+const DEFAULT_CATEGORIES: Record<UiSfxCategory, boolean> = {
+  navigation: true,
+  menu: true,
+  accent: true,
+  hover: true,
+};
+
+const DEFAULT_COOLDOWN_MS: Record<Exclude<UiSfxLevel, "off">, number> = {
+  subtle: 60,
+  full: 45,
+};
+
+const DEFAULT_VOLUME_SCALE: Record<Exclude<UiSfxLevel, "off">, number> = {
+  subtle: 0.68,
+  full: 1,
+};
+
+function supportsHaptics(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return typeof (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate === "function";
+}
+
+function shouldAutoDisableFromDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+  const reducedTransparency = window.matchMedia?.("(prefers-reduced-transparency: reduce)")?.matches ?? false;
+  const nav = navigator as Navigator & {
+    connection?: {
+      saveData?: boolean;
+    };
+  };
+  const saveData = nav.connection?.saveData === true;
+  return reducedMotion || reducedTransparency || saveData;
+}
+
+function defaultSettings(): UiSfxSettings {
+  return {
+    level: shouldAutoDisableFromDevice() ? "off" : "subtle",
+    categories: { ...DEFAULT_CATEGORIES },
+    haptics: supportsHaptics(),
+  };
+}
+
+function sanitizeLevel(value: unknown): UiSfxLevel {
+  if (value === "off" || value === "subtle" || value === "full") return value;
+  return "subtle";
+}
+
+function readStoredSettings(): UiSfxSettings {
+  const fallback = defaultSettings();
+  if (typeof window === "undefined") return fallback;
+  const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw) as Partial<UiSfxSettings>;
+    return {
+      level: sanitizeLevel(parsed.level),
+      categories: {
+        navigation: parsed.categories?.navigation ?? fallback.categories.navigation,
+        menu: parsed.categories?.menu ?? fallback.categories.menu,
+        accent: parsed.categories?.accent ?? fallback.categories.accent,
+        hover: parsed.categories?.hover ?? fallback.categories.hover,
+      },
+      haptics: parsed.haptics ?? fallback.haptics,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function kindCategory(kind: UiSfxKind): UiSfxCategory {
+  if (kind === "menu-open" || kind === "menu-close") return "menu";
+  if (kind === "accent") return "accent";
+  if (kind === "hover") return "hover";
+  return "navigation";
 }
 
 class UiSfxEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private enabled = true;
+  private settings: UiSfxSettings;
+  private lastPlayedAt = 0;
   private listeners = new Set<UiSfxListener>();
 
   constructor() {
-    this.enabled = readStoredEnabled();
+    this.settings = readStoredSettings();
   }
 
   subscribe(listener: UiSfxListener): () => void {
     this.listeners.add(listener);
-    listener(this.enabled);
+    listener(this.getSettings());
     return () => this.listeners.delete(listener);
   }
 
   isEnabled(): boolean {
-    return this.enabled;
+    return this.settings.level !== "off";
   }
 
-  setEnabled(next: boolean): void {
-    this.enabled = next;
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
-    }
-    this.listeners.forEach((listener) => listener(next));
+  getSettings(): UiSfxSettings {
+    return {
+      level: this.settings.level,
+      categories: { ...this.settings.categories },
+      haptics: this.settings.haptics,
+    };
   }
 
-  toggle(): boolean {
-    const next = !this.enabled;
-    this.setEnabled(next);
+  setLevel(level: UiSfxLevel): void {
+    this.settings.level = level;
+    this.persistAndNotify();
+  }
+
+  cycleLevel(): UiSfxLevel {
+    const next = this.settings.level === "off" ? "subtle" : this.settings.level === "subtle" ? "full" : "off";
+    this.setLevel(next);
     return next;
   }
 
+  setCategoryEnabled(category: UiSfxCategory, enabled: boolean): void {
+    this.settings.categories[category] = enabled;
+    this.persistAndNotify();
+  }
+
+  setHapticsEnabled(enabled: boolean): void {
+    this.settings.haptics = enabled;
+    this.persistAndNotify();
+  }
+
+  private persistAndNotify(): void {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(this.settings));
+    }
+    const snapshot = this.getSettings();
+    this.listeners.forEach((listener) => listener(snapshot));
+  }
+
   async warmup(): Promise<void> {
-    if (!this.enabled) return;
+    if (!this.isEnabled()) return;
     this.ensureContext();
     if (this.ctx && this.ctx.state === "suspended") {
       await this.ctx.resume();
@@ -53,7 +168,14 @@ class UiSfxEngine {
   }
 
   async play(kind: UiSfxKind): Promise<void> {
-    if (!this.enabled) return;
+    if (!this.isEnabled()) return;
+    if (!this.settings.categories[kindCategory(kind)]) return;
+
+    const now = Date.now();
+    const cooldown = DEFAULT_COOLDOWN_MS[this.settings.level === "off" ? "subtle" : this.settings.level];
+    if (now - this.lastPlayedAt < cooldown) return;
+    this.lastPlayedAt = now;
+
     this.ensureContext();
     if (!this.ctx || !this.master) return;
 
@@ -69,6 +191,18 @@ class UiSfxEngine {
       case "page":
         this.blip(t, 720, 560, 0.06, 0.038, "sine");
         this.blip(t + 0.02, 920, 760, 0.05, 0.028, "triangle");
+        break;
+      case "page-studio":
+        this.blip(t, 660, 520, 0.06, 0.04, "triangle");
+        this.blip(t + 0.02, 800, 980, 0.055, 0.03, "sine");
+        break;
+      case "page-auth":
+        this.blip(t, 560, 500, 0.05, 0.03, "sine");
+        this.blip(t + 0.016, 700, 620, 0.04, 0.024, "triangle");
+        break;
+      case "page-dashboard":
+        this.blip(t, 740, 610, 0.06, 0.038, "triangle");
+        this.blip(t + 0.018, 900, 760, 0.05, 0.03, "sine");
         break;
       case "menu-open":
         this.blip(t, 420, 560, 0.065, 0.04, "triangle");
@@ -91,6 +225,8 @@ class UiSfxEngine {
         this.blip(t, 640, 480, 0.022, 0.025, "sine");
         break;
     }
+
+    this.triggerHaptics(kind);
   }
 
   private ensureContext(): void {
@@ -105,6 +241,15 @@ class UiSfxEngine {
     this.master.connect(this.ctx.destination);
   }
 
+  private triggerHaptics(kind: UiSfxKind): void {
+    if (!this.settings.haptics) return;
+    if (kind === "hover") return;
+    if (typeof navigator === "undefined") return;
+    const vibrate = (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate;
+    if (!vibrate) return;
+    vibrate(kind === "accent" ? 10 : 7);
+  }
+
   private blip(
     startAt: number,
     fromFreq: number,
@@ -116,13 +261,20 @@ class UiSfxEngine {
     if (!this.ctx || !this.master) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
+    const level = this.settings.level === "off" ? "subtle" : this.settings.level;
+    const volumeScale = DEFAULT_VOLUME_SCALE[level];
+    const pitchVariance = 1 + (Math.random() * 0.08 - 0.04);
+    const gainVariance = 1 + (Math.random() * 0.06 - 0.03);
 
     osc.type = wave;
-    osc.frequency.setValueAtTime(fromFreq, startAt);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(50, toFreq), startAt + duration);
+    osc.frequency.setValueAtTime(fromFreq * pitchVariance, startAt);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(50, toFreq * pitchVariance), startAt + duration);
 
     gain.gain.setValueAtTime(0.0001, startAt);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, peakGain), startAt + 0.01);
+    gain.gain.exponentialRampToValueAtTime(
+      Math.max(0.0002, peakGain * gainVariance * volumeScale),
+      startAt + 0.01,
+    );
     gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
 
     osc.connect(gain);
@@ -140,4 +292,4 @@ export function getUiSfx(): UiSfxEngine {
   return singleton;
 }
 
-export type { UiSfxKind };
+export type { UiSfxCategory, UiSfxKind, UiSfxLevel, UiSfxSettings };
