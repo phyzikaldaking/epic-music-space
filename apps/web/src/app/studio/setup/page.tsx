@@ -28,7 +28,7 @@ export default async function StudioSetupPage({
   const studio = await prisma.studio.findFirst({
     where: { userId: session.user.id },
     select: { username: true, bio: true, district: true, bannerUrl: true },
-  });
+  }).catch(() => null);
 
   return <StudioSetupForm studio={studio} nextPath={nextPath} />;
 }

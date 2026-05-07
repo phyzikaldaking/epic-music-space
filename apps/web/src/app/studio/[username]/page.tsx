@@ -76,7 +76,7 @@ const getStudioByUsername = cache(async (username: string) =>
         },
       },
     },
-  }),
+  }).catch(() => null),
 );
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -174,7 +174,7 @@ export default async function StudioProfilePage({ params }: Props) {
               followingId: user.id,
             },
           },
-        })
+        }).catch(() => null)
       : null;
   const isFollowing = !!follow;
 

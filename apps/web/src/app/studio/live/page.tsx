@@ -68,7 +68,7 @@ export default async function VirtualStudioPage({
   const myStudio = await prisma.studio.findFirst({
     where: { userId: session.user.id },
     select: { username: true, bio: true },
-  });
+  }).catch(() => null);
 
   // Active live rooms (LiveKit-backed listening sessions)
   const liveRoomRows = await prisma.room.findMany({
@@ -80,7 +80,7 @@ export default async function VirtualStudioPage({
       currentSong: { select: { title: true, artist: true, coverUrl: true } },
       _count: { select: { participants: { where: { leftAt: null } } } },
     },
-  });
+  }).catch(() => []);
   const now = new Date();
   const expiredRoomIds = liveRoomRows
     .filter((room) => isRoomExpired(room.startedAt, room.host.subscriptionTier, now))
@@ -89,7 +89,7 @@ export default async function VirtualStudioPage({
     await prisma.room.updateMany({
       where: { id: { in: expiredRoomIds }, status: "LIVE" },
       data: { status: "ENDED", endedAt: now },
-    });
+    }).catch(() => undefined);
   }
   const liveRooms = liveRoomRows.filter((room) => !expiredRoomIds.includes(room.id));
 
@@ -139,7 +139,7 @@ export default async function VirtualStudioPage({
         },
       },
     },
-  }) as SessionStudio[];
+  }).catch(() => [] as SessionStudio[]);
 
   // Separate featured (high level) from regular studios
   const featured = studios.filter((s) => s.level >= 3).slice(0, 3);
@@ -147,8 +147,8 @@ export default async function VirtualStudioPage({
 
   // Get global listen stats
   const [totalSongs, totalStreams] = await Promise.all([
-    prisma.song.count({ where: { isActive: true } }),
-    prisma.song.aggregate({ where: { isActive: true }, _sum: { streamCount: true } }),
+    prisma.song.count({ where: { isActive: true } }).catch(() => 0),
+    prisma.song.aggregate({ where: { isActive: true }, _sum: { streamCount: true } }).catch(() => ({ _sum: { streamCount: 0 } })),
   ]);
 
   const genreCount = await prisma.song.groupBy({
@@ -157,7 +157,7 @@ export default async function VirtualStudioPage({
     _count: { genre: true },
     orderBy: { _count: { genre: "desc" } },
     take: 8,
-  });
+  }).catch(() => [] as Array<{ genre: string | null; _count: { genre: number } }>);
 
   const availableGenres = ["all", ...genreCount.map((g) => g.genre!).filter(Boolean)];
 

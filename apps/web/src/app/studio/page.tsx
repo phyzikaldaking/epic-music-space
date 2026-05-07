@@ -20,7 +20,7 @@ export default async function StudioIndexPage() {
   const studio = await prisma.studio.findFirst({
     where: { userId: session.user.id },
     select: { username: true },
-  });
+  }).catch(() => null);
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
@@ -58,10 +58,10 @@ function PublicStudioLanding() {
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
-                href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fboard"
+                href="/studio/try"
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-6 py-4 text-base font-bold text-white shadow-lg shadow-brand-500/25 transition hover:opacity-95 hover:shadow-brand-500/40 active:scale-[0.99]"
               >
-                Start making beats →
+                Try it now — no signup →
               </Link>
               <Link
                 href="/auth/signin?callbackUrl=%2Fstudio"

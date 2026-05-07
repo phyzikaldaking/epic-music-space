@@ -508,6 +508,18 @@ function SignInContent({
             </Link>
           </p>
 
+          {/* Escape hatch for tire-kickers — let them poke around the studio
+              without committing to an account first. They'll be asked for an
+              email when they hit save/publish, which is the right moment. */}
+          <div className="mt-3 text-center">
+            <Link
+              href="/studio/try"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/55 underline decoration-dotted underline-offset-4 hover:text-white"
+            >
+              <span aria-hidden>↳</span> Just looking? Try the studio without an account
+            </Link>
+          </div>
+
           <div className="mt-5 grid grid-cols-1 gap-2 text-xs text-white/60 sm:grid-cols-3">
             <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">Secure checkout</div>
             <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">Clear licensing terms</div>

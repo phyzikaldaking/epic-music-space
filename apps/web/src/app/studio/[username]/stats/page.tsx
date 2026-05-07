@@ -42,7 +42,7 @@ export default async function PublicArtistStatsPage({ params }: Props) {
         },
       },
     },
-  });
+  }).catch(() => null);
   if (!studio) notFound();
 
   const userId = studio.user.id;
@@ -55,16 +55,24 @@ export default async function PublicArtistStatsPage({ params }: Props) {
       select: { id: true, title: true, soldLicenses: true, totalLicenses: true, aiScore: true, streamCount: true, createdAt: true },
       orderBy: { aiScore: "desc" },
       take: 10,
-    }),
+    }).catch(() => [] as Array<{
+      id: string;
+      title: string;
+      soldLicenses: number;
+      totalLicenses: number;
+      aiScore: number;
+      streamCount: number | null;
+      createdAt: Date;
+    }>),
     prisma.licenseToken.count({
       where: { song: { artistId: userId }, purchasedAt: { gte: since7 } },
-    }),
+    }).catch(() => 0),
     prisma.licenseToken.count({
       where: { song: { artistId: userId }, purchasedAt: { gte: since30 } },
-    }),
+    }).catch(() => 0),
     prisma.userFollow.count({
       where: { followingId: userId, createdAt: { gte: since7 } },
-    }),
+    }).catch(() => 0),
     prisma.userBehaviorEvent.count({
       where: { song: { artistId: userId }, eventType: "view", createdAt: { gte: since7 } },
     }).catch(() => 0),

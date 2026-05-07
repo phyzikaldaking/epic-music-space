@@ -319,6 +319,15 @@ export default async function HomePage() {
             Free to start. No credit card required. Artist payouts remain
             transparent with a flat 10% platform fee.
           </p>
+          <p className="mt-3 text-center text-sm text-white/55">
+            Just curious?{" "}
+            <Link
+              href="/studio/try"
+              className="font-semibold text-cyan-300 underline decoration-dotted underline-offset-4 hover:text-cyan-200"
+            >
+              Try the studio with no signup →
+            </Link>
+          </p>
 
           {sampleSongs[0] && (
             <HeroNowSpinning

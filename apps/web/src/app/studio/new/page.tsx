@@ -82,7 +82,7 @@ export default async function StudioNewPage({
   const userRow = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { role: true },
-  });
+  }).catch(() => null);
   if (!userRow || userRow.role === "LISTENER") {
     const next = prefillAudioUrl
       ? `/studio/new?audioUrl=${encodeURIComponent(prefillAudioUrl)}`
