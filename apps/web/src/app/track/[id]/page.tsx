@@ -15,6 +15,8 @@ import { getStreamUrl } from "@/lib/audioStream";
 import SaveTrackButton from "@/components/SaveTrackButton";
 import EmbeddedAudioPreview from "@/components/EmbeddedAudioPreview";
 import { classifyAudioSource } from "@/lib/audioSource";
+import TrackCommentThread from "@/components/TrackCommentThread";
+import TrackLikeButton from "@/components/TrackLikeButton";
 import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
@@ -397,10 +399,11 @@ export default async function TrackPage({ params, searchParams }: Props) {
             </div>
           )}
 
-          {/* Save / wishlist (only for real songs, not demos) */}
+          {/* Save / Like (only for real songs, not demos) */}
           {!song.isDemo && (
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <SaveTrackButton songId={song.id} initiallySaved={initialSaved} />
+              <TrackLikeButton songId={song.id} />
             </div>
           )}
 
@@ -599,6 +602,11 @@ export default async function TrackPage({ params, searchParams }: Props) {
           </div>
         </section>
       )}
+
+      {/* Track comments */}
+      <section className="mt-16">
+        <TrackCommentThread songId={song.id} />
+      </section>
     </div>
   );
 }
