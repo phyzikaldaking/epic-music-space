@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Auto-run by git on `git push`. Skip with: git push --no-verify
+exec ./scripts/preflight.sh

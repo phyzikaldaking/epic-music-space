@@ -1,0 +1,55 @@
+name: Post-deploy smoke
+
+# Runs after every successful Vercel production deployment to verify
+# the live site responds correctly. Posts back a workflow failure if
+# any check trips, so a deploy that "succeeded" but rendered broken
+# pages still surfaces as red.
+#
+# Why this exists: we shipped a deploy with the Studio invisible in
+# the nav and did not catch it for hours. This workflow would have
+# failed within a minute of that deploy going Ready.
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Override target URL (default: production)"
+        required: false
+        default: "https://epicmusicspace.com"
+
+jobs:
+  smoke:
+    # Only run on production deployments that just went Ready, or on
+    # manual dispatch. Skip preview/staging environments and anything
+    # in error/canceled state.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       (github.event.deployment.environment == 'Production' ||
+        github.event.deployment.environment == 'production'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Resolve target URL
+        id: target
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "url=${{ inputs.base_url }}" >> "$GITHUB_OUTPUT"
+          else
+            # The Vercel deployment_status payload sets target_url to the
+            # specific deployment URL. Fall back to the production domain
+            # so we always assert against what users will hit.
+            echo "url=https://epicmusicspace.com" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run smoke
+        env:
+          BASE_URL: ${{ steps.target.outputs.url }}
+        run: node scripts/smoke.mjs "$BASE_URL"

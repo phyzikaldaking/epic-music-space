@@ -227,6 +227,50 @@ BASE_URL=https://yourdomain.com npm run smoke
 
 Hits ~30 routes (public pages, auth pages, key API endpoints) in parallel and asserts each returns the expected status. Exits non-zero on any failure — wire it into your CI if you want hard gates.
 
+A leaner version (`scripts/smoke.mjs`) is also wired into a GitHub Actions workflow (`.github/workflows/post-deploy-smoke.yml`) that fires on every successful Vercel production deployment. It asserts:
+
+- `/` renders and exposes `/studio` in the nav
+- `/studio` public landing renders the DAW marketing
+- `/api/auth/providers` advertises Google
+- `/api/auth/csrf` issues a token
+- `/api/health/config` exists and is auth-gated (401 for anon = expected)
+
+If a deploy goes Ready but breaks any of those, the workflow fails red and you know within ~1 minute.
+
+### Verifying secrets without `vercel env pull`
+
+Vercel marks production secrets as encrypted, and `vercel env pull` returns them as empty `KEY=""` placeholders. That makes it impossible to confirm a key is *truly* set vs. set-to-empty (which is exactly the failure mode that broke Google sign-in for us).
+
+Workaround: hit the admin-only `/api/health/config` endpoint with a logged-in admin session:
+
+```bash
+# In a browser logged in as ADMIN, navigate to:
+https://yourdomain.com/api/health/config
+```
+
+It returns presence flags only (never values, except `NEXTAUTH_URL` which is a public domain string):
+
+```json
+{
+  "ok": true,
+  "nodeEnv": "production",
+  "onVercel": true,
+  "checks": [
+    { "key": "GOOGLE_CLIENT_ID", "severity": "required", "present": true, "issue": null },
+    { "key": "GOOGLE_CLIENT_SECRET", "severity": "required", "present": true, "issue": null },
+    ...
+  ]
+}
+```
+
+If `ok: false` or any required key shows `"present": false` or a non-null `issue`, fix it before users do.
+
+The same checks run on cold start via `apps/web/src/lib/requiredEnv.ts` — in production a missing required key throws and fails the function boot, so misconfiguration crashes loudly instead of degrading silently.
+
+### Pre-push gate
+
+`.husky/pre-push` runs `scripts/preflight.sh` (lint + typecheck + focused vitest suites) before every push. Catches the `ssr: false`-in-server-component class of build break locally before you wait 4 minutes for a Vercel build to fail. Bypass with `git push --no-verify` when you genuinely need to (and document why in the commit).
+
 Manual checks the script can't do (because no auth):
 
 - [ ] Sign up as a new artist on a fresh email → email arrives → click link → land on `/dashboard` → welcome banner shows 0/3 steps.

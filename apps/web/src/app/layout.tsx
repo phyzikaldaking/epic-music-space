@@ -6,7 +6,13 @@ import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
 import DeferredGlobalWidgets from "@/components/DeferredGlobalWidgets";
 import { getSiteUrl } from "@/lib/site";
+import { assertRequiredEnvOnBoot } from "@/lib/requiredEnv";
 import "./globals.css";
+
+// Validate required env on cold-start. In production this throws when a
+// key is missing/empty/placeholder so the cold start is loud rather than
+// the app silently 500ing on the first OAuth redirect.
+assertRequiredEnvOnBoot();
 
 const bebasNeue = Bebas_Neue({
   weight: "400",
