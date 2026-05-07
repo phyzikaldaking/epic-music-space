@@ -39,10 +39,19 @@ function leadPercent(votesA: number, votesB: number): { a: number; b: number } {
   return { a: Math.round((votesA / total) * 100), b: Math.round((votesB / total) * 100) };
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error("Home versus rail timed out")), ms);
+    }),
+  ]);
+}
+
 export default async function HomeVersusRail() {
   let battles: Awaited<ReturnType<typeof getActiveBattlesForRail>> = [];
   try {
-    battles = await getActiveBattlesForRail();
+    battles = await withTimeout(getActiveBattlesForRail(), 1800);
   } catch {
     // Database hiccup — silently hide the rail rather than blow up the home page.
     return null;

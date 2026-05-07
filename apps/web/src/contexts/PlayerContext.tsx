@@ -171,6 +171,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       /* older browsers — non-fatal */
     }
 
+    // Register with the audio-reactivity helper so visual layers (the
+    // animated backdrops) can pulse with bass. Wrapped because the helper
+    // dynamic-imports Web Audio support and we never want a vanity
+    // visual feature to crash the audio element setup.
+    void import("@/lib/audioReactivity")
+      .then(({ attachAudioElement }) => {
+        try {
+          attachAudioElement(audio);
+        } catch {
+          /* non-fatal */
+        }
+      })
+      .catch(() => {
+        /* no-op: audio still plays without reactivity */
+      });
+
     audio.addEventListener("timeupdate", () => {
       if (audio.duration) {
         dispatch({

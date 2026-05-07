@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Epic Music Space",
     short_name: "EMS",
     description:
-      "License music, build a fanbase, battle artists. Listen, license, and own.",
+      "Connect with artists, discover trending music, join live rooms, and vote in fan-powered battles.",
     start_url: "/feed",
     scope: "/",
     display: "standalone",
@@ -46,7 +46,7 @@ export default function manifest(): MetadataRoute.Manifest {
     // desktop. iOS Safari ignores it for now.
     shortcuts: [
       { name: "Feed", short_name: "Feed", url: "/feed", description: "Your artist and fan activity feed" },
-      { name: "Marketplace", short_name: "Market", url: "/marketplace", description: "Browse and license independent music" },
+      { name: "Marketplace", short_name: "Market", url: "/marketplace", description: "Discover and support independent artists" },
       { name: "Versus", short_name: "Versus", url: "/versus", description: "Fan-voted song battles" },
       { name: "Messages", short_name: "DMs", url: "/messages", description: "Direct messages" },
       { name: "Dashboard", short_name: "Dash", url: "/dashboard", description: "Your studio analytics and earnings" },

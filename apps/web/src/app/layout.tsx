@@ -1,13 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import dynamic from "next/dynamic";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
-import CookieConsent from "@/components/CookieConsent";
-import { ClientOnlyDynamics } from "@/components/ClientDynamics";
+import DeferredGlobalWidgets from "@/components/DeferredGlobalWidgets";
 import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -33,12 +30,6 @@ const audiowide = Audiowide({
 });
 const siteUrl = getSiteUrl();
 const GlobalAudioPlayer = dynamic(() => import("@/components/GlobalAudioPlayer"));
-const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"));
-const KeyboardShortcuts = dynamic(() => import("@/components/KeyboardShortcuts"));
-const MobileBottomNav = dynamic(() => import("@/components/MobileBottomNav"));
-const OfflineBanner = dynamic(() => import("@/components/OfflineBanner"));
-const ChatbotWidget = dynamic(() => import("@/components/ChatbotWidget"));
-const InstallAppPrompt = dynamic(() => import("@/components/InstallAppPrompt"));
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -61,22 +52,24 @@ export const metadata: Metadata = {
   creator: "Epic Music Space",
   publisher: "Epic Music Space",
   title: {
-    default: "Epic Music Space | Live Listening Rooms for Artists",
+    default: "Epic Music Space | The Fastest-Growing Social Platform for Music",
     template: "%s | Epic Music Space",
   },
   description:
-    "Host live listening rooms, upload independent music, and sell clear digital licenses from one artist studio.",
+    "Connect with millions of fans, host live listening rooms, battle on leaderboards, and earn as you share. The social platform built for music creators and listeners.",
   keywords: [
+    "music social media",
+    "artist social network",
     "live listening rooms",
-    "artist listening party",
-    "independent music licensing",
-    "independent music marketplace",
-    "artist studio platform",
+    "music community platform",
+    "artist monetization",
+    "independent music platform",
+    "music discovery",
   ],
   openGraph: {
-    title: "Epic Music Space | Live Listening Rooms for Artists",
+    title: "Epic Music Space | The Fastest-Growing Social Platform for Music",
     description:
-      "Host listening sessions, upload tracks, and sell clear digital licenses from one artist studio.",
+      "Connect with fans, host live sessions, battle for chart dominance, and earn 100% from your music. The social platform where artists win.",
     url: siteUrl,
     siteName: "Epic Music Space",
     images: [
@@ -84,16 +77,16 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Epic Music Space live listening rooms for artists",
+        alt: "Epic Music Space social media platform for music",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Epic Music Space | Live Listening Rooms for Artists",
+    title: "Epic Music Space | Music's Fastest-Growing Social Platform",
     description:
-      "Host listening sessions, upload tracks, and sell clear digital licenses from one artist studio.",
+      "Connect with fans, host live rooms, compete in battles, and earn 100% from your music.",
     images: ["/opengraph-image"],
   },
   robots: {
@@ -163,17 +156,8 @@ export default function RootLayout({
           <main id="main-content" className="pb-32 md:pb-20">{children}</main>
           <Footer />
           <GlobalAudioPlayer />
-          <OnboardingTour />
-          <KeyboardShortcuts />
-          <CookieConsent />
-          <MobileBottomNav />
-          <OfflineBanner />
-          <ChatbotWidget />
-          <InstallAppPrompt />
-          <ClientOnlyDynamics />
+          <DeferredGlobalWidgets />
         </Providers>
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   );

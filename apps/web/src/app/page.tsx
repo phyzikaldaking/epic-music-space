@@ -1,28 +1,32 @@
 import type { Metadata } from "next";
+import dynamicImport from "next/dynamic";
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import Image from "next/image";
-import dynamic from "next/dynamic";
+
+const AnimatedBackdrop = dynamicImport(
+  () => import("@/components/backdrops/AnimatedBackdrop"),
+  { ssr: false },
+);
 import { getDemoTracks } from "@/lib/demoTracks";
 import { prisma } from "@/lib/prisma";
 import { formatPrice } from "@ems/utils";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import HomeVersusRail from "@/components/HomeVersusRail";
 import HeroNowSpinning from "@/components/HeroNowSpinning";
-
-const AudioPlayer = dynamic(() => import("@/components/LazyAudioPlayer"), {
-  ssr: false,
-  loading: () => <div className="h-48 animate-pulse rounded-2xl bg-white/5" />,
-});
+import AudioPlayer from "@/components/LazyAudioPlayer";
+import HomeSplitCtas from "@/components/HomeSplitCtas";
+import HomeHeroMessaging from "@/components/HomeHeroMessaging";
+import HomeVisualEffectsGate from "@/components/HomeVisualEffectsGate";
 
 export const revalidate = 60;
 
 export const metadata: Metadata = {
   // `absolute` opts out of the layout's `"%s | Epic Music Space"` template
   // so the home title doesn't render as "Epic Music Space — … | Epic Music Space".
-  title: { absolute: "Epic Music Space — The Digital Headquarters for Music Creators" },
+  title: { absolute: "Epic Music Space — The Fastest-Growing Social Platform for Music" },
   description:
-    "Build your profile, showcase your work, sell services, collaborate, and grow your music business. Step in the ring on Versus battles. Virtual studios and city districts coming next.",
+    "Connect live with millions of music fans and artists. Host listening rooms, battle for chart dominance, discover trending music, and earn as you share. The social platform where music creators thrive.",
   alternates: { canonical: "/" },
 };
 
@@ -47,6 +51,9 @@ type HomeData = {
   songCount: number;
   licenseCount: number;
   totalRevenue: number;
+  liveRoomCount: number;
+  activeBattleCount: number;
+  followCount: number;
   sampleSongs: SampleSong[];
 };
 
@@ -70,24 +77,24 @@ function mapDemoTracksToSampleSongs(tracks: Awaited<ReturnType<typeof getDemoTra
 }
 
 const marqueeItems = [
-  "Your Music HQ",
-  "Showcase Your Work",
-  "Sell Your Services",
-  "Collaborate Live",
-  "Versus Battles Tonight",
-  "Step in the Ring",
-  "From the Vault",
-  "100% to the Artist*",
-  "Virtual Studios Coming Soon",
-  "Your Music HQ",
-  "Showcase Your Work",
-  "Sell Your Services",
-  "Collaborate Live",
-  "Versus Battles Tonight",
-  "Step in the Ring",
-  "From the Vault",
-  "100% to the Artist*",
-  "Virtual Studios Coming Soon",
+  "Follow Your Favorite Artists",
+  "Discover Tomorrow's Hits",
+  "Vote on Live Battles",
+  "Join Listening Rooms",
+  "Share & Go Viral",
+  "100% Artist Revenue*",
+  "Connect Live Tonight",
+  "Build Your Music Community",
+  "Real-Time Fan Engagement",
+  "Follow Your Favorite Artists",
+  "Discover Tomorrow's Hits",
+  "Vote on Live Battles",
+  "Join Listening Rooms",
+  "Share & Go Viral",
+  "100% Artist Revenue*",
+  "Connect Live Tonight",
+  "Build Your Music Community",
+  "Real-Time Fan Engagement",
 ];
 
 const trackArtClasses = ["vc-track-art-1", "vc-track-art-2", "vc-track-art-3"];
@@ -99,46 +106,58 @@ const getHomeData = unstable_cache(
       songCount: 0,
       licenseCount: 0,
       totalRevenue: 0,
+      liveRoomCount: 0,
+      activeBattleCount: 0,
+      followCount: 0,
       sampleSongs: demoSampleSongs,
     };
 
     if (!hasUsableDatabaseUrl()) return emptyHomeData;
     try {
-      const [songCount, licenseCount, transactionSum, sampleSongs] =
-        await Promise.all([
-          prisma.song.count({ where: { isActive: true } }),
-          prisma.licenseToken.count({ where: { status: "ACTIVE" } }),
-          prisma.transaction.aggregate({
-            where: { status: "SUCCEEDED", type: "LICENSE_PURCHASE" },
-            _sum: { amount: true },
-          }),
-          prisma.song.findMany({
-            where: { isActive: true, audioUrl: { not: "" } },
-            orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
-            take: 3,
-            select: {
-              id: true,
-              title: true,
-              artist: true,
-              genre: true,
-              description: true,
-              audioUrl: true,
-              coverUrl: true,
-              bpm: true,
-              key: true,
-              licensePrice: true,
-              revenueSharePct: true,
-              totalLicenses: true,
-              soldLicenses: true,
-              aiScore: true,
-            },
-          }),
-        ]);
+      const [songCount, licenseCount, transactionSum, liveRoomCount, activeBattleCount, followCount, sampleSongs] =
+        await withTimeout(
+          Promise.all([
+            prisma.song.count({ where: { isActive: true } }),
+            prisma.licenseToken.count({ where: { status: "ACTIVE" } }),
+            prisma.transaction.aggregate({
+              where: { status: "SUCCEEDED", type: "LICENSE_PURCHASE" },
+              _sum: { amount: true },
+            }),
+            prisma.room.count({ where: { status: "LIVE" } }),
+            prisma.versusMatch.count({ where: { status: "ACTIVE" } }),
+            prisma.userFollow.count(),
+            prisma.song.findMany({
+              where: { isActive: true, audioUrl: { not: "" } },
+              orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
+              take: 3,
+              select: {
+                id: true,
+                title: true,
+                artist: true,
+                genre: true,
+                description: true,
+                audioUrl: true,
+                coverUrl: true,
+                bpm: true,
+                key: true,
+                licensePrice: true,
+                revenueSharePct: true,
+                totalLicenses: true,
+                soldLicenses: true,
+                aiScore: true,
+              },
+            }),
+          ]),
+          2500,
+        );
 
       return {
         songCount,
         licenseCount,
         totalRevenue: Number(transactionSum._sum.amount ?? 0),
+        liveRoomCount,
+        activeBattleCount,
+        followCount,
         sampleSongs:
           sampleSongs.length > 0
             ? sampleSongs.map((song) => ({
@@ -167,6 +186,15 @@ function hasUsableDatabaseUrl() {
   ].some((placeholder) => databaseUrl.includes(placeholder));
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error("Homepage data fetch timed out")), ms);
+    }),
+  ]);
+}
+
 function formatCount(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
@@ -180,23 +208,42 @@ function formatRevenue(n: number) {
 }
 
 export default async function HomePage() {
-  const { songCount, licenseCount, totalRevenue, sampleSongs } =
+  const {
+    songCount,
+    licenseCount,
+    totalRevenue,
+    liveRoomCount,
+    activeBattleCount,
+    followCount,
+    sampleSongs,
+  } =
     await getHomeData();
 
   const displayStats = [
     {
-      num: songCount > 0 ? `${formatCount(songCount)}+` : "Curated",
+      num: `${formatCount(songCount)}+`,
       label: "Active Tracks",
     },
     {
-      num: licenseCount > 0 ? `${formatCount(licenseCount)}+` : "Capped",
-      label: "License Supply",
+      num: `${formatCount(licenseCount)}+`,
+      label: "Licenses Claimed",
     },
     {
-      num: totalRevenue > 0 ? formatRevenue(totalRevenue) : "100%",
-      label: totalRevenue > 0 ? "Paid to Artists" : "Artist Share*",
+      num: `${formatCount(liveRoomCount)}+`,
+      label: "Live Rooms Now",
     },
-    { num: "Live", label: "Studio Tools" },
+    {
+      num: `${formatCount(activeBattleCount)}+`,
+      label: "Active Battles",
+    },
+    {
+      num: `${formatCount(followCount)}+`,
+      label: "Community Follows",
+    },
+    {
+      num: totalRevenue > 0 ? formatRevenue(totalRevenue) : "$0",
+      label: "Paid to Artists",
+    },
   ];
 
   const faqStructuredData = {
@@ -208,7 +255,7 @@ export default async function HomePage() {
         name: "How do listening sessions work on Epic Music Space?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "You open a live audio room — like a private radio station. Press play on your album or unreleased tracks, talk between songs, take questions, and hand the mic to fans when you're ready. Family, friends, and listeners from anywhere in the world join the same room and react in real time.",
+          text: "You start a live room, queue your tracks, and your community joins in real time. Chat, reactions, and mic handoffs make every session feel like a release party, Q&A, and fan meetup at once.",
         },
       },
       {
@@ -216,7 +263,7 @@ export default async function HomePage() {
         name: "How big can my listening room get?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Free studios fit a small crew so you can vibe with your closest fans. Paid tiers unlock larger rooms — up to thousands of live listeners in a single session — with priority queue control and richer host tools.",
+          text: "Free rooms are built for your core supporters. Paid tiers unlock larger audiences, priority queue controls, and advanced host tools so you can run bigger events as your community scales.",
         },
       },
       {
@@ -224,7 +271,7 @@ export default async function HomePage() {
         name: "How do artists make money on Epic Music Space?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Sessions, sales, and battles all feed each other. Sell licenses (every sale is allocated 100% to the artist; a flat 10% platform fee is itemized on every payout), get tipped in live rooms, win Versus battles to climb the charts, and earn streaming royalties forever. Every fan in your room is one click from licensing the song they're hearing.",
+          text: "Revenue comes from multiple social touchpoints: license sales, live-room tips, battle visibility, and streaming royalties. Fans can move from discovery to purchase in one tap. Artists keep 100% of each license sale, with a transparent 10% platform fee itemized on every payout.",
         },
       },
       {
@@ -240,12 +287,14 @@ export default async function HomePage() {
 
   return (
     <div className="vc-page">
+      <HomeVisualEffectsGate />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
       />
 
       <section className="vc-hero">
+        <AnimatedBackdrop variant="hero" />
         <div className="vc-stars" aria-hidden="true" />
         <Image
           className="vc-studio-photo"
@@ -264,76 +313,56 @@ export default async function HomePage() {
         <div className="vc-horizon" aria-hidden="true" />
 
         <div className="vc-hero-content">
-          <p className="vc-eyebrow">The digital headquarters for music creators</p>
-          {/*
-           * Hero copy names the three actual moats — economics, transparency,
-           * growth loop — instead of the generic "build / showcase / grow"
-           * that any creator platform could write. A cold visitor learns
-           * what's different here in three lines, not three scrolls.
-           */}
-          {/*
-           * IMPORTANT — legal note for future editors:
-           * "100% to the artist" pairs with the inline "10% platform fee"
-           * disclosure right under the tagline. Keep that disclosure
-           * visible on the same screen as the headline. Burying the fee
-           * (footnote, modal, separate page only) creates an FTC
-           * "deceptive net impression" exposure. The /pricing page also
-           * carries the full breakdown. Don't strip the inline
-           * disclosure to make the hero "cleaner" — the visibility of
-           * the 10% next to the 100% is what makes the claim safe.
-           */}
-          <h1 className="vc-hero-h1">
-            100% to the artist.
-            <br />
-            <span className="accent">Rank in the open.</span>
-            <br />
-            Battle tonight.
-          </h1>
-          <p className="vc-hero-tagline">
-            Epic Music Space is the only artist platform where every license
-            sale is allocated 100% to the artist, every rank factor is{" "}
-            <Link href="/marketplace" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
-              public on every track
-            </Link>
-            , and your catalog{" "}
-            <Link href="/versus" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
-              battles live
-            </Link>{" "}
-            in front of voting fans every night.
-            <span className="block mt-3 text-sm text-white/60">
-              Flat 10% platform fee per license — itemized on every payout
-              receipt. No streaming cuts, no tiered upsells, no shadow markups.
-              See full breakdown on{" "}
-              <Link href="/pricing" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
-                /pricing
-              </Link>
-              .
-            </span>
+          <HomeHeroMessaging />
+          <HomeSplitCtas
+            placement="hero"
+            containerClassName="vc-hero-ctas"
+            artistClassName="vc-btn vc-btn-pink"
+            listenerClassName="vc-btn vc-btn-ghost"
+          />
+          <p className="vc-hero-trustline">
+            Free to start. No credit card required. Artist payouts remain
+            transparent with a flat 10% platform fee.
           </p>
-          <div className="vc-hero-ctas">
-            <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
-              Build Your Studio →
-            </Link>
-            <Link href="/versus" className="vc-btn vc-btn-ghost">
-              Watch Versus Live
-            </Link>
-          </div>
 
-          {/*
-           * Above-the-fold playable. The original hero ended at the CTAs —
-           * a cold visitor had to click and sign up before hearing
-           * anything the platform actually does. This rail puts one real
-           * track in their ears in five seconds, with all the math
-           * (BPM/key, licenses claimed) visible inline.
-           */}
           {sampleSongs[0] && (
             <HeroNowSpinning
               song={sampleSongs[0]}
               secondary={sampleSongs[1] ?? null}
             />
           )}
+
+          <div className="vc-hero-stats" role="list" aria-label="Platform highlights">
+            {displayStats.map((stat) => (
+              <div key={stat.label} className="vc-hero-stat" role="listitem">
+                <span className="num">{stat.num}</span>
+                <span className="label">{stat.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="vc-hero-links" aria-label="Jump to key sections">
+            <a href="#journey" className="vc-hero-link-pill">
+              How It Works
+            </a>
+            <a href="#charts" className="vc-hero-link-pill">
+              Trending Now
+            </a>
+            <a href="#drops" className="vc-hero-link-pill">
+              New Releases
+            </a>
+          </div>
         </div>
       </section>
+
+      <div className="vc-mobile-sticky-cta" aria-label="Quick action for artists">
+        <Link
+          href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew"
+          className="vc-mobile-sticky-cta-btn"
+        >
+          Start Your Artist Studio
+        </Link>
+      </div>
 
       <div className="vc-marquee" aria-hidden="true">
         <div className="vc-marquee-track">
@@ -351,18 +380,17 @@ export default async function HomePage() {
          on /home is real, voteable activity, not marketing copy. */}
       <HomeVersusRail />
 
-      <section className="vc-section vc-platform-section">
+      <section id="hq" className="vc-section vc-platform-section">
         <div className="vc-container">
-          <p className="vc-section-eyebrow">Your music HQ</p>
+          <p className="vc-section-eyebrow">Your music social HQ</p>
           <h2 className="vc-section-title">
-            One platform for your profile, your catalog, your services,
+              One platform for your music community, your profile, your fanbase,
             <br />
-            and the fans who back you.
+              and your most engaged listeners.
           </h2>
           <p className="vc-section-sub">
-            Epic Music Space is the digital headquarters where music creators
-            run the whole business — claim your studio, ship your work, sell
-            your services, collaborate with the room, and battle live.
+              Epic Music Space is where music creators build thriving communities. Create your profile, connect with listeners in real time, host live rooms, 
+              monetize directly from fans, and compete on leaderboards. Your studio, your community, your terms.
             Virtual studios and 3D city districts are next.
           </p>
           <div className="vc-platform-grid">
@@ -370,23 +398,23 @@ export default async function HomePage() {
               <span className="vc-platform-num">01 / Profile</span>
               <h3>Claim your studio.</h3>
               <p>
-                A real artist profile — bio, catalog, badges, district rank,
+                  Your music profile — bio, followers, badge collection, district rank,
                 social links, payouts. The page you point fans, labels, and
                 supervisors to instead of pasting six different URLs.{" "}
                 <Link href="/auth/signup?role=ARTIST" className="vc-feat-link">
-                  Build your studio →
+                  Join the community →
                 </Link>
               </p>
             </article>
             <article className="vc-platform-card">
               <span className="vc-platform-num">02 / Catalog</span>
-              <h3>Showcase + license your work.</h3>
+                <h3>Share music. Build your fanbase.</h3>
               <p>
                 Upload tracks, set licensing terms in plain language, surface
                 older material in The Vault, and let fans become license
-                holders who share streaming revenue with you forever. Every
-                license is allocated 100% to you — a flat 10% platform fee is
-                line-itemed on every payout.
+                  holders who share revenue with you forever. Share your sound, grow your followers, 
+                  and monetize directly. Every license goes 100% to you — a transparent 10% platform fee is
+                  itemized on every payout.
               </p>
             </article>
             <article className="vc-platform-card">
@@ -395,17 +423,16 @@ export default async function HomePage() {
               <p>
                 Producers and engineers list services with clear scope,
                 delivery time, and price. Fans and other artists book and
-                pay through EMS. No third-party invoicing, no chasing.
+                  pay through EMS directly from the community. No third-party invoicing, no chasing.
               </p>
             </article>
             <article className="vc-platform-card">
               <span className="vc-platform-num">04 / Battle</span>
-              <h3>Step in the ring on Versus.</h3>
+                <h3>Compete. Vote. Go viral.</h3>
               <p>
                 Drop your track against another artist&apos;s. The whole room
-                votes in real time, winners climb the charts overnight. This is
-                how unknown artists go viral on EMS — every night, no playlist
-                gatekeepers.{" "}
+                  votes live. Winners climb the charts overnight. This is
+                  how artists go viral on EMS — democratic, real-time, no gatekeepers.{" "}
                 <Link href="/versus" className="vc-feat-link">
                   Enter a Battle →
                 </Link>
@@ -413,12 +440,12 @@ export default async function HomePage() {
             </article>
             <article className="vc-platform-card">
               <span className="vc-platform-num">05 / Collaborate</span>
-              <h3>Live listening rooms.</h3>
+                <h3>Host. Connect. Monetize live.</h3>
               <p>
                 Open a live audio room for your album, your unreleased track,
                 or a session with another artist. Talk between songs, pass
-                the mic to fans, and turn listeners into license holders
-                without leaving the room.
+                  the mic to your community, and turn listeners into license holders
+                  in real time — all in one room.
               </p>
             </article>
             <article className="vc-platform-card">
@@ -436,75 +463,102 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="vc-section vc-platform-section">
+      <section id="journey" className="vc-section vc-platform-section vc-below-fold">
         <div className="vc-container">
           <p className="vc-section-eyebrow">Artist first journey</p>
           <h2 className="vc-section-title">
-            From first upload to first live room — <span className="glow">one clear path.</span>
+              From zero followers to live community — <span className="glow">one clear path.</span>
           </h2>
           <p className="vc-section-sub">
-            EMS keeps the artist setup tight: claim your studio, publish a track,
-            set simple licensing terms, then invite fans into the room where the
-            music is already playing.
+              Epic Music Space keeps it simple: create your profile, release a track, 
+              go live with your community, and monetize directly. No gatekeepers. No waiting.
           </p>
           <div className="vc-platform-grid">
             <article className="vc-platform-card">
               <span className="vc-platform-num">01 / Studio</span>
-              <h3>Claim your artist room.</h3>
+                <h3>Build your profile.</h3>
               <p>
-                Create your artist profile, choose your public studio URL, and
-                give fans one place to follow your music. <Link href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew" className="vc-feat-link">Start as Artist →</Link>
+                  Create your profile, choose your vanity URL, and give your community
+                  one place to follow every drop. <Link href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew" className="vc-feat-link">Start as Artist →</Link>
               </p>
             </article>
             <article className="vc-platform-card">
               <span className="vc-platform-num">02 / Upload</span>
-              <h3>Publish the track.</h3>
+                <h3>Share your sound.</h3>
               <p>
                 Upload audio, add cover art, set genre details, and preview the
-                song before it goes live. <Link href="/studio/new" className="vc-feat-link">Upload Track →</Link>
+                  song before it hits your followers. <Link href="/studio/new" className="vc-feat-link">Upload Track →</Link>
               </p>
             </article>
             <article className="vc-platform-card">
               <span className="vc-platform-num">03 / License</span>
-              <h3>Set terms fans understand.</h3>
+                <h3>Monetize transparently.</h3>
               <p>
                 Pick the license price, supply, and share shown on the track
-                page so supporters know exactly what they are backing.
+                  page so your fans know exactly what they&apos;re supporting.
               </p>
             </article>
             <article className="vc-platform-card">
               <span className="vc-platform-num">04 / Go Live</span>
-              <h3>Open the listening room.</h3>
+                <h3>Connect with your community.</h3>
               <p>
-                Host the drop, talk between songs, pass the mic, and keep the
-                license action one tap away while fans are still listening.
+                  Host the drop, talk with listeners, pass the mic to your community, 
+                  and let fans become supporters while the music plays.
               </p>
             </article>
           </div>
         </div>
       </section>
 
-      <section className="vc-section vc-platform-section">
+      <section id="listeners" className="vc-section vc-listener-section vc-below-fold">
+        <div className="vc-container">
+          <p className="vc-section-eyebrow">Built for listeners too</p>
+          <h2 className="vc-section-title">
+            Discover artists early, shape outcomes, and support what you love.
+          </h2>
+          <p className="vc-section-sub">
+            Follow creators before they break, vote in live matchups, and move
+            from first play to direct support in seconds.
+          </p>
+          <div className="vc-platform-grid">
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">01 / Discover</span>
+              <h3>Get tomorrow&apos;s tracks first.</h3>
+              <p>Live rooms and trending feeds surface rising artists before the mainstream catches up.</p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">02 / Influence</span>
+              <h3>Your votes shape visibility.</h3>
+              <p>Battle outcomes and room reactions feed momentum signals that boost breakout songs.</p>
+            </article>
+            <article className="vc-platform-card">
+              <span className="vc-platform-num">03 / Support</span>
+              <h3>Back artists directly.</h3>
+              <p>Support through licenses and paid unlocks with transparent receipts and clear rights terms.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section className="vc-section vc-platform-section vc-below-fold">
         <div className="vc-container">
           <p className="vc-section-eyebrow">The flagship feature</p>
           <h2 className="vc-section-title">
-            Listening sessions, live —{" "}
+              Host. Connect. Earn. —{" "}
             <span className="glow">turn every drop into an event.</span>
           </h2>
           <p className="vc-section-sub">
-            Spotify, Apple, and SoundCloud are vending machines. Epic Music
-            Space is a venue. You host. Your fans show up. The album plays in
-            the same room as everyone in it. Comments fly, mics get passed,
-            licenses sell while the music&apos;s still rolling.
+              Spotify and Apple are vending machines. Epic Music Space is a live community. 
+              You host a listening room, your fans show up, the music plays together, 
+              comments flow in real-time, mics get passed, and licenses sell while the song is playing.
           </p>
           <div className="vc-platform-grid">
             <article className="vc-platform-card">
               <span className="vc-platform-num">01 / Open Doors</span>
               <h3>You&apos;re the host.</h3>
               <p>
-                Spin up a session in seconds. Cue up the album, the mixtape,
-                the unreleased one — whatever you&apos;re in the mood to play.
-                Drop a description. Hit live.
+                  Create a listening room in seconds. Share your album, unreleased track, 
+                  or any playlist. Write what you want to say. Go live with your community.
               </p>
             </article>
             <article className="vc-platform-card">
@@ -564,18 +618,18 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="vc-section vc-leaderboard-section">
+      <section id="charts" className="vc-section vc-leaderboard-section vc-below-fold">
         <div className="vc-container">
           <div className="vc-lb-grid">
             <div>
-              <p className="vc-section-eyebrow">Tonight&apos;s Charts</p>
+                <p className="vc-section-eyebrow">Community-powered charts</p>
               <h2 className="vc-section-title">
-                Your name <span className="pink">belongs up here</span>
+                  Ranked by fans, not playlists. <span className="pink">Vote for who&apos;s next.</span>
               </h2>
               <p className="vc-section-sub">
-                Charts move with battle wins, license sales, plays, and EMS score —
-                not playlist politics. Drop a track, win a battle, and watch
-                yourself climb past artists with ten times your followers.
+                  Charts rank by battle wins, community votes, licenses sold, and engagement —
+                  not gatekeepers or playlists. Every listener&apos;s vote counts equally.
+                  Drop a track, win battles, and climb the ranks without a label or playlist deal.
               </p>
               <Link href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew" className="vc-btn vc-btn-pink">
                 Get on the Charts →
@@ -606,7 +660,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="vc-section vc-split-section">
+      <section className="vc-section vc-split-section vc-below-fold">
         <div className="vc-container">
           <div className="vc-split-grid">
             <div className="vc-split-card artists">
@@ -615,24 +669,23 @@ export default async function HomePage() {
                   For Artists
                 </p>
                 <h3>
-                  Host the room. <span className="high">Run the show.</span>
-                  <br />
-                  Get paid in real time.
+                    Build. Connect. Grow.
+                    <br />
+                    <span className="high">Earn from your community.</span>
                 </h3>
                 <p>
-                  Open live listening sessions for fans across the world, pass
-                  the mic when you want, and turn the people in your room into
-                  paying license holders before they leave. Battles, charts,
-                  and 100% artist allocation baked in.
+                    Host live rooms, grow your fanbase, compete on leaderboards, 
+                    and monetize directly. No middleman. No playlist gatekeepers. 
+                    Every fan connection leads to revenue, and you keep 100%.
                 </p>
                 <div className="vc-split-stats">
                   <div className="vc-stat">
                     <div className="num">100%*</div>
-                    <div className="label">Allocated to Artist</div>
+                      <div className="label">to You (minus 10% fee)</div>
                   </div>
                   <div className="vc-stat">
                     <div className="num">Live</div>
-                    <div className="label">Battles &amp; Drops</div>
+                      <div className="label">Community Engagement</div>
                   </div>
                 </div>
                 <p className="mt-2 text-[11px] leading-5 text-white/45">
@@ -648,24 +701,24 @@ export default async function HomePage() {
                 href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew"
                 className="vc-btn vc-btn-pink vc-split-cta"
               >
-                Open Your Studio →
+                  Join the Community →
               </Link>
             </div>
 
             <div className="vc-split-card creators">
               <div>
                 <p className="vc-section-eyebrow vc-eyebrow-cyan">
-                  For Fans &amp; Creators
+                    For Listeners &amp; Supporters
                 </p>
                 <h3>
-                  Back the artist <span className="high">before</span>
+                    Discover artists <span className="high">before</span>
                   <br />
-                  the world catches on
+                    they go mainstream
                 </h3>
                 <p>
-                  License a track, share in its streaming revenue forever, and
-                  brag about discovering them first. Use the music in your videos,
-                  your podcast, your brand — with terms shown upfront.
+                    Watch live rooms, vote in battles, follow rising artists, and license 
+                    directly from creators. Share revenue forever and discover music 
+                    before the mainstream does — all on one platform.
                 </p>
                 <div className="vc-split-stats">
                   {displayStats.slice(0, 2).map((stat) => (
@@ -687,13 +740,27 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="vc-section vc-feat-section">
+      <section className="vc-section vc-feat-section vc-below-fold">
         <div className="vc-container">
           <p className="vc-section-eyebrow">How you win on EMS</p>
           <h2 className="vc-section-title">
             Every tool you need to <span className="glow">break out</span> —
             in one studio
           </h2>
+          <div className="vc-social-proof-strip" aria-label="Community activity highlights">
+            <div className="vc-social-proof-pill">
+              <span className="num">Live</span>
+              <span className="label">Rooms every day</span>
+            </div>
+            <div className="vc-social-proof-pill">
+              <span className="num">Fan</span>
+              <span className="label">Votes move charts</span>
+            </div>
+            <div className="vc-social-proof-pill">
+              <span className="num">Instant</span>
+              <span className="label">Discovery to support</span>
+            </div>
+          </div>
           <div className="vc-feat-grid vc-feat-grid-top">
             <div className="vc-feat-card versus">
               <span className="vc-feat-tag">Versus Battles · Flagship</span>
@@ -711,7 +778,7 @@ export default async function HomePage() {
             </div>
             <div className="vc-feat-card">
               <span className="vc-feat-tag">Live Listening Sessions</span>
-              <h3>Clubhouse for music</h3>
+              <h3>Your community, in one room</h3>
               <p>
                 Open a live audio room. Press play on your album, your unreleased
                 track, your back catalog. Talk between songs. Read the chat. Hand
@@ -725,7 +792,7 @@ export default async function HomePage() {
             </div>
             <div className="vc-feat-card">
               <span className="vc-feat-tag">Real-Time Drops</span>
-              <h3>Watch your fans buy in live</h3>
+              <h3>Turn moments into momentum</h3>
               <p>
                 Every license sale fires a live notification. Your fans see
                 the supply ticking down. The closer to sold-out, the more
@@ -737,7 +804,7 @@ export default async function HomePage() {
             </div>
             <div className="vc-feat-card versus">
               <span className="vc-feat-tag">EMS Score &amp; Studio Brand</span>
-              <h3>The AI scout in your corner</h3>
+              <h3>The profile that proves it</h3>
               <p>
                 Every track gets a score on composition, production, and market
                 fit. Your studio profile shows the receipts — followers, sales,
@@ -757,25 +824,31 @@ export default async function HomePage() {
 
       {/* The Vault — legacy catalog promo. Older artists with deep catalogs
           get a dignified, on-page surface; new fans get a discovery doorway. */}
-      <section className="vc-section">
+      <section className="vc-section vc-below-fold">
         <div className="vc-container">
-          <div className="relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-br from-amber-500/14 via-amber-500/4 to-transparent px-6 py-12 shadow-[0_30px_60px_-30px_rgba(245,158,11,0.45)] sm:px-12 sm:py-14">
+          <div className="vc-vault-shell">
             <div className="grid items-center gap-10 lg:grid-cols-[1.4fr_1fr]">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-amber-300">
-                  The Vault · Legacy Catalogs
+                <p className="vc-vault-eyebrow">
+                  The Vault · Legacy catalogs, new community
                 </p>
-                <h2 className="mt-3 text-3xl font-extrabold leading-tight text-amber-50 sm:text-4xl">
-                  For the artists who&apos;ve{" "}
-                  <span className="text-amber-300">been doing this for years.</span>
+                <h2 className="vc-vault-title">
+                  Keep your classics alive.
+                  <br />
+                  <span>Let new fans discover the history.</span>
                 </h2>
-                <p className="mt-4 max-w-xl text-base text-amber-100/75">
+                <p className="vc-vault-sub">
                   Older releases. Demos that never got their moment. Records
                   that disappeared off streaming. Tag a track as legacy and it
                   lands in The Vault — a dedicated home for back-catalog work,
-                  with the year on every record and the original artist front
-                  and center.
+                  where community discovery, shares, and support give timeless
+                  records a second life.
                 </p>
+                <div className="vc-vault-pills" aria-label="Vault community signals">
+                  <span>Year-tagged releases</span>
+                  <span>Catalog-first discovery</span>
+                  <span>Built for long-tail fans</span>
+                </div>
                 <div className="mt-6 flex flex-wrap gap-3">
                   <Link
                     href="/vault"
@@ -808,16 +881,16 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="vc-section vc-tracks-section">
+      <section id="drops" className="vc-section vc-tracks-section vc-below-fold">
         <div className="vc-container">
           <p className="vc-section-eyebrow">Tonight&apos;s Drops</p>
           <h2 className="vc-section-title">
-            Tracks moving <span className="glow">right now</span>
+            Music trending <span className="glow">in real time</span>
           </h2>
           <p className="vc-section-sub">
-            Real artists, real licenses, real momentum. Hear the song,
-            see the terms, watch the supply tick down — your next favorite
-            artist is one of these.
+            Trending in the community right now. Vote on battles, follow emerging artists, 
+            license directly, and be part of what&apos;s blowing up. See supply, scores,
+            and live momentum — your next favorite is here.
           </p>
           <div className="vc-tracks-grid">
             {sampleSongs.map((song, i) => (
@@ -893,26 +966,33 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="vc-section vc-closing-section">
+      <section className="vc-section vc-closing-section vc-below-fold">
         <div className="vc-container vc-closing-inner">
           <p className="vc-eyebrow">Your move</p>
           <h2 className="vc-section-title vc-closing-title">
-            Claim your studio. Run your business. Battle the room.
+            Claim your profile. Grow your community. Own the moment.
           </h2>
-          <p className="vc-section-sub vc-closing-sub">
-            Sign-up is free. Uploads are free. Entering your first Versus
-            battle is free. You only get charged when you sell — every license
-            is allocated 100% to you, with a flat 10% platform fee itemized on
-            every payout. Virtual studios and the 3D city ship next.
-          </p>
-          <div className="vc-hero-ctas">
-            <Link href="/auth/signup?role=ARTIST" className="vc-btn vc-btn-pink">
-              Build Your Studio →
-            </Link>
-            <Link href="/versus" className="vc-btn vc-btn-chrome">
-              Step in a Versus Battle
-            </Link>
+          <div className="vc-closing-proof" aria-label="Platform closing highlights">
+            <span>Free to start</span>
+            <span>Live fan engagement</span>
+            <span>Community-powered discovery</span>
           </div>
+          <p className="vc-section-sub vc-closing-sub">
+            Sign-up is free. Uploads are free. Your first battles are free.
+            You only pay when you earn: every license sale goes 100% to you,
+            and a flat 10% platform fee is itemized on every payout.
+            Build your audience, host live, and turn momentum into revenue.
+          </p>
+          <HomeSplitCtas
+            placement="closing"
+            containerClassName="vc-hero-ctas vc-closing-ctas"
+            artistClassName="vc-btn vc-btn-pink"
+            listenerClassName="vc-btn vc-btn-chrome"
+          />
+          <p className="vc-hero-trustline vc-closing-trustline">
+            Trusted payments, transparent fee disclosures, and creator-first
+            ownership terms.
+          </p>
         </div>
       </section>
     </div>
