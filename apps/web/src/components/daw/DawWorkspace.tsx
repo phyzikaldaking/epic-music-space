@@ -1139,10 +1139,13 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         await stashGuestMix(wav, fileName);
         try { window.localStorage.setItem(GUEST_RESUME_FLAG, "1"); } catch { /* private mode */ }
         setStats((s) => ({ ...s, publishes: s.publishes + 1 }));
-        pushAuditEvent("publish", "Stashed mix as guest — bouncing through signup");
-        const callbackUrl = encodeURIComponent("/studio/new?from=guest-resume");
-        router.push(`/auth/signup?role=ARTIST&callbackUrl=${callbackUrl}`);
-        return { ok: true, message: "Saved your mix — sign up free to keep it and publish." };
+        pushAuditEvent("publish", "Stashed mix as guest — bouncing to single-field email capture");
+        // Send them to the single-field magic-link page rather than the
+        // full /auth/signup gauntlet. /studio/try/save asks for one email,
+        // sends a passwordless link, and the visitor lands back at
+        // /studio/new?from=guest-resume authed and ready to publish.
+        router.push("/studio/try/save");
+        return { ok: true, message: "Saved your mix — drop your email to keep it." };
       } catch (err) {
         return {
           ok: false,
