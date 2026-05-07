@@ -65,6 +65,18 @@ export default function MagicLinkClient() {
         return;
       }
 
+      // Funnel: if the callback indicates guest-resume, count this as
+      // the visitor returning to finish the publish.
+      if (callbackUrl.startsWith("/studio/new") && callbackUrl.includes("from=guest-resume")) {
+        try {
+          const { postFunnelEvent } = await import("@/lib/funnelClient");
+          const { FUNNEL_EVENTS } = await import("@/lib/funnelEvents");
+          void postFunnelEvent({
+            event: FUNNEL_EVENTS.guestLinkClicked,
+            source: "magic_link_verify",
+          });
+        } catch { /* non-blocking */ }
+      }
       router.refresh();
       router.push(callbackUrl);
     })();

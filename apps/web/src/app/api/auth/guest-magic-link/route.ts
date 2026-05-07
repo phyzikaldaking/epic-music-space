@@ -143,7 +143,9 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  const emailResult = await sendMagicLinkEmail(normalizedEmail, token, callbackUrl);
+  const emailResult = await sendMagicLinkEmail(normalizedEmail, token, callbackUrl, {
+    guestResume: true,
+  });
 
   if (!emailResult.ok) {
     await emitAuthEvent("magic_link_send_failed", {

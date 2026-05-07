@@ -14,6 +14,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 const RESUME_CALLBACK = "/studio/new?from=guest-resume";
 
@@ -57,6 +59,10 @@ export default function GuestSaveClient() {
         return;
       }
       setSent(true);
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.guestEmailSubmitted,
+        source: "studio_try_save",
+      });
     } catch {
       setError("Network error. Try again.");
     } finally {

@@ -43,10 +43,26 @@ export async function sendPasswordResetEmail(email: string, token: string) {
   return { ok: true };
 }
 
+interface MagicLinkContext {
+  /** When true, render the guest-resume copy: "Your beat is waiting"
+   *  instead of "Your sign-in link." This is the email a visitor gets
+   *  after they cut a track in /studio/try and submitted their email
+   *  to keep it. Generic "sign in" copy doesn't pull them back; copy
+   *  that reminds them what's *waiting on the other side* does. */
+  guestResume?: boolean;
+  /** Estimated duration of the stashed mix, used for "X seconds of
+   *  808s and snares" style flavor in the body copy. */
+  durationSec?: number;
+  /** Approximate WAV size (bytes), used to format a "2.4 MB mix" line
+   *  for tactile reassurance ("the bytes are real and waiting"). */
+  sizeBytes?: number;
+}
+
 export async function sendMagicLinkEmail(
   email: string,
   token: string,
   callbackUrl?: string,
+  context: MagicLinkContext = {},
 ) {
   const base = getSiteUrl();
   const callbackParam = callbackUrl
@@ -64,24 +80,53 @@ export async function sendMagicLinkEmail(
     return { ok: true, dev: true, url };
   }
 
+  const isGuestResume = context.guestResume === true;
+
+  const subject = isGuestResume
+    ? "🎧 Your beat is waiting on Epic Music Space"
+    : "Your Epic Music Space sign-in link";
+
+  const headline = isGuestResume ? "Your beat is waiting" : "Your sign-in link";
+  const ctaLabel = isGuestResume ? "Open my beat →" : "Sign in →";
+
+  let flavor = "Click the button below to sign in. This link works once and expires in 15 minutes.";
+  if (isGuestResume) {
+    const parts: string[] = [];
+    if (context.durationSec && context.durationSec > 0) {
+      const m = Math.floor(context.durationSec / 60);
+      const s = context.durationSec % 60;
+      parts.push(`${m}:${s.toString().padStart(2, "0")} of audio`);
+    }
+    if (context.sizeBytes && context.sizeBytes > 0) {
+      const mb = (context.sizeBytes / 1024 / 1024).toFixed(1);
+      parts.push(`${mb} MB`);
+    }
+    const detail = parts.length > 0 ? ` (${parts.join(" · ")})` : "";
+    flavor = `The track you made in EMS Studio${detail} is saved and ready to publish. Click below — we'll log you in and walk you to publish in one tap. Link works once and expires in 15 minutes.`;
+  }
+
   const html = `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#fff;font-family:-apple-system,sans-serif;padding:40px 16px">
     <div style="max-width:540px;margin:0 auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:40px 32px;text-align:center">
       <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:24px">
         <div style="width:36px;height:36px;background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.3);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px">♫</div>
         <span style="font-size:20px;font-weight:800;background:linear-gradient(135deg,#a78bfa,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Epic Music Space</span>
       </div>
-      <h1 style="margin:0 0 12px;font-size:24px">Your sign-in link</h1>
-      <p style="color:rgba(255,255,255,0.7);line-height:1.6">Click the button below to sign in. This link works once and expires in 15 minutes.</p>
-      <p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:700">Sign in →</a></p>
-      <p style="color:rgba(255,255,255,0.45);font-size:12px;line-height:1.5">If you didn't request this, ignore the email — nothing will happen.</p>
+      <h1 style="margin:0 0 12px;font-size:24px">${headline}</h1>
+      <p style="color:rgba(255,255,255,0.7);line-height:1.6">${flavor}</p>
+      <p style="margin:24px 0"><a href="${url}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:700">${ctaLabel}</a></p>
+      <p style="color:rgba(255,255,255,0.45);font-size:12px;line-height:1.5">${isGuestResume ? "If you didn't make a beat on Epic Music Space, ignore this email — nothing will happen." : "If you didn't request this, ignore the email — nothing will happen."}</p>
     </div></body></html>`;
+
+  const text = isGuestResume
+    ? `Your beat is waiting on Epic Music Space.\n\nClick to open it: ${url}\n\nLink works once and expires in 15 minutes.`
+    : `Sign in to Epic Music Space: ${url}\n\nLink works once and expires in 15 minutes.`;
 
   const { error } = await resend.emails.send({
     from: FROM,
     to: email,
-    subject: "Your Epic Music Space sign-in link",
+    subject,
     html,
-    text: `Sign in to Epic Music Space: ${url}\n\nLink works once and expires in 15 minutes.`,
+    text,
   });
   if (error) {
     console.error("[email] Magic-link send failed", error);

@@ -418,7 +418,10 @@ export default function QuickUploadFlow({
       }
       buzz(80);
       localStorage.removeItem(DRAFT_KEY);
-      router.push(`/studio?published=${data.id}`);
+      // Land on the dedicated celebration page rather than the studio
+      // hub — first publishes deserve a moment that feels like
+      // *finishing the journey,* not a redirect.
+      router.push(`/studio/published/${data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Publish failed. Try again.");
       setPublishing(false);
@@ -652,11 +655,34 @@ export default function QuickUploadFlow({
                 setError(null);
                 setStep(3);
               }}
-              className="flex-1 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 py-3 text-base font-bold text-white transition hover:opacity-90"
+              className="flex-1 rounded-xl border border-white/15 bg-white/5 py-3 text-base font-bold text-white/85 transition hover:bg-white/10"
             >
-              Next →
+              Edit pricing →
             </button>
           </div>
+          {/* Quick-publish: skip step 3 and ship with sensible defaults
+              ($9.99 license, 100 licenses, 10% rev share). Most first-time
+              publishers don't have an opinion on these — and "I want to
+              ship now and tweak later" beats "I want to learn the pricing
+              model before I publish." Defaults are visible underneath so
+              they know what they're agreeing to. */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!title.trim()) { setError("Add a track title."); return; }
+              if (!artist.trim()) { setError("Add your artist name."); return; }
+              setError(null);
+              void publish();
+            }}
+            disabled={publishing}
+            className="mt-3 w-full rounded-xl bg-gradient-to-r from-amber-400 to-fuchsia-500 py-3 text-base font-extrabold text-black shadow-lg shadow-fuchsia-500/20 transition hover:opacity-95 disabled:opacity-60"
+          >
+            {publishing ? "Publishing…" : "🚀 Quick publish — use sensible defaults"}
+          </button>
+          <p className="mt-2 text-center text-[11px] text-white/45">
+            Defaults: $9.99 per license · 100 licenses · 10% revenue share with holders.
+            You can change these later in your dashboard.
+          </p>
         </section>
       )}
 

@@ -2028,3 +2028,28 @@ model NativeTelemetryEvent {
   @@index([createdAt])
   @@index([userId])
 }
+
+// Guest shareable links — anonymous WAV uploads from /studio/try.
+// Visitor makes a beat, hits "Get a shareable link," we upload the
+// audio, mint a public token, and they get /share/[token] to text
+// to a friend. The friend lands on a public page with the audio +
+// a "Try EMS Studio yourself" CTA — that's the viral loop.
+//
+// 7-day TTL so the public bucket doesn't grow unbounded; a daily
+// cron purges expired rows + their underlying audio files.
+model GuestShare {
+  id         String   @id @default(cuid())
+  // Public, URL-safe token. Generated client/server-side as a 16-byte
+  // base64url string. Indexed unique because /share/[token] hits this.
+  token      String   @unique
+  audioUrl   String
+  fileName   String
+  ipHash     String?  // for spam/rate-limit, not for tracking
+  listenCount Int     @default(0)
+  durationSec Int?
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([expiresAt])
+  @@index([createdAt])
+}

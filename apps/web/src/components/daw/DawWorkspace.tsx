@@ -10,7 +10,14 @@ import {
   type TrackId,
   type TransportState,
 } from "./dawEngine";
-import { demoPattern, emptyPattern as emptyBeatPattern, renderPatternToBuffer } from "./beatMachine";
+import {
+  demoPattern,
+  emptyPattern as emptyBeatPattern,
+  renderPatternToBuffer,
+  trapDemoPattern,
+  type BeatPattern,
+  type DrumKitId,
+} from "./beatMachine";
 import BeatMachineGrid from "./BeatMachineGrid";
 import FxPanel from "./FxPanel";
 import GearRack, { type GearApplyHandlers } from "./GearRack";
@@ -260,6 +267,32 @@ function fmtTime(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+/** "Surprise me" generator. Picks a random kit + a finished-sounding
+ *  pattern + a random BPM in the trap/drill range. Goal: a visitor who
+ *  doesn't know what they want hears a pro-quality beat in one click,
+ *  and the bar for "I made this" drops from "create from nothing" to
+ *  "tweak something already good." */
+const SURPRISE_KITS: DrumKitId[] = ["trap", "drill", "boomBap", "lofi", "hyperpop"];
+function surpriseSession(): { kit: DrumKitId; pattern: BeatPattern; bpm: number; label: string } {
+  const kit = SURPRISE_KITS[Math.floor(Math.random() * SURPRISE_KITS.length)] ?? "trap";
+  // Most kits read best with the trap-style pattern (kick on 1/the-and-of-2/3.5,
+  // backbeat clap, fast hats). Lo-fi/boomBap use the four-on-the-floor demo.
+  const pattern = (kit === "lofi" || kit === "boomBap") ? demoPattern() : trapDemoPattern();
+  const bpmRange: Record<DrumKitId, [number, number]> = {
+    trap: [88, 102],
+    drill: [136, 148],
+    boomBap: [82, 96],
+    lofi: [70, 86],
+    hyperpop: [148, 168],
+    afro: [98, 110],
+    acoustic: [88, 102],
+  };
+  const [lo, hi] = bpmRange[kit];
+  const bpm = Math.round(lo + Math.random() * (hi - lo));
+  const label = `${kit.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase())} · ${bpm} BPM`;
+  return { kit, pattern, bpm, label };
 }
 
 function safeLocalStorageGet(key: string): string | null {
@@ -1140,6 +1173,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         try { window.localStorage.setItem(GUEST_RESUME_FLAG, "1"); } catch { /* private mode */ }
         setStats((s) => ({ ...s, publishes: s.publishes + 1 }));
         pushAuditEvent("publish", "Stashed mix as guest — bouncing to single-field email capture");
+        // Funnel event: WAV stashed, about to redirect to email capture.
+        try {
+          const { postFunnelEvent } = await import("@/lib/funnelClient");
+          const { FUNNEL_EVENTS } = await import("@/lib/funnelEvents");
+          void postFunnelEvent({
+            event: FUNNEL_EVENTS.guestPublishStash,
+            source: "studio_try_daw",
+            properties: { sizeBytes: wav.size },
+          });
+        } catch { /* non-blocking */ }
         // Send them to the single-field magic-link page rather than the
         // full /auth/signup gauntlet. /studio/try/save asks for one email,
         // sends a passwordless link, and the visitor lands back at
@@ -1458,6 +1501,33 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           data-tour="play-button"
         >
           {transport?.isPlaying ? "■" : "▶"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (!ensureInit()) return;
+            const engine = engineRef.current!;
+            const { kit, pattern, bpm, label } = surpriseSession();
+            engine.setBeatKit(kit);
+            engine.setBeatPattern(pattern);
+            engine.setBpm(bpm);
+            engine.setBeatEnabled(true);
+            setNotice({ tone: "info", message: `✨ Loaded ${label} — press play.` });
+            pushAuditEvent("beat", `Surprise Me · ${label}`);
+            // Auto-play if they're not already going. Honors reduced-motion
+            // by skipping the auto-start so screen-reader users aren't
+            // surprised by sudden audio.
+            const prefersMotion = typeof window !== "undefined"
+              && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            if (prefersMotion && !transport?.isPlaying) {
+              void engine.play();
+            }
+          }}
+          className="flex h-11 items-center gap-1.5 rounded-full border border-amber-400/40 bg-gradient-to-r from-amber-400/15 via-fuchsia-500/15 to-cyan-400/10 px-3 text-xs font-extrabold uppercase tracking-widest text-amber-200 transition hover:from-amber-400/25 hover:via-fuchsia-500/25"
+          title="Load a randomized finished session"
+        >
+          ✨ Surprise me
         </button>
 
         <button

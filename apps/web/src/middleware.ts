@@ -44,6 +44,7 @@ const PUBLIC_PATHS = [
   "/rooms",                 // public listening rooms (ticketed entry on the page)
   "/forum",                 // public community forum
   "/services",              // public services marketplace
+  "/share",                 // public guest-share listen pages
 ];
 
 // Public PAGES (exact match only, not prefixes — keeps marketing/landing open

@@ -20,6 +20,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { scheduleDrumHit, type DrumKind, type DrumKitId } from "@/components/daw/beatMachine";
 import { stashGuestMix, GUEST_RESUME_FLAG } from "@/lib/guestStash";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 import { useRouter } from "next/navigation";
 
 type Pad = {
@@ -59,7 +61,9 @@ export default function PhoneStudio() {
   const recordedHitsRef = useRef<RecordedHit[]>([]);
   const recordTimeoutRef = useRef<number | null>(null);
   const playbackTimeoutsRef = useRef<number[]>([]);
-  const [phase, setPhase] = useState<"idle" | "saving">("idle");
+  const [phase, setPhase] = useState<"idle" | "saving" | "sharing">("idle");
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   function getCtx(): AudioContext {
     if (ctxRef.current && ctxRef.current.state !== "closed") return ctxRef.current;
@@ -140,41 +144,97 @@ export default function PhoneStudio() {
     setPlaying(false);
   }
 
-  /** Render the recorded hits to a WAV blob via OfflineAudioContext, stash
-   *  it, and bounce to the single-field email capture page. */
+  /** Render the recorded hits to a WAV blob via OfflineAudioContext.
+   *  Used by both the publish-via-signup path and the get-a-share-link
+   *  path so the audio bytes match exactly. */
+  async function renderRecordingToWav(): Promise<Blob> {
+    const lastHit = recordedHitsRef.current.reduce(
+      (max, h) => Math.max(max, h.offsetSec),
+      0,
+    );
+    const tailSec = 1.2;
+    const totalSec = Math.max(2, lastHit + tailSec);
+    const sampleRate = 44_100;
+    const offline = new OfflineAudioContext(2, Math.ceil(totalSec * sampleRate), sampleRate);
+    const masterGain = offline.createGain();
+    masterGain.gain.value = 0.85;
+    masterGain.connect(offline.destination);
+
+    for (const hit of recordedHitsRef.current) {
+      scheduleDrumHit(offline, masterGain, hit.kind, {
+        when: hit.offsetSec,
+        kit: DEFAULT_KIT,
+      });
+    }
+    const rendered = await offline.startRendering();
+    return audioBufferToWavBlob(rendered);
+  }
+
   async function publishGuest() {
     if (recordedHitsRef.current.length === 0) return;
     setPhase("saving");
     try {
-      const lastHit = recordedHitsRef.current.reduce(
-        (max, h) => Math.max(max, h.offsetSec),
-        0,
-      );
-      const tailSec = 1.2;
-      const totalSec = Math.max(2, lastHit + tailSec);
-      const sampleRate = 44_100;
-      const offline = new OfflineAudioContext(2, Math.ceil(totalSec * sampleRate), sampleRate);
-      const masterGain = offline.createGain();
-      masterGain.gain.value = 0.85;
-      masterGain.connect(offline.destination);
-
-      for (const hit of recordedHitsRef.current) {
-        scheduleDrumHit(offline, masterGain, hit.kind, {
-          when: hit.offsetSec,
-          kit: DEFAULT_KIT,
-        });
-      }
-
-      const rendered = await offline.startRendering();
-      const wav = audioBufferToWavBlob(rendered);
+      const wav = await renderRecordingToWav();
       const fileName = `phone-studio-${Date.now()}.wav`;
       await stashGuestMix(wav, fileName);
       try { window.localStorage.setItem(GUEST_RESUME_FLAG, "1"); } catch { /* private */ }
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.guestPublishStash,
+        source: "studio_try_phone",
+        properties: { sizeBytes: wav.size, hits: recordedHitsRef.current.length },
+      });
       router.push("/studio/try/save");
     } catch (err) {
       console.error("[PhoneStudio] publish failed", err);
       setPhase("idle");
       alert(err instanceof Error ? err.message : "Couldn't save your beat. Try again.");
+    }
+  }
+
+  async function shareGuest() {
+    if (recordedHitsRef.current.length === 0) return;
+    setPhase("sharing");
+    setShareUrl(null);
+    try {
+      const wav = await renderRecordingToWav();
+      const form = new FormData();
+      form.append("audio", wav, `phone-studio-${Date.now()}.wav`);
+      const res = await fetch("/api/guest-share", { method: "POST", body: form });
+      const data = (await res.json().catch(() => ({}))) as { shareUrl?: string; error?: string };
+      if (!res.ok || !data.shareUrl) {
+        alert(data.error ?? "Couldn't make a share link. Try again.");
+        setPhase("idle");
+        return;
+      }
+      setShareUrl(data.shareUrl);
+      setPhase("idle");
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.guestShareLinkCreated,
+        source: "studio_try_phone",
+        properties: { sizeBytes: wav.size, hits: recordedHitsRef.current.length },
+      });
+      // Try the native share sheet first — it's the smoothest way to
+      // get the link into a friend's text on a phone. Falls back to
+      // copy-to-clipboard with a "Copied!" pill.
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: "🎧 Made on EMS Studio",
+            text: "Listen to the beat I just made:",
+            url: data.shareUrl,
+          });
+          return;
+        } catch { /* user cancelled — fall through to copy */ }
+      }
+      try {
+        await navigator.clipboard.writeText(data.shareUrl);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2200);
+      } catch { /* clipboard blocked — the URL is rendered below */ }
+    } catch (err) {
+      console.error("[PhoneStudio] share failed", err);
+      setPhase("idle");
+      alert(err instanceof Error ? err.message : "Couldn't make a share link.");
     }
   }
 
@@ -237,7 +297,7 @@ export default function PhoneStudio() {
         })}
       </div>
 
-      {/* Playback + Save */}
+      {/* Playback + Save + Share */}
       <div className="mt-4 grid grid-cols-2 gap-3">
         <button
           type="button"
@@ -250,17 +310,48 @@ export default function PhoneStudio() {
         <button
           type="button"
           onClick={publishGuest}
-          disabled={!hasRecording || phase === "saving"}
+          disabled={!hasRecording || phase !== "idle"}
           className="rounded-xl bg-gradient-to-r from-amber-400 to-fuchsia-500 py-3 text-sm font-extrabold text-black disabled:opacity-40"
         >
-          {phase === "saving" ? "Saving…" : "Save my beat →"}
+          {phase === "saving" ? "Saving…" : "💾 Save my beat →"}
         </button>
       </div>
+      <button
+        type="button"
+        onClick={shareGuest}
+        disabled={!hasRecording || phase !== "idle"}
+        className="mt-2 w-full rounded-xl border border-cyan-400/40 bg-cyan-400/10 py-3 text-sm font-bold text-cyan-200 transition disabled:opacity-40"
+      >
+        {phase === "sharing" ? "Making link…" : "🔗 Get a shareable link (no signup)"}
+      </button>
+      {shareUrl && (
+        <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/5 p-3 text-xs">
+          <p className="text-white/70">
+            Your link <span className="text-white/40">(7-day expiry)</span>:
+          </p>
+          <div className="mt-1.5 flex items-center gap-2">
+            <code className="block flex-1 truncate rounded bg-black/40 px-2 py-1 text-cyan-200">{shareUrl}</code>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(shareUrl);
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 2200);
+                } catch { /* */ }
+              }}
+              className="rounded bg-cyan-500 px-2 py-1 text-[11px] font-bold text-black"
+            >
+              {copied ? "✓" : "Copy"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <p className="mt-4 text-center text-[11px] text-white/45">
         Want the full studio?{" "}
         <Link
-          href="/studio/board?force-desktop=1"
+          href="/studio/try?force-desktop=1"
           className="font-semibold text-cyan-300 underline decoration-dotted underline-offset-4"
         >
           Open the desktop version

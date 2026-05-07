@@ -15,6 +15,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readGuestMix, clearGuestMix, GUEST_RESUME_FLAG } from "@/lib/guestStash";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 type Phase = "checking" | "no-stash" | "uploading" | "redirecting" | "error";
 
@@ -68,6 +70,11 @@ export default function GuestResumePublish() {
         }
         const audioUrl = signJson.publicUrl ?? "";
         await clearGuestMix().catch(() => undefined);
+        void postFunnelEvent({
+          event: FUNNEL_EVENTS.guestPublishCompleted,
+          source: "guest_resume_publish",
+          properties: { sizeBytes: entry.blob.size },
+        });
         setPhase("redirecting");
         router.replace(`/studio/new?audioUrl=${encodeURIComponent(audioUrl)}&from=guest-resume-done`);
       } catch (err) {

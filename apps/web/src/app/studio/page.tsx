@@ -101,21 +101,21 @@ function PublicStudioLanding() {
               title: "Beat Machine",
               body: "8 lanes, 7 kits (Trap, Drill, Afro, Hyperpop, Boom Bap, Lo-fi, Acoustic). Bake patterns into stems.",
               cta: "Open the board",
-              href: "/studio/board",
+              href: "/studio/try?force-desktop=1",
             },
             {
               icon: "🎙️",
               title: "Multitrack + Mixer",
               body: "Per-track EQ, compression, reverb, delay, sidechain. Master chain with limiter + LUFS.",
               cta: "Open the mixer",
-              href: "/studio/board",
+              href: "/studio/try?force-desktop=1",
             },
             {
               icon: "⚡",
               title: "90-second publish",
               body: "Audio → name → price. Three taps to ship a track to the EMS marketplace with licensing built in.",
               cta: "Try Quick Upload",
-              href: "/studio/new",
+              href: "/studio/try",
             },
           ].map((f) => (
             <Link

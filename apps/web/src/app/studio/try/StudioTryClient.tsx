@@ -12,9 +12,11 @@
  * SEO-critical.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 import GuestStudioBanner from "./GuestStudioBanner";
 import FirstBeatCoach from "./FirstBeatCoach";
 
@@ -32,7 +34,22 @@ const PHONE_BREAKPOINT_PX = 768;
 export default function StudioTryClient({ isAuthed }: { isAuthed: boolean }) {
   const params = useSearchParams();
   const forceDesktop = params.get("force-desktop") === "1";
+  const ref = params.get("ref") ?? "direct";
   const [mode, setMode] = useState<"loading" | "phone" | "desktop">("loading");
+  const eventFiredRef = useRef(false);
+
+  // One-shot funnel ping: the visitor reached the guest studio. Counted
+  // once per page mount so a resize between phone/desktop modes doesn't
+  // double-count.
+  useEffect(() => {
+    if (eventFiredRef.current || isAuthed || mode === "loading") return;
+    eventFiredRef.current = true;
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.guestStudioEntered,
+      source: "studio_try",
+      properties: { mode, ref },
+    });
+  }, [isAuthed, mode, ref]);
 
   useEffect(() => {
     if (forceDesktop) { setMode("desktop"); return; }
