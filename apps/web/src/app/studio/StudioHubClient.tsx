@@ -82,21 +82,22 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
   ];
 
   const getButtonClasses = (variant?: string) => {
-    const base = "rounded-xl px-5 py-4 text-sm font-semibold transition";
+    const base =
+      "flex min-h-[58px] items-center gap-3 rounded-xl px-5 py-4 text-base font-semibold transition active:scale-[0.99]";
     switch (variant) {
       case "amber":
         return `${base} border border-amber-400/30 bg-amber-400/10 text-amber-200 hover:bg-amber-400/15`;
       case "brand":
-        return `${base} bg-brand-500 text-white hover:bg-brand-600`;
+        return `${base} bg-gradient-to-r from-brand-500 to-accent-500 text-white shadow-lg shadow-brand-500/20 hover:opacity-95`;
       case "accent":
         return `${base} border border-accent-500/40 bg-gradient-to-br from-accent-500/15 via-brand-500/10 to-transparent text-accent-100 hover:from-accent-500/25 hover:to-brand-500/20`;
       default:
-        return `${base} border border-white/15 bg-white/5 text-white/80 hover:bg-white/10`;
+        return `${base} border border-white/15 bg-white/5 text-white/85 hover:bg-white/10`;
     }
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:py-12">
+    <div className="mx-auto max-w-6xl px-4 py-10 pb-[calc(env(safe-area-inset-bottom)+3rem)] sm:py-12">
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(125deg,rgba(13,15,28,0.98),rgba(9,17,24,0.94)_46%,rgba(30,15,35,0.88))] p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-cyan-400/20 blur-[120px]" />
         <div className="pointer-events-none absolute -bottom-32 -left-20 h-72 w-72 rounded-full bg-brand-500/20 blur-[140px]" />
@@ -126,8 +127,8 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
             onClick={action.onClick}
             className={getButtonClasses(action.variant)}
           >
-            <span className="mr-2">{action.icon}</span>
-            {action.label}
+            <span className="text-xl leading-none" aria-hidden>{action.icon}</span>
+            <span>{action.label}</span>
           </Link>
         ))}
       </div>

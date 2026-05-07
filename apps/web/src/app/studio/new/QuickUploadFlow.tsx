@@ -416,7 +416,9 @@ export default function QuickUploadFlow({
   const projectedCreatorGross = projectedEarnings * creatorTakeRate;
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-8 sm:py-10">
+    // iPhone home indicator eats ~34px at the bottom; the calc() class
+    // keeps the Publish button visible above the indicator on Step 3.
+    <div className="mx-auto max-w-xl px-4 pt-8 pb-[calc(env(safe-area-inset-bottom)+2rem)] sm:py-10">
       {/* Header — track count + step indicator + expert escape hatch */}
       <div className="mb-6 flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/45">

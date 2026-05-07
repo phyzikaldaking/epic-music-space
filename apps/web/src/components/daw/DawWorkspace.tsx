@@ -809,7 +809,7 @@ export default function DawWorkspace() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8">
       {showGuide && (
         <QuickStartGuide
           onClose={() => {
