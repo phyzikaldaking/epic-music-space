@@ -52,6 +52,8 @@ type RecordReviewState = {
   deleted: boolean;
 };
 
+type LoudnessTarget = -16 | -14 | -10;
+
 type BrowserHealth = {
   webAudio: boolean;
   mediaRecorder: boolean;
@@ -207,6 +209,8 @@ const METER_WIDTH_CLASSES = [
 ];
 
 const STUDIO_COMMENTS_KEY = "ems-studio-comments-v1";
+const STUDIO_COMPACT_STRIPS_KEY = "ems-studio-compact-strips-v1";
+const STUDIO_RECORD_WIZARD_KEY = "ems-studio-record-wizard-v1";
 
 function trackTextClass(color: string): string {
   switch (color.toLowerCase()) {
@@ -326,6 +330,9 @@ export default function DawWorkspace() {
   const [auditEvents, setAuditEvents] = useState<StudioAuditEvent[]>([]);
   const [comments, setComments] = useState<StudioComment[]>([]);
   const [recordReview, setRecordReview] = useState<RecordReviewState | null>(null);
+  const [compactStrips, setCompactStrips] = useState(false);
+  const [showRecordWizard, setShowRecordWizard] = useState(true);
+  const [loudnessTarget, setLoudnessTarget] = useState<LoudnessTarget>(-14);
   const sessionStartedAt = useRef<number>(Date.now());
   const wasRecordingRef = useRef(false);
   const clientPresenceId = useMemo(() => {
@@ -481,6 +488,21 @@ export default function DawWorkspace() {
     if (typeof window === "undefined") return;
     localStorage.setItem(STUDIO_COMMENTS_KEY, JSON.stringify(comments.slice(0, 80)));
   }, [comments]);
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem(STUDIO_COMPACT_STRIPS_KEY) : null;
+    if (saved === "1") setCompactStrips(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(STUDIO_COMPACT_STRIPS_KEY, compactStrips ? "1" : "0");
+  }, [compactStrips]);
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem(STUDIO_RECORD_WIZARD_KEY) : null;
+    if (saved === "dismissed") setShowRecordWizard(false);
+  }, []);
 
   const ensureInit = useCallback((): boolean => {
     const engine = engineRef.current;
@@ -1129,7 +1151,16 @@ export default function DawWorkspace() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8">
+    <div className="relative mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+      >
+        <div className="absolute -top-28 left-8 h-64 w-64 rounded-full bg-cyan-500/12 blur-3xl" />
+        <div className="absolute top-24 -right-16 h-72 w-72 rounded-full bg-fuchsia-500/10 blur-3xl" />
+        <div className="absolute bottom-20 left-1/4 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl" />
+      </div>
+
       {showGuide && (
         <QuickStartGuide
           onClose={() => {
@@ -1286,6 +1317,13 @@ export default function DawWorkspace() {
 
       {/* ── Transport ──────────────────────────────────────────────────────── */}
       <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-r from-[#0c0c14] via-[#0a0a12] to-[#0c0c14] p-4 shadow-inner">
+        <div className="mb-1 flex w-full items-center justify-between text-[10px] font-black uppercase tracking-[0.24em] text-white/45">
+          <span>Control Room</span>
+          <span className="text-cyan-100/65">
+            {transport?.isRecording ? "REC LIVE" : transport?.isPlaying ? "PLAYBACK" : "STANDBY"}
+          </span>
+        </div>
+
         <button
           type="button"
           onClick={() => {
@@ -1559,6 +1597,27 @@ export default function DawWorkspace() {
             <p className="mt-1 text-sm font-semibold text-white">Press <span className="font-mono">?</span> to view all</p>
           </button>
         </div>
+      )}
+
+      {!showSplash && (
+        <StudioSoundCoach
+          transport={transport ?? null}
+          onPreset={(preset) => {
+            const engine = engineRef.current;
+            if (!engine) return;
+            if (preset === "record") {
+              engine.setLatencyMode("recording");
+              engine.setVocalCaptureProfile("punchy");
+              engine.setMetronome(true);
+              setNotice({ tone: "success", message: "Record preset loaded: low-latency + punchy + metronome on." });
+              return;
+            }
+            engine.setLatencyMode("mixing");
+            engine.setVocalCaptureProfile("smooth");
+            engine.setMetronome(false);
+            setNotice({ tone: "success", message: "Mix preset loaded: stable playback + smooth vocal profile." });
+          }}
+        />
       )}
 
       {/* ── Track strips ───────────────────────────────────────────────────── */}
@@ -1967,6 +2026,59 @@ function StudioExecutionBar({
         <button type="button" onClick={() => onTemplate("master")} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10">Master template</button>
         <button type="button" onClick={onForum} className="ml-auto rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-white hover:bg-brand-600">Open forum timeline</button>
       </div>
+    </section>
+  );
+}
+
+function StudioSoundCoach({
+  transport,
+  onPreset,
+}: {
+  transport: TransportState | null;
+  onPreset: (preset: "record" | "mix") => void;
+}) {
+  const qualityTips = [
+    "Record in Record latency mode, then switch to Mix when editing.",
+    "Keep metronome on for clean timing, then disable during final print.",
+    "Use Punch-in for fixing one line instead of redoing full takes.",
+  ];
+
+  return (
+    <section className="mb-6 rounded-2xl border border-white/12 bg-[linear-gradient(145deg,rgba(5,8,14,0.82),rgba(9,16,24,0.74))] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100/75">Sound Coach</p>
+          <p className="mt-1 text-sm font-semibold text-white">One-click setup for cleaner recordings and easier sessions</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onPreset("record")}
+            className="rounded-lg border border-cyan-300/30 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-cyan-100 transition hover:bg-cyan-300/10"
+          >
+            Record preset
+          </button>
+          <button
+            type="button"
+            onClick={() => onPreset("mix")}
+            className="rounded-lg border border-emerald-300/30 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-emerald-100 transition hover:bg-emerald-300/10"
+          >
+            Mix preset
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
+        {qualityTips.map((tip) => (
+          <p key={tip} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/75">
+            {tip}
+          </p>
+        ))}
+      </div>
+
+      <p className="mt-3 text-[11px] text-white/55">
+        Current profile: {transport?.vocalCaptureProfile ?? "-"} · latency: {transport?.latencyMode ?? "-"} · punch-in {transport?.punchInEnabled ? "on" : "off"}
+      </p>
     </section>
   );
 }
