@@ -600,6 +600,27 @@ export default async function DashboardPage() {
           </div>
         )}
 
+        {/* ── Pro profile prompt (engineers / producers) ─── */}
+        {(user.role === "ENGINEER" || user.role === "PRODUCER") && (
+          <div className="mb-8 flex flex-col gap-4 rounded-2xl border border-amber-400/30 bg-gradient-to-r from-amber-400/8 to-fuchsia-500/6 px-5 py-5 sm:flex-row sm:items-center">
+            <div className="flex-1">
+              <p className="font-bold text-amber-200">
+                Build your cinematic pro profile
+              </p>
+              <p className="text-sm text-white/65 mt-0.5">
+                Show off your Grammy nominations, RIAA certifications, gear, and the records
+                you&apos;ve worked on. This is what artists see before they hire you.
+              </p>
+            </div>
+            <Link
+              href="/pro/edit"
+              className="flex-shrink-0 rounded-xl bg-gradient-to-r from-amber-400 to-fuchsia-500 px-5 py-2.5 text-sm font-extrabold text-black transition hover:opacity-90"
+            >
+              Edit pro profile →
+            </Link>
+          </div>
+        )}
+
         {/* ── Stripe Connect payout setup prompt ──────── */}
         {isArtist && !connectStatus.onboardingComplete && (
           <div className={`mb-8 flex flex-col gap-4 rounded-lg border px-5 py-5 sm:flex-row sm:items-center ${

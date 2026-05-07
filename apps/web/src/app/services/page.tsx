@@ -54,7 +54,14 @@ export default async function ServicesPage({
     orderBy: [{ totalSold: "desc" }, { createdAt: "desc" }],
     take: 60,
     include: {
-      provider: { select: { id: true, name: true, image: true, username: true, role: true } },
+      provider: {
+        select: {
+          id: true, name: true, image: true, username: true, role: true,
+          isVerified: true,
+          grammyWins: true, grammyNominations: true,
+          riaaPlatinum: true, riaaGold: true, billboardNumberOne: true,
+        },
+      },
     },
   });
 
@@ -133,12 +140,42 @@ export default async function ServicesPage({
                       </div>
                     )}
                   </div>
-                  <p className="truncate text-xs text-white/55">
-                    {s.provider.name ?? s.provider.username ?? "Pro"}
-                    <span className="ml-1.5 rounded bg-white/8 px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-white/45">
-                      {s.provider.role.toLowerCase()}
-                    </span>
-                  </p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs text-white/65">
+                      {s.provider.name ?? s.provider.username ?? "Pro"}
+                      {s.provider.isVerified && <span className="ml-1 text-sky-300" title="Verified">✓</span>}
+                    </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                      <span className="rounded bg-white/8 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/45">
+                        {s.provider.role.toLowerCase()}
+                      </span>
+                      {s.provider.grammyWins > 0 && (
+                        <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-200" title={`${s.provider.grammyWins}× Grammy Win`}>
+                          🏆 {s.provider.grammyWins}
+                        </span>
+                      )}
+                      {s.provider.grammyWins === 0 && s.provider.grammyNominations > 0 && (
+                        <span className="rounded bg-amber-300/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-100" title={`${s.provider.grammyNominations}× Grammy Nominated`}>
+                          🎼 {s.provider.grammyNominations}
+                        </span>
+                      )}
+                      {s.provider.riaaPlatinum > 0 && (
+                        <span className="rounded bg-slate-200/15 px-1.5 py-0.5 text-[9px] font-bold text-slate-100" title={`${s.provider.riaaPlatinum}× Platinum`}>
+                          💿 {s.provider.riaaPlatinum}
+                        </span>
+                      )}
+                      {s.provider.riaaPlatinum === 0 && s.provider.riaaGold > 0 && (
+                        <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-[9px] font-bold text-yellow-100" title={`${s.provider.riaaGold}× Gold`}>
+                          🥇 {s.provider.riaaGold}
+                        </span>
+                      )}
+                      {s.provider.billboardNumberOne > 0 && (
+                        <span className="rounded bg-rose-400/15 px-1.5 py-0.5 text-[9px] font-bold text-rose-100" title={`${s.provider.billboardNumberOne}× Billboard #1`}>
+                          📈 {s.provider.billboardNumberOne}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <h3 className="line-clamp-2 text-sm font-bold">{s.title}</h3>
                 <div className="mt-auto flex items-center justify-between text-xs">

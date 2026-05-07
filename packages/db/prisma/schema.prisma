@@ -139,6 +139,42 @@ model User {
   verzuzReactions    VerzuzReaction[]
   verzuzMessages     VerzuzMessage[]
   pushTokens         PushToken[]
+
+  // ── Pro profile (engineers / producers) ────────────────────
+  // Cinematic profile fields surfaced on /pro/[username]. Bio is short
+  // — `headline` is the one-line tagline ("Grammy-nominated mix engineer
+  // for Beyoncé, SZA"), `bioLong` is the full story, `coverImage` is the
+  // wide cinematic banner behind the avatar.
+  headline      String?  @db.VarChar(160)
+  bioLong       String?  @db.Text
+  coverImage    String?
+  location      String?  @db.VarChar(120)
+  websiteUrl    String?
+  instagramUrl  String?
+  twitterUrl    String?
+  youtubeUrl    String?
+  tiktokUrl     String?
+  spotifyUrl    String?
+  // Industry accolades counters (signed off by admin via UserBadge — these
+  // are the public marquee numbers: "5x Grammy nominated, 3 wins, 12 Platinum").
+  grammyNominations  Int @default(0)
+  grammyWins         Int @default(0)
+  riaaPlatinum       Int @default(0)
+  riaaGold           Int @default(0)
+  billboardNumberOne Int @default(0)
+  // Free-form list of credits as JSON: [{ artist, title, role, year, coverUrl, spotifyUrl }]
+  // Validated server-side in /api/user/profile. Capped at 50 entries.
+  engineerCredits  Json?
+  // Free-form list of accolades as JSON: [{ title, year, org, kind: "grammy"|"riaa-platinum"|"riaa-gold"|"billboard"|"other" }]
+  engineerAccolades Json?
+  // Studio / gear specs as JSON: { console, monitors, daws: string[], plugins: string[], roomTreatment }
+  engineerGear Json?
+  // Years of experience — surfaced in the badge wall.
+  yearsExperience Int?
+  // When true, the profile shows the cinematic hero treatment. Defaults
+  // off for legacy users; engineers/producers can flip it on once they've
+  // populated headline + cover + at least 3 credits.
+  proProfilePublished Boolean @default(false)
 }
 
 enum Role {
