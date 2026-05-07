@@ -11,6 +11,11 @@ import { buildContentSecurityPolicy } from "@/lib/csp";
  */
 
 // Routes anonymous users CAN reach. Everything else requires sign-in.
+// IMPORTANT: keep this in sync with the actual public surface — anything
+// that exists to drive new-user acquisition (marketing, public profiles,
+// public track pages, the studio landing) MUST live here, otherwise the
+// middleware silently 307s anonymous traffic to /auth/signin before the
+// page ever renders. We hit that bug in production once already.
 const PUBLIC_PATHS = [
   "/auth",                  // signin, signup, verify-email, reset-password, error
   "/legal",
@@ -26,12 +31,25 @@ const PUBLIC_PATHS = [
   "/status",
   "/sitemap.xml",
   "/robots.txt",
+  // Marketing + acquisition surfaces. These pages render their own
+  // public-vs-authed split server-side, so middleware must let them
+  // through unauthed.
+  "/studio",                // /studio renders PublicStudioLanding for anon
+  "/track",                 // public track pages drive license discovery
+  "/pro",                   // public engineer/producer profiles
+  "/u",                     // public user profiles (vanity URLs)
+  "/marketplace",           // browse-before-buy
+  "/search",                // public search
+  "/versus",                // public live battles
+  "/rooms",                 // public listening rooms (ticketed entry on the page)
+  "/forum",                 // public community forum
+  "/services",              // public services marketplace
 ];
 
 // Public PAGES (exact match only, not prefixes — keeps marketing/landing open
 // without exposing /search, /marketplace, etc.)
 const PUBLIC_EXACT = new Set<string>([
-  "/welcome",
+  "/",                      // homepage / landing
 ]);
 
 function isPublicPath(pathname: string): boolean {
