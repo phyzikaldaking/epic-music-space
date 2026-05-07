@@ -664,6 +664,35 @@ export default function DawWorkspace() {
     setAuditEvents((prev) => [entry, ...prev].slice(0, 24));
   }, []);
 
+  const applySoundPreset = useCallback((preset: "record" | "mix") => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    if (preset === "record") {
+      engine.setLatencyMode("recording");
+      engine.setVocalCaptureProfile("punchy");
+      engine.setMetronome(true);
+      setNotice({ tone: "success", message: "Record preset loaded: low-latency + punchy + metronome on." });
+      return;
+    }
+    engine.setLatencyMode("mixing");
+    engine.setVocalCaptureProfile("smooth");
+    engine.setMetronome(false);
+    setNotice({ tone: "success", message: "Mix preset loaded: stable playback + smooth vocal profile." });
+  }, []);
+
+  const nudgeMasterToTarget = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine || !transport) return;
+    const lufsError = (transport.masterLufs ?? -60) - loudnessTarget;
+    const dbNudge = Math.max(-3, Math.min(3, lufsError * 0.5));
+    const nextDb = Math.max(-24, Math.min(6, transport.masterDb - dbNudge));
+    engine.setMasterDb(nextDb);
+    setNotice({
+      tone: "info",
+      message: `Master nudged to ${nextDb.toFixed(1)} dB toward ${loudnessTarget} LUFS target.`,
+    });
+  }, [loudnessTarget, transport]);
+
   const submitComment = useCallback(
     async (rawMessage: string) => {
       const message = rawMessage.trim();
@@ -1572,7 +1601,7 @@ export default function DawWorkspace() {
       </p>
 
       {!showSplash && (
-        <div className="mb-5 grid gap-2 sm:grid-cols-4">
+        <div className="mb-5 grid gap-2 sm:grid-cols-5">
           <StatusPill
             label="Armed Tracks"
             value={`${tracks.filter((t) => t.armed).length}`}
@@ -1596,27 +1625,48 @@ export default function DawWorkspace() {
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">Shortcuts</p>
             <p className="mt-1 text-sm font-semibold text-white">Press <span className="font-mono">?</span> to view all</p>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setCompactStrips((value) => !value)}
+            className="rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-left transition hover:bg-white/[0.07]"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">Channel strips</p>
+            <p className="mt-1 text-sm font-semibold text-white">{compactStrips ? "Compact mode" : "Expanded mode"}</p>
+          </button>
         </div>
       )}
 
       {!showSplash && (
         <StudioSoundCoach
           transport={transport ?? null}
-          onPreset={(preset) => {
-            const engine = engineRef.current;
-            if (!engine) return;
-            if (preset === "record") {
-              engine.setLatencyMode("recording");
-              engine.setVocalCaptureProfile("punchy");
-              engine.setMetronome(true);
-              setNotice({ tone: "success", message: "Record preset loaded: low-latency + punchy + metronome on." });
-              return;
-            }
-            engine.setLatencyMode("mixing");
-            engine.setVocalCaptureProfile("smooth");
-            engine.setMetronome(false);
-            setNotice({ tone: "success", message: "Mix preset loaded: stable playback + smooth vocal profile." });
+          onPreset={applySoundPreset}
+        />
+      )}
+
+      {!showSplash && showRecordWizard && (
+        <RecordReadinessWizard
+          browserHealth={browserHealth}
+          transport={transport ?? null}
+          armedTracks={tracks.filter((track) => track.armed).length}
+          onLoadRecordPreset={() => applySoundPreset("record")}
+          onStartRecord={() => {
+            void toggleRecording();
           }}
+          onDismiss={() => {
+            setShowRecordWizard(false);
+            if (typeof window !== "undefined") localStorage.setItem(STUDIO_RECORD_WIZARD_KEY, "dismissed");
+          }}
+        />
+      )}
+
+      {!showSplash && (
+        <MasterLoudnessAssistant
+          masterLufs={transport?.masterLufs ?? -60}
+          masterTruePeak={transport?.masterTruePeak ?? 0}
+          target={loudnessTarget}
+          onChangeTarget={(target) => setLoudnessTarget(target)}
+          onNudge={nudgeMasterToTarget}
         />
       )}
 
@@ -1681,6 +1731,7 @@ export default function DawWorkspace() {
                     setNotice({ tone: "success", message: `Take deleted. Hit ↩ Undo in the banner to restore.` });
                   }
                 } : null}
+                compact={compactStrips}
               />
             ))}
           </div>
@@ -2079,6 +2130,151 @@ function StudioSoundCoach({
       <p className="mt-3 text-[11px] text-white/55">
         Current profile: {transport?.vocalCaptureProfile ?? "-"} · latency: {transport?.latencyMode ?? "-"} · punch-in {transport?.punchInEnabled ? "on" : "off"}
       </p>
+    </section>
+  );
+}
+
+function RecordReadinessWizard({
+  browserHealth,
+  transport,
+  armedTracks,
+  onLoadRecordPreset,
+  onStartRecord,
+  onDismiss,
+}: {
+  browserHealth: BrowserHealth | null;
+  transport: TransportState | null;
+  armedTracks: number;
+  onLoadRecordPreset: () => void;
+  onStartRecord: () => void;
+  onDismiss: () => void;
+}) {
+  const noiseLevel = transport?.masterLevel ?? 0;
+  const micReady = Boolean(browserHealth?.mediaDevices && browserHealth?.mediaRecorder && browserHealth?.secureContext);
+  const noiseOk = noiseLevel < 0.03;
+  const levelOk = noiseLevel >= 0.08 && noiseLevel <= 0.75;
+
+  const checks = [
+    { label: "Mic + browser", ok: micReady, detail: micReady ? "Ready" : "Need mic permission + secure context" },
+    { label: "Track armed", ok: armedTracks > 0, detail: armedTracks > 0 ? `${armedTracks} armed` : "Arm a track" },
+    { label: "Noise floor", ok: noiseOk, detail: noiseOk ? "Quiet enough" : "Room noise is elevated" },
+    { label: "Input level", ok: levelOk, detail: levelOk ? "Healthy level" : "Speak/sing and watch meter" },
+  ];
+  const completed = checks.filter((item) => item.ok).length;
+
+  return (
+    <section className="mb-6 rounded-2xl border border-white/12 bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100/75">Recording wizard</p>
+          <p className="mt-1 text-sm font-semibold text-white">Quick check before rolling a take</p>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded-md border border-white/15 px-2.5 py-1 text-[11px] font-semibold text-white/70 hover:bg-white/10"
+        >
+          Hide
+        </button>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-4">
+        {checks.map((item) => (
+          <div key={item.label} className={`rounded-lg border px-3 py-2 ${item.ok ? "border-emerald-400/30 bg-emerald-500/10" : "border-white/10 bg-black/25"}`}>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">{item.label}</p>
+            <p className="mt-1 text-xs font-semibold text-white/85">{item.detail}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onLoadRecordPreset}
+          className="rounded-lg border border-cyan-300/35 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-cyan-100 hover:bg-cyan-300/10"
+        >
+          Load record preset
+        </button>
+        <button
+          type="button"
+          onClick={onStartRecord}
+          disabled={armedTracks === 0}
+          className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-red-600 disabled:opacity-50"
+        >
+          Start recording
+        </button>
+        <p className="text-xs text-white/55">Checklist: {completed}/4 complete</p>
+      </div>
+    </section>
+  );
+}
+
+function MasterLoudnessAssistant({
+  masterLufs,
+  masterTruePeak,
+  target,
+  onChangeTarget,
+  onNudge,
+}: {
+  masterLufs: number;
+  masterTruePeak: number;
+  target: LoudnessTarget;
+  onChangeTarget: (target: LoudnessTarget) => void;
+  onNudge: () => void;
+}) {
+  const delta = masterLufs - target;
+  const peakDbtp = masterTruePeak > 0 ? 20 * Math.log10(masterTruePeak) : -60;
+
+  return (
+    <section className="mb-6 rounded-2xl border border-white/12 bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-100/75">Master loudness</p>
+          <p className="mt-1 text-sm font-semibold text-white">Tune your print toward a loudness target</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {([-16, -14, -10] as LoudnessTarget[]).map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              onClick={() => onChangeTarget(candidate)}
+              className={`rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${
+                candidate === target
+                  ? "bg-emerald-400 text-black"
+                  : "border border-white/15 text-white/70 hover:bg-white/10"
+              }`}
+            >
+              {candidate} LUFS
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
+        <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">Current LUFS</p>
+          <p className="mt-1 font-mono text-sm text-white/85">{masterLufs.toFixed(1)}</p>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">Delta</p>
+          <p className="mt-1 font-mono text-sm text-white/85">{delta >= 0 ? "+" : ""}{delta.toFixed(1)} LU</p>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">True peak</p>
+          <p className="mt-1 font-mono text-sm text-white/85">{peakDbtp.toFixed(1)} dBTP</p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onNudge}
+          className="rounded-lg border border-emerald-300/35 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-emerald-100 hover:bg-emerald-300/10"
+        >
+          Nudge master toward target
+        </button>
+        <p className="text-xs text-white/55">Streaming target is usually near -14 LUFS with true peak below -1 dBTP.</p>
+      </div>
     </section>
   );
 }
@@ -2878,6 +3074,7 @@ function TrackStrip({
   onImportFile,
   onDeleteTake,
   onPreviewTake,
+  compact,
 }: {
   track: EngineSnapshot["tracks"][number];
   focused: boolean;
@@ -2906,6 +3103,7 @@ function TrackStrip({
   onImportFile: (file: Blob) => void;
   onDeleteTake: (() => void) | null;
   onPreviewTake: (() => void) | null;
+  compact: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
 
@@ -2924,7 +3122,7 @@ function TrackStrip({
         const file = e.dataTransfer?.files?.[0];
         if (file) onImportFile(file);
       }}
-      className={`relative rounded-xl border p-3 transition ${
+      className={`relative rounded-xl border transition ${compact ? "p-2.5" : "p-3"} ${
         dragging
           ? "border-brand-400 bg-brand-500/10"
           : focused
@@ -2937,7 +3135,7 @@ function TrackStrip({
           Drop audio file to import
         </div>
       )}
-      <div className="grid gap-3 lg:grid-cols-[minmax(160px,220px)_auto_minmax(260px,1fr)] lg:items-center">
+      <div className={`grid gap-3 ${compact ? "lg:grid-cols-[minmax(160px,220px)_1fr]" : "lg:grid-cols-[minmax(160px,220px)_auto_minmax(260px,1fr)]"} lg:items-center`}>
         <div
           className="flex min-w-0 items-center gap-3 rounded-lg transition hover:bg-white/[0.04]"
           onClick={onFocus}
@@ -2998,7 +3196,7 @@ function TrackStrip({
           S
         </button>
 
-          <Meter level={track.level} className="h-2 w-24" />
+          <Meter level={track.level} className={`h-2 ${compact ? "w-16" : "w-24"}`} />
         </div>
 
         {track.hasAudio && (
@@ -3026,7 +3224,7 @@ function TrackStrip({
           </div>
         )}
 
-        <div className="grid gap-2 sm:grid-cols-[minmax(120px,160px)_minmax(180px,1fr)] sm:items-center">
+        <div className={`grid gap-2 ${compact ? "sm:grid-cols-1" : "sm:grid-cols-[minmax(120px,160px)_minmax(180px,1fr)]"} sm:items-center`}>
           <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/50">
             Pan
             <input
@@ -3058,29 +3256,31 @@ function TrackStrip({
         </div>
       </div>
 
-      {peaks.length > 0 && (
+      {!compact && peaks.length > 0 && (
         <div className="mt-3">
           <WaveformView peaks={peaks} color={track.color} progress={progress} />
         </div>
       )}
 
-      {midiClip && (
+      {!compact && midiClip && (
         <div className="mt-3">
           <PianoRoll clip={midiClip} color={track.color} positionBeats={positionBeats} />
         </div>
       )}
 
-      <FxPanel
-        fx={track.fx}
-        sidechainFromId={track.sidechainFromId}
-        sidechainAmount={track.sidechainAmount}
-        sidechainOptions={sidechainOptions}
-        onSetEq={onSetEq}
-        onSetComp={onSetComp}
-        onSetReverb={onSetReverb}
-        onSetDelay={onSetDelay}
-        onSetSidechain={onSetSidechain}
-      />
+      {!compact && (
+        <FxPanel
+          fx={track.fx}
+          sidechainFromId={track.sidechainFromId}
+          sidechainAmount={track.sidechainAmount}
+          sidechainOptions={sidechainOptions}
+          onSetEq={onSetEq}
+          onSetComp={onSetComp}
+          onSetReverb={onSetReverb}
+          onSetDelay={onSetDelay}
+          onSetSidechain={onSetSidechain}
+        />
+      )}
     </div>
   );
 }
