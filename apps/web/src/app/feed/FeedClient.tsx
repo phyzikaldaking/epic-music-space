@@ -57,10 +57,12 @@ export default function FeedClient({
   initialMode,
   viewerId,
   onboarding,
+  authCallbackPath = "/feed",
 }: {
   initialMode: "all" | "following";
   viewerId: string | null;
   onboarding: string | null;
+  authCallbackPath?: string;
 }) {
   const [mode, setMode] = useState<"all" | "following">(initialMode);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -163,7 +165,7 @@ export default function FeedClient({
         <PostComposer onPosted={handlePosted} />
       ) : (
         <div className="glass rounded-2xl p-4 text-center text-sm text-white/60">
-          <a href="/auth/signin?callbackUrl=/feed" className="text-brand-400 hover:underline">
+          <a href={`/auth/signin?callbackUrl=${encodeURIComponent(authCallbackPath)}`} className="text-brand-400 hover:underline">
             Sign in
           </a>{" "}
           to post and react.

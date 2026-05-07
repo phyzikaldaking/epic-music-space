@@ -1,7 +1,5 @@
 import { ImageResponse } from "next/og";
 
-export const runtime = "edge";
-
 // Per-beat accent colours
 const ACCENTS: Record<string, [string, string]> = {
   "cmoqn76pw000b9i9dx1cfpf4t": ["#ff4d4d", "#7f0000"],   // Dog Food — red

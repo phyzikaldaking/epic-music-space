@@ -96,20 +96,29 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-12">
-      <div className="mb-8">
-        <p className="text-xs font-bold uppercase tracking-widest text-brand-300/85">
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:py-12">
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(125deg,rgba(13,15,28,0.98),rgba(9,17,24,0.94)_46%,rgba(30,15,35,0.88))] p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-cyan-400/20 blur-[120px]" />
+        <div className="pointer-events-none absolute -bottom-32 -left-20 h-72 w-72 rounded-full bg-brand-500/20 blur-[140px]" />
+
+        <p className="text-[11px] font-black uppercase tracking-[0.25em] text-cyan-200/80">
           Studio Hub
         </p>
-        <h1 className="mt-2 text-3xl font-extrabold sm:text-4xl">
-          Your creator control room
+        <h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">
+          Build, mix, and publish from one timeline.
         </h1>
-        <p className="mt-3 max-w-2xl text-sm text-white/60">
-          Upload new tracks, open live rooms, and manage your studio profile from one place.
+        <p className="mt-3 max-w-2xl text-sm text-white/70 sm:text-base">
+          Fast path for new releases, full DAW for detailed sessions, and live rooms when you want immediate fan feedback.
         </p>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <WorkflowChip idx="01" title="Capture" body="Quick Upload or multitrack board" />
+          <WorkflowChip idx="02" title="Shape" body="EQ, compression, FX, loudness" />
+          <WorkflowChip idx="03" title="Ship" body="Publish to catalog and timeline" />
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {actions.map((action) => (
           <Link
             key={action.href}
@@ -146,6 +155,16 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
           onClick={() => trackClick("feature_live", "/studio/live")}
         />
       </div>
+    </div>
+  );
+}
+
+function WorkflowChip({ idx, title, body }: { idx: string; title: string; body: string }) {
+  return (
+    <div className="rounded-xl border border-white/12 bg-black/25 px-4 py-3">
+      <p className="text-[10px] font-black tracking-[0.18em] text-cyan-200/75">{idx}</p>
+      <p className="mt-1 text-sm font-semibold text-white">{title}</p>
+      <p className="mt-1 text-xs text-white/55">{body}</p>
     </div>
   );
 }

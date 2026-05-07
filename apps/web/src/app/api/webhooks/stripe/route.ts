@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { revalidateTag } from "next/cache";
 import { stripe, getStripeWebhookSecret } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
@@ -17,143 +17,143 @@ import { sendArtistMilestoneEmail } from "@/lib/email";
 import { recordRiskEvent } from "@/lib/riskEvents";
 import { page } from "@/lib/pager";
 import type Stripe from "stripe";
+import { withRouteTimeout } from "@/lib/apiHardening";
+import { getRequestId, jsonWithRequestId, withRequestId } from "@/lib/requestTracing";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  const body = await req.text();
-  const signature = req.headers.get("stripe-signature");
-  if (!signature) return NextResponse.json({ error: "Missing signature" }, { status: 400 });
-
-  let event: Stripe.Event;
+  const requestId = getRequestId(req);
   try {
-    event = stripe.webhooks.constructEvent(body, signature, getStripeWebhookSecret());
-  } catch (err) {
-    console.error("[stripe-webhook] Invalid signature", err);
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
-  }
+    const body = await req.text();
+    const signature = req.headers.get("stripe-signature");
+    if (!signature) return jsonWithRequestId(requestId, { error: "Missing signature" }, { status: 400 });
 
-  // Event-level dedupe: if Stripe redelivers the same event (network blip,
-  // 5xx response, manual replay) the second pass is a no-op.
-  try {
-    await prisma.processedWebhook.create({
-      data: { source: "stripe", eventId: event.id },
-    });
-  } catch (err) {
-    if (isUniqueConstraintError(err)) {
-      return NextResponse.json({ received: true, deduped: true });
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(body, signature, getStripeWebhookSecret());
+    } catch (err) {
+      console.error("[stripe-webhook] Invalid signature", { requestId, err });
+      return jsonWithRequestId(requestId, { error: "Invalid signature" }, { status: 400 });
     }
-    // Non-unique-constraint failures aren't fatal — continue processing.
-    console.warn("[stripe-webhook] dedupe insert failed", err);
-  }
 
-  switch (event.type) {
-    case "checkout.session.completed": {
-      const session = event.data.object as Stripe.Checkout.Session;
-      if (session.mode === "payment") {
-        const sessionType = session.metadata?.type;
-        if (sessionType === "PLACEMENT_BID") await handlePlacementBidCompleted(session);
-        else if (sessionType === "PLACEMENT_PURCHASE") await handlePlacementPurchaseCompleted(session);
-        else if (sessionType === "boost") await handleBoostCheckoutCompleted(session);
-        else if (sessionType === "tip") await handleTipCheckoutCompleted(session);
-        else if (sessionType === "versus_tip") await handleVersusTipCompleted(session);
-        else if (sessionType === "auction_win") await handleAuctionWinCheckoutCompleted(session);
-        else if (sessionType === "AD_PURCHASE") await handleAdPurchaseCompleted(session);
-        else if (sessionType === "service_purchase") await handleServicePurchaseCompleted(session);
-        else await handleLicenseCheckoutCompleted(session);
-      } else if (session.mode === "subscription") {
-        await handleSubscriptionCheckoutCompleted(session);
+    // Event-level dedupe: if Stripe redelivers the same event (network blip,
+    // 5xx response, manual replay) the second pass is a no-op.
+    try {
+      await prisma.processedWebhook.create({
+        data: { source: "stripe", eventId: event.id },
+      });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        return jsonWithRequestId(requestId, { received: true, deduped: true });
       }
-      break;
+      // Non-unique-constraint failures aren't fatal — continue processing.
+      console.warn("[stripe-webhook] dedupe insert failed", { requestId, err });
     }
-    case "checkout.session.expired": {
-      const session = event.data.object as Stripe.Checkout.Session;
-      await handleCheckoutExpired(session);
-      break;
-    }
-    case "payment_intent.payment_failed": {
-      const pi = event.data.object as Stripe.PaymentIntent;
-      await handlePaymentIntentFailed(pi);
-      break;
-    }
-    case "customer.subscription.updated":
-    case "customer.subscription.deleted": {
-      const sub = event.data.object as Stripe.Subscription;
-      await handleSubscriptionChange(sub, event.type);
-      break;
-    }
-    case "account.updated": {
-      const account = event.data.object as Stripe.Account;
-      await handleConnectAccountUpdated(account);
-      break;
-    }
-    case "account.application.deauthorized": {
-      // The event delivers an Application, but the connected account id is
-      // the top-level event.account field.
-      if (event.account) await handleConnectAccountDeauthorized(event.account);
-      break;
-    }
-    case "charge.refunded": {
-      const charge = event.data.object as Stripe.Charge;
-      await handleChargeRefunded(charge);
-      break;
-    }
-    case "charge.dispute.created":
-    case "charge.dispute.updated":
-    case "charge.dispute.closed": {
-      const dispute = event.data.object as Stripe.Dispute;
-      await handleChargeDispute(dispute, event.type);
-      break;
-    }
-    case "payment_intent.canceled": {
-      const pi = event.data.object as Stripe.PaymentIntent;
-      await handlePaymentIntentCanceled(pi);
-      break;
-    }
-    case "customer.deleted": {
-      const customer = event.data.object as Stripe.Customer;
-      await handleCustomerDeleted(customer);
-      break;
-    }
-    case "identity.verification_session.verified":
-    case "identity.verification_session.requires_input":
-    case "identity.verification_session.canceled": {
-      const vs = event.data.object as Stripe.Identity.VerificationSession;
-      await handleIdentityVerificationEvent(vs, event.type);
-      break;
-    }
-    // Stripe (or the platform) reversed a transfer — common after a refund
-    // is issued and the platform reclaims funds from the artist. Without
-    // this handler the artist's Payout row stays PAID but the dollars left
-    // their account. Note: there's no async transfer.failed event in the
-    // Stripe model — transfers fail synchronously on create, or asynchronously
-    // get reversed; the connected-account payout.failed below covers the
-    // "artist's bank rejected the deposit" case.
-    case "transfer.reversed": {
-      const transfer = event.data.object as Stripe.Transfer;
-      await handleTransferReversed(transfer);
-      break;
-    }
-    // Connected-account events. Stripe payout = the connected account's
-    // own bank deposit. payout.paid is the strongest signal that the
-    // money actually landed in the artist's bank. payout.failed means
-    // their bank rejected it (closed account, wrong routing #, etc.) and
-    // is the most-reported reason for "where's my money?" tickets.
-    case "payout.paid": {
-      const payout = event.data.object as Stripe.Payout;
-      if (event.account) await handleConnectPayoutPaid(payout, event.account);
-      break;
-    }
-    case "payout.failed": {
-      const payout = event.data.object as Stripe.Payout;
-      if (event.account) await handleConnectPayoutFailed(payout, event.account);
-      break;
-    }
-    default:
-      break;
-  }
 
-  return NextResponse.json({ received: true });
+    const processing = await withRouteTimeout("stripe-webhook", 20_000, async () => {
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object as Stripe.Checkout.Session;
+          if (session.mode === "payment") {
+            const sessionType = session.metadata?.type;
+            if (sessionType === "PLACEMENT_BID") await handlePlacementBidCompleted(session);
+            else if (sessionType === "PLACEMENT_PURCHASE") await handlePlacementPurchaseCompleted(session);
+            else if (sessionType === "boost") await handleBoostCheckoutCompleted(session);
+            else if (sessionType === "tip") await handleTipCheckoutCompleted(session);
+            else if (sessionType === "versus_tip") await handleVersusTipCompleted(session);
+            else if (sessionType === "auction_win") await handleAuctionWinCheckoutCompleted(session);
+            else if (sessionType === "AD_PURCHASE") await handleAdPurchaseCompleted(session);
+            else if (sessionType === "service_purchase") await handleServicePurchaseCompleted(session);
+            else await handleLicenseCheckoutCompleted(session);
+          } else if (session.mode === "subscription") {
+            await handleSubscriptionCheckoutCompleted(session);
+          }
+          break;
+        }
+        case "checkout.session.expired": {
+          const session = event.data.object as Stripe.Checkout.Session;
+          await handleCheckoutExpired(session);
+          break;
+        }
+        case "payment_intent.payment_failed": {
+          const pi = event.data.object as Stripe.PaymentIntent;
+          await handlePaymentIntentFailed(pi);
+          break;
+        }
+        case "customer.subscription.updated":
+        case "customer.subscription.deleted": {
+          const sub = event.data.object as Stripe.Subscription;
+          await handleSubscriptionChange(sub, event.type);
+          break;
+        }
+        case "account.updated": {
+          const account = event.data.object as Stripe.Account;
+          await handleConnectAccountUpdated(account);
+          break;
+        }
+        case "account.application.deauthorized": {
+          if (event.account) await handleConnectAccountDeauthorized(event.account);
+          break;
+        }
+        case "charge.refunded": {
+          const charge = event.data.object as Stripe.Charge;
+          await handleChargeRefunded(charge);
+          break;
+        }
+        case "charge.dispute.created":
+        case "charge.dispute.updated":
+        case "charge.dispute.closed": {
+          const dispute = event.data.object as Stripe.Dispute;
+          await handleChargeDispute(dispute, event.type);
+          break;
+        }
+        case "payment_intent.canceled": {
+          const pi = event.data.object as Stripe.PaymentIntent;
+          await handlePaymentIntentCanceled(pi);
+          break;
+        }
+        case "customer.deleted": {
+          const customer = event.data.object as Stripe.Customer;
+          await handleCustomerDeleted(customer);
+          break;
+        }
+        case "identity.verification_session.verified":
+        case "identity.verification_session.requires_input":
+        case "identity.verification_session.canceled": {
+          const vs = event.data.object as Stripe.Identity.VerificationSession;
+          await handleIdentityVerificationEvent(vs, event.type);
+          break;
+        }
+        case "transfer.reversed": {
+          const transfer = event.data.object as Stripe.Transfer;
+          await handleTransferReversed(transfer);
+          break;
+        }
+        case "payout.paid": {
+          const payout = event.data.object as Stripe.Payout;
+          if (event.account) await handleConnectPayoutPaid(payout, event.account);
+          break;
+        }
+        case "payout.failed": {
+          const payout = event.data.object as Stripe.Payout;
+          if (event.account) await handleConnectPayoutFailed(payout, event.account);
+          break;
+        }
+        default:
+          break;
+      }
+    });
+    if (!processing.ok) {
+      console.error("[stripe-webhook] timed out while processing", { requestId, eventId: event.id, eventType: event.type });
+      return withRequestId(processing.response, requestId);
+    }
+
+    return jsonWithRequestId(requestId, { received: true });
+  } catch (err) {
+    console.error("[stripe-webhook] unhandled failure", { requestId, err });
+    return jsonWithRequestId(requestId, { error: "Webhook processing failed" }, { status: 500 });
+  }
 }
 
 async function handlePlacementBidCompleted(session: Stripe.Checkout.Session) {

@@ -12,7 +12,7 @@ interface Message {
 
 const QUICK_LINKS: Array<{ href: string; label: string; emoji: string }> = [
   { href: "/marketplace", label: "Marketplace", emoji: "🎧" },
-  { href: "/feed", label: "Feed", emoji: "📡" },
+  { href: "/forum", label: "Forum timeline", emoji: "📡" },
   { href: "/versus", label: "Versus battles", emoji: "⚔️" },
   { href: "/studio", label: "Studio rooms", emoji: "🎛️" },
   { href: "/pricing", label: "Pricing & plans", emoji: "💎" },

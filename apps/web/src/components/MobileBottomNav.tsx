@@ -13,17 +13,17 @@ interface NavItem {
 
 const ITEMS: NavItem[] = [
   { href: "/", label: "Home", icon: "🏠", match: (p) => p === "/" },
+  { href: "/forum", label: "Forum", icon: "💬", match: (p) => p.startsWith("/forum") || p.startsWith("/timeline") || p.startsWith("/feed") || p.startsWith("/post/") },
   { href: "/versus", label: "Battles", icon: "⚔️", match: (p) => p.startsWith("/versus") || p.startsWith("/verzuz") },
   { href: "/marketplace", label: "Tracks", icon: "🎵", match: (p) => p.startsWith("/marketplace") || p.startsWith("/track/") },
-  { href: "/vault", label: "Vault", icon: "📼", match: (p) => p.startsWith("/vault") },
   { href: "/dashboard", label: "Me", icon: "👤", match: (p) => p.startsWith("/dashboard") || p.startsWith("/profile") || p.startsWith("/settings") || p.startsWith("/messages") || p.startsWith("/notifications") },
 ];
 
 const ANON_ITEMS: NavItem[] = [
   { href: "/", label: "Home", icon: "🏠", match: (p) => p === "/" },
+  { href: "/forum", label: "Forum", icon: "💬", match: (p) => p.startsWith("/forum") || p.startsWith("/timeline") || p.startsWith("/feed") || p.startsWith("/post/") },
   { href: "/versus", label: "Battles", icon: "⚔️", match: (p) => p.startsWith("/versus") || p.startsWith("/verzuz") },
   { href: "/marketplace", label: "Tracks", icon: "🎵", match: (p) => p.startsWith("/marketplace") || p.startsWith("/track/") },
-  { href: "/vault", label: "Vault", icon: "📼", match: (p) => p.startsWith("/vault") },
   { href: "/auth/signin", label: "Sign in", icon: "→" },
 ];
 

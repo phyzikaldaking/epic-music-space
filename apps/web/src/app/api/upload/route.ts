@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { moderateLimiter } from "@/lib/rateLimit";
+import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
+import { getRequestId, jsonWithRequestId, withRequestId } from "@/lib/requestTracing";
 
 // ─── Allowed MIME types per upload type ────────────────────────────────────
 // iPhone Voice Memos and most iTunes-purchased songs report `audio/mp4` /
@@ -63,6 +65,7 @@ const MAX_STEM_SIZE  = 500 * 1024 * 1024; // 500 MB
  * Returns: { signedUrl: string, publicUrl: string, path: string }
  */
 export async function POST(req: NextRequest) {
+  const requestId = getRequestId(req);
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??
@@ -71,7 +74,8 @@ export async function POST(req: NextRequest) {
   try {
     await moderateLimiter.consume(ip);
   } catch {
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { error: "Too many requests. Please slow down." },
       { status: 429, headers: { "Retry-After": "60" } }
     );
@@ -79,21 +83,29 @@ export async function POST(req: NextRequest) {
 
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonWithRequestId(requestId, { error: "Unauthorized" }, { status: 401 });
   }
 
   // ── Parse JSON body ───────────────────────────────────────────────────────
-  let body: { type?: string; fileName?: string; mimeType?: string; fileSize?: number };
-  try {
-    body = await req.json() as typeof body;
-  } catch {
-    return NextResponse.json({ error: "Expected JSON body" }, { status: 400 });
+  const bodyResult = await readJsonBodyLimited<{
+    type?: string;
+    fileName?: string;
+    mimeType?: string;
+    fileSize?: number;
+  }>(req, {
+    maxBytes: 32 * 1024,
+    invalidMessage: "Expected JSON body",
+  });
+  if (!bodyResult.ok) {
+    return withRequestId(bodyResult.response, requestId);
   }
+  const body = bodyResult.value;
 
   const { type: uploadType, fileName = "", mimeType = "", fileSize = 0 } = body;
 
   if (!uploadType || !["audio", "cover", "stem"].includes(uploadType)) {
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { error: "type must be 'audio', 'cover', or 'stem'" },
       { status: 400 }
     );
@@ -111,20 +123,21 @@ export async function POST(req: NextRequest) {
   // will be rejected at the storage layer. Reject obviously bogus values
   // (zero/negative) that suggest a tampered request.
   if (typeof mimeType !== "string") {
-    return NextResponse.json({ error: "mimeType must be a string" }, { status: 400 });
+    return jsonWithRequestId(requestId, { error: "mimeType must be a string" }, { status: 400 });
   }
   if (typeof fileSize !== "number" || !Number.isFinite(fileSize) || fileSize <= 0) {
-    return NextResponse.json({ error: "fileSize must be a positive number" }, { status: 400 });
+    return jsonWithRequestId(requestId, { error: "fileSize must be a positive number" }, { status: 400 });
   }
   if (fileSize > maxSize) {
     const limitMb = maxSize / (1024 * 1024);
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { error: `File too large. Maximum is ${limitMb} MB.` },
       { status: 413 }
     );
   }
   if (typeof fileName !== "string" || fileName.length === 0 || fileName.length > 256) {
-    return NextResponse.json({ error: "Invalid fileName" }, { status: 400 });
+    return jsonWithRequestId(requestId, { error: "Invalid fileName" }, { status: 400 });
   }
   // Strip path traversal characters from the extension lookup.
   const safeExt = fileName
@@ -150,7 +163,8 @@ export async function POST(req: NextRequest) {
       : isAudio
         ? "Try MP3, WAV, FLAC, M4A, AAC, or OGG."
         : "Try JPG, PNG, WebP, GIF, or HEIC. (iPhone Live Photos / HEIC from your camera roll work too.)";
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { error: `We can't accept "${human}" yet. ${suggestion}` },
       { status: 415 }
     );
@@ -159,7 +173,8 @@ export async function POST(req: NextRequest) {
   // ── Create Supabase signed upload URL ────────────────────────────────────
   const supabase = createServerSupabaseClient();
   if (!supabase) {
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { error: "File storage is not configured. Paste a direct URL below." },
       { status: 503 }
     );
@@ -170,18 +185,25 @@ export async function POST(req: NextRequest) {
   const pathPrefix = isStem ? `stems/${session.user.id}` : session.user.id;
   const storagePath = `${pathPrefix}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
-  const { data: signedData, error: signedError } = await supabase.storage
-    .from(bucket)
-    .createSignedUploadUrl(storagePath);
+  const signedResult = await withRouteTimeout("upload-create-signed-url", 5000, async () =>
+    supabase.storage.from(bucket).createSignedUploadUrl(storagePath)
+  );
+  if (!signedResult.ok) {
+    console.warn("[upload] signed URL creation timed out or failed", { requestId, userId: session.user.id });
+    return withRequestId(signedResult.response, requestId);
+  }
+
+  const { data: signedData, error: signedError } = signedResult.value;
 
   if (signedError || !signedData) {
     console.error("[upload] createSignedUploadUrl error:", signedError);
-    return NextResponse.json({ error: "Could not create upload URL. Please try again." }, { status: 500 });
+    return jsonWithRequestId(requestId, { error: "Could not create upload URL. Please try again." }, { status: 500 });
   }
 
   const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(storagePath);
 
-  return NextResponse.json(
+  return jsonWithRequestId(
+    requestId,
     { signedUrl: signedData.signedUrl, publicUrl, path: storagePath },
     { status: 200 }
   );
