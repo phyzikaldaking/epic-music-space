@@ -11,9 +11,12 @@ interface Props {
   /** Hands the rendered WAV to the upload pipeline. Returns the new
    *  song ID or throws. */
   onPublish: (wav: Blob) => Promise<{ ok: boolean; message?: string }>;
+  /** Bounce → upload → AI master (matchering) → load mastered as a
+   *  new "Master (AI)" track. Provided by DawWorkspace.aiMasterMix. */
+  onAiMaster?: (wav: Blob) => Promise<{ ok: boolean; message?: string }>;
 }
 
-type Phase = "idle" | "rendering" | "uploading" | "done" | "error";
+type Phase = "idle" | "rendering" | "uploading" | "mastering" | "done" | "error";
 
 export default function MasterPublishBar({
   limiterOn,
@@ -22,6 +25,7 @@ export default function MasterPublishBar({
   onToggleLimiter,
   onExport,
   onPublish,
+  onAiMaster,
 }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string>("");
@@ -46,6 +50,33 @@ export default function MasterPublishBar({
     } catch (err) {
       setPhase("error");
       setMessage(err instanceof Error ? err.message : "Render failed.");
+    }
+  }
+
+  async function renderAndMaster() {
+    if (!onAiMaster) return;
+    if (!canExport) {
+      setPhase("error");
+      setMessage(emptyReason ?? "Record audio or enable the beat machine before mastering.");
+      return;
+    }
+    setPhase("rendering");
+    setMessage("Rendering mix for AI mastering…");
+    try {
+      const blob = await onExport();
+      setPhase("mastering");
+      setMessage("AI mastering — matchering against a streaming-target reference (~60s)…");
+      const result = await onAiMaster(blob);
+      if (result.ok) {
+        setPhase("done");
+        setMessage(result.message ?? "Mastered. Listen to the new 'Master (AI)' track.");
+      } else {
+        setPhase("error");
+        setMessage(result.message ?? "Mastering failed.");
+      }
+    } catch (err) {
+      setPhase("error");
+      setMessage(err instanceof Error ? err.message : "Mastering failed.");
     }
   }
 
@@ -119,10 +150,22 @@ export default function MasterPublishBar({
         </a>
       )}
 
+      {onAiMaster && (
+        <button
+          type="button"
+          onClick={renderAndMaster}
+          disabled={!canExport || phase === "rendering" || phase === "uploading" || phase === "mastering"}
+          className="rounded-lg border border-amber-400/40 bg-gradient-to-br from-amber-400/15 via-orange-500/10 to-transparent px-4 py-2 text-sm font-extrabold text-amber-100 transition hover:from-amber-400/25 hover:to-orange-500/20 disabled:opacity-50"
+          title={canExport ? "AI master this mix to a streaming-target loudness curve" : emptyReason}
+        >
+          {phase === "mastering" ? "Mastering…" : "✨ AI Master"}
+        </button>
+      )}
+
       <button
         type="button"
         onClick={renderAndPublish}
-        disabled={!canExport || phase === "rendering" || phase === "uploading"}
+        disabled={!canExport || phase === "rendering" || phase === "uploading" || phase === "mastering"}
         className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-extrabold text-white hover:bg-brand-600 disabled:opacity-50 transition"
         title={canExport ? "Render and upload this session" : emptyReason}
       >

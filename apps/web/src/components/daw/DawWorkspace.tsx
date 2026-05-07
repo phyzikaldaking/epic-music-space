@@ -16,6 +16,7 @@ import GearRack, { type GearApplyHandlers } from "./GearRack";
 import MasterPanel from "./MasterPanel";
 import MasterPublishBar from "./MasterPublishBar";
 import StemLoopBrowser from "./StemLoopBrowser";
+import SampleLibraryPanel from "./SampleLibraryPanel";
 import MidiPanel from "./MidiPanel";
 import PianoRoll from "./PianoRoll";
 import ProjectMenu from "./ProjectMenu";
@@ -870,6 +871,107 @@ export default function DawWorkspace() {
     });
   }
 
+  // ── AI Master: bounce mix → upload → matchering → load mastered ────────
+  // Loaded back as a "Master (AI)" track so the artist can A/B against
+  // their unmastered version and decide whether to ship it.
+  const [masteringInFlight, setMasteringInFlight] = useState(false);
+  async function aiMasterMix(wav: Blob): Promise<{ ok: boolean; message?: string }> {
+    if (masteringInFlight) return { ok: false, message: "Already mastering." };
+    setMasteringInFlight(true);
+    try {
+      // Step 1: upload the bounce so Replicate can fetch it.
+      const fileName = `ems-master-source-${Date.now()}.wav`;
+      const signRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "audio",
+          fileName,
+          mimeType: "audio/wav",
+          fileSize: wav.size,
+        }),
+      });
+      const signJson = (await signRes.json().catch(() => ({}))) as {
+        signedUrl?: string;
+        publicUrl?: string;
+      };
+      if (!signRes.ok || !signJson.signedUrl || !signJson.publicUrl) {
+        return { ok: false, message: "Upload signing failed." };
+      }
+      const put = await fetch(signJson.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "audio/wav" },
+        body: wav,
+      });
+      if (!put.ok) return { ok: false, message: `Storage upload failed (${put.status}).` };
+
+      // Step 2: kick off the mastering job.
+      setNotice({
+        tone: "info",
+        message: "AI mastering started — this takes ~60s. Keep the tab open.",
+      });
+      const renderRes = await fetch("/api/mastering/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audioUrl: signJson.publicUrl }),
+      });
+      const renderData = (await renderRes.json().catch(() => ({}))) as {
+        status?: string;
+        masteredUrl?: string;
+        providerId?: string;
+        error?: string;
+      };
+      if (!renderRes.ok && renderRes.status !== 202) {
+        return { ok: false, message: renderData.error ?? "Mastering failed." };
+      }
+
+      // If still processing, poll the status endpoint.
+      let masteredUrl = renderData.masteredUrl;
+      if (!masteredUrl && renderData.providerId) {
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < 4 * 60_000) {
+          await new Promise((r) => setTimeout(r, 6000));
+          const statusRes = await fetch(
+            `/api/mastering/status?id=${encodeURIComponent(renderData.providerId)}`,
+          );
+          const statusData = (await statusRes.json().catch(() => ({}))) as {
+            status?: string;
+            masteredUrl?: string | null;
+            error?: string | null;
+          };
+          if (statusData.status === "succeeded" && statusData.masteredUrl) {
+            masteredUrl = statusData.masteredUrl;
+            break;
+          }
+          if (statusData.status === "failed" || statusData.status === "canceled") {
+            return { ok: false, message: statusData.error ?? "Mastering failed." };
+          }
+        }
+      }
+      if (!masteredUrl) {
+        return { ok: false, message: "Mastering timed out. Try again." };
+      }
+
+      // Step 3: load the mastered audio back as a new track.
+      const engine = engineRef.current;
+      if (!engine) return { ok: false, message: "Audio engine unavailable." };
+      const mBlob = await (await fetch(masteredUrl)).blob();
+      const masterTrackId = engine.addTrack("Master (AI)", "#fbbf24");
+      await engine.importAudioFile(masterTrackId, mBlob);
+      setFocusedId(masterTrackId);
+      setSnapshot(engine.getSnapshot());
+      pushAuditEvent("import", "AI mastering complete — loaded as Master (AI) track.");
+      return { ok: true, message: "AI master loaded as a new track. A/B with your raw mix." };
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : "Mastering failed.",
+      };
+    } finally {
+      setMasteringInFlight(false);
+    }
+  }
+
   // ── Publish: render mix → WAV → /api/upload signed URL → PUT bytes ──────
   async function publishMix(wav: Blob): Promise<{ ok: boolean; message?: string }> {
     try {
@@ -1375,9 +1477,34 @@ export default function DawWorkspace() {
         </div>
       )}
 
-      {/* ── Stem Loop Browser ─────────────────────────────────────────────── */}
+      {/* ── Sample Library + Stem Loop Browser side-by-side on desktop ─── */}
       {!showSplash && (showArrangeTools || showRecordTools) && (
-        <div className="mb-6">
+        <div className="mb-6 grid gap-3 lg:grid-cols-2">
+          <SampleLibraryPanel
+            onLoadSample={async ({ name, url, category }) => {
+              const engine = engineRef.current;
+              if (!engine) return;
+              try {
+                const blob = await (await fetch(url)).blob();
+                const palette: Record<string, string> = {
+                  drums: "#22d3ee",
+                  bass: "#a78bfa",
+                  melody: "#f59e0b",
+                  fx: "#10b981",
+                  vocals: "#ec4899",
+                };
+                const trackId = engine.addTrack(name, palette[category] ?? "#7c5cff");
+                await engine.importAudioFile(trackId, blob);
+                setFocusedId(trackId);
+                setSnapshot(engine.getSnapshot());
+                pushAuditEvent("import", `Loaded sample: ${name}`);
+                setNotice({ tone: "success", message: `Loaded ${name}.` });
+              } catch (err) {
+                console.warn("[DawWorkspace] sample load failed", err);
+                setNotice({ tone: "error", message: "Couldn't load sample." });
+              }
+            }}
+          />
           <StemLoopBrowser
             onLoadStem={async ({ sourceTitle, kind, url }) => {
               const engine = engineRef.current;
@@ -1483,6 +1610,7 @@ export default function DawWorkspace() {
             return wav;
           }}
           onPublish={publishMix}
+          onAiMaster={aiMasterMix}
         />
       )}
 
