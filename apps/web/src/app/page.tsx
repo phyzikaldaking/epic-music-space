@@ -1,13 +1,7 @@
 import type { Metadata } from "next";
-import dynamicImport from "next/dynamic";
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import Image from "next/image";
-
-const AnimatedBackdrop = dynamicImport(
-  () => import("@/components/backdrops/AnimatedBackdrop"),
-  { ssr: false },
-);
 import { getDemoTracks } from "@/lib/demoTracks";
 import { prisma } from "@/lib/prisma";
 import { formatPrice } from "@ems/utils";
@@ -18,6 +12,7 @@ import AudioPlayer from "@/components/LazyAudioPlayer";
 import HomeSplitCtas from "@/components/HomeSplitCtas";
 import HomeHeroMessaging from "@/components/HomeHeroMessaging";
 import HomeVisualEffectsGate from "@/components/HomeVisualEffectsGate";
+import AnimatedBackdropClient from "@/components/backdrops/AnimatedBackdropClient";
 
 export const revalidate = 60;
 
@@ -294,7 +289,7 @@ export default async function HomePage() {
       />
 
       <section className="vc-hero">
-        <AnimatedBackdrop variant="hero" />
+        <AnimatedBackdropClient variant="hero" />
         <div className="vc-stars" aria-hidden="true" />
         <Image
           className="vc-studio-photo"

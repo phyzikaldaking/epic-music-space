@@ -19,6 +19,8 @@ const AUDIO_ACCEPT =
 const PRICE_PRESETS = [4.99, 9.99, 19.99, 49.99];
 const SUPPLY_PRESETS = [50, 100, 500];
 
+const STEP_LABELS: Record<Step, string> = { 1: "Audio", 2: "Details", 3: "Pricing" };
+
 type Step = 1 | 2 | 3;
 type AudioState = "idle" | "uploading" | "done" | "error";
 
@@ -287,7 +289,7 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
       {/* Header — track count + step indicator + expert escape hatch */}
       <div className="mb-6 flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/45">
-          Step {step} of 3
+          {STEP_LABELS[step]} <span className="text-white/25">· Step {step} of 3</span>
         </p>
         <Link
           href="/studio/new?expert=1"
@@ -346,21 +348,23 @@ export default function QuickUploadFlow({ defaultArtistName }: Props) {
                 </p>
               </>
             )}
-            {audioState === "uploading" && audioFile && (
-              <div className="w-full">
-                <div className="flex items-center gap-3">
-                  <div className="h-5 w-5 flex-shrink-0 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
-                  <p className="truncate text-sm font-medium">{audioFile.name}</p>
-                </div>
-                <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
-                  <div
-                    className="h-1.5 rounded-full bg-gradient-to-r from-brand-500 to-accent-500 transition-all"
-                    style={{ width: `${audioProgress}%` }}
-                  />
-                </div>
-                <p className="mt-1 text-xs text-brand-400">{audioProgress}%</p>
-              </div>
-            )}
+{audioState === "uploading" && audioFile && (
+               <div className="w-full">
+                 <div className="flex items-center gap-3">
+                   <div className="h-5 w-5 flex-shrink-0 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
+                   <p className="truncate text-sm font-medium">{audioFile.name}</p>
+                 </div>
+                 <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
+                   <progress
+                     className="h-1.5 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-white/10 [&::-webkit-progress-value]:bg-gradient-to-r [&::-webkit-progress-value]:from-brand-500 [&::-webkit-progress-value]:to-accent-500 [&::-moz-progress-bar]:bg-brand-500"
+                     max={100}
+                     value={audioProgress}
+                     aria-label="Audio upload progress"
+                   />
+                 </div>
+                 <p className="mt-1 text-xs text-brand-400">{audioProgress}%</p>
+               </div>
+             )}
             {audioState === "done" && audioFile && (
               <div className="flex items-center gap-3">
                 <span className="text-2xl">✓</span>

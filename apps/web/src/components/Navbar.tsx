@@ -7,6 +7,7 @@ import NotificationBell from "@/components/NotificationBell";
 
 const PUBLIC_LINKS = [
   { href: "/", label: "Home", icon: "🏠", description: "Back to the front page" },
+  { href: "/studio", label: "Studio", icon: "🎛️", description: "Make beats, mix, and publish in your browser" },
   { href: "/versus", label: "Battles", icon: "⚔️", description: "1v1, Royale, and Verzuz showdowns" },
   { href: "/vault", label: "Vault", icon: "📼", description: "Legacy catalogs from working artists" },
   { href: "/marketplace", label: "Tracks", icon: "🎵", description: "Discover and support trending music" },
@@ -21,6 +22,8 @@ const PUBLIC_LINKS = [
 
 const AUTHED_LINKS = [
   { href: "/", label: "Home", icon: "🏠", description: "Back to the front page" },
+  { href: "/studio", label: "Studio", icon: "🎛️", description: "Beat machine, mixer, upload — your control room" },
+  { href: "/studio/board", label: "Beat Board", icon: "🥁", description: "In-browser DAW with 7 kits + multitrack" },
   { href: "/versus", label: "Battles", icon: "⚔️", description: "Vote on track battles" },
   { href: "/vault", label: "Vault", icon: "📼", description: "Legacy catalogs from working artists" },
   { href: "/marketplace", label: "Tracks", icon: "🎵", description: "Discover and support trending music" },
@@ -39,14 +42,15 @@ const AUTHED_LINKS = [
 
 const ADMIN_LINK = { href: "/admin", label: "Admin", icon: "🛡️", description: "Moderation + ops" };
 
-// Inline desktop nav stays focused — Home + the four flagship destinations
-// users complained were buried (Battles, Vault, Tracks, Sessions). Everything
-// else lives in the mobile menu and the user's dashboard.
+// Inline desktop nav stays focused — Home + the flagship destinations.
+// Studio is the new product surface (browser DAW + quick upload), so it
+// gets a primary slot for both anonymous and signed-in viewers. Everything
+// else still lives in the mobile menu and the user's dashboard.
 const PRIMARY_PUBLIC_LINKS = PUBLIC_LINKS.filter((l) =>
-  ["/", "/versus", "/vault", "/marketplace", "/studio/live", "/pricing"].includes(l.href),
+  ["/", "/studio", "/versus", "/vault", "/marketplace", "/studio/live"].includes(l.href),
 );
 const PRIMARY_AUTHED_LINKS = AUTHED_LINKS.filter((l) =>
-  ["/", "/versus", "/vault", "/marketplace", "/studio/live", "/dashboard"].includes(l.href),
+  ["/", "/studio", "/versus", "/vault", "/marketplace", "/studio/live"].includes(l.href),
 );
 
 export default function Navbar() {

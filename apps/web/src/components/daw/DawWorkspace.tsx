@@ -129,7 +129,7 @@ export default function DawWorkspace() {
   }
 
   const transport = snapshot?.transport;
-  const tracks = snapshot?.tracks ?? [];
+  const tracks = useMemo(() => snapshot?.tracks ?? [], [snapshot]);
   const beat = snapshot?.beat;
   const showSplash = !snapshot;
   const hasRecordedAudio = tracks.some((track) => track.hasAudio);

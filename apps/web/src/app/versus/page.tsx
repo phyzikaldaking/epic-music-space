@@ -6,13 +6,8 @@ import { auth } from "@/lib/auth";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import { Suspense } from "react";
-import dynamicImport from "next/dynamic";
 import VersusCard from "@/components/VersusCard";
-
-const AnimatedBackdrop = dynamicImport(
-  () => import("@/components/backdrops/AnimatedBackdrop"),
-  { ssr: false },
-);
+import AnimatedBackdropClient from "@/components/backdrops/AnimatedBackdropClient";
 import BattleRoyaleCard from "@/components/BattleRoyaleCard";
 import CreateBattleForm from "@/components/CreateBattleForm";
 import AdSlot from "@/components/ads/AdSlot";
@@ -175,7 +170,7 @@ export default async function VersusPage() {
       <Suspense><AdSlot location="VERSUS_BANNER" className="mb-8" /></Suspense>
       {/* ── Header — premium, high-contrast, single confident statement ── */}
       <div className="relative mb-10 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#1a0530] via-[#0d0220] to-[#000] px-6 py-10 sm:px-10 sm:py-12 shadow-[0_30px_120px_-40px_rgba(255,45,146,0.45)]">
-        <AnimatedBackdrop variant="versus" />
+        <AnimatedBackdropClient variant="versus" />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-xl">
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.32em] text-accent-300/90">
