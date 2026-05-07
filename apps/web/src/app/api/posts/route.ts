@@ -7,6 +7,8 @@ import { isLikelyBot } from "@/lib/botCheck";
 import { getMuxClient } from "@/lib/mux";
 import { enqueueNotification } from "@/lib/queues";
 import { validateTrustSafetyInput } from "@/lib/trustSafety";
+import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
+import { shouldShedNonCriticalWork } from "@/lib/trafficShed";
 
 // In-process cache for Mux upload ownership lookups. Keyed by uploadId,
 // value carries the passthrough (= userId) and expiry. Lives only for the
@@ -181,12 +183,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let raw: unknown;
-  try {
-    raw = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const bodyResult = await readJsonBodyLimited<Record<string, unknown>>(req, {
+    maxBytes: 32 * 1024,
+  });
+  if (!bodyResult.ok) return bodyResult.response;
+
+  const raw = bodyResult.value;
 
   const parsed = createPostSchema.safeParse(raw);
   if (!parsed.success) {
@@ -227,7 +229,12 @@ export async function POST(req: NextRequest) {
       if (cached && cached.expiresAt > Date.now()) {
         passthrough = cached.passthrough;
       } else {
-        const upload = await mux.video.uploads.retrieve(muxUploadId);
+        const uploadResult = await withRouteTimeout("mux-upload-verify", 2500, async () =>
+          mux.video.uploads.retrieve(muxUploadId),
+        );
+        if (!uploadResult.ok) return uploadResult.response;
+
+        const upload = uploadResult.value;
         passthrough = upload.new_asset_settings?.passthrough as string | undefined;
         muxUploadOwnerCache.set(muxUploadId, {
           passthrough: passthrough ?? "",
@@ -272,28 +279,33 @@ export async function POST(req: NextRequest) {
 
   const videoStatus = muxUploadId ? "UPLOADING" : "NONE";
 
-  const post = await prisma.post.create({
-    data: {
-      authorId: session.user.id,
-      body,
-      imageUrl,
-      songId,
-      muxUploadId,
-      videoStatus,
-    },
-    include: {
-      author: {
-        select: {
-          id: true,
-          name: true,
-          image: true,
-          role: true,
-          studio: { select: { username: true } },
-        },
+  const postResult = await withRouteTimeout("post-create", 3500, async () =>
+    prisma.post.create({
+      data: {
+        authorId: session.user.id,
+        body,
+        imageUrl,
+        songId,
+        muxUploadId,
+        videoStatus,
       },
-      _count: { select: { likes: true, comments: true } },
-    },
-  });
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            role: true,
+            studio: { select: { username: true } },
+          },
+        },
+        _count: { select: { likes: true, comments: true } },
+      },
+    }),
+  );
+  if (!postResult.ok) return postResult.response;
+
+  const post = postResult.value;
 
   // Stitch in the attached song for the response.
   const attachedSong = post.songId
@@ -313,6 +325,10 @@ export async function POST(req: NextRequest) {
   // enqueues hit the BullMQ notification queue which a worker drains.
   void (async () => {
     try {
+      if (await shouldShedNonCriticalWork()) {
+        return;
+      }
+
       const PAGE = 1000;
       const authorName = post.author.name ?? "An artist you follow";
       const snippet = post.body.length > 140 ? `${post.body.slice(0, 140)}…` : post.body;

@@ -5,6 +5,7 @@ import { moderateLimiter } from "@/lib/rateLimit";
 import { enqueueNotification } from "@/lib/queues";
 import { getMinimumAuctionBid, normalizeUsdAmount } from "@/lib/auctionMath";
 import { z } from "zod";
+import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
 
 export const runtime = "nodejs";
 
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     "unknown";
 
   try {
-    await moderateLimiter.consume(ip);
+    await moderateLimiter.consume(`auction-bid:ip:${ip}`);
   } catch {
     return NextResponse.json(
       { error: "Too many requests" },
@@ -50,12 +51,21 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let raw: unknown;
   try {
-    raw = await req.json();
+    await moderateLimiter.consume(`auction-bid:user:${session.user.id}`);
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
   }
+
+  const bodyResult = await readJsonBodyLimited<Record<string, unknown>>(req, {
+    maxBytes: 8 * 1024,
+  });
+  if (!bodyResult.ok) return bodyResult.response;
+
+  const raw = bodyResult.value;
 
   const parsed = bidSchema.safeParse(raw);
   if (!parsed.success) {
@@ -80,7 +90,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const result = await prisma.$transaction(async (tx) => {
+      const txResult = await withRouteTimeout("auction-bid-transaction", 5000, async () =>
+        prisma.$transaction(async (tx) => {
         const auction = await tx.auction.findUnique({
           where: { id },
           include: { song: { select: { title: true } } },
@@ -167,7 +178,10 @@ export async function POST(req: NextRequest, { params }: Params) {
           endsAtIso: nextEndsAt.toISOString(),
           antiSnipeExtended,
         };
-      });
+      }),
+      );
+      if (!txResult.ok) return txResult.response;
+      const result = txResult.value;
 
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: result.status });
@@ -194,7 +208,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     placedBid.previousTopBidderId &&
     placedBid.previousTopBidderId !== session.user.id
   ) {
-    await enqueueNotification({
+    void enqueueNotification({
       userId: placedBid.previousTopBidderId,
       type: "AUCTION_OUTBID",
       title: "You've been outbid!",
@@ -203,7 +217,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
   }
 
-  await enqueueNotification({
+  void enqueueNotification({
     userId: placedBid.sellerId,
     type: "AUCTION_BID_RECEIVED",
     title: "New bid on your auction!",

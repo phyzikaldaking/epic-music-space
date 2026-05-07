@@ -6,6 +6,7 @@ import { strictLimiter } from "@/lib/rateLimit";
 import { getTierLimits } from "@/lib/tierLimits";
 import { buildIdempotencyKey } from "@/lib/idempotency";
 import { createLicenseCheckoutSession, LicenseCheckoutError } from "@/lib/payments/licenseCheckout";
+import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
 
 const checkoutSchema = z.object({
   songId: z.string().cuid(),
@@ -18,8 +19,14 @@ export async function POST(req: NextRequest) {
     req.headers.get("x-real-ip") ??
     "unknown";
 
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    await strictLimiter.consume(ip);
+    await strictLimiter.consume(`checkout:user:${session.user.id}`);
+    await strictLimiter.consume(`checkout:ip:${ip}`);
   } catch {
     return NextResponse.json(
       { error: "Too many requests. Please slow down." },
@@ -27,16 +34,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const contentType = req.headers.get("content-type") ?? "";
+  const contentLength = Number(req.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > 32 * 1024) {
+    return NextResponse.json(
+      { error: "Payload too large (max 32768 bytes)" },
+      { status: 413 },
+    );
+  }
   let body: Record<string, unknown>;
 
   if (contentType.includes("application/json")) {
-    body = await req.json();
+    const bodyResult = await readJsonBodyLimited<Record<string, unknown>>(req, {
+      maxBytes: 32 * 1024,
+      invalidMessage: "Invalid JSON body",
+    });
+    if (!bodyResult.ok) return bodyResult.response;
+    body = bodyResult.value;
   } else {
     const formData = await req.formData();
     body = Object.fromEntries(formData.entries());
@@ -54,16 +68,24 @@ export async function POST(req: NextRequest) {
   ]);
 
   // Enforce subscription tier license cap
-  const buyer = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { subscriptionTier: true },
-  });
+  const buyerLookup = await withRouteTimeout("checkout-buyer-lookup", 2500, async () =>
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { subscriptionTier: true },
+    }),
+  );
+  if (!buyerLookup.ok) return buyerLookup.response;
+  const buyer = buyerLookup.value;
   if (buyer) {
     const limits = getTierLimits(buyer.subscriptionTier);
     if (limits.maxLicenses < 999_999) {
-      const held = await prisma.licenseToken.count({
-        where: { holderId: session.user.id, status: "ACTIVE" },
-      });
+      const heldLookup = await withRouteTimeout("checkout-license-count", 2500, async () =>
+        prisma.licenseToken.count({
+          where: { holderId: session.user.id, status: "ACTIVE" },
+        }),
+      );
+      if (!heldLookup.ok) return heldLookup.response;
+      const held = heldLookup.value;
       if (held >= limits.maxLicenses) {
         return NextResponse.json(
           {
@@ -76,15 +98,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const checkout = await createLicenseCheckoutSession({
-      analytics: { event: "checkout_initiated" },
-      idempotencyKey,
-      quantity: 1,
-      requestSource: "api/checkout",
-      songId,
-      userId: session.user.id,
-      userEmail: session.user.email,
-    });
+    const checkoutResult = await withRouteTimeout("checkout-create", 4500, async () =>
+      createLicenseCheckoutSession({
+        analytics: { event: "checkout_initiated" },
+        idempotencyKey,
+        quantity: 1,
+        requestSource: "api/checkout",
+        songId,
+        userId: session.user.id,
+        userEmail: session.user.email,
+      }),
+    );
+    if (!checkoutResult.ok) return checkoutResult.response;
+
+    const checkout = checkoutResult.value;
     return NextResponse.redirect(checkout.checkoutUrl, { status: 303 });
   } catch (error) {
     if (error instanceof LicenseCheckoutError) {

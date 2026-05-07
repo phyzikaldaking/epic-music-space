@@ -125,6 +125,12 @@ export async function getOpsSnapshot() {
   const queueBacklog =
     queues?.reduce((total, queue) => total + (queue.waiting ?? 0) + (queue.active ?? 0) + (queue.delayed ?? 0), 0) ?? 0;
   const failedJobs = queues?.reduce((total, queue) => total + (queue.failed ?? 0), 0) ?? 0;
+  const queuePressure =
+    queueBacklog >= 1200 || failedJobs >= 120
+      ? "critical"
+      : queueBacklog >= 500 || failedJobs >= 50
+        ? "elevated"
+        : "normal";
   const failedPaymentRate =
     transactions24h > 0 && failedTransactions24h >= 0
       ? Math.round((failedTransactions24h / transactions24h) * 1000) / 10
@@ -166,6 +172,10 @@ export async function getOpsSnapshot() {
       openReports,
       flaggedUsers,
       activeIncidents,
+    },
+    pressure: {
+      queue: queuePressure,
+      queueAlert: queuePressure !== "normal",
     },
     queueBacklog,
     failedJobs,

@@ -5,6 +5,8 @@ import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
 import { moderateLimiter } from "@/lib/rateLimit";
 import { z } from "zod";
+import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
+import { buildIdempotencyKey } from "@/lib/idempotency";
 
 export const runtime = "nodejs";
 
@@ -22,7 +24,7 @@ export async function POST(req: NextRequest) {
     "unknown";
 
   try {
-    await moderateLimiter.consume(ip);
+    await moderateLimiter.consume(`tips:ip:${ip}`);
   } catch {
     return NextResponse.json(
       { error: "Too many requests" },
@@ -35,12 +37,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let raw: unknown;
   try {
-    raw = await req.json();
+    await moderateLimiter.consume(`tips:user:${session.user.id}`);
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
   }
+
+  const bodyResult = await readJsonBodyLimited<Record<string, unknown>>(req, {
+    maxBytes: 12 * 1024,
+  });
+  if (!bodyResult.ok) return bodyResult.response;
+
+  const raw = bodyResult.value;
 
   const parsed = tipSchema.safeParse(raw);
   if (!parsed.success) {
@@ -51,15 +62,26 @@ export async function POST(req: NextRequest) {
   }
 
   const { artistId, amount, songId, message } = parsed.data;
+  const idempotencyKey = buildIdempotencyKey(req, "tips-checkout", [
+    session.user.id,
+    artistId,
+    amount,
+    songId,
+    message,
+  ]);
 
   if (artistId === session.user.id) {
     return NextResponse.json({ error: "You cannot tip yourself" }, { status: 403 });
   }
 
-  const artist = await prisma.user.findUnique({
-    where: { id: artistId },
-    select: { id: true, name: true, username: true },
-  });
+  const artistLookup = await withRouteTimeout("tips-artist-lookup", 2500, async () =>
+    prisma.user.findUnique({
+      where: { id: artistId },
+      select: { id: true, name: true, username: true },
+    }),
+  );
+  if (!artistLookup.ok) return artistLookup.response;
+  const artist = artistLookup.value;
   if (!artist) {
     return NextResponse.json({ error: "Artist not found" }, { status: 404 });
   }
@@ -67,47 +89,54 @@ export async function POST(req: NextRequest) {
   const baseUrl = getSiteUrl();
   const amountCents = Math.round(amount * 100);
 
-  const stripeSession = await stripe.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          unit_amount: amountCents,
-          product_data: {
-            name: `Tip for ${artist.name ?? artist.username ?? "artist"}`,
-            description: message
-              ? `"${message}"`
-              : `Support ${artist.name ?? artist.username ?? "this artist"} on Epic Music Space`,
+  const stripeSessionResult = await withRouteTimeout("tips-stripe-checkout-create", 4500, async () =>
+    stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            unit_amount: amountCents,
+            product_data: {
+              name: `Tip for ${artist.name ?? artist.username ?? "artist"}`,
+              description: message
+                ? `"${message}"`
+                : `Support ${artist.name ?? artist.username ?? "this artist"} on Epic Music Space`,
+            },
           },
+          quantity: 1,
         },
-        quantity: 1,
+      ],
+      metadata: {
+        type: "tip",
+        fromUserId: session.user.id,
+        artistId,
+        songId: songId ?? "",
+        message: message ?? "",
+        amount: String(amount),
       },
-    ],
-    metadata: {
-      type: "tip",
-      fromUserId: session.user.id,
-      artistId,
-      songId: songId ?? "",
-      message: message ?? "",
-      amount: String(amount),
-    },
-    success_url: `${baseUrl}/${artist.username ? `studio/${artist.username}` : "dashboard"}?tip=success`,
-    cancel_url: `${baseUrl}/${artist.username ? `studio/${artist.username}` : "dashboard"}`,
-  });
+      success_url: `${baseUrl}/${artist.username ? `studio/${artist.username}` : "dashboard"}?tip=success`,
+      cancel_url: `${baseUrl}/${artist.username ? `studio/${artist.username}` : "dashboard"}`,
+    }, { idempotencyKey }),
+  );
+  if (!stripeSessionResult.ok) return stripeSessionResult.response;
+  const stripeSession = stripeSessionResult.value;
 
-  await prisma.transaction.create({
-    data: {
-      userId: session.user.id,
-      songId: songId || null,
-      amount,
-      type: "TIP",
-      status: "PENDING",
-      stripeSessionId: stripeSession.id,
-      metadata: { artistId, message: message ?? null },
-    },
-  });
+  const txCreate = await withRouteTimeout("tips-transaction-create", 2500, async () =>
+    prisma.transaction.create({
+      data: {
+        userId: session.user.id,
+        songId: songId || null,
+        amount,
+        type: "TIP",
+        status: "PENDING",
+        stripeSessionId: stripeSession.id,
+        metadata: { artistId, message: message ?? null, idempotencyKey },
+      },
+    }),
+  );
+  if (!txCreate.ok) return txCreate.response;
 
   if (!stripeSession.url) {
     return NextResponse.json({ error: "Failed to create checkout session" }, { status: 500 });

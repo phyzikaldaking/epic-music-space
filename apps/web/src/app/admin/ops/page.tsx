@@ -15,8 +15,8 @@ function Metric({ label, value, tone = "neutral" }: { label: string; value: stri
   };
   return (
     <div className="border-t border-white/10 py-4">
-      <dt className="text-xs font-bold uppercase tracking-widest text-white/35">{label}</dt>
-      <dd className={`mt-1 text-2xl font-black ${tones[tone]}`}>{value}</dd>
+      <p className="text-xs font-bold uppercase tracking-widest text-white/35">{label}</p>
+      <p className={`mt-1 text-2xl font-black ${tones[tone]}`}>{value}</p>
     </div>
   );
 }
@@ -32,6 +32,12 @@ export default async function AdminOpsPage() {
 
   const snapshot = await getOpsSnapshot();
   const readinessTone = snapshot.readiness === "ok" ? "good" : snapshot.readiness === "degraded" ? "warn" : "bad";
+  const queuePressureTone =
+    snapshot.pressure.queue === "critical"
+      ? "border-red-500/40 bg-red-500/10 text-red-200"
+      : snapshot.pressure.queue === "elevated"
+        ? "border-yellow-500/40 bg-yellow-500/10 text-yellow-100"
+        : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 text-white">
@@ -81,6 +87,15 @@ export default async function AdminOpsPage() {
             <div><dt className="text-white/35">Commit</dt><dd className="font-mono">{snapshot.deploy.commitShort}</dd></div>
           </dl>
         </div>
+      </section>
+
+      <section className={`mb-8 rounded-lg border px-4 py-3 text-sm ${queuePressureTone}`}>
+        <p className="font-semibold">
+          Queue pressure: {snapshot.pressure.queue}
+        </p>
+        <p className="mt-1 text-xs opacity-90">
+          Backlog {snapshot.queueBacklog} · failed jobs {snapshot.failedJobs}
+        </p>
       </section>
 
       <section className="grid gap-8 lg:grid-cols-3">

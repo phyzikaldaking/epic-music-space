@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { strictLimiter } from "@/lib/rateLimit";
 import { track } from "@/lib/analytics";
+import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
+import { getQueuePressureSnapshot, shouldShedNonCriticalWork } from "@/lib/trafficShed";
 
 type ReliabilityAlertPayload = {
   service?: string;
@@ -22,10 +24,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 429 });
   }
 
-  const body = (await req.json().catch(() => ({}))) as ReliabilityAlertPayload;
+  const bodyResult = await readJsonBodyLimited<ReliabilityAlertPayload>(req, {
+    maxBytes: 16 * 1024,
+  });
+  if (!bodyResult.ok) return bodyResult.response;
+
+  const body = bodyResult.value;
 
   if (!body.event) {
     return NextResponse.json({ ok: false, error: "missing_event" }, { status: 400 });
+  }
+
+  if (await shouldShedNonCriticalWork()) {
+    const pressure = await getQueuePressureSnapshot();
+    return NextResponse.json(
+      {
+        ok: true,
+        degraded: true,
+        reason: "queue_pressure",
+        pressure: pressure.pressure,
+      },
+      { status: 202 },
+    );
   }
 
   const payload = {
@@ -43,10 +63,13 @@ export async function POST(req: NextRequest) {
     console.log("[reliability-alert]", payload);
   }
 
-  track({
-    event: "reliability_alert_received",
-    properties: payload,
+  const tracked = await withRouteTimeout("reliability-track", 1200, async () => {
+    track({
+      event: "reliability_alert_received",
+      properties: payload,
+    });
   });
+  if (!tracked.ok) return tracked.response;
 
   return NextResponse.json({ ok: true });
 }

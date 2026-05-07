@@ -19,6 +19,7 @@ import {
 } from "@/lib/passwordStrength";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { recordRiskEvent } from "@/lib/riskEvents";
+import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
 
 function generateCode(): string {
   return randomBytes(5).toString("hex").toUpperCase(); // 10-char hex code
@@ -103,7 +104,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json();
+    const bodyResult = await readJsonBodyLimited<Record<string, unknown>>(req, {
+      maxBytes: 24 * 1024,
+    });
+    if (!bodyResult.ok) return bodyResult.response;
+
+    const body = bodyResult.value;
     const parsed = registerSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -121,6 +127,27 @@ export async function POST(req: NextRequest) {
     const normalizedEmail = normalizeEmail(email);
     const normalizedPhone = phone ? normalizePhone(phone) : null;
     const safeCallbackUrl = sanitizeCallbackPath(callbackUrl);
+
+    try {
+      await strictLimiter.consume(`register:email:${normalizedEmail}`);
+    } catch {
+      await emitAuthEvent("register_rate_limited", {
+        ip,
+        email: normalizedEmail,
+        retryAfterSeconds: 60,
+      });
+      await recordRiskEvent({
+        eventType: "suspicious_signup",
+        severity: "MEDIUM",
+        ip,
+        reason: "register_rate_limited_email",
+        metadata: { email: normalizedEmail, retryAfterSeconds: 60 },
+      });
+      return NextResponse.json(
+        { error: "Too many registration attempts for this email. Please try again later." },
+        { status: 429, headers: { "Retry-After": "60" } },
+      );
+    }
 
     // Bot gate. When TURNSTILE_SECRET_KEY is unset the verifier returns
     // ok:true so dev / pre-Turnstile deploys still work.
@@ -154,10 +181,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const strength = evaluatePassword(
-      password,
-      personalTokensFor({ name, email: normalizedEmail }),
+    const strengthResult = await withRouteTimeout("register-password-check", 1500, async () =>
+      evaluatePassword(
+        password,
+        personalTokensFor({ name, email: normalizedEmail }),
+      ),
     );
+    if (!strengthResult.ok) return strengthResult.response;
+
+    const strength = strengthResult.value;
     if (!strength.acceptable) {
       await emitAuthEvent("register_invalid_input", {
         ip,

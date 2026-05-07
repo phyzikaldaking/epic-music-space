@@ -6,6 +6,7 @@ import { strictLimiter } from "@/lib/rateLimit";
 import { getTierLimits } from "@/lib/tierLimits";
 import { buildIdempotencyKey } from "@/lib/idempotency";
 import { createLicenseCheckoutSession, LicenseCheckoutError } from "@/lib/payments/licenseCheckout";
+import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
 
 const buySchema = z.object({
   songId: z.string().min(1, "songId is required"),
@@ -26,8 +27,14 @@ export async function POST(req: NextRequest) {
     req.headers.get("x-real-ip") ??
     "unknown";
 
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    await strictLimiter.consume(ip);
+    await strictLimiter.consume(`market-buy:user:${session.user.id}`);
+    await strictLimiter.consume(`market-buy:ip:${ip}`);
   } catch {
     return NextResponse.json(
       { error: "Too many requests. Please slow down." },
@@ -35,18 +42,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   // ── Validate body ──────────────────────────────────────────────────────────
-  let rawBody: unknown;
-  try {
-    rawBody = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+  const bodyResult = await readJsonBodyLimited<Record<string, unknown>>(req, {
+    maxBytes: 16 * 1024,
+    invalidMessage: "Invalid JSON body",
+  });
+  if (!bodyResult.ok) return bodyResult.response;
+
+  const rawBody = bodyResult.value;
 
   const parsed = buySchema.safeParse(rawBody);
   if (!parsed.success) {
@@ -64,15 +67,23 @@ export async function POST(req: NextRequest) {
   ]);
 
   // ── Tier license limit check ───────────────────────────────────────────────
-  const buyer = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { subscriptionTier: true },
-  });
+  const buyerLookup = await withRouteTimeout("market-buy-buyer-lookup", 2500, async () =>
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { subscriptionTier: true },
+    }),
+  );
+  if (!buyerLookup.ok) return buyerLookup.response;
+  const buyer = buyerLookup.value;
   if (buyer) {
     const limits = getTierLimits(buyer.subscriptionTier);
-    const held = await prisma.licenseToken.count({
-      where: { holderId: session.user.id, status: "ACTIVE" },
-    });
+    const heldLookup = await withRouteTimeout("market-buy-license-count", 2500, async () =>
+      prisma.licenseToken.count({
+        where: { holderId: session.user.id, status: "ACTIVE" },
+      }),
+    );
+    if (!heldLookup.ok) return heldLookup.response;
+    const held = heldLookup.value;
     if (held + quantity > limits.maxLicenses) {
       return NextResponse.json(
         { error: `Your ${buyer.subscriptionTier} plan allows ${limits.maxLicenses} active license(s). Upgrade to buy more.` },
@@ -82,18 +93,23 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const checkout = await createLicenseCheckoutSession({
-      analytics: {
-        event: "market_buy_initiated",
-        firstPurchaseFunnelEvent: "funnel_buyer_visit_to_first_license_purchase",
-      },
-      idempotencyKey,
-      quantity,
-      requestSource: "api/market/buy",
-      songId,
-      userId: session.user.id,
-      userEmail: session.user.email,
-    });
+    const checkoutResult = await withRouteTimeout("market-buy-create-checkout", 4500, async () =>
+      createLicenseCheckoutSession({
+        analytics: {
+          event: "market_buy_initiated",
+          firstPurchaseFunnelEvent: "funnel_buyer_visit_to_first_license_purchase",
+        },
+        idempotencyKey,
+        quantity,
+        requestSource: "api/market/buy",
+        songId,
+        userId: session.user.id,
+        userEmail: session.user.email,
+      }),
+    );
+    if (!checkoutResult.ok) return checkoutResult.response;
+
+    const checkout = checkoutResult.value;
     return NextResponse.json({ checkoutUrl: checkout.checkoutUrl }, { status: 201 });
   } catch (error) {
     if (error instanceof LicenseCheckoutError) {

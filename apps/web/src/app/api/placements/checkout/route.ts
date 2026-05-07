@@ -7,6 +7,7 @@ import { strictLimiter } from "@/lib/rateLimit";
 import { buildIdempotencyKey } from "@/lib/idempotency";
 import { retry, withCircuitBreaker, withTimeout } from "@/lib/resilience";
 import { z } from "zod";
+import { readJsonBodyLimited } from "@/lib/apiHardening";
 
 const placementSchema = z.object({
   songId: z.string().min(1),
@@ -37,7 +38,21 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const parsed = placementSchema.safeParse(await req.json().catch(() => null));
+  try {
+    await strictLimiter.consume(`placement-checkout:user:${session.user.id}`);
+  } catch {
+    return NextResponse.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
+
+  const bodyResult = await readJsonBodyLimited<Record<string, unknown>>(req, {
+    maxBytes: 16 * 1024,
+  });
+  if (!bodyResult.ok) return bodyResult.response;
+
+  const parsed = placementSchema.safeParse(bodyResult.value);
   if (!parsed.success) return NextResponse.json({ error: "Invalid placement request" }, { status: 400 });
 
   const { songId, packageId } = parsed.data;
