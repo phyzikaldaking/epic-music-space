@@ -36,29 +36,21 @@ export default function HomeHeroMessaging() {
   if (variant === "outcome") {
     return (
       <>
-        <p className="vc-eyebrow">The fastest-growing social platform for music</p>
+        <p className="vc-eyebrow">Where the next generation of music gets made</p>
         <h1 className="vc-hero-h1">
-          Go Viral Faster.
+          Make a record.
           <br />
-          <span className="accent">Build fans in public.</span>
+          <span className="accent">Sell it tonight.</span>
           <br />
-          Get paid in real time.
+          Keep 100%.
         </h1>
         <p className="vc-hero-tagline">
-          Epic Music Space helps artists turn discovery into momentum. Host live
-          sessions, win fan-voted battles, and convert engagement into revenue
-          without waiting on gatekeepers.
-          <span className="block mt-2">
-            Every track can move from first listen to first supporter in one
-            flow across rooms, feeds, and charts.
-          </span>
+          Cut tracks in the browser, drop them in front of fans live, and get
+          paid the second someone wants in. No labels, no gatekeepers, no
+          monthly subscription to record.
           <span className="block mt-3 text-sm text-white/60">
-            Transparent payouts: only a flat 10% platform fee, itemized on every
-            payment. See full breakdown on{" "}
-            <Link href="/pricing" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
-              /pricing
-            </Link>
-            .
+            Flat 10% platform fee, itemized on every payout —
+            {" "}<Link href="/pricing" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">see the breakdown</Link>.
           </span>
         </p>
       </>
@@ -67,34 +59,23 @@ export default function HomeHeroMessaging() {
 
   return (
     <>
-      <p className="vc-eyebrow">The fastest-growing social platform for music</p>
+      <p className="vc-eyebrow">Where the next generation of music gets made</p>
       <h1 className="vc-hero-h1">
-        Connect. Compete. Create.
+        Record. Release.
         <br />
-        <span className="accent">Earn as you share.</span>
+        <span className="accent">Get paid live.</span>
         <br />
-        Go viral tonight.
+        Built for artists.
       </h1>
       <p className="vc-hero-tagline">
-        Epic Music Space is where millions of fans discover music and artists
-        build careers. Host live listening rooms with real-time fan engagement,
-        compete in{" "}
-        <Link href="/versus" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
-          community-powered battles
-        </Link>
-        , and earn 100% of every license sale with zero hidden cuts.
-        <span className="block mt-2">
-          Share your music, grow your fanbase, and monetize your community in
-          real time. Every play, every share, every battle positions you for
-          viral success.
-        </span>
+        Cut a track in the in-browser studio, drop it into a live listening
+        room, battle it head-to-head on{" "}
+        <Link href="/versus" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">Versus</Link>
+        , and get paid the second a fan wants in. Every license is 100%
+        yours.
         <span className="block mt-3 text-sm text-white/60">
-          Transparent payouts: only a flat 10% platform fee, itemized on every
-          payment. See full breakdown on{" "}
-          <Link href="/pricing" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">
-            /pricing
-          </Link>
-          .
+          Flat 10% platform fee, itemized on every payout —
+          {" "}<Link href="/pricing" className="accent underline decoration-dotted underline-offset-4 hover:no-underline">see the breakdown</Link>.
         </span>
       </p>
     </>
