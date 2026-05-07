@@ -432,6 +432,9 @@ export class DawEngine {
   private playStartPosition = 0;
   /** Alignment trim to compensate MediaRecorder starting before scheduled playback. */
   private recordingAlignmentTrimSec = 0;
+  /** Guards against overlapping async start/stop recording transitions. */
+  private recordingStartInFlight = false;
+  private recordingStopInFlight = false;
   /** Tap-tempo: timestamps of the most recent taps (ms epoch). */
   private tapTimestamps: number[] = [];
   /** Cached downsampled waveform peaks per track for the WaveformView.
@@ -688,6 +691,7 @@ export class DawEngine {
   /** Automatically arm/disarm recording when punch-in is enabled and playback crosses the punch window. */
   private checkPunchIn(): void {
     if (!this.transport.punchInEnabled || !this.transport.isPlaying) return;
+    if (this.recordingStartInFlight || this.recordingStopInFlight) return;
     const pos = this.transport.positionSec;
     if (!this.transport.isRecording) {
       if (pos >= this.transport.punchInSec && pos < this.transport.punchOutSec) {
@@ -1405,12 +1409,22 @@ export class DawEngine {
    *  was denied or no track is armed. */
   async startRecording(trackId?: TrackId): Promise<boolean> {
     if (!this.ctx) return false;
+    if (this.transport.isRecording || this.recordingStartInFlight || this.recordingStopInFlight) return false;
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      return false;
+    }
+
     const wasPlaying = this.transport.isPlaying;
     const track =
       (trackId ? this.tracks.get(trackId) : null) ??
       Array.from(this.tracks.values()).find((t) => t.state.armed);
     if (!track) return false;
 
+    this.recordingStartInFlight = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -1474,11 +1488,16 @@ export class DawEngine {
       this.recordingAlignmentTrimSec = 0;
       this.notify();
       return false;
+    } finally {
+      this.recordingStartInFlight = false;
     }
   }
 
   async stopRecording(): Promise<void> {
     if (!this.ctx) return;
+    if (this.recordingStopInFlight) return;
+    this.recordingStopInFlight = true;
+    try {
     const recordingTrack = Array.from(this.tracks.values()).find(
       (t) => t.recorder,
     );
@@ -1535,6 +1554,9 @@ export class DawEngine {
     this.transport.positionSec = 0;
     this.transport.lastRecordedTrackId = recordingTrack.state.id;
     this.notify();
+    } finally {
+      this.recordingStopInFlight = false;
+    }
   }
 
   /** Trim N seconds from the front of a buffer, preserving channel count/rate. */

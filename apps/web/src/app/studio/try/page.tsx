@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import DawWorkspace from "@/components/daw/DawWorkspace";
 import GuestStudioBanner from "./GuestStudioBanner";
+import FirstBeatCoach from "./FirstBeatCoach";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,8 @@ export default async function StudioTryPage() {
   return (
     <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
       {!isAuthed && <GuestStudioBanner />}
-      <DawWorkspace />
+      {!isAuthed && <FirstBeatCoach />}
+      <DawWorkspace isGuest={!isAuthed} />
     </div>
   );
 }

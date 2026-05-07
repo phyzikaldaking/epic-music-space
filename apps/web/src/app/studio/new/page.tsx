@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { shouldUseExpertUploadMode } from "@/lib/studioNewMode";
 import UploadTrackForm from "./UploadTrackForm";
 import QuickUploadFlow from "./QuickUploadFlow";
+import GuestResumePublish from "./GuestResumePublish";
 
 export const metadata = {
   title: "Upload Track",
@@ -88,6 +89,15 @@ export default async function StudioNewPage({
       ? `/studio/new?audioUrl=${encodeURIComponent(prefillAudioUrl)}`
       : "/studio/new";
     redirect(`/studio/setup?next=${encodeURIComponent(next)}`);
+  }
+
+  // Guest resume: visitor cut a track in /studio/try, signed up, and is
+  // back here with `?from=guest-resume`. The client component pulls the
+  // stashed WAV from IndexedDB, uploads it under their authed session,
+  // and redirects to `?from=guest-resume-done&audioUrl=…` so the form
+  // below picks up with the URL prefilled.
+  if (params.from === "guest-resume") {
+    return <GuestResumePublish />;
   }
 
   return (

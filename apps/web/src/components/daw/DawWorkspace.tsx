@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DawEngine,
@@ -13,12 +14,7 @@ import { demoPattern, emptyPattern as emptyBeatPattern, renderPatternToBuffer } 
 import BeatMachineGrid from "./BeatMachineGrid";
 import FxPanel from "./FxPanel";
 import GearRack, { type GearApplyHandlers } from "./GearRack";
-import MasterPanel from "./MasterPanel";
 import MasterPublishBar from "./MasterPublishBar";
-import StemLoopBrowser from "./StemLoopBrowser";
-import SampleLibraryPanel from "./SampleLibraryPanel";
-import OpenStudioSessionsPanel from "./OpenStudioSessionsPanel";
-import MidiPanel from "./MidiPanel";
 import PianoRoll from "./PianoRoll";
 import ProjectMenu from "./ProjectMenu";
 import WaveformView from "./WaveformView";
@@ -31,6 +27,12 @@ import {
 } from "./projectStorage";
 import { CHANNELS, createBrowserSupabaseClient } from "@/lib/supabase";
 import { useSession } from "next-auth/react";
+
+const MasterPanel = dynamic(() => import("./MasterPanel"), { ssr: false });
+const StemLoopBrowser = dynamic(() => import("./StemLoopBrowser"), { ssr: false });
+const SampleLibraryPanel = dynamic(() => import("./SampleLibraryPanel"), { ssr: false });
+const OpenStudioSessionsPanel = dynamic(() => import("./OpenStudioSessionsPanel"), { ssr: false });
+const MidiPanel = dynamic(() => import("./MidiPanel"), { ssr: false });
 
 const DEFAULT_TRACKS: Array<{ name: string; color: string; armed: boolean }> = [
   { name: "Vocal", color: "#ec4899", armed: true },
@@ -307,7 +309,7 @@ function parseStudioCommentPayload(payload: unknown): StudioComment | null {
   };
 }
 
-export default function DawWorkspace() {
+export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } = {}) {
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -350,6 +352,7 @@ export default function DawWorkspace() {
   const [recordReview, setRecordReview] = useState<RecordReviewState | null>(null);
   const [compactStrips, setCompactStrips] = useState(false);
   const [showRecordWizard, setShowRecordWizard] = useState(true);
+  const [heavyUiReady, setHeavyUiReady] = useState(false);
   const [loudnessTarget, setLoudnessTarget] = useState<LoudnessTarget>(-14);
   const sessionStartedAt = useRef<number>(Date.now());
   const wasRecordingRef = useRef(false);
@@ -369,6 +372,11 @@ export default function DawWorkspace() {
       engine.destroy();
       engineRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHeavyUiReady(true), 260);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // Hold the latest focus mode + display name in refs so the presence
@@ -397,6 +405,7 @@ export default function DawWorkspace() {
   }, []);
 
   useEffect(() => {
+    if (!heavyUiReady) return;
     const supabase = createBrowserSupabaseClient();
     if (!supabase) return;
     const channel = supabase.channel(`${CHANNELS.marketplace}:studio-board`, {
@@ -433,11 +442,12 @@ export default function DawWorkspace() {
       void channel.untrack();
       void supabase.removeChannel(channel);
     };
-  }, [appendComment, clientPresenceId]);
+  }, [appendComment, clientPresenceId, heavyUiReady]);
 
   // When focusMode changes, re-track presence on the live channel
   // without recreating it.
   useEffect(() => {
+    if (!heavyUiReady) return;
     const channel = presenceChannelRef.current;
     if (!channel) return;
     void channel.track({
@@ -447,7 +457,7 @@ export default function DawWorkspace() {
       isPlaying: false,
       updatedAt: new Date().toISOString(),
     } satisfies CollaboratorPresence);
-  }, [focusMode, clientPresenceId]);
+  }, [focusMode, clientPresenceId, heavyUiReady]);
 
   useEffect(() => {
     void listProjects()
@@ -695,6 +705,38 @@ export default function DawWorkspace() {
     engine.setMetronome(false);
     setNotice({ tone: "success", message: "Mix preset loaded: stable playback + smooth vocal profile." });
   }, []);
+
+  const launchInstantRecordSetup = useCallback(() => {
+    if (!ensureInit()) return;
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    const liveTracks = engine.getSnapshot().tracks;
+    if (liveTracks.length === 0) return;
+    const vocalTrack = liveTracks.find((track) => /vocal/i.test(track.name)) ?? liveTracks[0]!;
+
+    for (const track of liveTracks) {
+      engine.setTrackArmed(track.id, track.id === vocalTrack.id);
+      if (track.id !== vocalTrack.id) engine.setTrackMonitor(track.id, false);
+    }
+
+    engine.setBpm(92);
+    engine.setLatencyMode("recording");
+    engine.setVocalCaptureProfile("punchy");
+    engine.setMetronome(true);
+    engine.setLoopEnabled(false);
+    engine.setPunchIn(false, 0, 4);
+
+    setFocusedId(vocalTrack.id);
+    setFocusMode("record");
+    setShowRecordWizard(true);
+    safeLocalStorageSet(STUDIO_RECORD_WIZARD_KEY, "active");
+    pushAuditEvent("record", "Instant record setup armed the vocal lane");
+    setNotice({
+      tone: "success",
+      message: `Instant setup ready: ${vocalTrack.name} armed, metronome on, record mode active.`,
+    });
+  }, [ensureInit, pushAuditEvent]);
 
   const nudgeMasterToTarget = useCallback(() => {
     const engine = engineRef.current;
@@ -1086,6 +1128,31 @@ export default function DawWorkspace() {
 
   // ── Publish: render mix → WAV → /api/upload signed URL → PUT bytes ──────
   async function publishMix(wav: Blob): Promise<{ ok: boolean; message?: string }> {
+    // Guest path: stash the WAV in IndexedDB and bounce through signup.
+    // /studio/new picks the stash up after auth and finishes the upload
+    // against the now-authenticated session, so the visitor never has
+    // to re-render their mix.
+    if (isGuest) {
+      try {
+        const fileName = `ems-studio-${Date.now()}.wav`;
+        const { stashGuestMix, GUEST_RESUME_FLAG } = await import("@/lib/guestStash");
+        await stashGuestMix(wav, fileName);
+        try { window.localStorage.setItem(GUEST_RESUME_FLAG, "1"); } catch { /* private mode */ }
+        setStats((s) => ({ ...s, publishes: s.publishes + 1 }));
+        pushAuditEvent("publish", "Stashed mix as guest — bouncing through signup");
+        const callbackUrl = encodeURIComponent("/studio/new?from=guest-resume");
+        router.push(`/auth/signup?role=ARTIST&callbackUrl=${callbackUrl}`);
+        return { ok: true, message: "Saved your mix — sign up free to keep it and publish." };
+      } catch (err) {
+        return {
+          ok: false,
+          message: err instanceof Error
+            ? `Couldn't save your mix locally: ${err.message}. Try signing up first.`
+            : "Couldn't save your mix locally. Try signing up first.",
+        };
+      }
+    }
+
     try {
       const fileName = `ems-studio-${Date.now()}.wav`;
       const signRes = await fetch("/api/upload", {
@@ -1208,6 +1275,7 @@ export default function DawWorkspace() {
 
       {showGuide && (
         <QuickStartGuide
+          onInstantSetup={launchInstantRecordSetup}
           onClose={() => {
             setShowGuide(false);
             safeLocalStorageSet("ems-studio-guide-dismissed-v1", "1");
@@ -1276,6 +1344,7 @@ export default function DawWorkspace() {
             setFocusMode("mix");
             pushAuditEvent("export", "Loaded Master template (72 BPM)");
           }}
+          onInstantSetup={launchInstantRecordSetup}
           onForum={() => router.push("/forum")}
         />
       )}
@@ -1383,6 +1452,7 @@ export default function DawWorkspace() {
               : "bg-brand-500 text-white hover:bg-brand-600"
           }`}
           aria-label={transport?.isPlaying ? "Stop" : "Play"}
+          data-tour="play-button"
         >
           {transport?.isPlaying ? "■" : "▶"}
         </button>
@@ -1782,62 +1852,71 @@ export default function DawWorkspace() {
       {/* ── Sample Library + Stem Loop Browser side-by-side on desktop ─── */}
       {!showSplash && (showArrangeTools || showRecordTools) && (
         <div className="mb-6 grid gap-3 lg:grid-cols-2">
-          <SampleLibraryPanel
-            onLoadSample={async ({ name, url, category }) => {
-              const engine = engineRef.current;
-              if (!engine) return;
-              try {
-                const blob = await (await fetch(url)).blob();
-                const palette: Record<string, string> = {
-                  drums: "#22d3ee",
-                  bass: "#a78bfa",
-                  melody: "#f59e0b",
-                  fx: "#10b981",
-                  vocals: "#ec4899",
-                };
-                const trackId = engine.addTrack(name, palette[category] ?? "#7c5cff");
-                await engine.importAudioFile(trackId, blob);
-                setFocusedId(trackId);
-                setSnapshot(engine.getSnapshot());
-                pushAuditEvent("import", `Loaded sample: ${name}`);
-                setNotice({ tone: "success", message: `Loaded ${name}.` });
-              } catch (err) {
-                console.warn("[DawWorkspace] sample load failed", err);
-                setNotice({ tone: "error", message: "Couldn't load sample." });
-              }
-            }}
-          />
-          <StemLoopBrowser
-            onLoadStem={async ({ sourceTitle, kind, url }) => {
-              const engine = engineRef.current;
-              if (!engine) return;
-              try {
-                const blob = await (await fetch(url)).blob();
-                const trackName = `${sourceTitle.slice(0, 14)} · ${kind}`;
-                const colors: Record<string, string> = {
-                  vocals: "#ec4899",
-                  drums: "#22d3ee",
-                  bass: "#a78bfa",
-                  other: "#f59e0b",
-                };
-                const trackId = engine.addTrack(trackName, colors[kind] ?? "#7c5cff");
-                await engine.importAudioFile(trackId, blob);
-                setFocusedId(trackId);
-                setSnapshot(engine.getSnapshot());
-                pushAuditEvent(
-                  "import",
-                  `Loaded ${kind} stem from "${sourceTitle}" — 2% royalty share will accrue to source artist on derived revenue.`,
-                );
-                setNotice({
-                  tone: "success",
-                  message: `Loaded ${kind}. 2% of your future revenue from this track will route to the source artist.`,
-                });
-              } catch (err) {
-                console.warn("[DawWorkspace] stem load failed", err);
-                setNotice({ tone: "error", message: "Couldn't load stem. Try another." });
-              }
-            }}
-          />
+          {heavyUiReady ? (
+            <>
+              <SampleLibraryPanel
+                onLoadSample={async ({ name, url, category }) => {
+                  const engine = engineRef.current;
+                  if (!engine) return;
+                  try {
+                    const blob = await (await fetch(url)).blob();
+                    const palette: Record<string, string> = {
+                      drums: "#22d3ee",
+                      bass: "#a78bfa",
+                      melody: "#f59e0b",
+                      fx: "#10b981",
+                      vocals: "#ec4899",
+                    };
+                    const trackId = engine.addTrack(name, palette[category] ?? "#7c5cff");
+                    await engine.importAudioFile(trackId, blob);
+                    setFocusedId(trackId);
+                    setSnapshot(engine.getSnapshot());
+                    pushAuditEvent("import", `Loaded sample: ${name}`);
+                    setNotice({ tone: "success", message: `Loaded ${name}.` });
+                  } catch (err) {
+                    console.warn("[DawWorkspace] sample load failed", err);
+                    setNotice({ tone: "error", message: "Couldn't load sample." });
+                  }
+                }}
+              />
+              <StemLoopBrowser
+                onLoadStem={async ({ sourceTitle, kind, url }) => {
+                  const engine = engineRef.current;
+                  if (!engine) return;
+                  try {
+                    const blob = await (await fetch(url)).blob();
+                    const trackName = `${sourceTitle.slice(0, 14)} · ${kind}`;
+                    const colors: Record<string, string> = {
+                      vocals: "#ec4899",
+                      drums: "#22d3ee",
+                      bass: "#a78bfa",
+                      other: "#f59e0b",
+                    };
+                    const trackId = engine.addTrack(trackName, colors[kind] ?? "#7c5cff");
+                    await engine.importAudioFile(trackId, blob);
+                    setFocusedId(trackId);
+                    setSnapshot(engine.getSnapshot());
+                    pushAuditEvent(
+                      "import",
+                      `Loaded ${kind} stem from "${sourceTitle}" — 2% royalty share will accrue to source artist on derived revenue.`,
+                    );
+                    setNotice({
+                      tone: "success",
+                      message: `Loaded ${kind}. 2% of your future revenue from this track will route to the source artist.`,
+                    });
+                  } catch (err) {
+                    console.warn("[DawWorkspace] stem load failed", err);
+                    setNotice({ tone: "error", message: "Couldn't load stem. Try another." });
+                  }
+                }}
+              />
+            </>
+          ) : (
+            <>
+              <DeferredPanelPlaceholder label="Sample library" />
+              <DeferredPanelPlaceholder label="Stem loop browser" />
+            </>
+          )}
         </div>
       )}
 
@@ -1855,7 +1934,7 @@ export default function DawWorkspace() {
       )}
 
       {/* ── MIDI Synth ─────────────────────────────────────────────────────── */}
-      {!showSplash && snapshot && showArrangeTools && (
+      {!showSplash && snapshot && showArrangeTools && heavyUiReady && (
         <div className="mb-6">
           <MidiPanel
             state={snapshot.midi}
@@ -1880,7 +1959,7 @@ export default function DawWorkspace() {
       )}
 
       {/* ── Master mastering panel — EQ + spectrum + LUFS ───────────────── */}
-      {!showSplash && transport && showPublishTools && (
+      {!showSplash && transport && showPublishTools && heavyUiReady && (
         <div className="mb-6">
           <MasterPanel
             spectrum={transport.masterSpectrum}
@@ -1916,7 +1995,7 @@ export default function DawWorkspace() {
         />
       )}
 
-      {!showSplash && showPublishTools && (
+      {!showSplash && showPublishTools && heavyUiReady && (
         <CollaborationPresencePanel
           collaborators={collaborators}
           connected={presenceConnected}
@@ -1934,7 +2013,7 @@ export default function DawWorkspace() {
         />
       )}
 
-      {!showSplash && showPublishTools && (
+      {!showSplash && showPublishTools && heavyUiReady && (
         <StudioMonetizationPanel
           onAudit={pushAuditEvent}
           onNotice={setNotice}
@@ -2002,12 +2081,40 @@ export default function DawWorkspace() {
           artist's working session to fans via Supabase Realtime broadcast.
           Only renders for authenticated users; visitor count comes from
           the existing collaborator-presence channel. */}
-      {session?.user?.id && (
+      {session?.user?.id && heavyUiReady && (
         <OpenStudioSessionsPanel
           artistId={session.user.id}
           artistName={session.user.name?.trim() || "Studio creator"}
           artistAvatar={session.user.image ?? null}
           visitorCount={collaborators.filter((c) => c.id !== clientPresenceId).length}
+        />
+      )}
+
+      {!showSplash && (
+        <MobileRecordDock
+          positionSec={transport?.positionSec ?? 0}
+          isPlaying={Boolean(transport?.isPlaying)}
+          isRecording={Boolean(transport?.isRecording)}
+          metronomeOn={Boolean(transport?.metronomeOn)}
+          onTogglePlay={() => {
+            if (!ensureInit()) return;
+            const engine = engineRef.current;
+            if (!engine) return;
+            if (transport?.isPlaying) engine.stop();
+            else void engine.play();
+          }}
+          onToggleRecord={() => {
+            if (!ensureInit()) return;
+            void toggleRecording();
+          }}
+          onRewind={() => {
+            if (!ensureInit()) return;
+            engineRef.current?.rewind();
+          }}
+          onToggleMetronome={() => {
+            if (!ensureInit()) return;
+            engineRef.current?.setMetronome(!(transport?.metronomeOn ?? false));
+          }}
         />
       )}
     </div>
@@ -2079,15 +2186,18 @@ function FocusModeBar({
 
 function StudioExecutionBar({
   onTemplate,
+  onInstantSetup,
   onForum,
 }: {
   onTemplate: (preset: "vocal" | "club" | "master") => void;
+  onInstantSetup: () => void;
   onForum: () => void;
 }) {
   return (
     <section className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="mr-1 text-[10px] font-black uppercase tracking-[0.2em] text-white/55">Fast launch</span>
+        <button type="button" onClick={onInstantSetup} className="rounded-lg bg-emerald-400 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-black hover:bg-emerald-300">Instant record</button>
         <button type="button" onClick={() => onTemplate("vocal")} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10">Vocal template</button>
         <button type="button" onClick={() => onTemplate("club")} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10">Club template</button>
         <button type="button" onClick={() => onTemplate("master")} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10">Master template</button>
@@ -2165,18 +2275,45 @@ function RecordReadinessWizard({
   onStartRecord: () => void;
   onDismiss: () => void;
 }) {
+  type ReadinessStatus = "ok" | "warn" | "pending";
+
   const noiseLevel = transport?.masterLevel ?? 0;
   const micReady = Boolean(browserHealth?.mediaDevices && browserHealth?.mediaRecorder && browserHealth?.secureContext);
+  const isLiveCalibrating = Boolean(transport?.isRecording);
   const noiseOk = noiseLevel < 0.03;
   const levelOk = noiseLevel >= 0.08 && noiseLevel <= 0.75;
 
   const checks = [
-    { label: "Mic + browser", ok: micReady, detail: micReady ? "Ready" : "Need mic permission + secure context" },
-    { label: "Track armed", ok: armedTracks > 0, detail: armedTracks > 0 ? `${armedTracks} armed` : "Arm a track" },
-    { label: "Noise floor", ok: noiseOk, detail: noiseOk ? "Quiet enough" : "Room noise is elevated" },
-    { label: "Input level", ok: levelOk, detail: levelOk ? "Healthy level" : "Speak/sing and watch meter" },
+    {
+      label: "Mic + browser",
+      status: (micReady ? "ok" : "warn") as ReadinessStatus,
+      detail: micReady ? "Ready" : "Need mic permission + secure context",
+    },
+    {
+      label: "Track armed",
+      status: (armedTracks > 0 ? "ok" : "warn") as ReadinessStatus,
+      detail: armedTracks > 0 ? `${armedTracks} armed` : "Arm a track",
+    },
+    {
+      label: "Noise floor",
+      status: (!isLiveCalibrating ? "pending" : noiseOk ? "ok" : "warn") as ReadinessStatus,
+      detail: !isLiveCalibrating
+        ? "Checked live while recording"
+        : noiseOk
+          ? "Quiet enough"
+          : "Room noise is elevated",
+    },
+    {
+      label: "Input level",
+      status: (!isLiveCalibrating ? "pending" : levelOk ? "ok" : "warn") as ReadinessStatus,
+      detail: !isLiveCalibrating
+        ? "Start recording to calibrate"
+        : levelOk
+          ? "Healthy level"
+          : "Speak/sing and watch meter",
+    },
   ];
-  const completed = checks.filter((item) => item.ok).length;
+  const completed = checks.filter((item) => item.status === "ok").length;
 
   return (
     <section className="mb-6 rounded-2xl border border-white/12 bg-white/[0.03] p-4">
@@ -2196,7 +2333,16 @@ function RecordReadinessWizard({
 
       <div className="mt-3 grid gap-2 md:grid-cols-4">
         {checks.map((item) => (
-          <div key={item.label} className={`rounded-lg border px-3 py-2 ${item.ok ? "border-emerald-400/30 bg-emerald-500/10" : "border-white/10 bg-black/25"}`}>
+          <div
+            key={item.label}
+            className={`rounded-lg border px-3 py-2 ${
+              item.status === "ok"
+                ? "border-emerald-400/30 bg-emerald-500/10"
+                : item.status === "pending"
+                  ? "border-cyan-300/20 bg-cyan-500/10"
+                  : "border-white/10 bg-black/25"
+            }`}
+          >
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">{item.label}</p>
             <p className="mt-1 text-xs font-semibold text-white/85">{item.detail}</p>
           </div>
@@ -2328,7 +2474,82 @@ function ShortcutRow({ combo, action }: { combo: string; action: string }) {
   );
 }
 
-function QuickStartGuide({ onClose }: { onClose: () => void }) {
+function DeferredPanelPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/45">Loading</p>
+      <p className="mt-1 text-sm font-semibold text-white/85">{label}</p>
+      <p className="mt-2 text-xs text-white/50">Preparing this panel in the background for faster first paint.</p>
+    </div>
+  );
+}
+
+function MobileRecordDock({
+  positionSec,
+  isPlaying,
+  isRecording,
+  metronomeOn,
+  onTogglePlay,
+  onToggleRecord,
+  onRewind,
+  onToggleMetronome,
+}: {
+  positionSec: number;
+  isPlaying: boolean;
+  isRecording: boolean;
+  metronomeOn: boolean;
+  onTogglePlay: () => void;
+  onToggleRecord: () => void;
+  onRewind: () => void;
+  onToggleMetronome: () => void;
+}) {
+  return (
+    <div className="fixed right-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-3 z-[70] rounded-2xl border border-white/15 bg-[#060913]/95 p-2.5 shadow-2xl shadow-black/45 backdrop-blur sm:hidden">
+      <div className="mb-2 flex items-center justify-between px-1">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/70">Mobile control room</p>
+        <p className="font-mono text-sm font-bold text-white">{fmtTime(positionSec)}</p>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        <button
+          type="button"
+          onClick={onTogglePlay}
+          className={`rounded-xl px-3 py-3 text-sm font-black ${isPlaying ? "bg-white text-black" : "bg-brand-500 text-white"}`}
+        >
+          {isPlaying ? "Stop" : "Play"}
+        </button>
+        <button
+          type="button"
+          onClick={onToggleRecord}
+          className={`rounded-xl px-3 py-3 text-sm font-black ${isRecording ? "bg-red-500 text-white" : "border border-red-400/40 text-red-200"}`}
+        >
+          {isRecording ? "Stop Rec" : "Record"}
+        </button>
+        <button
+          type="button"
+          onClick={onRewind}
+          className="rounded-xl border border-white/15 px-3 py-3 text-sm font-black text-white/85"
+        >
+          Rewind
+        </button>
+        <button
+          type="button"
+          onClick={onToggleMetronome}
+          className={`rounded-xl px-3 py-3 text-sm font-black ${metronomeOn ? "bg-accent-500 text-black" : "border border-white/15 text-white/80"}`}
+        >
+          Click
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function QuickStartGuide({
+  onClose,
+  onInstantSetup,
+}: {
+  onClose: () => void;
+  onInstantSetup: () => void;
+}) {
   return (
     <section className="mb-5 rounded-2xl border border-cyan-300/25 bg-cyan-400/10 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2336,6 +2557,13 @@ function QuickStartGuide({ onClose }: { onClose: () => void }) {
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/85">First session guide</p>
           <h2 className="mt-1 text-base font-extrabold text-white">Fastest path to a publish-ready session</h2>
           <p className="mt-1 text-sm text-white/70">1) Press play to initialize. 2) Record a take or render beat. 3) Export or publish.</p>
+          <button
+            type="button"
+            onClick={onInstantSetup}
+            className="mt-3 rounded-lg bg-emerald-400 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-black hover:bg-emerald-300"
+          >
+            One-click instant record setup
+          </button>
         </div>
         <button
           type="button"
