@@ -1,0 +1,12 @@
+# Never upload local Vercel metadata or pulled env artifacts.
+.vercel
+
+# Never upload local dotenv files from this workspace.
+.env*
+apps/web/.env*
+apps/api/.env
+
+# Keep examples available in deployments/docs if needed.
+!.env.example
+!apps/web/.env.example
+!apps/api/.env.example
