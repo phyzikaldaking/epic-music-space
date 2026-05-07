@@ -1,0 +1,658 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { validateUpload } from "@/lib/uploadValidation";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
+
+// "First track in 90 seconds" — three taps, three screens, ship a song.
+// The full form at /studio/new?expert=1 still exists for power users.
+//
+// This component talks to the same /api/upload (signed PUT) and
+// /api/songs/create endpoints as UploadTrackForm — only the UX differs.
+
+const AUDIO_ACCEPT =
+  "audio/*,audio/mp4,audio/x-m4a,audio/aiff,.mp3,.wav,.flac,.aac,.m4a,.aif,.aiff,.ogg,.oga,.opus,.webm";
+
+const PRICE_PRESETS = [4.99, 9.99, 19.99, 49.99];
+const SUPPLY_PRESETS = [50, 100, 500];
+
+type Step = 1 | 2 | 3;
+type AudioState = "idle" | "uploading" | "done" | "error";
+
+function buzz(ms = 30) {
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(ms);
+    }
+  } catch {
+    // some browsers throw outside user gestures — safe to swallow
+  }
+}
+
+interface Props {
+  /** Logged-in user's display name, used to default the artist field. */
+  defaultArtistName: string;
+}
+
+export default function QuickUploadFlow({ defaultArtistName }: Props) {
+  const router = useRouter();
+
+  const [step, setStep] = useState<Step>(1);
+
+  // Step 1
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioState, setAudioState] = useState<AudioState>("idle");
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [audioUrl, setAudioUrl] = useState("");
+  const audioInputRef = useRef<HTMLInputElement>(null);
+
+  // Step 2
+  const [title, setTitle] = useState("");
+  const [artist, setArtist] = useState(defaultArtistName);
+  const [coverUrl, setCoverUrl] = useState("");
+  const [coverGenerating, setCoverGenerating] = useState(false);
+
+  // Step 3
+  const [licensePrice, setLicensePrice] = useState("9.99");
+  const [totalLicenses, setTotalLicenses] = useState("100");
+  const [revenueSharePct, setRevenueSharePct] = useState("10");
+
+  // shared
+  const [error, setError] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const startedAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    startedAtRef.current = performance.now();
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.artistUploadView,
+      source: "studio_new_quick",
+    });
+  }, []);
+
+  // ── Step 1: audio upload ────────────────────────────────────────────────
+  async function startAudioUpload(file: File) {
+    const check = validateUpload("audio", file);
+    if (!check.ok) {
+      setAudioState("error");
+      setAudioFile(file);
+      setError(check.reason);
+      return;
+    }
+    setError(null);
+    setAudioFile(file);
+    setAudioState("uploading");
+    setAudioProgress(0);
+    const startedAt = performance.now();
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.artistUploadAudioSelected,
+      source: "studio_new_quick",
+      properties: { mimeType: file.type || "(empty)", fileSize: file.size },
+    });
+    try {
+      const sig = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "audio",
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        }),
+      });
+      const sigData = (await sig.json()) as {
+        signedUrl?: string;
+        publicUrl?: string;
+        error?: string;
+      };
+      if (!sig.ok || !sigData.signedUrl || !sigData.publicUrl) {
+        throw new Error(sigData.error ?? "Could not start upload. Try again.");
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", sigData.signedUrl!);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setAudioProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+        xhr.onload = () =>
+          xhr.status >= 200 && xhr.status < 300
+            ? resolve()
+            : reject(new Error(`Upload failed (${xhr.status}). Try again.`));
+        xhr.onerror = () => reject(new Error("Network error during upload."));
+        xhr.send(file);
+      });
+
+      setAudioUrl(sigData.publicUrl);
+      setAudioState("done");
+      buzz(40);
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.artistUploadAudioCompleted,
+        source: "studio_new_quick",
+        properties: {
+          durationMs: Math.round(performance.now() - startedAt),
+          fileSize: file.size,
+        },
+      });
+      // Auto-advance once we have audio.
+      setStep(2);
+    } catch (err) {
+      setAudioState("error");
+      setAudioProgress(0);
+      setError(err instanceof Error ? err.message : "Upload failed. Tap to try again.");
+    }
+  }
+
+  function handleAudioChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) void startAudioUpload(file);
+  }
+
+  // ── Step 2: AI cover (optional) ─────────────────────────────────────────
+  const generateCover = useCallback(async () => {
+    const t = title.trim();
+    if (!t) {
+      setError("Add a track title first — the AI uses it to compose the cover.");
+      return;
+    }
+    setError(null);
+    setCoverGenerating(true);
+    try {
+      const res = await fetch("/api/cover/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: t }),
+      });
+      const data = (await res.json()) as { imageBase64?: string; error?: string };
+      if (!res.ok || !data.imageBase64) {
+        throw new Error(data.error ?? "Cover generation failed.");
+      }
+      // Convert base64 to a File and run through the existing upload pipeline.
+      const bin = atob(data.imageBase64);
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      const file = new File([buf], `cover-${Date.now()}.png`, { type: "image/png" });
+
+      const sig = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "cover",
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+        }),
+      });
+      const sigData = (await sig.json()) as { signedUrl?: string; publicUrl?: string; error?: string };
+      if (!sig.ok || !sigData.signedUrl || !sigData.publicUrl) {
+        throw new Error(sigData.error ?? "Cover upload failed.");
+      }
+      await fetch(sigData.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      setCoverUrl(sigData.publicUrl);
+      buzz(20);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cover generation failed.");
+    } finally {
+      setCoverGenerating(false);
+    }
+  }, [title]);
+
+  // ── Step 3: publish ─────────────────────────────────────────────────────
+  async function publish() {
+    if (publishing) return;
+    setError(null);
+
+    if (!title.trim()) {
+      setError("Add a track title.");
+      setStep(2);
+      return;
+    }
+    if (!artist.trim()) {
+      setError("Add your artist name.");
+      setStep(2);
+      return;
+    }
+    if (!audioUrl) {
+      setError("Upload your audio first.");
+      setStep(1);
+      return;
+    }
+
+    setPublishing(true);
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.artistUploadSubmitAttempt,
+      source: "studio_new_quick",
+      properties: {
+        hasAudioUrl: true,
+        hasCover: Boolean(coverUrl),
+        hasStems: false,
+      },
+    });
+
+    try {
+      const res = await fetch("/api/songs/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          artist: artist.trim(),
+          audioUrl,
+          coverUrl: coverUrl || undefined,
+          allowFreeDownload: false,
+          licensePrice: Number(licensePrice),
+          revenueSharePct: Number(revenueSharePct),
+          totalLicenses: Number(totalLicenses),
+        }),
+      });
+      const data = (await res.json()) as { id?: string; error?: string };
+      if (!res.ok || !data.id) {
+        if (res.status === 401) {
+          router.push("/auth/signin?callbackUrl=/studio/new");
+          return;
+        }
+        throw new Error(data.error ?? "Publish failed. Try again.");
+      }
+
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.artistUploadPublishCompleted,
+        source: "studio_new_quick",
+        properties: {
+          publishDurationMs: Math.round(performance.now() - startedAtRef.current),
+          hasStems: false,
+        },
+      });
+      buzz(80);
+      router.push(`/studio?published=${data.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Publish failed. Try again.");
+      setPublishing(false);
+    }
+  }
+
+  const projectedEarnings =
+    Number(licensePrice || 0) * Number(totalLicenses || 0);
+
+  return (
+    <div className="mx-auto max-w-md px-4 py-8 sm:py-12">
+      {/* Header — track count + step indicator + expert escape hatch */}
+      <div className="mb-6 flex items-center justify-between">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/45">
+          Step {step} of 3
+        </p>
+        <Link
+          href="/studio/new?expert=1"
+          className="text-xs text-white/45 underline-offset-2 hover:text-white/80 hover:underline"
+        >
+          More options
+        </Link>
+      </div>
+
+      {/* Progress bar */}
+      <div className="mb-7 grid grid-cols-3 gap-1.5">
+        {[1, 2, 3].map((s) => (
+          <div
+            key={s}
+            className={`h-1 rounded-full transition ${
+              s <= step ? "bg-gradient-to-r from-brand-500 to-accent-500" : "bg-white/10"
+            }`}
+          />
+        ))}
+      </div>
+
+      {/* ── STEP 1: AUDIO ────────────────────────────────────────────── */}
+      {step === 1 && (
+        <section aria-label="Upload audio">
+          <h1 className="text-3xl font-extrabold text-gradient-ems">Drop your track</h1>
+          <p className="mt-2 text-sm text-white/55">
+            MP3, WAV, FLAC, AAC, or M4A — up to 200 MB.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => audioInputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.currentTarget.classList.add("border-brand-500/60", "bg-brand-500/5");
+            }}
+            onDragLeave={(e) =>
+              e.currentTarget.classList.remove("border-brand-500/60", "bg-brand-500/5")
+            }
+            onDrop={(e) => {
+              e.preventDefault();
+              e.currentTarget.classList.remove("border-brand-500/60", "bg-brand-500/5");
+              const file = e.dataTransfer.files?.[0];
+              if (file) void startAudioUpload(file);
+            }}
+            className="mt-6 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.03] px-4 py-12 transition hover:border-brand-500/60 hover:bg-brand-500/5"
+          >
+            {audioState === "idle" && (
+              <>
+                <span className="text-5xl">🎵</span>
+                <p className="text-sm font-semibold text-white/70 sm:hidden">
+                  Tap to add from Files, iCloud, or your music library
+                </p>
+                <p className="hidden text-sm font-semibold text-white/70 sm:block">
+                  Drop audio here or tap to browse
+                </p>
+              </>
+            )}
+            {audioState === "uploading" && audioFile && (
+              <div className="w-full">
+                <div className="flex items-center gap-3">
+                  <div className="h-5 w-5 flex-shrink-0 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
+                  <p className="truncate text-sm font-medium">{audioFile.name}</p>
+                </div>
+                <div className="mt-3 h-1.5 w-full rounded-full bg-white/10">
+                  <div
+                    className="h-1.5 rounded-full bg-gradient-to-r from-brand-500 to-accent-500 transition-all"
+                    style={{ width: `${audioProgress}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-brand-400">{audioProgress}%</p>
+              </div>
+            )}
+            {audioState === "done" && audioFile && (
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">✓</span>
+                <p className="truncate text-sm font-medium text-green-400">
+                  {audioFile.name} uploaded
+                </p>
+              </div>
+            )}
+            {audioState === "error" && (
+              <p className="text-sm font-semibold text-red-400">Tap to try again</p>
+            )}
+          </button>
+          <input
+            ref={audioInputRef}
+            type="file"
+            accept={AUDIO_ACCEPT}
+            aria-label="Audio track file"
+            className="sr-only"
+            onChange={handleAudioChange}
+          />
+
+          {error && (
+            <p className="mt-4 rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              {error}
+            </p>
+          )}
+
+          {audioState === "done" && (
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              className="mt-6 w-full rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 py-4 text-base font-bold text-white transition hover:opacity-90"
+            >
+              Next →
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* ── STEP 2: NAME IT ──────────────────────────────────────────── */}
+      {step === 2 && (
+        <section aria-label="Name your track">
+          <h1 className="text-3xl font-extrabold text-gradient-ems">Name it</h1>
+          <p className="mt-2 text-sm text-white/55">Title, artist name, optional cover.</p>
+
+          <div className="mt-6 space-y-4">
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-white/55">
+                Title
+              </span>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Track title"
+                autoFocus
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder-white/25 focus:border-brand-500/60 focus:outline-none"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-white/55">
+                Artist
+              </span>
+              <input
+                value={artist}
+                onChange={(e) => setArtist(e.target.value)}
+                placeholder="Your artist name"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder-white/25 focus:border-brand-500/60 focus:outline-none"
+              />
+            </label>
+
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="flex items-center gap-3">
+                {coverUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={coverUrl}
+                    alt="cover"
+                    className="h-16 w-16 flex-shrink-0 rounded-lg object-cover"
+                  />
+                ) : (
+                  <div className="grid h-16 w-16 flex-shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-2xl">
+                    🎨
+                  </div>
+                )}
+                <div className="flex-1 text-sm text-white/55">
+                  Cover art is optional — the AI can compose one based on your title.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={generateCover}
+                disabled={coverGenerating || !title.trim()}
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-brand-500/30 bg-brand-500/10 px-4 py-2.5 text-sm font-bold text-brand-200 transition hover:bg-brand-500/20 disabled:opacity-40"
+              >
+                {coverGenerating ? (
+                  <>
+                    <span className="h-4 w-4 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
+                    Generating…
+                  </>
+                ) : coverUrl ? (
+                  "✨ Generate another"
+                ) : (
+                  "✨ Generate cover with AI"
+                )}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <p className="mt-4 rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              {error}
+            </p>
+          )}
+
+          <div className="mt-6 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 hover:bg-white/10"
+            >
+              ← Back
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!title.trim()) {
+                  setError("Add a track title.");
+                  return;
+                }
+                if (!artist.trim()) {
+                  setError("Add your artist name.");
+                  return;
+                }
+                setError(null);
+                setStep(3);
+              }}
+              className="flex-1 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 py-3 text-base font-bold text-white transition hover:opacity-90"
+            >
+              Next →
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* ── STEP 3: PRICING ──────────────────────────────────────────── */}
+      {step === 3 && (
+        <section aria-label="Set your price">
+          <h1 className="text-3xl font-extrabold text-gradient-ems">Set your price</h1>
+          <p className="mt-2 text-sm text-white/55">
+            Each license is one transferable share of your track.
+          </p>
+
+          <div className="mt-6 space-y-5">
+            <div>
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/55">
+                License price
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {PRICE_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setLicensePrice(preset.toFixed(2))}
+                    className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
+                      Number(licensePrice) === preset
+                        ? "border-brand-500/60 bg-brand-500/15 text-brand-200"
+                        : "border-white/10 bg-white/5 text-white/65 hover:border-brand-500/30"
+                    }`}
+                  >
+                    ${preset}
+                  </button>
+                ))}
+                <div className="relative flex-1 min-w-[100px]">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-white/35">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0.50"
+                    step="0.01"
+                    value={licensePrice}
+                    onChange={(e) => setLicensePrice(e.target.value)}
+                    aria-label="Custom license price"
+                    className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-7 pr-3 text-sm text-white focus:border-brand-500/60 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/55">
+                Total licenses
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {SUPPLY_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setTotalLicenses(String(preset))}
+                    className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
+                      Number(totalLicenses) === preset
+                        ? "border-brand-500/60 bg-brand-500/15 text-brand-200"
+                        : "border-white/10 bg-white/5 text-white/65 hover:border-brand-500/30"
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  max="10000"
+                  value={totalLicenses}
+                  onChange={(e) => setTotalLicenses(e.target.value)}
+                  aria-label="Custom license supply"
+                  className="flex-1 min-w-[90px] rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-brand-500/60 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/55">
+                Revenue share to license holders ({revenueSharePct}%)
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="50"
+                step="1"
+                value={revenueSharePct}
+                onChange={(e) => setRevenueSharePct(e.target.value)}
+                className="w-full accent-brand-500"
+                aria-label="Revenue share percentage"
+              />
+              <p className="mt-1 text-xs text-white/40">
+                License holders share {revenueSharePct}% of future stream + license revenue
+                with you. The rest stays with you.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-brand-500/25 bg-gradient-to-br from-brand-500/12 via-accent-500/6 to-transparent p-4">
+              <p className="text-xs uppercase tracking-wider text-white/55">If all licenses sell</p>
+              <p className="mt-1 text-3xl font-extrabold text-white">
+                ${projectedEarnings.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+
+          {error && (
+            <p className="mt-4 rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              {error}
+            </p>
+          )}
+
+          <div className="mt-6 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              disabled={publishing}
+              className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white/70 hover:bg-white/10 disabled:opacity-40"
+            >
+              ← Back
+            </button>
+            <button
+              type="button"
+              onClick={publish}
+              disabled={publishing}
+              className="flex-1 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 py-3 text-base font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {publishing ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                  Publishing…
+                </span>
+              ) : (
+                "Publish ⚡"
+              )}
+            </button>
+          </div>
+
+          <p className="mt-4 text-center text-xs text-white/35">
+            By publishing, you agree to the{" "}
+            <Link href="/legal/licensing" className="underline hover:text-white/60">
+              EMS Licensing Agreement
+            </Link>
+            .
+          </p>
+        </section>
+      )}
+    </div>
+  );
+}

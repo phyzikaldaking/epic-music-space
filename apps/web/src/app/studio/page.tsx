@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import StudioHubClient from "./StudioHubClient";
 
 /**
  * /studio — redirects signed-in users to their own studio profile.
@@ -18,10 +19,9 @@ export default async function StudioIndexPage() {
     select: { username: true },
   });
 
-  if (studio?.username) {
-    redirect(`/studio/${studio.username}`);
-  }
-
-  // No studio yet — send them to the virtual studio live room to explore
-  redirect("/studio/live");
+  return (
+    <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
+      <StudioHubClient studioUsername={studio?.username ?? null} />
+    </div>
+  );
 }

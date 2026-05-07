@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { auth } from "@/lib/auth";
+import { shouldUseExpertUploadMode } from "@/lib/studioNewMode";
 import UploadTrackForm from "./UploadTrackForm";
+import QuickUploadFlow from "./QuickUploadFlow";
 
 export const metadata = {
   title: "Upload Track",
@@ -9,8 +11,15 @@ export const metadata = {
     "Publish your music to the EMS marketplace and start earning license royalties.",
 };
 
-export default async function StudioNewPage() {
+export default async function StudioNewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ expert?: string }>;
+}) {
   const session = await auth();
+  const params = await searchParams;
+  const expertMode = shouldUseExpertUploadMode(params.expert);
+  const defaultArtistName = session?.user?.name?.trim() || "";
 
   if (!session?.user?.id) {
     return (
@@ -60,7 +69,11 @@ export default async function StudioNewPage() {
 
   return (
     <Suspense fallback={null}>
-      <UploadTrackForm />
+      {expertMode ? (
+        <UploadTrackForm />
+      ) : (
+        <QuickUploadFlow defaultArtistName={defaultArtistName} />
+      )}
     </Suspense>
   );
 }

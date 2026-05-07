@@ -94,5 +94,16 @@ export async function PUT(req: NextRequest) {
     update: { username, bio, bannerUrl, socialLinks, ...(district && { district }) },
   });
 
+  // Promote to ARTIST when a LISTENER first saves a studio — saving a
+  // studio = "I'm a creator." Without this, a LISTENER who just finished
+  // setup is still routed back to setup by /vault/new on their next
+  // upload attempt (the role check). PRODUCER / ENGINEER / LABEL / ADMIN
+  // / ARTIST roles are left untouched — they all already grant upload
+  // intent and we don't want to overwrite a more-specific role.
+  await prisma.user.updateMany({
+    where: { id: session.user.id, role: "LISTENER" },
+    data: { role: "ARTIST" },
+  });
+
   return NextResponse.json(studio);
 }
