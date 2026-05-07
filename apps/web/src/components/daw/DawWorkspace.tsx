@@ -2,13 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { DawEngine, type EngineSnapshot, type MidiSynthState, type TrackId } from "./dawEngine";
+import {
+  DawEngine,
+  type EngineSnapshot,
+  type MidiSynthState,
+  type TrackId,
+  type TransportState,
+} from "./dawEngine";
 import { demoPattern, emptyPattern as emptyBeatPattern, renderPatternToBuffer } from "./beatMachine";
 import BeatMachineGrid from "./BeatMachineGrid";
 import FxPanel from "./FxPanel";
 import GearRack, { type GearApplyHandlers } from "./GearRack";
 import MasterPanel from "./MasterPanel";
 import MasterPublishBar from "./MasterPublishBar";
+import StemLoopBrowser from "./StemLoopBrowser";
 import MidiPanel from "./MidiPanel";
 import PianoRoll from "./PianoRoll";
 import ProjectMenu from "./ProjectMenu";
@@ -69,8 +76,71 @@ type VersionEntry = {
 type StudioAuditEvent = {
   id: string;
   at: number;
-  kind: "save" | "load" | "autosave" | "record" | "import" | "beat" | "export" | "publish";
+  kind:
+    | "save"
+    | "load"
+    | "stem-load"
+    | "autosave"
+    | "record"
+    | "import"
+    | "beat"
+    | "export"
+    | "publish"
+    | "comment"
+    | "payout";
   detail: string;
+};
+
+type StudioComment = {
+  id: string;
+  authorId: string | null;
+  authorName: string;
+  focusMode: FocusMode;
+  message: string;
+  createdAt: string;
+  timelineSec: number | null;
+};
+
+type WalletRoleAggregate = {
+  pendingCents: number;
+  paidCents: number;
+  clawbackCents: number;
+  count: number;
+};
+
+type WalletPayload = {
+  balance?: {
+    pendingDollars?: number;
+    paidDollars?: number;
+    clawbackDollars?: number;
+    pendingCents?: number;
+    paidCents?: number;
+    clawbackCents?: number;
+  };
+  roleAggregates?: Record<string, WalletRoleAggregate>;
+  recentPayouts?: Array<{
+    id: string;
+    amount: number;
+    status: string;
+    createdAt: string;
+    paidAt: string | null;
+  }>;
+};
+
+type ConnectAccountPayload = {
+  connected: boolean;
+  accountId?: string;
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
+  detailsSubmitted?: boolean;
+  onboardingComplete?: boolean;
+};
+
+type SongOption = {
+  id: string;
+  title: string;
+  artist: string;
+  revenueSharePct: number;
 };
 
 const FOCUS_MODES: Array<{ id: FocusMode; label: string; detail: string }> = [
@@ -128,6 +198,8 @@ const METER_WIDTH_CLASSES = [
   "w-[100%]",
 ];
 
+const STUDIO_COMMENTS_KEY = "ems-studio-comments-v1";
+
 function trackTextClass(color: string): string {
   switch (color.toLowerCase()) {
     case "#ec4899":
@@ -176,6 +248,35 @@ function fmtTime(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function isFocusMode(value: unknown): value is FocusMode {
+  return value === "all" || value === "record" || value === "arrange" || value === "mix" || value === "publish";
+}
+
+function parseStudioCommentPayload(payload: unknown): StudioComment | null {
+  if (!payload || typeof payload !== "object") return null;
+  const candidate = payload as Partial<StudioComment>;
+  if (typeof candidate.id !== "string" || candidate.id.length === 0) return null;
+  if (typeof candidate.authorName !== "string" || candidate.authorName.trim().length === 0) return null;
+  if (!isFocusMode(candidate.focusMode)) return null;
+  if (typeof candidate.message !== "string") return null;
+  const message = candidate.message.trim();
+  if (!message) return null;
+  if (typeof candidate.createdAt !== "string" || Number.isNaN(Date.parse(candidate.createdAt))) return null;
+  const timelineSec =
+    typeof candidate.timelineSec === "number" && Number.isFinite(candidate.timelineSec)
+      ? Math.max(0, candidate.timelineSec)
+      : null;
+  return {
+    id: candidate.id,
+    authorId: typeof candidate.authorId === "string" ? candidate.authorId : null,
+    authorName: candidate.authorName.trim().slice(0, 64),
+    focusMode: candidate.focusMode,
+    message: message.slice(0, 320),
+    createdAt: candidate.createdAt,
+    timelineSec,
+  };
+}
+
 export default function DawWorkspace() {
   const { data: session } = useSession();
   const router = useRouter();
@@ -215,6 +316,7 @@ export default function DawWorkspace() {
   const [lastAutosaveAt, setLastAutosaveAt] = useState<number | null>(null);
   const [postingForum, setPostingForum] = useState(false);
   const [auditEvents, setAuditEvents] = useState<StudioAuditEvent[]>([]);
+  const [comments, setComments] = useState<StudioComment[]>([]);
   const sessionStartedAt = useRef<number>(Date.now());
   const clientPresenceId = useMemo(() => {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -250,6 +352,14 @@ export default function DawWorkspace() {
   // Hold the channel itself in a ref so we can re-track() on focus-mode
   // changes without remounting the subscription.
   const presenceChannelRef = useRef<ReturnType<NonNullable<ReturnType<typeof createBrowserSupabaseClient>>["channel"]> | null>(null);
+  const appendComment = useCallback((comment: StudioComment) => {
+    setComments((prev) => {
+      if (prev.some((existing) => existing.id === comment.id)) return prev;
+      return [comment, ...prev]
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, 80);
+    });
+  }, []);
 
   useEffect(() => {
     const supabase = createBrowserSupabaseClient();
@@ -266,6 +376,11 @@ export default function DawWorkspace() {
     channel.on("presence", { event: "sync" }, update);
     channel.on("presence", { event: "join" }, update);
     channel.on("presence", { event: "leave" }, update);
+    channel.on("broadcast", { event: "studio_comment" }, ({ payload }) => {
+      const parsed = parseStudioCommentPayload(payload);
+      if (!parsed) return;
+      appendComment(parsed);
+    });
     channel.subscribe(async (status) => {
       setPresenceConnected(status === "SUBSCRIBED");
       if (status === "SUBSCRIBED") {
@@ -283,7 +398,7 @@ export default function DawWorkspace() {
       void channel.untrack();
       void supabase.removeChannel(channel);
     };
-  }, [clientPresenceId]);
+  }, [appendComment, clientPresenceId]);
 
   // When focusMode changes, re-track presence on the live channel
   // without recreating it.
@@ -335,7 +450,29 @@ export default function DawWorkspace() {
     if (saved) setSessionNotes(saved);
   }, []);
 
-  function ensureInit(): boolean {
+  useEffect(() => {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(STUDIO_COMMENTS_KEY) : null;
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as unknown[];
+      if (!Array.isArray(parsed)) return;
+      const next = parsed
+        .map((item) => parseStudioCommentPayload(item))
+        .filter((item): item is StudioComment => item !== null)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, 80);
+      setComments(next);
+    } catch {
+      // Ignore malformed local cache.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(STUDIO_COMMENTS_KEY, JSON.stringify(comments.slice(0, 80)));
+  }, [comments]);
+
+  const ensureInit = useCallback((): boolean => {
     const engine = engineRef.current;
     if (!engine) return false;
     if (snapshot) return true;
@@ -365,7 +502,7 @@ export default function DawWorkspace() {
     setFocusedId(firstId);
     setSnapshot(engine.getSnapshot());
     return true;
-  }
+  }, [snapshot]);
 
   // ── Stems handoff ───────────────────────────────────────────────────────
   // When the DAW is opened with `?stems=<songId>` (from a track page's
@@ -441,11 +578,7 @@ export default function DawWorkspace() {
         setNotice({ tone: "error", message: "Couldn't load stems. Try again from the track page." });
       }
     })();
-    // ensureInit is stable for the lifetime of the component (it reads
-    // engineRef + snapshot via closure, both refs of state we own). Adding
-    // it to deps would re-fire the effect every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stemsSongId]);
+  }, [ensureInit, stemsSongId]);
 
   const transport = snapshot?.transport;
   const tracks = useMemo(() => snapshot?.tracks ?? [], [snapshot]);
@@ -476,6 +609,46 @@ export default function DawWorkspace() {
     };
     setAuditEvents((prev) => [entry, ...prev].slice(0, 24));
   }, []);
+
+  const submitComment = useCallback(
+    async (rawMessage: string) => {
+      const message = rawMessage.trim();
+      if (!message) return;
+      const comment: StudioComment = {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        authorId: session?.user?.id ?? null,
+        authorName: session?.user?.name?.trim() || "Studio creator",
+        focusMode,
+        message: message.slice(0, 320),
+        createdAt: new Date().toISOString(),
+        timelineSec: typeof transport?.positionSec === "number" ? transport.positionSec : null,
+      };
+      appendComment(comment);
+      pushAuditEvent("comment", `Shared note in ${focusMode} mode`);
+      const channel = presenceChannelRef.current;
+      if (!channel) return;
+      try {
+        await channel.send({
+          type: "broadcast",
+          event: "studio_comment",
+          payload: comment,
+        });
+      } catch {
+        setNotice({
+          tone: "warning",
+          message: "Comment saved locally. Live sync looks offline right now.",
+        });
+      }
+    },
+    [
+      appendComment,
+      focusMode,
+      pushAuditEvent,
+      session?.user?.id,
+      session?.user?.name,
+      transport?.positionSec,
+    ],
+  );
 
   // ── Project save / load ─────────────────────────────────────────────────
   async function handleSave(name: string) {
@@ -1041,6 +1214,26 @@ export default function DawWorkspace() {
           </select>
         </label>
 
+        <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
+          Vocal
+          <select
+            value={transport?.vocalCaptureProfile ?? "hybrid"}
+            onChange={(e) => {
+              if (!ensureInit()) return;
+              engineRef.current?.setVocalCaptureProfile(
+                e.target.value as TransportState["vocalCaptureProfile"],
+              );
+            }}
+            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-sm font-semibold"
+            title="Raw = minimal, Punchy = forward, Smooth = leveled, Hybrid = combines all."
+          >
+            <option value="raw">Raw</option>
+            <option value="punchy">Punchy</option>
+            <option value="smooth">Smooth</option>
+            <option value="hybrid">All (Hybrid)</option>
+          </select>
+        </label>
+
         <button
           type="button"
           onClick={() => {
@@ -1182,6 +1375,43 @@ export default function DawWorkspace() {
         </div>
       )}
 
+      {/* ── Stem Loop Browser ─────────────────────────────────────────────── */}
+      {!showSplash && (showArrangeTools || showRecordTools) && (
+        <div className="mb-6">
+          <StemLoopBrowser
+            onLoadStem={async ({ sourceTitle, kind, url }) => {
+              const engine = engineRef.current;
+              if (!engine) return;
+              try {
+                const blob = await (await fetch(url)).blob();
+                const trackName = `${sourceTitle.slice(0, 14)} · ${kind}`;
+                const colors: Record<string, string> = {
+                  vocals: "#ec4899",
+                  drums: "#22d3ee",
+                  bass: "#a78bfa",
+                  other: "#f59e0b",
+                };
+                const trackId = engine.addTrack(trackName, colors[kind] ?? "#7c5cff");
+                await engine.importAudioFile(trackId, blob);
+                setFocusedId(trackId);
+                setSnapshot(engine.getSnapshot());
+                pushAuditEvent(
+                  "import",
+                  `Loaded ${kind} stem from "${sourceTitle}" — 2% royalty share will accrue to source artist on derived revenue.`,
+                );
+                setNotice({
+                  tone: "success",
+                  message: `Loaded ${kind}. 2% of your future revenue from this track will route to the source artist.`,
+                });
+              } catch (err) {
+                console.warn("[DawWorkspace] stem load failed", err);
+                setNotice({ tone: "error", message: "Couldn't load stem. Try another." });
+              }
+            }}
+          />
+        </div>
+      )}
+
       {/* ── Gear Rack ──────────────────────────────────────────────────────── */}
       {!showSplash && focusedTrack && showMixTools && (
         <div className="mb-6">
@@ -1269,6 +1499,15 @@ export default function DawWorkspace() {
           postingForum={postingForum}
           canPost={canExport}
           auditEvents={auditEvents}
+          comments={comments}
+          onSubmitComment={submitComment}
+        />
+      )}
+
+      {!showSplash && showPublishTools && (
+        <StudioMonetizationPanel
+          onAudit={pushAuditEvent}
+          onNotice={setNotice}
         />
       )}
 
@@ -1291,7 +1530,7 @@ export default function DawWorkspace() {
       )}
 
       <p className="mt-6 text-center text-xs text-white/35">
-        Studio board now includes live presence, autosave versioning, and one-click forum preview publishing.
+        Studio board now includes live presence, collab comments, autosave versioning, forum preview publishing, and payouts control.
       </p>
 
       {showShortcuts && (
@@ -1651,6 +1890,8 @@ function CollaborationPresencePanel({
   postingForum,
   canPost,
   auditEvents,
+  comments,
+  onSubmitComment,
 }: {
   collaborators: CollaboratorPresence[];
   connected: boolean;
@@ -1663,10 +1904,27 @@ function CollaborationPresencePanel({
   postingForum: boolean;
   canPost: boolean;
   auditEvents: StudioAuditEvent[];
+  comments: StudioComment[];
+  onSubmitComment: (message: string) => Promise<void>;
 }) {
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentSending, setCommentSending] = useState(false);
+
+  const sendComment = useCallback(async () => {
+    const message = commentDraft.trim();
+    if (!message || commentSending) return;
+    setCommentSending(true);
+    try {
+      await onSubmitComment(message);
+      setCommentDraft("");
+    } finally {
+      setCommentSending(false);
+    }
+  }, [commentDraft, commentSending, onSubmitComment]);
+
   return (
     <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-xl border border-white/10 bg-black/25 p-3">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-200/85">Collaboration</p>
@@ -1719,6 +1977,43 @@ function CollaborationPresencePanel({
         </div>
 
         <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-200/85">Live comments</p>
+          <p className="mt-2 text-xs text-white/55">Share handoff notes with timeline context while you mix.</p>
+          <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto">
+            {comments.slice(0, 8).map((comment) => (
+              <li key={comment.id} className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1 text-[11px] text-white/80">
+                <p className="font-semibold text-white/85">
+                  {comment.authorName} · {comment.focusMode}
+                  {comment.timelineSec !== null ? ` · ${fmtTime(comment.timelineSec)}` : ""}
+                </p>
+                <p className="mt-0.5 break-words text-white/70">{comment.message}</p>
+              </li>
+            ))}
+            {comments.length === 0 && <li className="text-xs text-white/45">No notes yet. Drop the first comment.</li>}
+          </ul>
+          <textarea
+            value={commentDraft}
+            onChange={(e) => setCommentDraft(e.target.value)}
+            placeholder="Drop a mix note, arrangement callout, or publish handoff..."
+            className="mt-2 min-h-16 w-full resize-y rounded-lg border border-white/12 bg-black/35 px-2 py-1.5 text-xs text-white placeholder:text-white/35 focus:border-brand-500/50 focus:outline-none"
+            maxLength={320}
+          />
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <a href="/forum" className="text-[11px] font-semibold text-cyan-200/85 hover:text-cyan-100">
+              Open timeline
+            </a>
+            <button
+              type="button"
+              onClick={() => void sendComment()}
+              disabled={!commentDraft.trim() || commentSending}
+              className="rounded-md bg-cyan-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-black hover:bg-cyan-400 disabled:opacity-45"
+            >
+              {commentSending ? "Sending..." : "Send"}
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-black/25 p-3">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-200/85">Forum publish</p>
           <p className="mt-2 text-xs text-white/55">
             One-click post uploads a WAV preview and publishes to the forum timeline.
@@ -1746,6 +2041,356 @@ function CollaborationPresencePanel({
           </ul>
         </div>
       </div>
+    </section>
+  );
+}
+
+function StudioMonetizationPanel({
+  onAudit,
+  onNotice,
+}: {
+  onAudit: (kind: StudioAuditEvent["kind"], detail: string) => void;
+  onNotice: (notice: Notice | null) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [working, setWorking] = useState<"connect" | "onboarding" | "payout" | null>(null);
+  const [connect, setConnect] = useState<ConnectAccountPayload>({ connected: false });
+  const [wallet, setWallet] = useState<WalletPayload | null>(null);
+  const [songs, setSongs] = useState<SongOption[]>([]);
+  const [selectedSongId, setSelectedSongId] = useState("");
+  const [splitRows, setSplitRows] = useState<
+    Array<{ key: "producer" | "engineer" | "writer" | "label"; label: string; pct: number }>
+  >([
+    { key: "producer", label: "Producer", pct: 20 },
+    { key: "engineer", label: "Engineer", pct: 10 },
+    { key: "writer", label: "Writer", pct: 15 },
+    { key: "label", label: "Label", pct: 10 },
+  ]);
+
+  const totalSplitPct = useMemo(
+    () => splitRows.reduce((sum, row) => sum + row.pct, 0),
+    [splitRows],
+  );
+  const artistSharePct = Math.max(0, 100 - totalSplitPct);
+  const splitOverflowPct = Math.max(0, totalSplitPct - 100);
+  const selectedSong = useMemo(
+    () => songs.find((song) => song.id === selectedSongId) ?? null,
+    [songs, selectedSongId],
+  );
+
+  const loadMonetization = useCallback(
+    async (silent = false) => {
+      if (silent) setRefreshing(true);
+      else setLoading(true);
+      try {
+        const [connectRes, walletRes, songsRes] = await Promise.all([
+          fetch("/api/stripe-connect/account", { cache: "no-store" }),
+          fetch("/api/wallet", { cache: "no-store" }),
+          fetch("/api/songs/list?mine=1&sort=newest&limit=50", { cache: "no-store" }),
+        ]);
+
+        const connectJson = (await connectRes.json().catch(() => ({}))) as Partial<ConnectAccountPayload>;
+        const nextConnect: ConnectAccountPayload =
+          typeof connectJson.connected === "boolean"
+            ? {
+                connected: connectJson.connected,
+                accountId: connectJson.accountId,
+                chargesEnabled: Boolean(connectJson.chargesEnabled),
+                payoutsEnabled: Boolean(connectJson.payoutsEnabled),
+                detailsSubmitted: Boolean(connectJson.detailsSubmitted),
+                onboardingComplete: Boolean(connectJson.onboardingComplete),
+              }
+            : { connected: false };
+        setConnect(nextConnect);
+
+        if (walletRes.ok) {
+          const walletJson = (await walletRes.json().catch(() => ({}))) as WalletPayload;
+          setWallet(walletJson);
+        } else {
+          setWallet(null);
+        }
+
+        const songsJson = (await songsRes.json().catch(() => [])) as unknown;
+        const nextSongs = Array.isArray(songsJson)
+          ? songsJson
+              .map((item) => {
+                if (!item || typeof item !== "object") return null;
+                const candidate = item as Partial<SongOption>;
+                if (
+                  typeof candidate.id !== "string" ||
+                  typeof candidate.title !== "string" ||
+                  typeof candidate.artist !== "string"
+                ) {
+                  return null;
+                }
+                return {
+                  id: candidate.id,
+                  title: candidate.title,
+                  artist: candidate.artist,
+                  revenueSharePct:
+                    typeof candidate.revenueSharePct === "number" ? candidate.revenueSharePct : 0,
+                } satisfies SongOption;
+              })
+              .filter((item): item is SongOption => item !== null)
+          : [];
+        setSongs(nextSongs);
+        setSelectedSongId((prev) =>
+          prev && nextSongs.some((song) => song.id === prev) ? prev : (nextSongs[0]?.id ?? ""),
+        );
+      } catch {
+        setConnect({ connected: false });
+        setWallet(null);
+        setSongs([]);
+        setSelectedSongId("");
+        onNotice({
+          tone: "warning",
+          message: "Could not refresh payout status right now. Retry in a few seconds.",
+        });
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [onNotice],
+  );
+
+  useEffect(() => {
+    void loadMonetization();
+  }, [loadMonetization]);
+
+  async function createConnectAccount() {
+    if (working) return;
+    setWorking("connect");
+    try {
+      const res = await fetch("/api/stripe-connect/account", { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Could not create Stripe Connect account.");
+      onAudit("payout", "Created Stripe Connect account");
+      onNotice({ tone: "success", message: "Stripe Connect account created." });
+      await loadMonetization(true);
+    } catch (err) {
+      onNotice({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Could not create Stripe Connect account.",
+      });
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function launchOnboarding() {
+    if (working) return;
+    setWorking("onboarding");
+    try {
+      const res = await fetch("/api/stripe-connect/onboarding", { cache: "no-store" });
+      const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Onboarding link not available.");
+      onAudit("payout", "Opened Stripe Connect onboarding");
+      window.location.href = data.url;
+    } catch (err) {
+      onNotice({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Could not start Stripe onboarding.",
+      });
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function requestPayout() {
+    if (working) return;
+    if (!selectedSongId) {
+      onNotice({ tone: "warning", message: "Select one of your songs before requesting a payout." });
+      return;
+    }
+    setWorking("payout");
+    try {
+      const res = await fetch("/api/stripe-connect/payout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ songId: selectedSongId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        amountCents?: number;
+        payoutCount?: number;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Payout request failed.");
+      const amount = typeof data.amountCents === "number" ? data.amountCents / 100 : 0;
+      onAudit("payout", `Requested payout for ${selectedSong?.title ?? "selected song"}`);
+      onNotice({
+        tone: "success",
+        message: `Payout queued: $${amount.toFixed(2)} across ${data.payoutCount ?? 0} payout rows.`,
+      });
+      await loadMonetization(true);
+    } catch (err) {
+      onNotice({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Payout request failed.",
+      });
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function copySplitPlan() {
+    const lines = [
+      "Studio split draft",
+      ...splitRows.map((row) => `${row.label}: ${row.pct}%`),
+      `Artist remainder: ${artistSharePct}%`,
+      selectedSong ? `Song: ${selectedSong.title}` : null,
+    ].filter((line): line is string => line !== null);
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      onNotice({ tone: "success", message: "Split draft copied to clipboard." });
+      onAudit("payout", "Copied split draft");
+    } catch {
+      onNotice({ tone: "warning", message: "Clipboard write failed. You can still use the split preview." });
+    }
+  }
+
+  return (
+    <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-200/85">Revenue ops</p>
+          <p className="text-xs text-white/55">Split planning plus direct payout actions from Studio.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadMonetization(true)}
+          disabled={refreshing}
+          className="rounded-md border border-white/15 px-2.5 py-1 text-[11px] font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
+        >
+          {refreshing ? "Refreshing..." : "Refresh balances"}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-xs text-white/55">
+          Loading payout and wallet status...
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-200/85">Split planner</p>
+            <div className="mt-2 space-y-2">
+              {splitRows.map((row) => (
+                <label key={row.key} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="text-white/75">{row.label}</span>
+                  <span className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={row.pct}
+                      onChange={(e) => {
+                        const next = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                        setSplitRows((prev) =>
+                          prev.map((item) => (item.key === row.key ? { ...item, pct: next } : item)),
+                        );
+                      }}
+                      className="w-14 rounded border border-white/15 bg-black/35 px-1.5 py-1 text-right font-mono text-xs text-white"
+                    />
+                    <span className="text-white/50">%</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-white/70">Artist remainder: {artistSharePct}%</p>
+            <p className={`text-xs ${splitOverflowPct > 0 ? "text-red-300" : "text-white/45"}`}>
+              {splitOverflowPct > 0
+                ? `Over-allocated by ${splitOverflowPct}%. Bring total down to 100%.`
+                : `Collaborator total: ${totalSplitPct}%`}
+            </p>
+            <button
+              type="button"
+              onClick={() => void copySplitPlan()}
+              className="mt-2 rounded-md border border-cyan-300/35 px-2.5 py-1 text-[11px] font-semibold text-cyan-100 hover:bg-cyan-300/10"
+            >
+              Copy split draft
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-200/85">Connect + payout</p>
+            <p className="mt-2 text-xs text-white/70">
+              Account: {connect.connected ? "connected" : "not connected"} · Payouts: {connect.payoutsEnabled ? "enabled" : "pending"}
+            </p>
+            <p className="text-xs text-white/45">
+              Onboarding: {connect.onboardingComplete ? "complete" : "incomplete"}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {!connect.connected && (
+                <button
+                  type="button"
+                  onClick={() => void createConnectAccount()}
+                  disabled={working !== null}
+                  className="rounded-md bg-brand-500 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
+                >
+                  {working === "connect" ? "Creating..." : "Create account"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void launchOnboarding()}
+                disabled={working !== null}
+                className="rounded-md border border-white/15 px-2.5 py-1 text-[11px] font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
+              >
+                {working === "onboarding" ? "Opening..." : "Open onboarding"}
+              </button>
+            </div>
+            <label className="mt-3 block text-[11px] text-white/60">
+              Song for payout
+              <select
+                value={selectedSongId}
+                onChange={(e) => setSelectedSongId(e.target.value)}
+                className="mt-1 w-full rounded-md border border-white/15 bg-black/35 px-2 py-1.5 text-xs text-white"
+              >
+                {songs.length === 0 ? (
+                  <option value="">No songs found</option>
+                ) : (
+                  songs.map((song) => (
+                    <option key={song.id} value={song.id}>
+                      {song.title} · {song.artist}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => void requestPayout()}
+              disabled={working !== null || !selectedSongId}
+              className="mt-3 w-full rounded-md bg-emerald-400 px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-black hover:bg-emerald-300 disabled:opacity-50"
+            >
+              {working === "payout" ? "Requesting..." : "Request payout"}
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-200/85">Wallet snapshot</p>
+            <p className="mt-2 text-xs text-white/70">
+              Pending: ${Number(wallet?.balance?.pendingDollars ?? 0).toFixed(2)}
+            </p>
+            <p className="text-xs text-white/70">Paid: ${Number(wallet?.balance?.paidDollars ?? 0).toFixed(2)}</p>
+            <p className="text-xs text-white/45">
+              Clawback: ${Number(wallet?.balance?.clawbackDollars ?? 0).toFixed(2)}
+            </p>
+            <div className="mt-2 max-h-24 space-y-1 overflow-y-auto">
+              {(wallet?.recentPayouts ?? []).slice(0, 5).map((payout) => (
+                <div key={payout.id} className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1 text-[11px] text-white/75">
+                  ${Number(payout.amount).toFixed(2)} · {payout.status.toLowerCase()} · {new Date(payout.createdAt).toLocaleDateString()}
+                </div>
+              ))}
+              {(wallet?.recentPayouts?.length ?? 0) === 0 && (
+                <p className="text-xs text-white/45">No payout rows yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

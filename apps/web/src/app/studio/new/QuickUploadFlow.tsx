@@ -78,6 +78,10 @@ export default function QuickUploadFlow({
   const [licensePrice, setLicensePrice] = useState("9.99");
   const [totalLicenses, setTotalLicenses] = useState("100");
   const [revenueSharePct, setRevenueSharePct] = useState("10");
+  // License-aware export: defaults to ON because every stem published
+  // becomes another loop in the marketplace, paying the artist a share
+  // every time another producer uses it. Network-effect compounding.
+  const [publishStems, setPublishStems] = useState(true);
 
   // shared
   const [error, setError] = useState<string | null>(null);
@@ -398,9 +402,20 @@ export default function QuickUploadFlow({
         source: "studio_new_quick",
         properties: {
           publishDurationMs: Math.round(performance.now() - startedAtRef.current),
-          hasStems: false,
+          hasStems: publishStems,
         },
       });
+      // License-aware export: kick off Demucs separation in the
+      // background so the new track auto-joins the Loop Browser. Failure
+      // here is non-fatal — the song is published, the stems just won't
+      // be available for remixing until the artist tries again.
+      if (publishStems && data.id) {
+        void fetch(`/api/songs/${data.id}/stems/separate`, { method: "POST" }).catch(
+          () => {
+            // best effort; surface in artist dashboard if this fails
+          },
+        );
+      }
       buzz(80);
       localStorage.removeItem(DRAFT_KEY);
       router.push(`/studio?published=${data.id}`);
@@ -755,6 +770,32 @@ export default function QuickUploadFlow({
                 </span>
               </p>
             </div>
+
+            {/* License-aware export — defaults ON because the Loop Browser
+                only fills up if every new release publishes stems. The
+                "extra revenue stream" framing is real: every remix that
+                uses one of your stems pays you a 2% share of its revenue. */}
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-accent-500/30 bg-gradient-to-br from-accent-500/10 via-brand-500/5 to-transparent p-4">
+              <input
+                type="checkbox"
+                checked={publishStems}
+                onChange={(e) => setPublishStems(e.target.checked)}
+                className="mt-0.5 h-4 w-4 cursor-pointer accent-accent-500"
+              />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-white">
+                  Also publish stems to the Loop Browser
+                </p>
+                <p className="mt-1 text-xs text-white/60">
+                  AI splits your track into vocals/drums/bass/other and lists
+                  them as remixable loops. Every producer who uses one routes{" "}
+                  <span className="font-semibold text-accent-200">
+                    2% of their track revenue back to you
+                  </span>
+                  . Free to enable.
+                </p>
+              </div>
+            </label>
           </div>
 
           {error && (

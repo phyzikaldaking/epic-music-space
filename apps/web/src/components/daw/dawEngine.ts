@@ -121,6 +121,7 @@ export interface TransportState {
   positionSec: number;
   metronomeOn: boolean;
   latencyMode: "recording" | "mixing";
+  vocalCaptureProfile: "raw" | "punchy" | "smooth" | "hybrid";
   masterDb: number; // -60 .. +6
   masterLevel: number; // 0..1 instantaneous
   /** True ⇒ DynamicsCompressor at end of master chain pulling -3 dB ratio 20:1. */
@@ -279,6 +280,9 @@ export interface ProjectFile {
 }
 
 const DB_TO_LINEAR = (db: number): number => Math.pow(10, db / 20);
+const TRANSPORT_START_LEAD_SEC = 0.05;
+const VOCAL_MAX_AUTO_GAIN = 2.0;
+const VOCAL_TARGET_PEAK = 0.82;
 
 function clonePattern(p: BeatPattern): BeatPattern {
   // Use emptyPattern() as the base so the type system sees all 8 lanes
@@ -392,6 +396,7 @@ export class DawEngine {
     positionSec: 0,
     metronomeOn: false,
     latencyMode: "recording",
+    vocalCaptureProfile: "hybrid",
     masterDb: 0,
     masterLevel: 0,
     masterLimiterOn: true,
@@ -408,6 +413,8 @@ export class DawEngine {
 
   private playStartCtxTime = 0;
   private playStartPosition = 0;
+  /** Alignment trim to compensate MediaRecorder starting before scheduled playback. */
+  private recordingAlignmentTrimSec = 0;
   /** Tap-tempo: timestamps of the most recent taps (ms epoch). */
   private tapTimestamps: number[] = [];
   /** Cached downsampled waveform peaks per track for the WaveformView.
@@ -637,8 +644,8 @@ export class DawEngine {
 
     // Update transport position when playing.
     if (this.transport.isPlaying) {
-      this.transport.positionSec =
-        this.playStartPosition + (this.ctx.currentTime - this.playStartCtxTime);
+      const elapsed = Math.max(0, this.ctx.currentTime - this.playStartCtxTime);
+      this.transport.positionSec = this.playStartPosition + elapsed;
 
       // Loop region: when position crosses the end point, jump back to
       // the start point and re-arm sources. Tiny audible gap (~5ms scheduling
@@ -1025,6 +1032,11 @@ export class DawEngine {
     this.notify();
   }
 
+  setVocalCaptureProfile(profile: TransportState["vocalCaptureProfile"]) {
+    this.transport.vocalCaptureProfile = profile;
+    this.notify();
+  }
+
   // ── Aux bus return setters ─────────────────────────────────────────────
 
   setAuxReverbLevel(level: number) {
@@ -1179,7 +1191,7 @@ export class DawEngine {
     }
     if (this.transport.isPlaying) return;
 
-    const startAt = this.ctx.currentTime + 0.05;
+    const startAt = this.ctx.currentTime + TRANSPORT_START_LEAD_SEC;
     const offset = this.transport.positionSec;
     for (const t of this.tracks.values()) {
       if (!t.buffer) continue;
@@ -1358,6 +1370,7 @@ export class DawEngine {
    *  was denied or no track is armed. */
   async startRecording(trackId?: TrackId): Promise<boolean> {
     if (!this.ctx) return false;
+    const wasPlaying = this.transport.isPlaying;
     const track =
       (trackId ? this.tracks.get(trackId) : null) ??
       Array.from(this.tracks.values()).find((t) => t.state.armed);
@@ -1366,6 +1379,9 @@ export class DawEngine {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          channelCount: 1,
+          sampleRate: this.ctx.sampleRate,
+          sampleSize: 16,
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
@@ -1401,11 +1417,12 @@ export class DawEngine {
       track.recorder = recorder;
 
       this.transport.isRecording = true;
+      this.recordingAlignmentTrimSec = wasPlaying ? 0 : TRANSPORT_START_LEAD_SEC;
       this.notify();
       // Fire-and-forget play — recording while transport runs lets the
       // performer hear backing tracks. If init failed earlier, play() is
       // a no-op.
-      void this.play();
+      if (!wasPlaying) void this.play();
       return true;
     } catch (err) {
       console.warn("[DawEngine] recording init failed", err);
@@ -1419,6 +1436,7 @@ export class DawEngine {
       track.monitorGain?.disconnect();
       track.monitorGain = null;
       this.transport.isRecording = false;
+      this.recordingAlignmentTrimSec = 0;
       this.notify();
       return false;
     }
@@ -1463,18 +1481,167 @@ export class DawEngine {
     try {
       const arrayBuf = await blob.arrayBuffer();
       const decoded = await ctx.decodeAudioData(arrayBuf);
-      recordingTrack.buffer = decoded;
+      const onsetTrimSec =
+        this.transport.vocalCaptureProfile === "raw"
+          ? this.recordingAlignmentTrimSec
+          : this.estimateOnsetTrimSec(decoded, this.recordingAlignmentTrimSec);
+      const aligned = this.trimBufferStart(decoded, onsetTrimSec);
+      recordingTrack.buffer = this.normalizeRecordedBuffer(aligned);
       recordingTrack.state.hasAudio = true;
       this.waveformCache.delete(recordingTrack.state.id);
-      recordingTrack.state.durationSec = decoded.duration;
+      recordingTrack.state.durationSec = recordingTrack.buffer.duration;
     } catch (err) {
       console.warn("[DawEngine] decode failed", err);
     }
 
     this.transport.isRecording = false;
+    this.recordingAlignmentTrimSec = 0;
     this.stop();
     this.transport.positionSec = 0;
     this.notify();
+  }
+
+  /** Trim N seconds from the front of a buffer, preserving channel count/rate. */
+  private trimBufferStart(buffer: AudioBuffer, trimSec: number): AudioBuffer {
+    if (!this.ctx) return buffer;
+    const trimFrames = Math.max(0, Math.floor(trimSec * buffer.sampleRate));
+    if (trimFrames <= 0 || trimFrames >= buffer.length - 1) return buffer;
+    const out = this.ctx.createBuffer(
+      buffer.numberOfChannels,
+      buffer.length - trimFrames,
+      buffer.sampleRate,
+    );
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      const dst = out.getChannelData(ch);
+      for (let i = 0; i < dst.length; i++) {
+        dst[i] = src[i + trimFrames] ?? 0;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Estimate extra head trim from detected onset so takes align tighter to
+   * the first intentional vocal transient without clipping consonants.
+   */
+  private estimateOnsetTrimSec(buffer: AudioBuffer, maxTrimSec: number): number {
+    const clampedMax = Math.max(0, maxTrimSec);
+    if (clampedMax <= 0) return 0;
+    const first = buffer.getChannelData(0);
+    if (!first || first.length < 32) return 0;
+
+    const sampleRate = buffer.sampleRate;
+    const window = Math.max(16, Math.floor(sampleRate * 0.003)); // ~3ms window
+    const floorFrames = Math.min(first.length, Math.max(window, Math.floor(sampleRate * 0.04))); // 40ms
+    let floorAcc = 0;
+    for (let i = 0; i < floorFrames; i++) floorAcc += Math.abs(first[i] ?? 0);
+    const noiseFloor = floorFrames > 0 ? floorAcc / floorFrames : 0;
+
+    const threshold = Math.max(0.008, noiseFloor * 4);
+    const maxFrames = Math.min(first.length - window, Math.floor(clampedMax * sampleRate));
+    if (maxFrames <= 0) return 0;
+
+    for (let i = 0; i < maxFrames; i += window) {
+      let energy = 0;
+      for (let j = 0; j < window; j++) {
+        energy += Math.abs(first[i + j] ?? 0);
+      }
+      const avg = energy / window;
+      if (avg >= threshold) {
+        // Keep 4ms safety so plosives/consonants are not clipped.
+        return Math.max(0, i / sampleRate - 0.004);
+      }
+    }
+    return clampedMax;
+  }
+
+  /** Normalize recorded audio to a conservative target and remove DC offset. */
+  private normalizeRecordedBuffer(buffer: AudioBuffer): AudioBuffer {
+    if (!this.ctx) return buffer;
+    const profile = this.transport.vocalCaptureProfile;
+    let peak = 0;
+    let rmsSq = 0;
+    let rmsCount = 0;
+    const channelMeans: number[] = [];
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const data = buffer.getChannelData(ch);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = data[i] ?? 0;
+        sum += v;
+        rmsSq += v * v;
+        rmsCount++;
+        const a = Math.abs(v);
+        if (a > peak) peak = a;
+      }
+      channelMeans[ch] = data.length > 0 ? sum / data.length : 0;
+    }
+    if (peak <= 0) return buffer;
+
+    const rms = rmsCount > 0 ? Math.sqrt(rmsSq / rmsCount) : 0;
+    let targetPeak = VOCAL_TARGET_PEAK;
+    let gainCeiling = VOCAL_MAX_AUTO_GAIN;
+    let gateThreshold = 0.0035;
+    let gateAmount = 0.6;
+    let saturate = false;
+
+    if (profile === "raw") {
+      targetPeak = 1;
+      gainCeiling = 1;
+      gateThreshold = 0;
+      gateAmount = 1;
+    } else if (profile === "punchy") {
+      targetPeak = 0.86;
+      gainCeiling = 1.6;
+      gateThreshold = 0.002;
+      gateAmount = 0.8;
+      saturate = true;
+    } else if (profile === "smooth") {
+      targetPeak = rms > 0.16 ? 0.72 : 0.76;
+      gainCeiling = 2.4;
+      gateThreshold = 0.0045;
+      gateAmount = 0.5;
+    } else {
+      targetPeak = rms > 0.18 ? 0.75 : VOCAL_TARGET_PEAK;
+      gainCeiling = VOCAL_MAX_AUTO_GAIN;
+      gateThreshold = 0.0035;
+      gateAmount = 0.6;
+    }
+
+    const gain = Math.min(gainCeiling, targetPeak / Math.max(1e-6, peak));
+    const out = this.ctx.createBuffer(
+      buffer.numberOfChannels,
+      buffer.length,
+      buffer.sampleRate,
+    );
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      const dst = out.getChannelData(ch);
+      const dc = channelMeans[ch] ?? 0;
+      for (let i = 0; i < src.length; i++) {
+        const dry = (src[i] ?? 0) - dc;
+        // Keep low-level room tone natural, boost only intentional signal.
+        const gate = gateThreshold > 0 && Math.abs(dry) < gateThreshold ? gateAmount : 1;
+        const v = dry * gate;
+        let shaped = Math.max(-1, Math.min(1, v * gain));
+        if (saturate) {
+          // Mild saturation keeps punchy mode forward without harsh clipping.
+          shaped = Math.tanh(shaped * 1.12) / Math.tanh(1.12);
+        }
+        dst[i] = shaped;
+      }
+
+      // Short fades avoid clicks from trim/decode boundaries.
+      const fadeFrames = Math.min(dst.length, Math.floor(buffer.sampleRate * 0.004));
+      for (let i = 0; i < fadeFrames; i++) {
+        const k = i / Math.max(1, fadeFrames);
+        dst[i] *= k;
+        const tailIdx = dst.length - 1 - i;
+        if (tailIdx >= 0) dst[tailIdx] *= k;
+      }
+    }
+    return out;
   }
 
   // ── Beat machine ───────────────────────────────────────────────────────

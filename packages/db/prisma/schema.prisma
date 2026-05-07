@@ -82,6 +82,8 @@ model User {
   sessions Session[]
   songs        Song[]
   licenses     LicenseToken[]
+  // Stems this user has pulled from the Loop Browser into their tracks.
+  stemUsages   StemUsage[]
   transactions Transaction[]
   payouts      Payout[]
   studio           Studio?
@@ -288,6 +290,10 @@ model Song {
   revenueEvents  RevenueEvent[]
   trackComments  TrackComment[]
   trackLikes     TrackLike[]
+  // Stems of this song that have been pulled into other producers' tracks.
+  stemUsagesAsSource  StemUsage[] @relation("SourceSongStems")
+  // Stems from other songs that this song was built from.
+  stemUsagesAsDerived StemUsage[] @relation("DerivedSongStems")
   @@index([artistId])
   @@index([district])
   @@index([isActive])
@@ -304,6 +310,35 @@ enum StemSeparationStatus {
   PROCESSING
   READY
   FAILED
+}
+
+enum StemKind {
+  VOCALS
+  DRUMS
+  BASS
+  OTHER
+  FULL
+}
+
+// When a producer drags a stem from the Loop Browser into their DAW,
+// a StemUsage row is created. The derived song id is filled in when
+// they publish the resulting track via /studio/new. The royalty
+// waterfall job uses these rows to split future revenue back to the
+// source artists (shareBps = basis points, default 200 = 2% per stem).
+model StemUsage {
+  id             String   @id @default(cuid())
+  sourceSongId   String
+  sourceSong     Song     @relation("SourceSongStems", fields: [sourceSongId], references: [id], onDelete: Cascade)
+  kind           StemKind
+  derivedSongId  String?
+  derivedSong    Song?    @relation("DerivedSongStems", fields: [derivedSongId], references: [id], onDelete: SetNull)
+  producerId     String
+  producer       User     @relation(fields: [producerId], references: [id], onDelete: Cascade)
+  shareBps       Int      @default(200)
+  createdAt      DateTime @default(now())
+  @@index([sourceSongId])
+  @@index([derivedSongId])
+  @@index([producerId])
 }
 
 model LicenseToken {
