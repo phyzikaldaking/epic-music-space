@@ -251,6 +251,15 @@ model Song {
   stemUrl   String?
   stemFiles Json?
   hasStems  Boolean @default(false)
+  // AI stem separation lifecycle. Populated when the artist (or a license
+  // holder) hits "Generate stems" — we kick off a Demucs job on Replicate
+  // and store the resulting 4 stems (vocals, drums, bass, other) into
+  // stemFiles + flip hasStems=true on success.
+  stemSeparationStatus      StemSeparationStatus @default(NONE)
+  stemSeparationProviderId  String?
+  stemSeparationError       String?
+  stemSeparationStartedAt   DateTime?
+  stemSeparationCompletedAt DateTime?
   // When false (default), the audio file is preview-only. Listeners can stream
   // through the proxy but cannot download the underlying file. License
   // purchase or artist opt-in (true) is required for download.
@@ -286,6 +295,15 @@ model Song {
   @@index([isActive, aiScore, createdAt])
   @@index([isActive, genre])
   @@index([isActive, bpm])
+  @@index([stemSeparationStatus])
+}
+
+enum StemSeparationStatus {
+  NONE
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
 }
 
 model LicenseToken {

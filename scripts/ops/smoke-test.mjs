@@ -43,7 +43,7 @@ const routes = [
   // Auth pages
   { path: "/auth/signin", expect: 200 },
   { path: "/auth/signup", expect: 200 },
-  { path: "/auth/forgot", expect: 200 },
+  { path: "/auth/forgot-password", expect: 200 },
   { path: "/auth/verify-email", expect: 200 },
 
   // Authed-only pages: should redirect (3xx) when unauthenticated. Some

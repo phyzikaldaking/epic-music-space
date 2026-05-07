@@ -54,6 +54,20 @@ export interface TrackFx {
   delayFeedback: number; // 0..0.85, shared return follows the most recent edit
 }
 
+/** Single automation point: beat time and parameter value. */
+export interface AutomationPoint {
+  beatTime: number; // position in beats
+  value: number; // normalized parameter value (usually 0..1)
+}
+
+/** A single recorded take: blob + decoded buffer + metadata. */
+export interface RecordedTake {
+  blob: Blob;
+  buffer: AudioBuffer;
+  capturedAt: number; // timestamp when recording was captured
+  name?: string; // optional take name like "vocal - take 3"
+}
+
 export interface TrackState {
   id: TrackId;
   name: string;
@@ -77,6 +91,12 @@ export interface TrackState {
   sidechainFromId: TrackId | null;
   /** Sidechain depth: 0 = no ducking, 1 = full duck on peaks. */
   sidechainAmount: number;
+  /** Automation lanes: param name → array of automation points. */
+  automationLanes: Record<string, AutomationPoint[]>;
+  /** All takes recorded on this track. */
+  takes: RecordedTake[];
+  /** Currently selected take index; applies during playback. */
+  selectedTakeIndex: number;
 }
 
 interface TrackInternal {
@@ -112,6 +132,10 @@ interface TrackInternal {
   monitorGain: GainNode | null;
   recorder: MediaRecorder | null;
   recordedChunks: Blob[];
+  /** Automation recording state: set of parameter names currently recording. */
+  automationRecording: Set<string>;
+  /** Current beat position during automation recording (for timestamping). */
+  automationRecordBeat: number;
 }
 
 export interface TransportState {
@@ -176,6 +200,13 @@ export interface AuxBusState {
     feedback: number;
     level: number;
   };
+  /** Reference track for A/B comparison during mastering. */
+  referenceTrack: {
+    buffer: AudioBuffer | null;
+    blob: Blob | null;
+    level: number; // 0..1
+    enabled: boolean;
+  };
 }
 
 export type SynthWave = "sine" | "triangle" | "sawtooth" | "square";
@@ -217,6 +248,12 @@ export interface MidiSynthState {
   /** The clip currently bound to the synth track, if any. Read-only —
    *  the engine owns the canonical copy. */
   clip: MidiClip | null;
+  /** Editor defaults for destructive clip tools. Beats are quarter-note based:
+   *  0.25 = 16th, 0.5 = 8th, 1 = quarter. */
+  clipQuantizeBeats: number;
+  clipHumanizeBeats: number;
+  clipHumanizeVelocity: number;
+  keyboardOctaveShift: number;
 }
 
 export interface EngineSnapshot {
@@ -311,6 +348,8 @@ export class DawEngine {
   private delay: DelayNode | null = null;
   private delayFeedback: GainNode | null = null;
   private delayReturnGain: GainNode | null = null;
+  private referenceTrackSource: AudioBufferSourceNode | null = null;
+  private referenceTrackGain: GainNode | null = null;
   private metronomeOsc: OscillatorNode | null = null;
   private metronomeGain: GainNode | null = null;
   private metronomeNextTime = 0;
@@ -348,6 +387,10 @@ export class DawEngine {
     activeNotes: [],
     recordingClip: false,
     clip: null,
+    clipQuantizeBeats: 0.25,
+    clipHumanizeBeats: 0.03,
+    clipHumanizeVelocity: 0.08,
+    keyboardOctaveShift: 0,
   };
   /** Currently-recording MIDI events: { note, downBeat, upBeat | null, velocity } */
   private midiRecordEvents: Array<{
@@ -380,6 +423,12 @@ export class DawEngine {
       beats: 0.5,
       feedback: 0.35,
       level: 0.7,
+    },
+    referenceTrack: {
+      buffer: null,
+      blob: null,
+      level: 0.5,
+      enabled: false,
     },
   };
 
@@ -523,6 +572,11 @@ export class DawEngine {
       this.delay.connect(this.delayFeedback);
       this.delayFeedback.connect(this.delay);
       this.delay.connect(this.delayReturnGain).connect(this.master);
+      // Reference track for A/B mastering comparison. Routes directly
+      // to master so it plays when enabled, independent of mix.
+      this.referenceTrackGain = this.ctx.createGain();
+      this.referenceTrackGain.gain.value = this.aux.referenceTrack.level;
+      this.referenceTrackGain.connect(this.master);
       // Metronome chain — small click oscillator gated by an envelope.
       this.metronomeGain = this.ctx.createGain();
       this.metronomeGain.gain.value = 0;
@@ -671,6 +725,12 @@ export class DawEngine {
       }
       t.source = null;
     }
+    try {
+      this.referenceTrackSource?.stop();
+    } catch {
+      /* may already be stopped */
+    }
+    this.referenceTrackSource = null;
     this.transport.isPlaying = false;
     this.stopBeatScheduler();
   }
@@ -773,6 +833,9 @@ export class DawEngine {
         },
         sidechainFromId: null,
         sidechainAmount: 0.6,
+        automationLanes: {},
+        takes: [],
+        selectedTakeIndex: -1,
       },
       fxIn,
       sidechainDuck,
@@ -796,6 +859,8 @@ export class DawEngine {
       monitorGain: null,
       recorder: null,
       recordedChunks: [],
+      automationRecording: new Set(),
+      automationRecordBeat: 0,
     };
     this.tracks.set(id, t);
     this.notify();
@@ -1195,6 +1260,22 @@ export class DawEngine {
       }
       t.source = src;
     }
+    // Reference track playback for mastering A/B comparison.
+    if (
+      this.aux.referenceTrack.enabled &&
+      this.aux.referenceTrack.buffer &&
+      this.referenceTrackGain
+    ) {
+      try {
+        const refSrc = this.ctx.createBufferSource();
+        refSrc.buffer = this.aux.referenceTrack.buffer;
+        refSrc.connect(this.referenceTrackGain);
+        refSrc.start(startAt, Math.max(0, offset));
+        this.referenceTrackSource = refSrc;
+      } catch {
+        /* reference track playback failed */
+      }
+    }
     this.playStartCtxTime = startAt;
     this.playStartPosition = offset;
     this.transport.isPlaying = true;
@@ -1214,6 +1295,12 @@ export class DawEngine {
       }
       t.source = null;
     }
+    try {
+      this.referenceTrackSource?.stop();
+    } catch {
+      /* may already be stopped */
+    }
+    this.referenceTrackSource = null;
     this.transport.isPlaying = false;
     this.stopMetronome();
     this.stopBeatScheduler();
@@ -1463,10 +1550,24 @@ export class DawEngine {
     try {
       const arrayBuf = await blob.arrayBuffer();
       const decoded = await ctx.decodeAudioData(arrayBuf);
-      recordingTrack.buffer = decoded;
-      recordingTrack.state.hasAudio = true;
-      this.waveformCache.delete(recordingTrack.state.id);
-      recordingTrack.state.durationSec = decoded.duration;
+      
+      // Store as a take instead of replacing the buffer directly.
+      // This allows multi-take recording where the user can comp between takes.
+      const take: RecordedTake = {
+        blob,
+        buffer: decoded,
+        capturedAt: Date.now(),
+      };
+      recordingTrack.state.takes.push(take);
+      recordingTrack.state.selectedTakeIndex = recordingTrack.state.takes.length - 1;
+      
+      // If this is the first take, also set it as the active playback buffer.
+      if (recordingTrack.state.takes.length === 1) {
+        recordingTrack.buffer = decoded;
+        recordingTrack.state.hasAudio = true;
+        this.waveformCache.delete(recordingTrack.state.id);
+        recordingTrack.state.durationSec = decoded.duration;
+      }
     } catch (err) {
       console.warn("[DawEngine] decode failed", err);
     }
@@ -1474,6 +1575,137 @@ export class DawEngine {
     this.transport.isRecording = false;
     this.stop();
     this.transport.positionSec = 0;
+    this.notify();
+  }
+
+  // ── Automation lanes ───────────────────────────────────────────────────
+
+  /** Start recording automation for a specific parameter on a track. */
+  startAutomationRecording(trackId: TrackId, paramName: string) {
+    const t = this.tracks.get(trackId);
+    if (!t) return;
+    // Initialize lane if needed.
+    if (!t.state.automationLanes[paramName]) {
+      t.state.automationLanes[paramName] = [];
+    }
+    t.automationRecording.add(paramName);
+    this.notify();
+  }
+
+  /** Stop recording automation for a specific parameter. */
+  stopAutomationRecording(trackId: TrackId, paramName: string) {
+    const t = this.tracks.get(trackId);
+    if (!t) return;
+    t.automationRecording.delete(paramName);
+    this.notify();
+  }
+
+  /** Record an automation point at the current transport position. */
+  recordAutomationPoint(trackId: TrackId, paramName: string, value: number) {
+    const t = this.tracks.get(trackId);
+    if (!t) return;
+    const lane = t.state.automationLanes[paramName];
+    if (!lane) return;
+    
+    // Convert current time to beats for musical accuracy.
+    const beatTime = (this.transport.positionSec / 60) * this.transport.bpm;
+    
+    // Add or replace point at this beat time.
+    const existingIndex = lane.findIndex((p) => p.beatTime === beatTime);
+    const point: AutomationPoint = { beatTime, value };
+    if (existingIndex >= 0) {
+      lane[existingIndex] = point;
+    } else {
+      lane.push(point);
+      lane.sort((a, b) => a.beatTime - b.beatTime);
+    }
+    this.notify();
+  }
+
+  /** Clear all automation points on a lane. */
+  clearAutomationLane(trackId: TrackId, paramName: string) {
+    const t = this.tracks.get(trackId);
+    if (!t) return;
+    delete t.state.automationLanes[paramName];
+    this.notify();
+  }
+
+  // ── Take lanes ─────────────────────────────────────────────────────────
+
+  /** Select a specific take for playback on a track. */
+  selectTake(trackId: TrackId, takeIndex: number) {
+    const t = this.tracks.get(trackId);
+    if (!t || takeIndex < 0 || takeIndex >= t.state.takes.length) return;
+    t.state.selectedTakeIndex = takeIndex;
+    // Update the playback buffer to use this take.
+    t.buffer = t.state.takes[takeIndex]!.buffer;
+    this.waveformCache.delete(trackId);
+    this.notify();
+  }
+
+  /** Rename a take on a track. */
+  renameTake(trackId: TrackId, takeIndex: number, name: string) {
+    const t = this.tracks.get(trackId);
+    if (!t || takeIndex < 0 || takeIndex >= t.state.takes.length) return;
+    const trimmed = name.trim().slice(0, 32);
+    if (!trimmed) return;
+    t.state.takes[takeIndex]!.name = trimmed;
+    this.notify();
+  }
+
+  /** Delete a take from a track. */
+  deleteTake(trackId: TrackId, takeIndex: number) {
+    const t = this.tracks.get(trackId);
+    if (!t || takeIndex < 0 || takeIndex >= t.state.takes.length) return;
+    t.state.takes.splice(takeIndex, 1);
+    
+    // Adjust selected index if needed.
+    if (t.state.selectedTakeIndex >= t.state.takes.length) {
+      t.state.selectedTakeIndex = t.state.takes.length - 1;
+    }
+    
+    // Update buffer if we deleted the currently-playing take.
+    if (t.state.selectedTakeIndex >= 0 && t.state.selectedTakeIndex < t.state.takes.length) {
+      t.buffer = t.state.takes[t.state.selectedTakeIndex]!.buffer;
+    } else {
+      t.buffer = null;
+      t.state.hasAudio = false;
+    }
+    this.waveformCache.delete(trackId);
+    this.notify();
+  }
+
+  // ── Reference track (mastering) ────────────────────────────────────────
+
+  /** Load an audio file as the reference track for A/B comparison. */
+  async setReferenceTrack(file: Blob): Promise<boolean> {
+    if (!this.ctx) return false;
+    try {
+      const arr = await file.arrayBuffer();
+      const buffer = await this.ctx.decodeAudioData(arr);
+      this.aux.referenceTrack.buffer = buffer;
+      this.aux.referenceTrack.blob = file;
+      this.notify();
+      return true;
+    } catch (err) {
+      console.warn("[DawEngine] reference track decode failed", err);
+      return false;
+    }
+  }
+
+  /** Enable/disable reference track playback. */
+  setReferenceTrackEnabled(enabled: boolean) {
+    this.aux.referenceTrack.enabled = enabled;
+    this.notify();
+  }
+
+  /** Set reference track level (0..1). */
+  setReferenceTrackLevel(level: number) {
+    const clamped = Math.max(0, Math.min(1, level));
+    this.aux.referenceTrack.level = clamped;
+    if (this.referenceTrackGain) {
+      this.referenceTrackGain.gain.value = clamped;
+    }
     this.notify();
   }
 
@@ -1921,11 +2153,116 @@ export class DawEngine {
       key === "wave" ||
       key === "attackSec" ||
       key === "releaseSec" ||
-      key === "filterHz"
+      key === "filterHz" ||
+      key === "clipQuantizeBeats" ||
+      key === "clipHumanizeBeats" ||
+      key === "clipHumanizeVelocity" ||
+      key === "keyboardOctaveShift"
     ) {
       this.midi = { ...this.midi, [key]: value };
       this.notify();
     }
+  }
+
+  private updateMidiClip(transform: (clip: MidiClip) => MidiClip | null): MidiClip | null {
+    const clip = this.midi.clip;
+    if (!clip) return null;
+    const next = transform({
+      lengthBeats: clip.lengthBeats,
+      notes: clip.notes.map((note) => ({ ...note })),
+    });
+    if (!next) return null;
+    this.midi = { ...this.midi, clip: next };
+    this.notify();
+    return next;
+  }
+
+  quantizeMidiClip(stepBeats: number = this.midi.clipQuantizeBeats): MidiClip | null {
+    const grid = Math.max(0.0625, Math.min(4, stepBeats));
+    return this.updateMidiClip((clip) => ({
+      ...clip,
+      notes: clip.notes
+        .map((note) => {
+          const startBeat = Math.max(0, Math.round(note.startBeat / grid) * grid);
+          const durationBeats = Math.max(
+            grid / 2,
+            Math.round(note.durationBeats / grid) * grid || grid,
+          );
+          return { ...note, startBeat, durationBeats };
+        })
+        .sort((left, right) => left.startBeat - right.startBeat),
+    }));
+  }
+
+  humanizeMidiClip(
+    timingBeats: number = this.midi.clipHumanizeBeats,
+    velocityAmount: number = this.midi.clipHumanizeVelocity,
+  ): MidiClip | null {
+    const maxTiming = Math.max(0, Math.min(0.25, timingBeats));
+    const maxVelocity = Math.max(0, Math.min(0.5, velocityAmount));
+    return this.updateMidiClip((clip) => ({
+      ...clip,
+      notes: clip.notes
+        .map((note) => {
+          const startOffset = (Math.random() * 2 - 1) * maxTiming;
+          const durationOffset = (Math.random() * 2 - 1) * (maxTiming / 2);
+          const velocityOffset = (Math.random() * 2 - 1) * maxVelocity;
+          const startBeat = Math.max(0, Math.min(clip.lengthBeats - 0.05, note.startBeat + startOffset));
+          const durationBeats = Math.max(0.05, note.durationBeats + durationOffset);
+          const velocity = Math.max(0.05, Math.min(1, note.velocity + velocityOffset));
+          return { ...note, startBeat, durationBeats, velocity };
+        })
+        .sort((left, right) => left.startBeat - right.startBeat),
+    }));
+  }
+
+  transposeMidiClip(semitones: number): MidiClip | null {
+    const shift = Math.max(-24, Math.min(24, Math.round(semitones)));
+    if (shift === 0) return this.midi.clip;
+    return this.updateMidiClip((clip) => ({
+      ...clip,
+      notes: clip.notes.map((note) => ({
+        ...note,
+        note: Math.max(0, Math.min(127, note.note + shift)),
+      })),
+    }));
+  }
+
+  nudgeMidiClip(deltaBeats: number): MidiClip | null {
+    const delta = Math.max(-16, Math.min(16, deltaBeats));
+    return this.updateMidiClip((clip) => ({
+      ...clip,
+      notes: clip.notes
+        .map((note) => ({
+          ...note,
+          startBeat: Math.max(0, Math.min(clip.lengthBeats - 0.05, note.startBeat + delta)),
+        }))
+        .sort((left, right) => left.startBeat - right.startBeat),
+    }));
+  }
+
+  duplicateMidiClip(): MidiClip | null {
+    return this.updateMidiClip((clip) => ({
+      lengthBeats: clip.lengthBeats * 2,
+      notes: [
+        ...clip.notes.map((note) => ({ ...note })),
+        ...clip.notes.map((note) => ({ ...note, startBeat: note.startBeat + clip.lengthBeats })),
+      ],
+    }));
+  }
+
+  setMidiClipLength(lengthBeats: number): MidiClip | null {
+    const nextLength = Math.max(1, Math.min(128, Math.round(lengthBeats)));
+    return this.updateMidiClip((clip) => ({
+      lengthBeats: nextLength,
+      notes: clip.notes
+        .map((note) => ({
+          ...note,
+          startBeat: Math.min(Math.max(0, nextLength - 0.05), note.startBeat),
+          durationBeats: Math.max(0.05, Math.min(note.durationBeats, nextLength - note.startBeat)),
+        }))
+        .filter((note) => note.startBeat < nextLength),
+    }));
   }
 
   /**
