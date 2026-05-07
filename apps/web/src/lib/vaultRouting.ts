@@ -55,19 +55,21 @@ export function decideVaultEntry(viewer: VaultViewerSession): VaultEntryDecision
     return { branch: "logged-out", redirectTo: signupChain() };
   }
 
-  // We only treat ARTIST/LABEL/ADMIN as "can already upload to the vault".
-  // Listeners (and Producer/Engineer who haven't toggled to artist mode)
-  // are routed through the artist signup chain so they get a clean
-  // "become an artist" path. We never land them on home.
-  const isArtistish =
-    viewer.role === "ARTIST" || viewer.role === "LABEL" || viewer.role === "ADMIN";
-
-  if (!isArtistish) {
-    return { branch: "needs-artist-role", redirectTo: signupChain() };
-  }
-
+  // Authoritative signal: do they have a studio? Any signed-in user with
+  // a studio is a creator who can upload, regardless of their `role` enum
+  // value (it might be LISTENER if they signed up casually, PRODUCER if
+  // they were beta-flagged, etc.). Anyone signed in WITHOUT a studio gets
+  // sent to setup — which now promotes their role to ARTIST as part of
+  // saving the form. This breaks the prior loop where a LISTENER would
+  // bounce between signup and setup forever, and most importantly never
+  // dumps an authenticated user on the "Create account" page.
   if (!viewer.hasStudio) {
-    return { branch: "needs-studio", redirectTo: setupChain() };
+    const isArtistish =
+      viewer.role === "ARTIST" || viewer.role === "LABEL" || viewer.role === "ADMIN";
+    return {
+      branch: isArtistish ? "needs-studio" : "needs-artist-role",
+      redirectTo: setupChain(),
+    };
   }
 
   return { branch: "go-to-upload", redirectTo: UPLOAD_TARGET };

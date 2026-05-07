@@ -1,8 +1,14 @@
+import dynamicImport from "next/dynamic";
 import Link from "next/link";
 import type { Metadata } from "next";
 import SongCard from "@/components/SongCard";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+
+const AnimatedBackdrop = dynamicImport(
+  () => import("@/components/backdrops/AnimatedBackdrop"),
+  { ssr: false },
+);
 
 export const revalidate = 60;
 
@@ -74,6 +80,7 @@ export default async function VaultPage() {
         {/* Vault door hero — heavy gold border, brass studs, embossed
             "THE VAULT" plaque. Reads as the front of an archive room. */}
         <section className="relative overflow-hidden rounded-3xl border-2 border-amber-500/55 bg-gradient-to-b from-[#1a1305] via-[#0e0a02] to-[#0a0700] px-6 py-12 shadow-[inset_0_2px_0_rgba(245,200,120,0.18),0_30px_80px_-30px_rgba(245,158,11,0.6)] sm:px-12 sm:py-16">
+          <AnimatedBackdrop variant="vault" />
           {/* Brass stud rivets along the border */}
           <div aria-hidden className="pointer-events-none absolute inset-x-6 top-3 flex justify-between sm:inset-x-12">
             {Array.from({ length: 9 }).map((_, i) => (

@@ -14,25 +14,29 @@ describe("decideVaultEntry — every branch lands on a working destination", () 
     );
   });
 
-  it("logged-in LISTENER routes to the artist signup chain (never home)", () => {
+  it("logged-in LISTENER routes to studio setup (NOT signup — they have a session)", () => {
     const decision = decideVaultEntry({
       signedIn: true,
       role: "LISTENER",
       hasStudio: false,
     });
     expect(decision.branch).toBe("needs-artist-role");
-    expect(decision.redirectTo).toMatch(/^\/auth\/signup/);
-    expect(decision.redirectTo).toContain("role=ARTIST");
+    // Bug we're locking out: a logged-in user with a non-artist role used
+    // to be sent through /auth/signup, which renders as "Create account"
+    // and looks broken because they're already signed in.
+    expect(decision.redirectTo).toMatch(/^\/studio\/setup/);
+    expect(decision.redirectTo).not.toMatch(/^\/auth\//);
   });
 
-  it("logged-in PRODUCER (non-artist) routes to artist signup chain", () => {
+  it("logged-in PRODUCER (non-artist) routes to studio setup, not signup", () => {
     const decision = decideVaultEntry({
       signedIn: true,
       role: "PRODUCER",
       hasStudio: false,
     });
     expect(decision.branch).toBe("needs-artist-role");
-    expect(decision.redirectTo).toMatch(/^\/auth\/signup/);
+    expect(decision.redirectTo).toMatch(/^\/studio\/setup/);
+    expect(decision.redirectTo).not.toMatch(/^\/auth\//);
   });
 
   it("artist without a studio is sent to studio setup with the upload as `next`", () => {
