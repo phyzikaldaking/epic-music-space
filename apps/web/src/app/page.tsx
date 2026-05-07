@@ -214,32 +214,19 @@ export default async function HomePage() {
   } =
     await getHomeData();
 
-  const displayStats = [
-    {
-      num: `${formatCount(songCount)}+`,
-      label: "Active Tracks",
-    },
-    {
-      num: `${formatCount(licenseCount)}+`,
-      label: "Licenses Claimed",
-    },
-    {
-      num: `${formatCount(liveRoomCount)}+`,
-      label: "Live Rooms Now",
-    },
-    {
-      num: `${formatCount(activeBattleCount)}+`,
-      label: "Active Battles",
-    },
-    {
-      num: `${formatCount(followCount)}+`,
-      label: "Community Follows",
-    },
-    {
-      num: totalRevenue > 0 ? formatRevenue(totalRevenue) : "$0",
-      label: "Paid to Artists",
-    },
+  // Honest social proof: only surface stats that have non-trivial values.
+  // Zero stats are worse than no stats — they signal "nobody is here" to
+  // a brand-new visitor. Anything below the threshold gets dropped, and
+  // if too few survive we hide the section entirely (handled at render).
+  const candidateStats = [
+    { value: songCount,         num: `${formatCount(songCount)}+`,         label: "Active Tracks",       threshold: 5 },
+    { value: licenseCount,      num: `${formatCount(licenseCount)}+`,      label: "Licenses Claimed",    threshold: 1 },
+    { value: liveRoomCount,     num: `${formatCount(liveRoomCount)}+`,     label: "Live Rooms Now",      threshold: 1 },
+    { value: activeBattleCount, num: `${formatCount(activeBattleCount)}+`, label: "Active Battles",      threshold: 1 },
+    { value: followCount,       num: `${formatCount(followCount)}+`,       label: "Community Follows",   threshold: 1 },
+    { value: totalRevenue,      num: formatRevenue(totalRevenue),          label: "Paid to Artists",     threshold: 1 },
   ];
+  const displayStats = candidateStats.filter((s) => s.value >= s.threshold);
 
   const faqStructuredData = {
     "@context": "https://schema.org",
@@ -291,15 +278,10 @@ export default async function HomePage() {
       <section className="vc-hero">
         <AnimatedBackdropClient variant="hero" />
         <div className="vc-stars" aria-hidden="true" />
-        <Image
-          className="vc-studio-photo"
-          src="https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=1200&q=80&auto=format&fit=crop"
-          alt=""
-          aria-hidden="true"
-          fill
-          sizes="100vw"
-          priority
-        />
+        {/* Hero background: brand gradient backdrop + animated stars + the
+            scan/grain texture stack. We dropped the Unsplash stock photo —
+            it was reading "early-stage product" and adding 200KB+ to LCP.
+            The gradient + AnimatedBackdrop carries the visual now. */}
         <div className="vc-studio-tint" aria-hidden="true" />
         <div className="vc-studio-overlay" aria-hidden="true" />
         <div className="vc-studio-scan" aria-hidden="true" />
@@ -336,14 +318,19 @@ export default async function HomePage() {
             />
           )}
 
-          <div className="vc-hero-stats" role="list" aria-label="Platform highlights">
-            {displayStats.map((stat) => (
-              <div key={stat.label} className="vc-hero-stat" role="listitem">
-                <span className="num">{stat.num}</span>
-                <span className="label">{stat.label}</span>
-              </div>
-            ))}
-          </div>
+          {/* Only render the stats strip if we have ≥3 real numbers to brag
+              about. A wall of "0+" reads "nobody's here" — worse than not
+              showing the section. */}
+          {displayStats.length >= 3 && (
+            <div className="vc-hero-stats" role="list" aria-label="Platform highlights">
+              {displayStats.map((stat) => (
+                <div key={stat.label} className="vc-hero-stat" role="listitem">
+                  <span className="num">{stat.num}</span>
+                  <span className="label">{stat.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="vc-hero-links" aria-label="Jump to key sections">
             <a href="#journey" className="vc-hero-link-pill">
