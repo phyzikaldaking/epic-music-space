@@ -18,7 +18,7 @@ export const revalidate = 30;
 export const metadata: Metadata = {
   title: "Marketplace",
   description:
-    "A premium music licensing exchange for ranked tracks, studio drops, and creator-ready music.",
+    "Discover trending tracks, follow rising artists, and support music directly from the community in real time.",
 };
 
 type PriceLike = string | number | { toString(): string };

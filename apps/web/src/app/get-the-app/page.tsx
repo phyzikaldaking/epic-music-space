@@ -5,10 +5,10 @@ import { getMobileReleaseSummary, mobileStoreLinks } from "@/lib/mobileApp";
 export const metadata: Metadata = {
   title: "Get the App",
   description:
-    "Download the Epic Music Space app for iOS and Android. License music, join live sessions, and battle in real-time — all from your phone.",
+    "Download the Epic Music Space app for iOS and Android. Connect with artists live, vote on battles, discover viral music, and build your music community — all from your phone.",
   openGraph: {
-    title: "Epic Music Space — Now on iOS & Android",
-    description: "License music, join live sessions, and battle in real-time from your phone.",
+    title: "Epic Music Space — Music's Biggest Social Platform on iOS & Android",
+    description: "Connect with artists, discover viral tracks, and vote on battles in real time. Now on your phone.",
     images: [{ url: "/og-default.png", width: 1200, height: 630 }],
   },
 };

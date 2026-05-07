@@ -3,10 +3,10 @@ import ViralFeed from "@/components/ViralFeed";
 
 export const metadata: Metadata = {
   title: "Viral",
-  description: "The hottest tracks blowing up right now on Epic Music Space. Fan-curated viral music moments, battles, and drops.",
+  description: "Discover what's blowing up on Epic Music Space. Watch trending tracks, viral battles, and chart dominators in real time. The hottest music moments, curated by the community.",
   openGraph: {
     title: "Viral",
-    description: "The hottest tracks blowing up right now — fan-curated viral music moments.",
+    description: "Trending now on music's fastest-growing social platform. Viral tracks, fan battles, and chart climbers.",
     url: "https://epicmusicspace.com/viral",
   },
   alternates: { canonical: "https://epicmusicspace.com/viral" },

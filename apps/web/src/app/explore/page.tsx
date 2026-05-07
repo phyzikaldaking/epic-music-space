@@ -12,15 +12,15 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   if (!tag) {
     return {
       title: "Explore",
-      description: "Browse hashtags trending across the Epic Music Space community.",
+      description: "Explore communities, trending music genres, and viral moments across the Epic Music Space social network.",
     };
   }
   const safe = tag.toLowerCase().slice(0, 50);
   const title = `#${safe} — Epic Music Space`;
   return {
     title,
-    description: `Posts tagged #${safe} on Epic Music Space.`,
-    openGraph: { title, description: `Posts tagged #${safe} on Epic Music Space.` },
+    description: `Join the conversation about #${safe} on music's fastest-growing social platform.`,
+    openGraph: { title, description: `Community posts about #${safe} on Epic Music Space.` },
     twitter: { card: "summary", title },
   };
 }

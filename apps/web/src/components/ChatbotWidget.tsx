@@ -27,6 +27,7 @@ const STARTERS: string[] = [
 ];
 
 const HIDDEN_PATH_PREFIXES = [
+  "/", // homepage already has primary conversion actions
   "/ai", // dedicated chat page already on screen
   "/auth", // don't distract from sign-in / sign-up
   "/admin", // ops/admin tools
@@ -54,7 +55,7 @@ export default function ChatbotWidget() {
   // experience or get in the way (admin tools, auth pages, the dedicated
   // /ai chat page).
   const hideOnThisRoute = HIDDEN_PATH_PREFIXES.some((p) =>
-    pathname === p || pathname?.startsWith(`${p}/`),
+    p === "/" ? pathname === "/" : pathname === p || pathname?.startsWith(`${p}/`),
   );
 
   useEffect(() => {

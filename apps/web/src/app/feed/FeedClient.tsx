@@ -56,9 +56,11 @@ function mapPost(p: RawPost): FeedPost {
 export default function FeedClient({
   initialMode,
   viewerId,
+  onboarding,
 }: {
   initialMode: "all" | "following";
   viewerId: string | null;
+  onboarding: string | null;
 }) {
   const [mode, setMode] = useState<"all" | "following">(initialMode);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -66,6 +68,10 @@ export default function FeedClient({
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dismissedOnboarding, setDismissedOnboarding] = useState(false);
+
+  const showListenerOnboarding =
+    onboarding === "listener" && Boolean(viewerId) && !dismissedOnboarding;
 
   const load = useCallback(
     async (reset: boolean) => {
@@ -116,6 +122,43 @@ export default function FeedClient({
 
   return (
     <div className="space-y-5">
+      {showListenerOnboarding && (
+        <div className="relative rounded-2xl border border-cyan-300/30 bg-gradient-to-br from-cyan-400/12 via-cyan-300/8 to-transparent p-4">
+          <button
+            type="button"
+            onClick={() => setDismissedOnboarding(true)}
+            className="absolute top-2 right-2 rounded-md px-2 py-1 text-xs text-white/55 hover:bg-white/10 hover:text-white/80"
+            aria-label="Dismiss onboarding tips"
+          >
+            Dismiss
+          </button>
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-200/90">
+            Listener quick start
+          </p>
+          <h2 className="mt-1 text-lg font-extrabold text-white">
+            Welcome to your music discovery feed
+          </h2>
+          <p className="mt-1 text-sm text-white/75">
+            Follow artists, vote in battles, and support tracks directly while
+            they trend.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/marketplace"
+              className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-bold uppercase tracking-wider text-cyan-950 hover:bg-cyan-200"
+            >
+              Discover tracks
+            </Link>
+            <Link
+              href="/versus"
+              className="rounded-xl border border-white/20 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/80 hover:bg-white/10"
+            >
+              Vote in battles
+            </Link>
+          </div>
+        </div>
+      )}
+
       {viewerId ? (
         <PostComposer onPosted={handlePosted} />
       ) : (

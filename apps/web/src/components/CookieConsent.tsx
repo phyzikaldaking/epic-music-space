@@ -36,7 +36,7 @@ export default function CookieConsent() {
     <div
       role="dialog"
       aria-labelledby="cookie-consent-title"
-      className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-2xl rounded-2xl border border-white/10 bg-[#0d0d14]/95 p-4 shadow-2xl backdrop-blur-md sm:left-auto sm:right-6 sm:bottom-6"
+      className="fixed bottom-[calc(72px+env(safe-area-inset-bottom))] left-4 right-4 z-50 mx-auto max-w-2xl rounded-2xl border border-white/10 bg-[#0d0d14]/95 p-4 shadow-2xl backdrop-blur-md sm:left-auto sm:right-6 sm:bottom-6"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-white/75">

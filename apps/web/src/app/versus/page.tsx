@@ -6,7 +6,13 @@ import { auth } from "@/lib/auth";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import { Suspense } from "react";
+import dynamicImport from "next/dynamic";
 import VersusCard from "@/components/VersusCard";
+
+const AnimatedBackdrop = dynamicImport(
+  () => import("@/components/backdrops/AnimatedBackdrop"),
+  { ssr: false },
+);
 import BattleRoyaleCard from "@/components/BattleRoyaleCard";
 import CreateBattleForm from "@/components/CreateBattleForm";
 import AdSlot from "@/components/ads/AdSlot";
@@ -167,47 +173,42 @@ export default async function VersusPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
       <Suspense><AdSlot location="VERSUS_BANNER" className="mb-8" /></Suspense>
-      {/* ── Header ──────────────────────────────────── */}
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-3 text-4xl font-extrabold">
-            <svg
-              aria-hidden="true"
-              className="h-9 w-9 text-accent-400"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="m14.121 14.121 5.657-5.657M14.121 14.121 9.879 9.879M14.121 14.121l2.122 2.121M9.879 9.879 4.222 4.222M9.879 9.879l-2.121 2.121M6.343 17.657l1.415-1.415M17.657 6.343l-1.415 1.415"
-              />
-            </svg>
-            Versus
-          </h1>
-          <p className="mt-2 text-white/50">
-            Vote for your favorites. Winners rise in the discovery algorithm.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+      {/* ── Header — premium, high-contrast, single confident statement ── */}
+      <div className="relative mb-10 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#1a0530] via-[#0d0220] to-[#000] px-6 py-10 sm:px-10 sm:py-12 shadow-[0_30px_120px_-40px_rgba(255,45,146,0.45)]">
+        <AnimatedBackdrop variant="versus" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-xl">
+            <p className="mb-2 text-[11px] font-black uppercase tracking-[0.32em] text-accent-300/90">
+              Live competition
+            </p>
+            <h1 className="font-bebas-neue text-5xl leading-[0.95] tracking-tight sm:text-6xl md:text-7xl">
+              <span className="bg-gradient-to-br from-white via-white to-accent-200 bg-clip-text text-transparent">VS</span>
+              <span className="ml-1 bg-gradient-to-br from-accent-400 via-pink-400 to-brand-400 bg-clip-text text-transparent">Battles</span>
+            </h1>
+            <p className="mt-4 text-base text-white/85 sm:text-lg" style={{ textShadow: "0 2px 16px rgba(0,0,0,0.6)" }}>
+              Two tracks. One winner. Every vote moves the discovery ranking — and the room watches it happen.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/verzuz/new"
-              className="inline-flex items-center gap-2 rounded-xl border border-gold-500/35 bg-gold-500/10 px-4 py-2 text-xs font-black uppercase tracking-widest text-gold-200 transition hover:bg-gold-500/20"
+              className="inline-flex items-center gap-2 rounded-xl border border-gold-400/45 bg-gold-400/10 px-4 py-2.5 text-xs font-black uppercase tracking-[0.18em] text-gold-100 hover:bg-gold-400/20 transition"
             >
-              🏆 Verzuz · 10-round artist showdown
+              Verzuz · 10-round series
             </Link>
+            {isArtist && <CreateBattleForm songs={artistSongs} />}
           </div>
         </div>
-        {isArtist && <CreateBattleForm songs={artistSongs} />}
       </div>
 
-      {/* ── Artist CTA banner (prominent, always visible) ── */}
+      {/* ── Artist CTA banner ─ */}
       {isArtist && (
-        <div className="mb-8 flex items-center justify-between gap-4 rounded-2xl border border-accent-500/25 bg-accent-500/8 px-5 py-4">
+        <div className="mb-8 flex items-center justify-between gap-4 rounded-2xl border border-accent-500/30 bg-accent-500/[0.08] px-5 py-4">
           <div>
-            <p className="font-bold text-accent-300">⚔️ Ready to battle?</p>
-            <p className="mt-0.5 text-sm text-white/45">
+            <p className="text-sm font-extrabold uppercase tracking-wider text-accent-200">
+              Ready to battle?
+            </p>
+            <p className="mt-1 text-sm text-white/75">
               {artistSongs.length >= 2
                 ? "Pick 2–10 of your songs and let the community decide."
                 : "Upload at least 2 songs, then start a 1v1 or Battle Royale."}
@@ -218,8 +219,8 @@ export default async function VersusPage() {
       )}
 
       {!session?.user?.id && (
-        <div className="mb-8 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/4 px-5 py-4">
-          <p className="text-sm text-white/50">Sign in to vote and create battles.</p>
+        <div className="mb-8 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
+          <p className="text-sm text-white/80">Sign in to vote and create battles.</p>
           <a
             href="/auth/signin?callbackUrl=/versus"
             className="rounded-xl bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600 transition"

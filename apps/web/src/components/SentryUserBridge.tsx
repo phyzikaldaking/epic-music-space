@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useSession } from "next-auth/react";
-import * as Sentry from "@sentry/nextjs";
 
 /**
  * Mirrors the NextAuth session into Sentry's scope so client-side errors
@@ -13,11 +12,23 @@ import * as Sentry from "@sentry/nextjs";
 export default function SentryUserBridge() {
   const { data: session, status } = useSession();
   useEffect(() => {
-    if (status !== "authenticated" || !session?.user?.id) {
-      Sentry.setUser(null);
-      return;
+    let cancelled = false;
+    async function syncSentryUser() {
+      const Sentry = await import("@sentry/browser");
+      if (cancelled) return;
+
+      if (status !== "authenticated" || !session?.user?.id) {
+        Sentry.setUser(null);
+        return;
+      }
+
+      Sentry.setUser({ id: session.user.id, segment: session.user.role });
     }
-    Sentry.setUser({ id: session.user.id, segment: session.user.role });
+
+    void syncSentryUser();
+    return () => {
+      cancelled = true;
+    };
   }, [status, session?.user?.id, session?.user?.role]);
   return null;
 }

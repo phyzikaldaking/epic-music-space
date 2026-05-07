@@ -112,7 +112,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
   // The overlay + panel are portalled to <body> so they escape the navbar's
   // backdrop-filter stacking context, which traps position:fixed children in
   // Safari and Chrome.
-  const overlay = mounted
+  const overlay = mounted && open
     ? createPortal(
         <>
           <div

@@ -105,6 +105,11 @@ function SignUpContent({
   // Read invite code from URL param
   const inviteCode = searchParams.get("invite") ?? "";
   const callbackUrl = sanitizeCallbackPath(searchParams.get("callbackUrl"));
+  const roleDefaultCallback =
+    selectedRole === "LISTENER"
+      ? "/feed?onboarding=listener"
+      : "/studio/setup?next=/studio/new";
+  const resolvedCallbackUrl = callbackUrl || roleDefaultCallback;
 
   // Google blocks OAuth inside Capacitor's WKWebView ("This browser may
   // not be secure"). Hide the Google button in the mobile shell and show
@@ -211,7 +216,7 @@ function SignUpContent({
         confirmPassword,
         role: selectedRole,
         inviteCode: inviteCode || undefined,
-        callbackUrl,
+        callbackUrl: resolvedCallbackUrl,
         ageConfirmed,
         termsAccepted,
         turnstileToken: turnstileToken ?? undefined,
@@ -226,19 +231,29 @@ function SignUpContent({
       return;
     }
 
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.signupCompleted,
+      role: selectedRole,
+      source: "web_signup",
+      properties: {
+        callbackUrl: resolvedCallbackUrl,
+        hadInvite: Boolean(inviteCode),
+      },
+    });
+
     if (data.autoVerified) {
       // Email failed but account was auto-verified — go straight to sign-in
-      router.push(`/auth/signin?accountCreated=1&email=${encodeURIComponent(form.email)}${callbackUrl ? `&callbackUrl=${encodeURIComponent(callbackUrl)}` : ""}`);
+      router.push(`/auth/signin?accountCreated=1&email=${encodeURIComponent(form.email)}&callbackUrl=${encodeURIComponent(resolvedCallbackUrl)}`);
       return;
     }
 
     if (data.verificationEmailSent === false) {
       // Email not sent — redirect to verify page with flag so user can resend
-      router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}&emailFailed=1&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}&emailFailed=1&callbackUrl=${encodeURIComponent(resolvedCallbackUrl)}`);
       return;
     }
 
-    router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`);
+    router.push(`/auth/verify-email?email=${encodeURIComponent(form.email)}&callbackUrl=${encodeURIComponent(resolvedCallbackUrl)}`);
   }
 
   return (
@@ -539,7 +554,6 @@ function SignUpContent({
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  aria-pressed={showPassword}
                   className="text-[11px] font-semibold text-white/55 hover:text-white/85 focus:outline-none focus-visible:underline"
                 >
                   {showPassword ? "Hide" : "Show"}
@@ -561,7 +575,6 @@ function SignUpContent({
                   setCapsLockOn(e.getModifierState && e.getModifierState("CapsLock"))
                 }
                 aria-describedby="signup-password-meter signup-password-checks"
-                aria-invalid={passwordTouched && !strength.acceptable}
                 className={`w-full rounded-xl border bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:outline-none focus:ring-1 ${
                   passwordTouched && !strength.acceptable
                     ? "border-red-500/45 focus:border-red-400 focus:ring-red-400/40"
@@ -676,7 +689,6 @@ function SignUpContent({
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 onBlur={() => setConfirmTouched(true)}
-                aria-invalid={showMatchError}
                 className={`w-full rounded-xl border bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:outline-none focus:ring-1 ${
                   showMatchError
                     ? "border-red-500/45 focus:border-red-400 focus:ring-red-400/40"

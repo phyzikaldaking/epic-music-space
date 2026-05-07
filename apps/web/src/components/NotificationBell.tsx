@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 interface Notification {
   id: string;
@@ -14,6 +15,7 @@ interface Notification {
 }
 
 export default function NotificationBell() {
+  const { status } = useSession();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -22,6 +24,7 @@ export default function NotificationBell() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const fetchNotifications = useCallback(async () => {
+    if (status !== "authenticated") return;
     try {
       const res = await fetch("/api/notifications?unread=false");
       if (res.ok) {
@@ -31,13 +34,14 @@ export default function NotificationBell() {
     } catch {
       // silently fail
     }
-  }, []);
+  }, [status]);
 
   useEffect(() => {
+    if (status !== "authenticated") return;
     fetchNotifications();
     const id = setInterval(fetchNotifications, 30_000);
     return () => clearInterval(id);
-  }, [fetchNotifications]);
+  }, [fetchNotifications, status]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -50,6 +54,7 @@ export default function NotificationBell() {
   }, []);
 
   async function handleOpen() {
+    if (status !== "authenticated") return;
     setOpen((v) => !v);
     if (!open && unreadCount > 0) {
       setLoading(true);
@@ -63,6 +68,8 @@ export default function NotificationBell() {
       }
     }
   }
+
+  if (status !== "authenticated") return null;
 
   function typeIcon(type: string) {
     if (type.includes("LICENSE")) return "🎵";
