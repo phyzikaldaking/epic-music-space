@@ -5,10 +5,13 @@ import { useState } from "react";
 export default function BuyServiceButton({
   listingId,
   isInstant,
+  paypalEnabled,
 }: {
   listingId: string;
   isInstant: boolean;
+  paypalEnabled: boolean;
 }) {
+  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "paypal">("stripe");
   const [brief, setBrief] = useState("");
   const [stemFile, setStemFile] = useState<File | null>(null);
   const [stemUrl, setStemUrl] = useState("");
@@ -79,6 +82,7 @@ export default function BuyServiceButton({
       body: JSON.stringify({
         brief: brief.trim() || undefined,
         briefUrl: stemUrl || undefined,
+        paymentMethod,
       }),
     });
     const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
@@ -92,6 +96,36 @@ export default function BuyServiceButton({
 
   return (
     <div className="space-y-3">
+      <div className="rounded-xl border border-white/10 bg-white/5 p-2">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/45">Payment method</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setPaymentMethod("stripe")}
+            className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+              paymentMethod === "stripe"
+                ? "border-brand-500/60 bg-brand-500/15 text-brand-300"
+                : "border-white/10 bg-white/5 text-white/65 hover:bg-white/10"
+            }`}
+          >
+            Stripe
+          </button>
+          <button
+            type="button"
+            onClick={() => paypalEnabled && setPaymentMethod("paypal")}
+            disabled={!paypalEnabled}
+            className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+              paymentMethod === "paypal"
+                ? "border-brand-500/60 bg-brand-500/15 text-brand-300"
+                : "border-white/10 bg-white/5 text-white/65 hover:bg-white/10"
+            } disabled:opacity-45`}
+            title={paypalEnabled ? "Pay with PayPal" : "PayPal is not configured yet"}
+          >
+            PayPal
+          </button>
+        </div>
+      </div>
+
       {!isInstant && (
         <>
           <textarea
@@ -135,11 +169,16 @@ export default function BuyServiceButton({
         disabled={busy || uploadState === "uploading"}
         className="w-full rounded-xl bg-brand-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
       >
-        {busy ? "Loading…" : isInstant ? "Buy & download" : "Book service"}
+        {busy
+          ? "Loading…"
+          : paymentMethod === "paypal"
+            ? (isInstant ? "Pay with PayPal & download" : "Book with PayPal")
+            : (isInstant ? "Buy & download" : "Book service")}
       </button>
       {err && <p className="text-xs text-red-300">{err}</p>}
       <p className="text-center text-[10px] text-white/35">
-        Secure checkout via Stripe. {isInstant ? "Download link delivered after payment." : "You'll get a confirmation email and the engineer will reach out."}
+        Secure checkout via {paymentMethod === "paypal" ? "PayPal" : "Stripe"}.{" "}
+        {isInstant ? "Download link delivered after payment." : "You'll get a confirmation email and the engineer will reach out."}
       </p>
     </div>
   );

@@ -33,6 +33,7 @@ export default async function ServiceDetailPage({
 
   const meta = SERVICE_KIND_META[listing.kind];
   const isOwner = session?.user?.id === listing.providerId;
+  const paypalEnabled = Boolean(process.env.PAYPAL_CLIENT_ID?.trim() && process.env.PAYPAL_CLIENT_SECRET?.trim());
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
@@ -133,6 +134,9 @@ export default async function ServiceDetailPage({
                 <p className="font-semibold">{listing.totalSold}</p>
               </div>
             </div>
+            <p className="mt-3 text-[11px] text-white/45">
+              Checkout supports Stripe and PayPal.
+            </p>
 
             <div className="mt-6">
               {listing.status !== "LIVE" ? (
@@ -154,7 +158,7 @@ export default async function ServiceDetailPage({
                   Sign in to book
                 </Link>
               ) : (
-                <BuyServiceButton listingId={listing.id} isInstant={meta.isInstant} />
+                <BuyServiceButton listingId={listing.id} isInstant={meta.isInstant} paypalEnabled={paypalEnabled} />
               )}
             </div>
           </div>

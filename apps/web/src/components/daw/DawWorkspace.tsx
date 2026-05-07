@@ -17,6 +17,7 @@ import MasterPanel from "./MasterPanel";
 import MasterPublishBar from "./MasterPublishBar";
 import StemLoopBrowser from "./StemLoopBrowser";
 import SampleLibraryPanel from "./SampleLibraryPanel";
+import OpenStudioSessionsPanel from "./OpenStudioSessionsPanel";
 import MidiPanel from "./MidiPanel";
 import PianoRoll from "./PianoRoll";
 import ProjectMenu from "./ProjectMenu";
@@ -1694,6 +1695,19 @@ export default function DawWorkspace() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Open Studio Sessions — fixed-position panel that broadcasts the
+          artist's working session to fans via Supabase Realtime broadcast.
+          Only renders for authenticated users; visitor count comes from
+          the existing collaborator-presence channel. */}
+      {session?.user?.id && (
+        <OpenStudioSessionsPanel
+          artistId={session.user.id}
+          artistName={session.user.name?.trim() || "Studio creator"}
+          artistAvatar={session.user.image ?? null}
+          visitorCount={collaborators.filter((c) => c.id !== clientPresenceId).length}
+        />
       )}
     </div>
   );

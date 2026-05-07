@@ -396,7 +396,7 @@ export class DawEngine {
     positionSec: 0,
     metronomeOn: false,
     latencyMode: "recording",
-    vocalCaptureProfile: "hybrid",
+    vocalCaptureProfile: "punchy",
     masterDb: 0,
     masterLevel: 0,
     masterLimiterOn: true,

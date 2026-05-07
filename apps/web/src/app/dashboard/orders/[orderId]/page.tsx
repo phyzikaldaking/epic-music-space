@@ -10,12 +10,15 @@ export const metadata = { title: "Order" };
 
 export default async function OrderDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ token?: string; status?: string }>;
 }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
   const { orderId } = await params;
+  const { token, status } = await searchParams;
 
   const order = await prisma.serviceOrder.findUnique({
     where: { id: orderId },
@@ -84,6 +87,7 @@ export default async function OrderDetailPage({
       }}
       currentUserId={session.user.id}
       isProvider={isProvider}
+      paypalReturnToken={status === "paypal-return" ? token ?? null : null}
     />
   );
 }

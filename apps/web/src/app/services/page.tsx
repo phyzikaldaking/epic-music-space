@@ -66,7 +66,7 @@ export default async function ServicesPage({
           <h1 className="text-3xl font-extrabold">Hire the people behind the records</h1>
           <p className="mt-1 max-w-xl text-sm text-white/55">
             Mixing engineers, mastering engineers, producers selling beats and
-            templates, and lessons from working pros. Pay through Stripe, get
+            templates, and lessons from working pros. Pay through Stripe or PayPal, get
             delivered or downloaded the same day.
           </p>
         </div>

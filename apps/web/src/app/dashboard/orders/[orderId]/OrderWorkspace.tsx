@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -56,17 +56,24 @@ export default function OrderWorkspace({
   order: initialOrder,
   currentUserId,
   isProvider,
+  paypalReturnToken,
 }: {
   order: Order;
   currentUserId: string;
   isProvider: boolean;
+  paypalReturnToken?: string | null;
 }) {
   const router = useRouter();
+  const paypalCaptureAttemptedRef = useRef(false);
   const [order] = useState(initialOrder);
   const [messages, setMessages] = useState(initialOrder.messages);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState<"" | "send" | "deliver" | "accept" | "revise" | "review">("");
   const [err, setErr] = useState<string | null>(null);
+  const [paypalCaptureState, setPaypalCaptureState] = useState<"idle" | "capturing" | "failed">(
+    "idle",
+  );
+  const [paypalCaptureError, setPaypalCaptureError] = useState<string | null>(null);
 
   // Provider deliver fields
   const [deliverUrl, setDeliverUrl] = useState("");
@@ -84,6 +91,36 @@ export default function OrderWorkspace({
 
   const status = STATUS_BADGE[order.status] ?? { label: order.status, cls: "" };
   const counterpart = isProvider ? order.buyer : order.provider;
+
+  useEffect(() => {
+    if (!paypalReturnToken || isProvider || order.status !== "PENDING") return;
+    if (paypalCaptureAttemptedRef.current) return;
+    paypalCaptureAttemptedRef.current = true;
+
+    setPaypalCaptureState("capturing");
+    setPaypalCaptureError(null);
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/services/orders/${order.id}/paypal/capture`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paypalOrderId: paypalReturnToken }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          setPaypalCaptureState("failed");
+          setPaypalCaptureError(data.error ?? "PayPal capture failed.");
+          return;
+        }
+        router.replace(`/dashboard/orders/${order.id}?status=success`);
+        router.refresh();
+      } catch {
+        setPaypalCaptureState("failed");
+        setPaypalCaptureError("PayPal capture failed. Retry in a few seconds.");
+      }
+    })();
+  }, [isProvider, order.id, order.status, paypalReturnToken, router]);
 
   async function send(action: string, payload: Record<string, unknown>, key: typeof busy) {
     setBusy(key);
@@ -181,6 +218,16 @@ export default function OrderWorkspace({
       {err && (
         <div className="mt-4 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {err}
+        </div>
+      )}
+      {paypalCaptureState === "capturing" && (
+        <div className="mt-4 rounded-xl border border-brand-500/25 bg-brand-500/10 px-4 py-2 text-sm text-brand-200">
+          Finalizing your PayPal payment...
+        </div>
+      )}
+      {paypalCaptureState === "failed" && (
+        <div className="mt-4 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+          {paypalCaptureError ?? "PayPal capture failed."}
         </div>
       )}
 

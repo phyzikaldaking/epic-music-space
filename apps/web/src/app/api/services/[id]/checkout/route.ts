@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { createPayPalServiceOrderCheckout, isPayPalConfigured } from "@/lib/paypal";
 import { getSiteUrl } from "@/lib/site";
 import { rateLimit } from "@/lib/rateLimitInline";
 import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
@@ -13,6 +14,7 @@ export const runtime = "nodejs";
 const schema = z.object({
   brief: z.string().max(2000).optional(),
   briefUrl: z.string().url().optional(),
+  paymentMethod: z.enum(["stripe", "paypal"]).default("stripe"),
 });
 
 export async function POST(
@@ -50,6 +52,7 @@ export async function POST(
     id,
     parsed.data.brief,
     parsed.data.briefUrl,
+    parsed.data.paymentMethod,
   ]);
 
   const listingLookup = await withRouteTimeout("service-checkout-listing-lookup", 2500, async () =>
@@ -74,6 +77,12 @@ export async function POST(
   if (listing.providerId === session.user.id) {
     return NextResponse.json({ error: "You can't buy your own listing" }, { status: 400 });
   }
+  if (parsed.data.paymentMethod === "paypal" && !isPayPalConfigured()) {
+    return NextResponse.json(
+      { error: "PayPal checkout is not configured yet. Use Stripe for now." },
+      { status: 503 },
+    );
+  }
 
   const baseUrl = getSiteUrl();
   const amountCents = Math.round(Number(listing.priceUsd) * 100);
@@ -94,6 +103,46 @@ export async function POST(
   );
   if (!orderCreate.ok) return orderCreate.response;
   const order = orderCreate.value;
+
+  if (parsed.data.paymentMethod === "paypal") {
+    const paypalCreate = await withRouteTimeout("service-checkout-paypal-create", 4500, async () =>
+      createPayPalServiceOrderCheckout({
+        internalOrderId: order.id,
+        listingId: listing.id,
+        listingTitle: listing.title,
+        amountUsd: Number(listing.priceUsd),
+      }),
+    );
+    if (!paypalCreate.ok) return paypalCreate.response;
+    const paypal = paypalCreate.value;
+
+    const txCreate = await withRouteTimeout("service-checkout-paypal-tx-create", 2500, async () =>
+      prisma.transaction.create({
+        data: {
+          userId: session.user.id,
+          amount: listing.priceUsd,
+          type: "SERVICE_PURCHASE",
+          status: "PENDING",
+          metadata: {
+            orderId: order.id,
+            listingId: listing.id,
+            providerId: listing.providerId,
+            type: "service_purchase",
+            idempotencyKey,
+            paymentProvider: "paypal",
+            paypalOrderId: paypal.paypalOrderId,
+          },
+        },
+      }),
+    );
+    if (!txCreate.ok) return txCreate.response;
+
+    return NextResponse.json({
+      url: paypal.approvalUrl,
+      orderId: order.id,
+      provider: "paypal",
+    });
+  }
 
   const checkoutCreate = await withRouteTimeout("service-checkout-stripe-create", 4500, async () =>
     stripe.checkout.sessions.create({
@@ -134,7 +183,7 @@ export async function POST(
   );
   if (!orderUpdate.ok) return orderUpdate.response;
 
-  const txCreate = await withRouteTimeout("service-checkout-transaction-create", 2500, async () =>
+  const txCreate = await withRouteTimeout("service-checkout-stripe-tx-create", 2500, async () =>
     prisma.transaction.create({
       data: {
         userId: session.user.id,
@@ -142,11 +191,18 @@ export async function POST(
         type: "SERVICE_PURCHASE",
         status: "PENDING",
         stripeSessionId: checkout.id,
-        metadata: { orderId: order.id, listingId: listing.id, providerId: listing.providerId, type: "service_purchase", idempotencyKey },
+        metadata: {
+          orderId: order.id,
+          listingId: listing.id,
+          providerId: listing.providerId,
+          type: "service_purchase",
+          idempotencyKey,
+          paymentProvider: "stripe",
+        },
       },
     }),
   );
   if (!txCreate.ok) return txCreate.response;
 
-  return NextResponse.json({ url: checkout.url, orderId: order.id });
+  return NextResponse.json({ url: checkout.url, orderId: order.id, provider: "stripe" });
 }

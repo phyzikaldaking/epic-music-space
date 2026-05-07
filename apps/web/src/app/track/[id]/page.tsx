@@ -18,6 +18,7 @@ import { classifyAudioSource } from "@/lib/audioSource";
 import TrackCommentThread from "@/components/TrackCommentThread";
 import TrackLikeButton from "@/components/TrackLikeButton";
 import StemsOpenInStudioButton from "@/components/StemsOpenInStudioButton";
+import CoWriterCta from "@/components/CoWriterCta";
 import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
@@ -608,8 +609,21 @@ export default async function TrackPage({ params, searchParams }: Props) {
         </section>
       )}
 
+      {/* Co-writer CTA — fans can request a writer's share of the track.
+          Hidden when the viewer is the artist. */}
+      {!song.isDemo && (
+        <section className="mt-12">
+          <CoWriterCta
+            songId={song.id}
+            songTitle={song.title}
+            viewerIsArtist={isOwner}
+            signedIn={Boolean(session?.user?.id)}
+          />
+        </section>
+      )}
+
       {/* Track comments */}
-      <section className="mt-16">
+      <section className="mt-12">
         <TrackCommentThread songId={song.id} />
       </section>
     </div>

@@ -84,6 +84,8 @@ model User {
   licenses     LicenseToken[]
   // Stems this user has pulled from the Loop Browser into their tracks.
   stemUsages   StemUsage[]
+  // Songs this user has expressed interest in becoming a co-writer on.
+  coWriterInterest CoWriterInterest[]
   transactions Transaction[]
   payouts      Payout[]
   studio           Studio?
@@ -294,6 +296,10 @@ model Song {
   stemUsagesAsSource  StemUsage[] @relation("SourceSongStems")
   // Stems from other songs that this song was built from.
   stemUsagesAsDerived StemUsage[] @relation("DerivedSongStems")
+  // Fans who tapped "Become a Co-Writer" on this song. The artist
+  // reviews the queue and accepts/declines; on accept a real writer
+  // share is minted via the existing license/payout pipeline.
+  coWriterInterest    CoWriterInterest[]
   @@index([artistId])
   @@index([district])
   @@index([isActive])
@@ -318,6 +324,27 @@ enum StemKind {
   BASS
   OTHER
   FULL
+}
+
+// Captured intent only — Stripe checkout for the actual purchase
+// happens in a follow-up flow. Status values are loose strings rather
+// than an enum so we can iterate the workflow without migrations:
+// PENDING / ACCEPTED / DECLINED / PAID / EXPIRED.
+model CoWriterInterest {
+  id                String   @id @default(cuid())
+  songId            String
+  song              Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  fanId             String
+  fan               User     @relation(fields: [fanId], references: [id], onDelete: Cascade)
+  shareBpsRequested Int      @default(50)
+  priceCents        Int      @default(5000)
+  message           String?
+  status            String   @default("PENDING")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@unique([songId, fanId])
+  @@index([songId, status])
+  @@index([fanId])
 }
 
 // When a producer drags a stem from the Loop Browser into their DAW,

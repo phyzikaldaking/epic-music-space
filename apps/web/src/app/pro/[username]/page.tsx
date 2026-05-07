@@ -109,6 +109,14 @@ export default async function ProProfilePage({ params }: Props) {
             <span className="text-white/55">{completedCount} completed</span>
             <span className="text-white/55">{listings.length} active listing{listings.length === 1 ? "" : "s"}</span>
           </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/70">
+              Stripe checkout
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/70">
+              PayPal checkout
+            </span>
+          </div>
         </div>
       </div>
 

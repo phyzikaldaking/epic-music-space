@@ -20,6 +20,10 @@ export default function NewServiceForm({ allowedKinds, role }: Props) {
   const [exampleAudioUrl, setExampleAudioUrl] = useState("");
   const [downloadUrl, setDownloadUrl] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
+  const [bestFor, setBestFor] = useState("");
+  const [revisionsIncluded, setRevisionsIncluded] = useState("2");
+  const [deliveryFormat, setDeliveryFormat] = useState("24-bit WAV + MP3 reference");
+  const [offersRush, setOffersRush] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -29,13 +33,28 @@ export default function NewServiceForm({ allowedKinds, role }: Props) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
+    const baseDescription = description.trim();
+    const engineeredDescription =
+      role === "ENGINEER"
+        ? [
+            baseDescription,
+            "",
+            "Service details:",
+            bestFor.trim() ? `- Best for: ${bestFor.trim()}` : null,
+            `- Revisions included: ${revisionsIncluded.trim() || "2"}`,
+            `- Delivery format: ${deliveryFormat.trim() || "24-bit WAV + MP3 reference"}`,
+            `- Rush option: ${offersRush ? "Available on request" : "Not included"}`,
+          ]
+            .filter((line): line is string => Boolean(line))
+            .join("\n")
+        : baseDescription;
     const res = await fetch("/api/services", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         kind,
         title: title.trim(),
-        description: description.trim(),
+        description: engineeredDescription,
         priceUsd: Number(priceUsd),
         deliveryDays: Number(deliveryDays),
         exampleAudioUrl: exampleAudioUrl.trim() || undefined,
@@ -60,7 +79,7 @@ export default function NewServiceForm({ allowedKinds, role }: Props) {
         </p>
         <h1 className="text-3xl font-extrabold">List a service</h1>
         <p className="mt-2 text-sm text-white/55">
-          Buyers pay through Stripe. Every sale is allocated 100% to you,
+          Buyers pay through Stripe or PayPal. Every sale is allocated 100% to you,
           minus a flat 10% platform fee that&apos;s itemized on every payout.
           Payouts batch weekly.
         </p>
@@ -123,6 +142,61 @@ export default function NewServiceForm({ allowedKinds, role }: Props) {
             className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/25 outline-none focus:border-brand-500/50 resize-none"
           />
         </div>
+
+        {role === "ENGINEER" && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-brand-300">Engineer setup details</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="best-for" className="mb-1 block text-[11px] font-semibold uppercase tracking-widest text-white/45">
+                  Best for
+                </label>
+                <input
+                  id="best-for"
+                  value={bestFor}
+                  onChange={(e) => setBestFor(e.target.value)}
+                  placeholder="Trap vocals, pop mixes, podcast cleanup..."
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-brand-500/50"
+                />
+              </div>
+              <div>
+                <label htmlFor="revisions" className="mb-1 block text-[11px] font-semibold uppercase tracking-widest text-white/45">
+                  Revisions included
+                </label>
+                <input
+                  id="revisions"
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={revisionsIncluded}
+                  onChange={(e) => setRevisionsIncluded(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-brand-500/50"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="delivery-format" className="mb-1 block text-[11px] font-semibold uppercase tracking-widest text-white/45">
+                  Delivery format
+                </label>
+                <input
+                  id="delivery-format"
+                  value={deliveryFormat}
+                  onChange={(e) => setDeliveryFormat(e.target.value)}
+                  placeholder="24-bit WAV, MP3 ref, stems on request..."
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-brand-500/50"
+                />
+              </div>
+              <label className="sm:col-span-2 flex items-center gap-2 text-sm text-white/75">
+                <input
+                  type="checkbox"
+                  checked={offersRush}
+                  onChange={(e) => setOffersRush(e.target.checked)}
+                  className="h-4 w-4 rounded border-white/20 bg-black/30"
+                />
+                Offer rush delivery option
+              </label>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>
