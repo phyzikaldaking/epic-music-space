@@ -15,6 +15,8 @@ interface Props {
   laneRecommendations: Partial<Record<DrumKind, LaneEqRecommendation>>;
   recentlyAppliedLanes: Set<DrumKind>;
   onApplyLaneRecommendation: (rec: LaneEqRecommendation) => void;
+    previewRecommendation: LaneEqRecommendation | null;
+    onTogglePreviewRecommendation: (rec: LaneEqRecommendation | null) => void;
   onToggleStep: (lane: DrumKind, step: number) => void;
   onToggleEnabled: () => void;
   onClear: () => void;
@@ -87,6 +89,8 @@ export default function BeatMachineGrid({
   laneRecommendations,
   recentlyAppliedLanes,
   onApplyLaneRecommendation,
+    previewRecommendation,
+    onTogglePreviewRecommendation,
   onToggleStep,
   onToggleEnabled,
   onClear,
@@ -362,21 +366,38 @@ export default function BeatMachineGrid({
                 {Math.round(laneFrequencyProfiles[lane].dominantHz)} Hz center · low {Math.round(laneFrequencyProfiles[lane].lowBandRatio * 100)}%
               </p>
               {laneRecommendations[lane] && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const rec = laneRecommendations[lane];
-                    if (rec) onApplyLaneRecommendation(rec);
-                  }}
-                  className={`mt-0.5 w-full truncate rounded border px-1 py-[1px] text-left text-[9px] transition ${
-                    recentlyAppliedLanes.has(lane)
-                      ? "border-emerald-300/60 bg-emerald-500/30 text-emerald-100 shadow-lg shadow-emerald-500/50"
-                      : "border-cyan-300/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20"
-                  }`}
-                  title={`${laneRecommendations[lane]?.reason} · Press Cmd+Y to apply top. Click to apply.`}
-                >
-                  Rec: {laneRecommendations[lane]?.type.toUpperCase()} {Math.round(laneRecommendations[lane]?.valueHz ?? 0)} Hz • tap apply
-                </button>
+                <div className="mt-0.5 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const rec = laneRecommendations[lane];
+                      if (rec) onTogglePreviewRecommendation(rec);
+                    }}
+                    className={`flex-1 truncate rounded border px-1 py-[1px] text-[9px] transition ${
+                      previewRecommendation?.lane === lane && previewRecommendation?.type === laneRecommendations[lane]?.type
+                        ? "border-yellow-300/60 bg-yellow-500/30 text-yellow-100"
+                        : "border-cyan-300/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20"
+                    }`}
+                    title="Preview this recommendation (hear before/after)"
+                  >
+                    👁 preview
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const rec = laneRecommendations[lane];
+                      if (rec) onApplyLaneRecommendation(rec);
+                    }}
+                    className={`flex-1 truncate rounded border px-1 py-[1px] text-[9px] transition ${
+                      recentlyAppliedLanes.has(lane)
+                        ? "border-emerald-300/60 bg-emerald-500/30 text-emerald-100 shadow-lg shadow-emerald-500/50"
+                        : "border-cyan-300/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20"
+                    }`}
+                    title={`${laneRecommendations[lane]?.reason} · Cmd+Y to apply top`}
+                  >
+                    ✓ apply
+                  </button>
+                </div>
               )}
               <div className="mt-1 flex items-center gap-1">
                 <button

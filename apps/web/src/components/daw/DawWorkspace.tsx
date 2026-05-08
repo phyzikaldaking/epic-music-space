@@ -442,6 +442,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [exportTruePeakTarget, setExportTruePeakTarget] = useState<ExportTruePeakTarget>(-1);
   const [recentlyAppliedLanes, setRecentlyAppliedLanes] = useState<Set<DrumKind>>(new Set());
   const [recommendationConfidenceThreshold, setRecommendationConfidenceThreshold] = useState(0.4);
+    const [previewRecommendation, setPreviewRecommendation] = useState<LaneEqRecommendation | null>(null);
   const sessionStartedAt = useRef<number>(Date.now());
   const wasRecordingRef = useRef(false);
   const clientPresenceId = useMemo(() => {
@@ -1070,6 +1071,32 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       message: `Applied ${bestActionable.length} best-fit lane EQ recommendation${bestActionable.length === 1 ? "" : "s"}.`,
     });
   }, [buildBestActionableLaneEqRecommendations, laneEqRecommendations]);
+  const togglePreviewRecommendation = useCallback((rec: LaneEqRecommendation | null) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    
+    if (rec === null) {
+      setPreviewRecommendation(null);
+      return;
+    }
+
+    if (previewRecommendation?.lane === rec.lane && previewRecommendation?.type === rec.type) {
+      setPreviewRecommendation(null);
+      if (snapshot?.beat.laneEqSettings) {
+        const current = snapshot.beat.laneEqSettings[rec.lane];
+        if (current) {
+          engine.setBeatLaneEq(rec.lane, current);
+        }
+      }
+    } else {
+      setPreviewRecommendation(rec);
+      if (rec.type !== "retune") {
+        if (rec.type === "hp") engine.setBeatLaneEq(rec.lane, { hpHz: rec.valueHz });
+        if (rec.type === "lp") engine.setBeatLaneEq(rec.lane, { lpHz: rec.valueHz });
+      }
+    }
+  }, [previewRecommendation, snapshot?.beat.laneEqSettings]);
+
 
   const submitComment = useCallback(
     async (rawMessage: string) => {
@@ -2536,6 +2563,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               });
               applyBeatLaneSteps(lane, shifted);
             }}
+            previewRecommendation={previewRecommendation}
+            onTogglePreviewRecommendation={togglePreviewRecommendation}
             rendering={renderingBeat}
           />
         </div>
