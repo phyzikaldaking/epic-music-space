@@ -999,20 +999,44 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     });
   }, []);
 
+  const buildBestActionableLaneEqRecommendations = useCallback(
+    (recommendations: LaneEqRecommendation[]) => {
+      const actionable = recommendations.filter((rec) => rec.type === "hp" || rec.type === "lp");
+      const bestByKey = new Map<string, LaneEqRecommendation>();
+
+      for (const rec of actionable) {
+        const key = `${rec.lane}:${rec.type}`;
+        const current = bestByKey.get(key);
+        if (!current || rec.confidence > current.confidence) {
+          bestByKey.set(key, rec);
+        }
+      }
+
+      return Array.from(bestByKey.values()).sort((a, b) => b.confidence - a.confidence);
+    },
+    [],
+  );
+
   const applyAllLaneEqRecommendations = useCallback(() => {
-    const actionable = laneEqRecommendations.filter((rec) => rec.type === "hp" || rec.type === "lp");
-    if (!actionable.length) {
+    const bestActionable = buildBestActionableLaneEqRecommendations(laneEqRecommendations);
+    if (!bestActionable.length) {
       setNotice({ tone: "info", message: "No actionable lane EQ recommendations to apply." });
       return;
     }
-    for (const rec of actionable) {
-      applyLaneEqRecommendation(rec);
+
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    for (const rec of bestActionable) {
+      if (rec.type === "hp") engine.setBeatLaneEq(rec.lane, { hpHz: rec.valueHz });
+      if (rec.type === "lp") engine.setBeatLaneEq(rec.lane, { lpHz: rec.valueHz });
     }
+
     setNotice({
       tone: "success",
-      message: `Applied ${actionable.length} lane EQ recommendation${actionable.length === 1 ? "" : "s"}.`,
+      message: `Applied ${bestActionable.length} best-fit lane EQ recommendation${bestActionable.length === 1 ? "" : "s"}.`,
     });
-  }, [applyLaneEqRecommendation, laneEqRecommendations]);
+  }, [buildBestActionableLaneEqRecommendations, laneEqRecommendations]);
 
   const submitComment = useCallback(
     async (rawMessage: string) => {
