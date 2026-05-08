@@ -6,6 +6,7 @@ import { SessionProvider } from "next-auth/react";
 import { PlayerProvider } from "@/contexts/PlayerContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import SentryUserBridge from "@/components/SentryUserBridge";
+import PostHogIdentityBridge from "@/components/PostHogIdentityBridge";
 import UISfxController from "@/components/UISfxController";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -49,6 +50,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
       <SentryUserBridge />
+      <PostHogIdentityBridge />
       <UISfxController />
       <PlayerProvider>
         <ToastProvider>

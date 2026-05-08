@@ -50,6 +50,7 @@
     "next-auth": "^5.0.0-beta.25",
     "openai": "^4.67.3",
     "postcss": "^8.4.49",
+    "posthog-js": "^1.372.10",
     "posthog-node": "^5.30.0",
     "rate-limiter-flexible": "^5.0.3",
     "react": "^19.0.0",
