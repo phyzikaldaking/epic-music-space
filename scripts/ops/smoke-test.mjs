@@ -12,6 +12,9 @@
  */
 
 const BASE = (process.env.BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+const TIMEOUT_MS = Math.max(1000, Number(process.env.SMOKE_TIMEOUT_MS ?? 15000));
+const FAILURE_SNIPPET_LEN = Math.max(80, Number(process.env.SMOKE_FAILURE_SNIPPET_LEN ?? 220));
+const CONCURRENCY = Math.max(1, Number(process.env.SMOKE_CONCURRENCY ?? 8));
 
 const routes = [
   // Public marketing surface
@@ -74,27 +77,45 @@ let failed = 0;
 const start = Date.now();
 
 async function run() {
-  console.log(`\n  Smoke test → ${BASE}\n`);
+  console.log(`\n  Smoke test → ${BASE}`);
+  console.log(`  timeout=${TIMEOUT_MS}ms · concurrency=${CONCURRENCY}\n`);
 
-  await Promise.all(
-    routes.map(async (r) => {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(CONCURRENCY, routes.length) }, async () => {
+    while (true) {
+      const i = cursor;
+      cursor += 1;
+      if (i >= routes.length) break;
+      const r = routes[i];
       const url = `${BASE}${r.path}`;
       const t0 = Date.now();
       let status = 0;
       let err = null;
+      let failureSnippet = null;
       try {
-        const res = await fetch(url, { redirect: "manual" });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        const res = await fetch(url, { redirect: "manual", signal: controller.signal });
+        clearTimeout(timer);
         status = res.status;
+        if (!(r.expectIn ?? [r.expect]).includes(status)) {
+          const text = await res.text().catch(() => "");
+          if (text) {
+            const singleLine = text.replace(/\s+/g, " ").trim();
+            failureSnippet = singleLine.slice(0, FAILURE_SNIPPET_LEN);
+          }
+        }
       } catch (e) {
         err = e instanceof Error ? e.message : String(e);
       }
       const ms = Date.now() - t0;
       const expected = r.expectIn ?? [r.expect];
       const ok = !err && expected.includes(status);
-      results.push({ path: r.path, status, ms, ok, err, expected });
+      results.push({ path: r.path, status, ms, ok, err, expected, failureSnippet });
       if (ok) passed += 1; else failed += 1;
-    }),
-  );
+    }
+  });
+  await Promise.all(workers);
 
   // Sorted output by status for easy scanning
   results.sort((a, b) => (a.ok === b.ok ? a.path.localeCompare(b.path) : a.ok ? 1 : -1));
@@ -103,7 +124,11 @@ async function run() {
     const icon = r.ok ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
     const statusStr = r.err ? `\x1b[31mERR\x1b[0m` : String(r.status);
     const expectStr = r.expected.length === 1 ? r.expected[0] : `[${r.expected.join(",")}]`;
-    const tail = r.err ? ` — ${r.err}` : r.ok ? "" : ` — expected ${expectStr}`;
+    const tail = r.err
+      ? ` — ${r.err}`
+      : r.ok
+        ? ""
+        : ` — expected ${expectStr}${r.failureSnippet ? ` · body: ${r.failureSnippet}` : ""}`;
     console.log(`  ${icon}  ${statusStr.padEnd(4)} ${String(r.ms + "ms").padEnd(7)} ${r.path}${tail}`);
   }
 

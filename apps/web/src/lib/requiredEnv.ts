@@ -171,7 +171,13 @@ export function assertRequiredEnvOnBoot(): void {
 
   const required = issues.filter((i) => i.severity === "required");
   const recommended = issues.filter((i) => i.severity === "recommended");
-  const isProd = process.env.NODE_ENV === "production";
+  // Enforce hard boot failures only for real production deploys by default.
+  // Local smoke runs often execute in NODE_ENV=production without a full
+  // secrets set, and should degrade to warnings instead of universal 500s.
+  // Set REQUIRED_ENV_STRICT=1 to force strict behavior outside production.
+  const isStrictMode =
+    process.env.VERCEL_ENV === "production" ||
+    process.env.REQUIRED_ENV_STRICT === "1";
 
   // Single-line summary first — easy to grep in logs.
   console.error(
@@ -191,7 +197,7 @@ export function assertRequiredEnvOnBoot(): void {
     console.error(`  ${tag} ${issue.key} ${verb} — ${issue.purpose}`);
   }
 
-  if (isProd && required.length > 0) {
+  if (isStrictMode && required.length > 0) {
     throw new Error(
       `[requiredEnv] ${required.length} required env var(s) missing or invalid. ` +
         `Failing the cold start so the misconfiguration is loud, not silent. ` +
