@@ -50,6 +50,53 @@ jobs:
           fi
 
       - name: Run smoke
+        id: smoke
         env:
           BASE_URL: ${{ steps.target.outputs.url }}
         run: node scripts/smoke.mjs "$BASE_URL"
+
+      # Browser-based smoke. Catches the failure class an HTTP-only smoke
+      # cannot: pages that 200 but never hydrate (CSP violation, runtime
+      # error, broken dynamic import). Skips with exit 0 if Playwright is
+      # not installed — the workflow is still useful with HTTP smoke alone.
+      - name: Install Playwright Chromium
+        run: npx --yes playwright@1.59.1 install chromium --with-deps
+
+      - name: Run browser smoke
+        id: smoke_browser
+        env:
+          BASE_URL: ${{ steps.target.outputs.url }}
+        run: node scripts/smoke-browser.mjs "$BASE_URL"
+
+      # If either smoke fails, page the on-call channel via the same
+      # Slack/PD webhook the auth-alerts cron uses. A red GH Action tab
+      # nobody's watching is the same as no alert — push to where humans
+      # actually see notifications.
+      - name: Notify on failure
+        if: failure()
+        env:
+          AUTH_ALERT_WEBHOOK_URL: ${{ secrets.AUTH_ALERT_WEBHOOK_URL }}
+          BASE_URL: ${{ steps.target.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          HTTP_RESULT: ${{ steps.smoke.outcome }}
+          BROWSER_RESULT: ${{ steps.smoke_browser.outcome }}
+        run: |
+          if [[ -z "${AUTH_ALERT_WEBHOOK_URL:-}" ]]; then
+            echo "::warning::AUTH_ALERT_WEBHOOK_URL not set; skipping alert push"
+            exit 0
+          fi
+          curl -sS -X POST "${AUTH_ALERT_WEBHOOK_URL}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc \
+              --arg target "$BASE_URL" \
+              --arg run "$RUN_URL" \
+              --arg sha "${GITHUB_SHA:0:7}" \
+              --arg http "$HTTP_RESULT" \
+              --arg browser "$BROWSER_RESULT" \
+              '{
+                text: ("🚨 *Post-deploy smoke FAILED* on " + $target + "\nCommit `" + $sha + "` — http=" + $http + " browser=" + $browser + "\n" + $run),
+                severity: "error",
+                fingerprint: "post-deploy-smoke",
+                context: { target: $target, run: $run, sha: $sha, http: $http, browser: $browser }
+              }')" \
+            || echo "::warning::Webhook POST failed"

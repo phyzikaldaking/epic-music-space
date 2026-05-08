@@ -16,7 +16,7 @@
 
 const BASE = (process.argv[2] || process.env.BASE_URL || "https://epicmusicspace.com").replace(/\/$/, "");
 
-/** @type {Array<{path: string; expectStatus?: number[]; mustContain?: string[]; description: string}>} */
+/** @type {Array<{path: string; expectStatus?: number[]; mustContain?: string[]; mustNotContain?: string[]; description: string}>} */
 const checks = [
   {
     path: "/",
@@ -32,9 +32,20 @@ const checks = [
     mustContain: ["Beat Machine", "in your browser"],
   },
   {
+    path: "/marketplace",
+    description: "marketplace page renders without auth",
+    mustContain: ["Marketplace"],
+    mustNotContain: ["Application error", "Error: A tree"],
+  },
+  {
+    path: "/auctions",
+    description: "auctions listing is publicly browsable",
+    mustContain: ["Live Auctions"],
+  },
+  {
     path: "/api/auth/providers",
-    description: "NextAuth advertises Google as a provider",
-    mustContain: ['"google"'],
+    description: "NextAuth advertises Google + credentials providers",
+    mustContain: ['"google"', '"credentials"'],
   },
   {
     path: "/api/auth/csrf",
@@ -72,8 +83,9 @@ for (const check of checks) {
     continue;
   }
 
+  let body;
   if (check.mustContain && check.mustContain.length > 0) {
-    const body = await res.text();
+    body = await res.text();
     const missing = check.mustContain.filter((m) => !body.includes(m));
     if (missing.length > 0) {
       console.error(`[smoke] ✗ ${check.path} — body missing markers: ${missing.join(", ")} (${check.description})`);
@@ -82,7 +94,45 @@ for (const check of checks) {
     }
   }
 
+  if (check.mustNotContain && check.mustNotContain.length > 0) {
+    if (body == null) body = await res.text();
+    const present = check.mustNotContain.filter((m) => body.includes(m));
+    if (present.length > 0) {
+      console.error(`[smoke] ✗ ${check.path} — body contains forbidden markers: ${present.join(", ")} (${check.description})`);
+      failed++;
+      continue;
+    }
+  }
+
   console.log(`[smoke] ✓ ${check.path} — ${check.description}`);
+}
+
+// CSP shape check on the homepage. The Google-OAuth bug week also surfaced a
+// CSP that blocked Next's flight scripts (no 'strict-dynamic'); the page
+// 200'd but never hydrated. Catch that class by inspecting the header and
+// failing if script-src is too strict.
+try {
+  const res = await fetch(`${BASE}/`, { redirect: "follow", headers: { "User-Agent": "ems-smoke/1" } });
+  const csp = res.headers.get("content-security-policy") ?? "";
+  const scriptSrc = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src"));
+  if (!scriptSrc) {
+    console.error(`[smoke] ✗ /  — Content-Security-Policy header missing script-src directive`);
+    failed++;
+  } else if (!/nonce-/.test(scriptSrc)) {
+    console.error(`[smoke] ✗ /  — script-src has no nonce: ${scriptSrc}`);
+    failed++;
+  } else if (!/strict-dynamic/.test(scriptSrc) && !/'unsafe-inline'/.test(scriptSrc)) {
+    // strict-dynamic is what lets Next's nonced root authorize transitively
+    // loaded chunks. Without it (or unsafe-inline), the inline flight
+    // scripts get blocked and hydration silently fails.
+    console.error(`[smoke] ✗ /  — script-src missing 'strict-dynamic' (hydration will break): ${scriptSrc}`);
+    failed++;
+  } else {
+    console.log(`[smoke] ✓ / — CSP script-src has nonce + strict-dynamic`);
+  }
+} catch (err) {
+  console.error(`[smoke] ✗ / — CSP probe threw: ${err.message}`);
+  failed++;
 }
 
 const dur = Math.round((Date.now() - start) / 100) / 10;

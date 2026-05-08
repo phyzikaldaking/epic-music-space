@@ -51,6 +51,10 @@
     {
       "path": "/api/cron/verzuz-pre-start",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/auth-alerts",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

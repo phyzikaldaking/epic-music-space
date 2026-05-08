@@ -33,7 +33,11 @@ export type AuthEventName =
   | "magic_link_skipped"
   | "magic_link_send_failed"
   | "magic_link_invalid"
-  | "magic_link_signin_success";
+  | "magic_link_signin_success"
+  // Synthetic event written by the auth-alerts cron when a page() fires.
+  // The `reason` field carries the alert fingerprint so the cron can
+  // dedupe sustained outages within MUTE_MINUTES.
+  | "alert_fired";
 
 export type AuthEventMeta = {
   email?: string;
