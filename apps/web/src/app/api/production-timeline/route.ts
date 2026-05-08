@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getRedis } from "@/lib/redis";
 import { moderateLimiter } from "@/lib/rateLimit";
 
 /**
@@ -190,6 +191,18 @@ export async function GET(req: NextRequest) {
   const page = hasMore ? posts.slice(0, limit) : posts;
   const nextCursor = hasMore ? (page[page.length - 1]?.id ?? null) : null;
 
+  // Resolve live-session author IDs from Redis heartbeat keys
+  const authorIds = Array.from(new Set(page.map((p) => p.author.id)));
+  const liveAuthorIds = new Set<string>();
+  const redis = getRedis();
+  if (redis && authorIds.length) {
+    const keys = authorIds.map((id) => `studio:live:${id}`);
+    const values = await redis.mget(...keys);
+    authorIds.forEach((id, i) => {
+      if (values[i] === "1") liveAuthorIds.add(id);
+    });
+  }
+
   // Map to ProductionPost shape
   const production = page
     .filter((p) => p.songId !== null)
@@ -227,7 +240,7 @@ export async function GET(req: NextRequest) {
         authorName: p.author.name ?? p.author.username ?? "Unknown",
         authorImage: p.author.image ?? undefined,
         authorRole: toAuthorRole(p.author.role),
-        isLiveNow: false, // populated by live-session overlay in a future enhancement
+        isLiveNow: liveAuthorIds.has(p.author.id),
         trackId: song.id,
         trackTitle: song.title,
         genre: song.genre ?? "Unknown",

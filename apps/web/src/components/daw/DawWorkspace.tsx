@@ -26,6 +26,7 @@ import {
   type DrumKitId,
 } from "./beatMachine";
 import BeatMachineGrid from "./BeatMachineGrid";
+import CollaboratorInvitePanel, { type CollaboratorPresenceRecord } from "./CollaboratorInvitePanel";
 import FxPanel from "./FxPanel";
 import GearRack, { type GearApplyHandlers } from "./GearRack";
 import MasterPublishBar from "./MasterPublishBar";
@@ -776,6 +777,23 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     if (typeof transport?.bpm !== "number") return;
     setManualBpmInput(String(transport.bpm));
   }, [transport?.bpm]);
+
+  // Live-session heartbeat — pings /api/studio/heartbeat every 30 s so the
+  // production timeline can set isLiveNow for this user's posts.
+  useEffect(() => {
+    const ping = () => { void fetch("/api/studio/heartbeat", { method: "POST" }); };
+    ping(); // immediate ping on mount
+    const id = setInterval(ping, 30_000);
+
+    const onHide = () => { void fetch("/api/studio/heartbeat", { method: "DELETE" }); };
+    document.addEventListener("visibilitychange", onHide);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onHide);
+      onHide();
+    };
+  }, []);
 
   useEffect(() => {
     if (transport?.isRecording) {
@@ -2791,6 +2809,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
       {!showSplash && showPublishTools && heavyUiReady && (
         <CollaborationPresencePanel
+          selfId={clientPresenceId}
+          sessionId={projectId}
           collaborators={collaborators}
           connected={presenceConnected}
           autosaveOn={autosaveOn}
@@ -3856,6 +3876,8 @@ function AuxCard({ title, value, detail }: { title: string; value: string; detai
 }
 
 function CollaborationPresencePanel({
+  selfId,
+  sessionId,
   collaborators,
   connected,
   autosaveOn,
@@ -3871,6 +3893,8 @@ function CollaborationPresencePanel({
   comments,
   onSubmitComment,
 }: {
+  selfId: string;
+  sessionId: string | null;
   collaborators: CollaboratorPresence[];
   connected: boolean;
   autosaveOn: boolean;
@@ -3904,23 +3928,12 @@ function CollaborationPresencePanel({
   return (
     <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-200/85">Collaboration</p>
-            <span className={`h-2 w-2 rounded-full ${connected ? "bg-emerald-300" : "bg-white/30"}`} />
-          </div>
-          <p className="text-sm font-semibold text-white">{connected ? `${collaborators.length} active` : "Presence standby"}</p>
-          <ul className="mt-2 space-y-1">
-            {collaborators.slice(0, 4).map((c) => (
-              <li key={`${c.id}-${c.updatedAt}`} className="rounded-lg border border-white/10 bg-white/[0.02] px-2 py-1.5 text-xs text-white/75">
-                {c.name} · {c.focusMode} · {c.isPlaying ? "playing" : "paused"}
-              </li>
-            ))}
-            {collaborators.length === 0 && (
-              <li className="text-xs text-white/45">Open this board in another tab/device to see presence live.</li>
-            )}
-          </ul>
-        </div>
+        <CollaboratorInvitePanel
+          selfId={selfId}
+          sessionId={sessionId}
+          collaborators={collaborators as CollaboratorPresenceRecord[]}
+          connected={connected}
+        />
 
         <div className="rounded-xl border border-white/10 bg-black/25 p-3">
           <div className="mb-2 flex items-center justify-between">
