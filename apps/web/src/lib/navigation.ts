@@ -11,6 +11,7 @@ export type NavEntry = {
 export const NAV_PUBLIC: NavEntry[] = [
   { href: "/", label: "Home", navChip: "HM", description: "Back to the front page" },
   { href: "/studio", label: "Studio", navChip: "ST", description: "Make beats, mix, and publish in your browser" },
+  { href: "/podcast", label: "Podcast", navChip: "PC", description: "Launch a video-first podcast with clips, captions, and live community" },
   { href: "/versus", label: "Battles", navChip: "BT", description: "Quick 1v1, Royale, and Verzuz events", activePrefixes: ["/verzuz"] },
   { href: "/studio/live", label: "Sessions", navChip: "SS", description: "Join live rooms with artists and fans", activePrefixes: ["/rooms"] },
   { href: "/timeline", label: "Timeline", navChip: "TL", description: "Your activity and community feed", activePrefixes: ["/forum", "/feed", "/post/"] },
@@ -27,6 +28,7 @@ export const NAV_PUBLIC: NavEntry[] = [
 export const NAV_AUTHED: NavEntry[] = [
   { href: "/", label: "Home", navChip: "HM", description: "Back to the front page" },
   { href: "/studio", label: "Studio", navChip: "ST", description: "Beat machine, mixer, upload — your control room" },
+  { href: "/podcast", label: "Podcast", navChip: "PC", description: "Video-first podcasting, clips, transcripts, and live aftershows", activePrefixes: ["/studio/podcast"] },
   { href: "/studio/board", label: "Beat Board", navChip: "BB", description: "In-browser DAW with 7 kits + multitrack" },
   { href: "/versus", label: "Battles", navChip: "BT", description: "Quick 1v1, Royale, and Verzuz events", activePrefixes: ["/verzuz"] },
   { href: "/studio/live", label: "Sessions", navChip: "SS", description: "Join live rooms with artists and fans", activePrefixes: ["/rooms"] },

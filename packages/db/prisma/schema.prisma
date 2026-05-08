@@ -89,6 +89,8 @@ model User {
   transactions Transaction[]
   payouts      Payout[]
   studio           Studio?
+  podcastShows     PodcastShow[]    @relation("PodcastShowOwner")
+  podcastEpisodes  PodcastEpisode[] @relation("PodcastEpisodeCreator")
   ownedLabel       Label?         @relation("LabelOwner")
   labelMemberships LabelArtist[]  @relation("LabelArtistUser")
   adPlacements     AdPlacement[]
@@ -1200,11 +1202,12 @@ model Room {
 
   host          User              @relation("RoomHost", fields: [hostId], references: [id], onDelete: Cascade)
   currentSong   Song?             @relation(fields: [currentSongId], references: [id], onDelete: SetNull)
-  participants  RoomParticipant[]
-  messages      RoomMessage[]
-  timelineNotes RoomTimelineNote[]
-  recordings    RoomRecording[]
-  bans          RoomBan[]
+  participants    RoomParticipant[]
+  messages        RoomMessage[]
+  timelineNotes   RoomTimelineNote[]
+  recordings      RoomRecording[]
+  podcastEpisodes PodcastEpisode[]
+  bans            RoomBan[]
 
   @@index([status, startedAt])
   @@index([hostId, status])
@@ -1239,6 +1242,95 @@ model RoomRecording {
   room            Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   @@index([roomId, status])
+}
+
+enum PodcastFormat {
+  VIDEO
+  AUDIO
+  HYBRID
+}
+
+enum PodcastCadence {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  SEASONAL
+  IRREGULAR
+}
+
+enum PodcastEpisodeStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+model PodcastShow {
+  id              String         @id @default(cuid())
+  ownerId         String
+  owner           User           @relation("PodcastShowOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  title           String
+  slug            String         @unique
+  tagline         String?        @db.VarChar(160)
+  description     String         @db.Text
+  category        String?        @db.VarChar(80)
+  format          PodcastFormat  @default(VIDEO)
+  cadence         PodcastCadence @default(WEEKLY)
+  coverUrl        String?
+  bannerUrl       String?
+  trailerAudioUrl String?
+  featured        Boolean        @default(false)
+  isPublished     Boolean        @default(false)
+  totalViews      Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  episodes        PodcastEpisode[]
+
+  @@index([ownerId, createdAt])
+  @@index([ownerId, isPublished])
+  @@index([isPublished, featured, createdAt])
+}
+
+model PodcastEpisode {
+  id               String               @id @default(cuid())
+  showId           String
+  show             PodcastShow          @relation(fields: [showId], references: [id], onDelete: Cascade)
+  creatorId        String
+  creator          User                 @relation("PodcastEpisodeCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  title            String
+  slug             String
+  synopsis         String               @db.Text
+  seasonNumber     Int                  @default(1)
+  episodeNumber    Int                  @default(1)
+  status           PodcastEpisodeStatus @default(DRAFT)
+  scheduledFor     DateTime?
+  publishedAt      DateTime?
+  audioUrl         String?
+  coverUrl         String?
+  muxUploadId      String?              @unique
+  muxAssetId       String?              @unique
+  muxPlaybackId    String?              @unique
+  videoStatus      PostVideoStatus      @default(NONE)
+  videoDurationSec Int?
+  videoAspectRatio String?
+  transcript       String?              @db.Text
+  captionsUrl      String?
+  durationSec      Int?
+  clipCount        Int                  @default(0)
+  viewCount        Int                  @default(0)
+  playCount        Int                  @default(0)
+  roomId           String?
+  room             Room?                @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@unique([showId, slug])
+  @@index([showId, status, publishedAt])
+  @@index([creatorId, status, createdAt])
+  @@index([status, publishedAt])
+  @@index([roomId])
 }
 
 enum RecordingStatus {

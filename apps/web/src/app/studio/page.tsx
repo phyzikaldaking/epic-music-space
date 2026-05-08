@@ -161,6 +161,14 @@ function PublicStudioLanding() {
               cta: "Try quick upload",
               href: "/studio/try",
             },
+            {
+              n: "04",
+              slot: "Podcaster Console",
+              h: "Video-first show workflow.",
+              p: "Run episodes like a media product: record for video, keep the audio pristine, cut clips, add captions, and drive listeners into live aftershows.",
+              cta: "Open podcast tools",
+              href: "/studio/podcast",
+            },
           ].map((m) => (
             <Link key={m.n} href={m.href} className="studio-rack-card block">
               <p className="studio-rack-slot">

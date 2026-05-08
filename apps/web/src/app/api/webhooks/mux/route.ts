@@ -75,10 +75,16 @@ export async function POST(req: NextRequest) {
       const uploadId = data["id"] as string | undefined;
       const assetId = data["asset_id"] as string | undefined;
       if (uploadId && assetId) {
-        await prisma.post.updateMany({
-          where: { muxUploadId: uploadId },
-          data: { muxAssetId: assetId, videoStatus: "PROCESSING" },
-        });
+        await Promise.all([
+          prisma.post.updateMany({
+            where: { muxUploadId: uploadId },
+            data: { muxAssetId: assetId, videoStatus: "PROCESSING" },
+          }),
+          prisma.podcastEpisode.updateMany({
+            where: { muxUploadId: uploadId },
+            data: { muxAssetId: assetId, videoStatus: "PROCESSING" },
+          }),
+        ]);
       }
     } else if (type === "video.asset.ready") {
       const assetId = data["id"] as string | undefined;
@@ -87,23 +93,41 @@ export async function POST(req: NextRequest) {
       const aspectRatio = (data["aspect_ratio"] as string | undefined) ?? null;
       const playbackId = playbackIds[0]?.id;
       if (assetId && playbackId) {
-        await prisma.post.updateMany({
-          where: { muxAssetId: assetId },
-          data: {
-            muxPlaybackId: playbackId,
-            videoStatus: "READY",
-            videoDurationSec: duration ? Math.round(duration) : null,
-            videoAspectRatio: aspectRatio,
-          },
-        });
+        await Promise.all([
+          prisma.post.updateMany({
+            where: { muxAssetId: assetId },
+            data: {
+              muxPlaybackId: playbackId,
+              videoStatus: "READY",
+              videoDurationSec: duration ? Math.round(duration) : null,
+              videoAspectRatio: aspectRatio,
+            },
+          }),
+          prisma.podcastEpisode.updateMany({
+            where: { muxAssetId: assetId },
+            data: {
+              muxPlaybackId: playbackId,
+              videoStatus: "READY",
+              videoDurationSec: duration ? Math.round(duration) : null,
+              videoAspectRatio: aspectRatio,
+              durationSec: duration ? Math.round(duration) : null,
+            },
+          }),
+        ]);
       }
     } else if (type === "video.asset.errored") {
       const assetId = data["id"] as string | undefined;
       if (assetId) {
-        await prisma.post.updateMany({
-          where: { muxAssetId: assetId },
-          data: { videoStatus: "FAILED" },
-        });
+        await Promise.all([
+          prisma.post.updateMany({
+            where: { muxAssetId: assetId },
+            data: { videoStatus: "FAILED" },
+          }),
+          prisma.podcastEpisode.updateMany({
+            where: { muxAssetId: assetId },
+            data: { videoStatus: "FAILED" },
+          }),
+        ]);
       }
     }
   } catch (err) {

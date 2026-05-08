@@ -79,6 +79,13 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
       icon: "🎙️",
       onClick: () => trackClick("live_rooms", "/studio/live"),
     },
+    {
+      href: "/studio/podcast",
+      label: "Podcaster Console",
+      icon: "📹",
+      onClick: () => trackClick("podcaster_console", "/studio/podcast"),
+      variant: "accent" as const,
+    },
   ];
 
   const getButtonClasses = (variant?: string) => {
@@ -155,6 +162,13 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
           href="/studio/live"
           onClick={() => trackClick("feature_live", "/studio/live")}
         />
+        <FeatureCard
+          icon="📹"
+          title="Video Podcasting"
+          body="Plan episodes, package clips, and build a live audience loop for video-first and audio-first shows."
+          href="/studio/podcast"
+          onClick={() => trackClick("feature_podcast", "/studio/podcast")}
+        />
       </div>
 
       {/* ── Publish checklist reminder ──────────────────────────────────── */}
@@ -186,6 +200,33 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
         >
           ⚡ Publish a Track
         </Link>
+      </div>
+
+      <div className="mt-8 rounded-2xl border border-cyan-400/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(255,255,255,0.03),rgba(217,70,239,0.1))] p-5">
+        <p className="mb-1 text-xs font-black uppercase tracking-[0.18em] text-cyan-100/80">
+          Podcast Feature
+        </p>
+        <p className="mt-1 text-sm font-bold text-white">For video podcasters first. Audio podcasters included.</p>
+        <p className="mt-2 text-sm text-white/60">
+          We built the podcaster path around the strongest creator model on the market: record for video, cut clips,
+          ship captions and transcripts, then use live rooms and timeline promotion to build weekly audience habits.
+        </p>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <Link
+            href="/studio/podcast"
+            onClick={() => trackClick("podcast_console_strip", "/studio/podcast")}
+            className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-black uppercase tracking-wider text-slate-950 transition hover:opacity-95"
+          >
+            Open Podcaster Console →
+          </Link>
+          <Link
+            href="/podcast"
+            onClick={() => trackClick("podcast_public_strip", "/podcast")}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-4 py-2.5 text-sm font-black uppercase tracking-wider text-white/85 transition hover:bg-white/[0.08]"
+          >
+            View Podcast Hub →
+          </Link>
+        </div>
       </div>
 
       {/* ── "What do you want to do next?" cross-platform strip ────────── */}
