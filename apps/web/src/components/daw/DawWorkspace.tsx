@@ -8,6 +8,7 @@ import {
   type BeatMachineState,
   DawEngine,
   type EngineSnapshot,
+  type LaneEqRecommendation,
   type MidiSynthState,
   type TrackState,
   type TrackId,
@@ -726,6 +727,11 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const transport = snapshot?.transport;
   const tracks = useMemo(() => snapshot?.tracks ?? [], [snapshot]);
   const beat = snapshot?.beat;
+  const laneEqRecommendations = useMemo(() => {
+    const engine = engineRef.current;
+    if (!engine || !beat) return [];
+    return engine.analyzeBeatPatternConflicts();
+  }, [beat]);
   const showSplash = !snapshot;
   const hasRecordedAudio = tracks.some((track) => track.hasAudio);
   const hasBeatPattern = Boolean(
@@ -974,6 +980,39 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     engine.clearBeatLaneEqTemplates();
     setNotice({ tone: "info", message: "Cleared beat lane EQ templates." });
   }, []);
+
+  const applyLaneEqRecommendation = useCallback((rec: LaneEqRecommendation) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    if (rec.type === "retune") {
+      setNotice({
+        tone: "info",
+        message: `Retune suggestion: move ${rec.lane.toUpperCase()} center toward ${Math.round(rec.valueHz)} Hz.`,
+      });
+      return;
+    }
+    if (rec.type === "hp") engine.setBeatLaneEq(rec.lane, { hpHz: rec.valueHz });
+    if (rec.type === "lp") engine.setBeatLaneEq(rec.lane, { lpHz: rec.valueHz });
+    setNotice({
+      tone: "success",
+      message: `Applied ${rec.type.toUpperCase()} ${Math.round(rec.valueHz)} Hz on ${rec.lane.toUpperCase()}.`,
+    });
+  }, []);
+
+  const applyAllLaneEqRecommendations = useCallback(() => {
+    const actionable = laneEqRecommendations.filter((rec) => rec.type === "hp" || rec.type === "lp");
+    if (!actionable.length) {
+      setNotice({ tone: "info", message: "No actionable lane EQ recommendations to apply." });
+      return;
+    }
+    for (const rec of actionable) {
+      applyLaneEqRecommendation(rec);
+    }
+    setNotice({
+      tone: "success",
+      message: `Applied ${actionable.length} lane EQ recommendation${actionable.length === 1 ? "" : "s"}.`,
+    });
+  }, [applyLaneEqRecommendation, laneEqRecommendations]);
 
   const submitComment = useCallback(
     async (rawMessage: string) => {
@@ -2358,6 +2397,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           onApplyKick808Split={applyKick808SplitPreset}
           onApplyPercussionLowCut={applyPercussionLowCutTemplate}
           onClearBeatEqTemplates={clearBeatEqTemplates}
+          laneEqRecommendations={laneEqRecommendations}
+          onApplyLaneEqRecommendation={applyLaneEqRecommendation}
+          onApplyAllLaneEqRecommendations={applyAllLaneEqRecommendations}
         />
       )}
 
@@ -3070,6 +3112,9 @@ function MixIntelligencePanel({
   onApplyKick808Split,
   onApplyPercussionLowCut,
   onClearBeatEqTemplates,
+  laneEqRecommendations,
+  onApplyLaneEqRecommendation,
+  onApplyAllLaneEqRecommendations,
 }: {
   spectrum: number[];
   masterLufs: number;
@@ -3085,6 +3130,9 @@ function MixIntelligencePanel({
   onApplyKick808Split: () => void;
   onApplyPercussionLowCut: () => void;
   onClearBeatEqTemplates: () => void;
+  laneEqRecommendations: LaneEqRecommendation[];
+  onApplyLaneEqRecommendation: (rec: LaneEqRecommendation) => void;
+  onApplyAllLaneEqRecommendations: () => void;
 }) {
   const sub = avgBand(spectrum, 0, 2);
   const lowMid = avgBand(spectrum, 3, 8);
@@ -3239,6 +3287,39 @@ function MixIntelligencePanel({
           </div>
         ))}
       </div>
+
+      {laneEqRecommendations.length > 0 && (
+        <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-100/80">
+              Auto lane EQ recommendations
+            </p>
+            <button
+              type="button"
+              onClick={onApplyAllLaneEqRecommendations}
+              className="rounded-lg border border-cyan-300/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-100 hover:bg-cyan-400/10"
+            >
+              Apply all actionable
+            </button>
+          </div>
+          <div className="mt-2 grid gap-1.5 md:grid-cols-2">
+            {laneEqRecommendations.slice(0, 6).map((rec, idx) => (
+              <button
+                key={`${rec.lane}-${rec.type}-${idx}`}
+                type="button"
+                onClick={() => onApplyLaneEqRecommendation(rec)}
+                className="rounded-md border border-white/15 bg-black/20 px-2 py-1.5 text-left hover:bg-white/5"
+                title={rec.reason}
+              >
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
+                  {rec.lane.toUpperCase()} · {rec.type.toUpperCase()} · {Math.round(rec.valueHz)} Hz
+                </p>
+                <p className="mt-1 text-[11px] text-white/80">{rec.reason}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button

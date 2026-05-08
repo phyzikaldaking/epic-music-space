@@ -199,6 +199,14 @@ export interface LaneFrequencyProfile {
   guidance: string;
 }
 
+export interface LaneEqRecommendation {
+  lane: DrumKind;
+  type: "hp" | "lp" | "retune";
+  valueHz: number;
+  confidence: number;
+  reason: string;
+}
+
 export interface BeatMachineState {
   /** When true, the engine schedules drum hits on each beat-bucket while
    *  transport is playing. Independent of metronome. */
@@ -2276,6 +2284,111 @@ export class DawEngine {
     this.beatMachine.laneEqSettings = emptyBeatLaneEqSettings();
     this.refreshBeatLaneFrequencyProfiles();
     this.notify();
+  }
+
+  /**
+   * Build lane EQ recommendations from pattern density + timing overlap
+   * + lane frequency profiles. Recommendations are advisory and are not
+   * auto-applied.
+   */
+  analyzeBeatPatternConflicts(): LaneEqRecommendation[] {
+    const pattern = this.beatMachine.pattern;
+    const profiles = this.beatMachine.laneFrequencyProfiles;
+    const laneEq = this.beatMachine.laneEqSettings;
+    const recommendations: LaneEqRecommendation[] = [];
+
+    const laneDensity = DRUM_LANES.reduce((acc, lane) => {
+      acc[lane] = pattern[lane].reduce((sum, stepOn) => sum + (stepOn ? 1 : 0), 0);
+      return acc;
+    }, {} as Record<DrumKind, number>);
+
+    const kick = pattern.kick;
+    const bass = pattern.bass808;
+    let kick808Overlap = 0;
+    for (let i = 0; i < STEPS; i++) {
+      const prev = (i - 1 + STEPS) % STEPS;
+      const next = (i + 1) % STEPS;
+      if (!kick[i]) continue;
+      if (bass[i] || bass[prev] || bass[next]) kick808Overlap += 1;
+    }
+
+    const lowHeavyLanes = DRUM_LANES.filter(
+      (lane) => profiles[lane].lowBandRatio >= 0.35 && profiles[lane].dominantHz <= 240,
+    );
+
+    if (kick808Overlap >= 2) {
+      const targetKickHp = 36;
+      if ((laneEq.kick.hpHz ?? 0) < targetKickHp) {
+        recommendations.push({
+          lane: "kick",
+          type: "hp",
+          valueHz: targetKickHp,
+          confidence: 0.9,
+          reason: `Kick and 808 overlap on ${kick808Overlap} step${kick808Overlap === 1 ? "" : "s"}; raise kick HP to open sub headroom.`,
+        });
+      }
+      const target808Lp = 105;
+      if (!laneEq.bass808.lpHz || laneEq.bass808.lpHz > target808Lp) {
+        recommendations.push({
+          lane: "bass808",
+          type: "lp",
+          valueHz: target808Lp,
+          confidence: 0.86,
+          reason: "808 top harmonics are masking kick attack; lower 808 LP for separation.",
+        });
+      }
+    }
+
+    if (lowHeavyLanes.length >= 3) {
+      for (const lane of lowHeavyLanes) {
+        if (lane === "kick" || lane === "bass808") continue;
+        if (laneDensity[lane] < 2) continue;
+        const currentHp = laneEq[lane].hpHz ?? 0;
+        const suggestedHp = lane === "snare" ? 180 : lane === "clap" ? 300 : 220;
+        if (currentHp < suggestedHp) {
+          recommendations.push({
+            lane,
+            type: "hp",
+            valueHz: suggestedHp,
+            confidence: 0.72,
+            reason: `${lane.toUpperCase()} is adding low-end during dense pattern sections; HP tightens overlap with kick/808.`,
+          });
+        }
+      }
+    }
+
+    for (const lane of ["hat", "openHat", "crash"] as const) {
+      if (laneDensity[lane] < 4) continue;
+      const profile = profiles[lane];
+      if (profile.lowBandRatio < 0.12) continue;
+      const targetHp = lane === "hat" ? 4500 : lane === "openHat" ? 3600 : 2200;
+      if ((laneEq[lane].hpHz ?? 0) < targetHp) {
+        recommendations.push({
+          lane,
+          type: "hp",
+          valueHz: targetHp,
+          confidence: 0.64,
+          reason: `${lane.toUpperCase()} lane has unexpected low-band energy; stronger HP will clear mud and mono blur.`,
+        });
+      }
+    }
+
+    const kickCenter = profiles.kick.dominantHz;
+    const bassCenter = profiles.bass808.dominantHz;
+    const centerGap = Math.abs(kickCenter - bassCenter);
+    if (centerGap < 14 && laneDensity.kick > 0 && laneDensity.bass808 > 0) {
+      recommendations.push({
+        lane: "bass808",
+        type: "retune",
+        valueHz: Math.max(40, Math.round(bassCenter - 18)),
+        confidence: 0.58,
+        reason: `Kick/808 centers are only ${Math.round(centerGap)} Hz apart; retune 808 lower for cleaner punch-sub split.`,
+      });
+    }
+
+    return recommendations
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 8);
   }
 
   async setBeatLaneSample(lane: DrumKind, file: File): Promise<boolean> {
