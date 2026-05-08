@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   type AuxBusState,
+  type BeatMachineState,
   DawEngine,
   type EngineSnapshot,
   type MidiSynthState,
@@ -2319,6 +2320,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           masterTruePeak={transport.masterTruePeak}
           phaseCorrelation={transport.masterPhaseCorrelation}
           monoPreviewOn={transport.monoPreviewOn}
+          beat={beat ?? null}
           tracks={tracks}
           aux={snapshot?.aux ?? null}
           onCenterLowEnd={applyMonoSafeBalance}
@@ -2339,6 +2341,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             activeBank={beat.activeBank}
             kit={beat.kit}
             laneSampleNames={beat.laneSampleNames}
+            laneFrequencyProfiles={beat.laneFrequencyProfiles}
             onToggleStep={(lane, step) => {
               const cur = beat.pattern[lane][step];
               engineRef.current?.setBeatStep(lane, step, !cur);
@@ -3012,6 +3015,7 @@ function MixIntelligencePanel({
   masterTruePeak,
   phaseCorrelation,
   monoPreviewOn,
+  beat,
   tracks,
   aux,
   onCenterLowEnd,
@@ -3023,6 +3027,7 @@ function MixIntelligencePanel({
   masterTruePeak: number;
   phaseCorrelation: number;
   monoPreviewOn: boolean;
+  beat: BeatMachineState | null;
   tracks: TrackState[];
   aux: AuxBusState | null;
   onCenterLowEnd: () => void;
@@ -3041,6 +3046,17 @@ function MixIntelligencePanel({
   const stereoFxHeavyCount = tracks.filter(
     (track) => track.fx.reverbWet > 0.28 || track.fx.delayWet > 0.22,
   ).length;
+  const laneProfiles = beat ? DRUM_LANES.map((lane) => ({ lane, profile: beat.laneFrequencyProfiles[lane] })) : [];
+  const lowHeavyLaneProfiles = laneProfiles.filter(
+    ({ profile }) => profile.lowBandRatio >= 0.35 && profile.dominantHz <= 220,
+  );
+  const kickProfile = beat?.laneFrequencyProfiles.kick ?? null;
+  const bassProfile = beat?.laneFrequencyProfiles.bass808 ?? null;
+  const kickBassGapHz = kickProfile && bassProfile ? Math.abs(kickProfile.dominantHz - bassProfile.dominantHz) : null;
+  const overlapLaneLabels = lowHeavyLaneProfiles
+    .slice(0, 3)
+    .map(({ lane }) => lane.toUpperCase())
+    .join(", ");
   const monoRisk =
     (lowEndWideCount > 0 ? 1 : 0) +
     (stereoFxHeavyCount > 2 ? 1 : 0) +
@@ -3095,9 +3111,24 @@ function MixIntelligencePanel({
       label: "True peak safety",
       detail:
         peakDbtp > -1
-          ? "True peak above -1 dBTP. Back off limiter/master by 1-2 dB."
-          : "True peak safety margin looks good.",
-      tone: peakDbtp > -1 ? "warn" : "ok",
+          ? "Oversampled true peak above -1 dBTP. Back off limiter/master by 1-2 dB."
+          : peakDbtp > -2
+            ? "Oversampled true peak is close to ceiling. Leave a little more headroom for codec safety."
+            : "Oversampled true peak safety margin looks good.",
+      tone: peakDbtp > -1 ? "warn" : peakDbtp > -2 ? "neutral" : "ok",
+    },
+    {
+      label: "Low-end lane occupancy",
+      detail:
+        lowHeavyLaneProfiles.length > 2
+          ? `Low-end overlap across ${overlapLaneLabels}. Carve with lane HP/LP and retune kick/808.`
+          : kickBassGapHz !== null && kickBassGapHz < 14
+            ? "Kick and 808 centers are very close. Separate by tuning one lane 15-25 Hz away."
+            : "Lane low-end occupancy is reasonably separated.",
+      tone:
+        lowHeavyLaneProfiles.length > 2 || (kickBassGapHz !== null && kickBassGapHz < 14)
+          ? "warn"
+          : "ok",
     },
     {
       label: "Mono compatibility",

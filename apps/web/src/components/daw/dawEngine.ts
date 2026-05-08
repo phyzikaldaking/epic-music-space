@@ -190,6 +190,14 @@ export interface TransportState {
 export type { DrumKitId } from "./beatMachine";
 export type PatternBank = "A" | "B" | "C" | "D";
 
+export interface LaneFrequencyProfile {
+  source: "synth" | "sample";
+  dominantHz: number;
+  lowBandRatio: number;
+  risk: "low" | "medium" | "high";
+  guidance: string;
+}
+
 export interface BeatMachineState {
   /** When true, the engine schedules drum hits on each beat-bucket while
    *  transport is playing. Independent of metronome. */
@@ -205,6 +213,8 @@ export interface BeatMachineState {
   kit: DrumKitId;
   /** Optional file name per lane when a custom one-shot sample is assigned. */
   laneSampleNames: Record<DrumKind, string | null>;
+  /** Low-end occupancy profile per lane for arrangement and mix guidance. */
+  laneFrequencyProfiles: Record<DrumKind, LaneFrequencyProfile>;
 }
 
 export interface AuxBusState {
@@ -388,6 +398,101 @@ function emptyBeatLaneSampleNames(): Record<DrumKind, string | null> {
   }, {} as Record<DrumKind, string | null>);
 }
 
+const SYNTH_LANE_CENTERS_HZ: Record<DrumKind, number> = {
+  kick: 62,
+  snare: 190,
+  clap: 520,
+  hat: 9000,
+  openHat: 7800,
+  perc: 850,
+  bass808: 52,
+  crash: 6200,
+};
+
+const SYNTH_LANE_LOW_RATIO: Record<DrumKind, number> = {
+  kick: 0.78,
+  snare: 0.2,
+  clap: 0.08,
+  hat: 0.01,
+  openHat: 0.02,
+  perc: 0.12,
+  bass808: 0.94,
+  crash: 0.03,
+};
+
+function describeLaneRisk(lane: DrumKind, dominantHz: number, lowBandRatio: number): {
+  risk: "low" | "medium" | "high";
+  guidance: string;
+} {
+  if ((lane === "hat" || lane === "openHat" || lane === "crash") && lowBandRatio > 0.2) {
+    return {
+      risk: "high",
+      guidance: "High-frequency lane carries too much low-end. High-pass this sample harder.",
+    };
+  }
+  if (lane === "bass808") {
+    if (dominantHz > 120) {
+      return {
+        risk: "high",
+        guidance: "808 dominant energy is too high in frequency. Retune or low-pass toward sub range.",
+      };
+    }
+    if (lowBandRatio < 0.55) {
+      return {
+        risk: "medium",
+        guidance: "808 low-band occupancy is light. Add sub weight or reduce top harmonics.",
+      };
+    }
+    return { risk: "low", guidance: "808 low-end occupancy looks solid." };
+  }
+  if (lane === "kick") {
+    if (dominantHz < 38 || dominantHz > 115) {
+      return {
+        risk: "medium",
+        guidance: "Kick tonal center is outside a typical punch range. Tune for 45-95 Hz body.",
+      };
+    }
+    return { risk: "low", guidance: "Kick occupancy sits in a practical punch zone." };
+  }
+  if (lowBandRatio > 0.5) {
+    return {
+      risk: "medium",
+      guidance: "This lane contributes heavy low-end. Check overlap with kick/808.",
+    };
+  }
+  return { risk: "low", guidance: "Lane occupancy is balanced for its role." };
+}
+
+function buildLaneProfile(
+  lane: DrumKind,
+  source: "synth" | "sample",
+  dominantHz: number,
+  lowBandRatio: number,
+): LaneFrequencyProfile {
+  const safeDominant = Number.isFinite(dominantHz) ? Math.max(20, Math.min(12000, dominantHz)) : 0;
+  const safeRatio = Number.isFinite(lowBandRatio) ? Math.max(0, Math.min(1, lowBandRatio)) : 0;
+  const assessed = describeLaneRisk(lane, safeDominant, safeRatio);
+  return {
+    source,
+    dominantHz: safeDominant,
+    lowBandRatio: safeRatio,
+    risk: assessed.risk,
+    guidance: assessed.guidance,
+  };
+}
+
+function emptyBeatLaneFrequencyProfiles(): Record<DrumKind, LaneFrequencyProfile> {
+  return DRUM_LANES.reduce((acc, lane) => {
+    acc[lane] = buildLaneProfile(
+      lane,
+      "synth",
+      SYNTH_LANE_CENTERS_HZ[lane],
+      SYNTH_LANE_LOW_RATIO[lane],
+    );
+    return acc;
+  }, {} as Record<DrumKind, LaneFrequencyProfile>);
+}
+
 function findSampleTrimRange(buffer: AudioBuffer, threshold: number): { start: number; end: number } {
   const frames = buffer.length;
   let start = 0;
@@ -469,6 +574,7 @@ export class DawEngine {
     },
     kit: "acoustic",
     laneSampleNames: emptyBeatLaneSampleNames(),
+    laneFrequencyProfiles: emptyBeatLaneFrequencyProfiles(),
   };
   private beatLaneSamples: Record<DrumKind, AudioBuffer | null> = DRUM_LANES.reduce((acc, lane) => {
     acc[lane] = null;
@@ -801,17 +907,13 @@ export class DawEngine {
         this.lufsBuf as unknown as Float32Array<ArrayBuffer>,
       );
       let sumSq = 0;
-      let truePeak = 0;
       for (let i = 0; i < this.lufsBuf.length; i++) {
         const v = this.lufsBuf[i] ?? 0;
         sumSq += v * v;
-        const a = Math.abs(v);
-        if (a > truePeak) truePeak = a;
       }
       const rms = Math.sqrt(sumSq / this.lufsBuf.length);
       // LUFS approximation. -0.691 is the K-weighted offset baseline.
       this.transport.masterLufs = rms > 0 ? -0.691 + 10 * Math.log10(rms * rms) : -Infinity;
-      this.transport.masterTruePeak = truePeak;
     }
     if (
       this.phaseLeftAnalyser &&
@@ -838,6 +940,9 @@ export class DawEngine {
       }
       const denom = Math.sqrt(sumL2 * sumR2);
       this.transport.masterPhaseCorrelation = denom > 1e-8 ? Math.max(-1, Math.min(1, sumLR / denom)) : 1;
+      const leftPeak = this.estimateOversampledTruePeak(this.phaseLeftBuf);
+      const rightPeak = this.estimateOversampledTruePeak(this.phaseRightBuf);
+      this.transport.masterTruePeak = Math.max(leftPeak, rightPeak);
     }
 
     // Update transport position when playing.
@@ -2114,6 +2219,7 @@ export class DawEngine {
 
   setBeatKit(kit: DrumKitId) {
     this.beatMachine.kit = kit;
+    this.refreshBeatLaneFrequencyProfiles();
     this.notify();
   }
 
@@ -2125,6 +2231,7 @@ export class DawEngine {
       const buffer = this.prepareBeatLaneSample(decoded);
       this.beatLaneSamples[lane] = buffer;
       this.beatMachine.laneSampleNames[lane] = file.name;
+      this.refreshBeatLaneFrequencyProfiles();
       this.notify();
       return true;
     } catch (err) {
@@ -2136,7 +2243,100 @@ export class DawEngine {
   clearBeatLaneSample(lane: DrumKind) {
     this.beatLaneSamples[lane] = null;
     this.beatMachine.laneSampleNames[lane] = null;
+    this.refreshBeatLaneFrequencyProfiles();
     this.notify();
+  }
+
+  private estimateOversampledTruePeak(data: Float32Array): number {
+    if (!data.length) return 0;
+    let peak = 0;
+    for (let i = 0; i < data.length - 1; i++) {
+      const a = data[i] ?? 0;
+      const b = data[i + 1] ?? 0;
+      const aAbs = Math.abs(a);
+      if (aAbs > peak) peak = aAbs;
+      // 4x linear interpolation catches common inter-sample overs.
+      for (let k = 1; k < 4; k++) {
+        const t = k / 4;
+        const sample = a + (b - a) * t;
+        const abs = Math.abs(sample);
+        if (abs > peak) peak = abs;
+      }
+    }
+    const tail = Math.abs(data[data.length - 1] ?? 0);
+    return tail > peak ? tail : peak;
+  }
+
+  private analyzeBeatLaneSample(lane: DrumKind, buffer: AudioBuffer): LaneFrequencyProfile {
+    const frames = Math.min(buffer.length, 4096);
+    if (frames < 16) {
+      return buildLaneProfile(
+        lane,
+        "sample",
+        SYNTH_LANE_CENTERS_HZ[lane],
+        SYNTH_LANE_LOW_RATIO[lane],
+      );
+    }
+    const mono = new Float32Array(frames);
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      for (let i = 0; i < frames; i++) {
+        mono[i] += (src[i] ?? 0) / buffer.numberOfChannels;
+      }
+    }
+
+    const freqBins = [
+      32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000,
+      1600, 2500, 4000, 6300, 10000,
+    ];
+    const energyByBin = new Array(freqBins.length).fill(0);
+    for (let bi = 0; bi < freqBins.length; bi++) {
+      const freq = freqBins[bi];
+      const omega = (2 * Math.PI * freq) / buffer.sampleRate;
+      let re = 0;
+      let im = 0;
+      for (let i = 0; i < frames; i++) {
+        const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / Math.max(1, frames - 1));
+        const v = (mono[i] ?? 0) * w;
+        re += v * Math.cos(omega * i);
+        im -= v * Math.sin(omega * i);
+      }
+      energyByBin[bi] = re * re + im * im;
+    }
+
+    let dominantIndex = 0;
+    let dominantEnergy = -1;
+    let totalEnergy = 0;
+    let lowEnergy = 0;
+    for (let i = 0; i < energyByBin.length; i++) {
+      const e = energyByBin[i] ?? 0;
+      totalEnergy += e;
+      if ((freqBins[i] ?? 0) <= 180) lowEnergy += e;
+      if (e > dominantEnergy) {
+        dominantEnergy = e;
+        dominantIndex = i;
+      }
+    }
+
+    const dominantHz = freqBins[dominantIndex] ?? SYNTH_LANE_CENTERS_HZ[lane];
+    const lowBandRatio = totalEnergy > 1e-9 ? lowEnergy / totalEnergy : SYNTH_LANE_LOW_RATIO[lane];
+    return buildLaneProfile(lane, "sample", dominantHz, lowBandRatio);
+  }
+
+  private refreshBeatLaneFrequencyProfiles() {
+    for (const lane of DRUM_LANES) {
+      const sample = this.beatLaneSamples[lane];
+      if (sample) {
+        this.beatMachine.laneFrequencyProfiles[lane] = this.analyzeBeatLaneSample(lane, sample);
+      } else {
+        this.beatMachine.laneFrequencyProfiles[lane] = buildLaneProfile(
+          lane,
+          "synth",
+          SYNTH_LANE_CENTERS_HZ[lane],
+          SYNTH_LANE_LOW_RATIO[lane],
+        );
+      }
+    }
   }
 
   /**
@@ -2575,6 +2775,7 @@ export class DawEngine {
     this.beatMachine.enabled = file.beat.enabled;
     this.beatMachine.kit = file.beat.kit;
     this.beatMachine.laneSampleNames = emptyBeatLaneSampleNames();
+    this.beatMachine.laneFrequencyProfiles = emptyBeatLaneFrequencyProfiles();
     this.beatLaneSamples = DRUM_LANES.reduce((acc, lane) => {
       acc[lane] = null;
       return acc;
@@ -2590,6 +2791,7 @@ export class DawEngine {
         console.warn("[DawEngine] failed to hydrate beat lane sample", { lane, err });
       }
     }
+    this.refreshBeatLaneFrequencyProfiles();
     this.midi = {
       ...this.midi,
       wave: file.midi.wave,
@@ -2998,6 +3200,7 @@ export class DawEngine {
         },
         kit: this.beatMachine.kit,
         laneSampleNames: { ...this.beatMachine.laneSampleNames },
+        laneFrequencyProfiles: { ...this.beatMachine.laneFrequencyProfiles },
       },
       midi: {
         ...this.midi,

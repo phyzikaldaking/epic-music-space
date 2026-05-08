@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { DRUM_LANES, STEPS, type BeatPattern, type DrumKind, type DrumKitId } from "./beatMachine";
-import type { PatternBank } from "./dawEngine";
+import type { LaneFrequencyProfile, PatternBank } from "./dawEngine";
 
 interface Props {
   pattern: BeatPattern;
@@ -11,6 +11,7 @@ interface Props {
   activeBank: PatternBank;
   kit: DrumKitId;
   laneSampleNames: Record<DrumKind, string | null>;
+  laneFrequencyProfiles: Record<DrumKind, LaneFrequencyProfile>;
   onToggleStep: (lane: DrumKind, step: number) => void;
   onToggleEnabled: () => void;
   onClear: () => void;
@@ -79,6 +80,7 @@ export default function BeatMachineGrid({
   activeBank,
   kit,
   laneSampleNames,
+  laneFrequencyProfiles,
   onToggleStep,
   onToggleEnabled,
   onClear,
@@ -340,6 +342,18 @@ export default function BeatMachineGrid({
               </div>
               <p className="mt-0.5 truncate text-[9px] text-white/45" title={laneSampleNames[lane] ?? "Using kit sound"}>
                 {laneSampleNames[lane] ?? "Using kit sound"}
+              </p>
+              <p
+                className={`mt-0.5 truncate text-[9px] ${
+                  laneFrequencyProfiles[lane].risk === "high"
+                    ? "text-red-200"
+                    : laneFrequencyProfiles[lane].risk === "medium"
+                      ? "text-amber-200"
+                      : "text-emerald-200/85"
+                }`}
+                title={laneFrequencyProfiles[lane].guidance}
+              >
+                {Math.round(laneFrequencyProfiles[lane].dominantHz)} Hz center · low {Math.round(laneFrequencyProfiles[lane].lowBandRatio * 100)}%
               </p>
               <div className="mt-1 flex items-center gap-1">
                 <button
