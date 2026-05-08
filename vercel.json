@@ -55,6 +55,14 @@
     {
       "path": "/api/cron/auth-alerts",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/synthetic-smoke",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/visual-regression",
+      "schedule": "*/30 * * * *"
     }
   ]
 }
