@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendWeeklyDigestEmail } from "@/lib/email";
+import { requireCronRequest } from "@/lib/routeAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -19,11 +20,8 @@ const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const authed = secret && req.headers.get("authorization") === `Bearer ${secret}`;
-  if (!authed) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const cron = requireCronRequest(req);
+  if (!cron.ok) return cron.response;
 
   const since7 = new Date(Date.now() - SEVEN_DAYS);
   const since30 = new Date(Date.now() - THIRTY_DAYS);

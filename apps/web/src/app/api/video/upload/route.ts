@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getClientIp } from "@/lib/authIdentity";
 import { getMuxClient } from "@/lib/mux";
 import { moderateLimiter } from "@/lib/rateLimit";
 import { getSiteUrl } from "@/lib/site";
@@ -15,8 +16,36 @@ import { getSiteUrl } from "@/lib/site";
  * Returns: { uploadUrl, uploadId }
  */
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const reqOrigin = req.headers.get("origin");
+  const ip = getClientIp(req.headers);
+
+  let canonical = "";
+  try {
+    canonical = new URL(getSiteUrl()).origin;
+  } catch {
+    canonical = req.nextUrl.origin;
+  }
+  const allowedOrigins = new Set<string>([req.nextUrl.origin, canonical].filter(Boolean));
+  if (canonical) {
+    try {
+      const u = new URL(canonical);
+      const host = u.host;
+      const flipped = host.startsWith("www.") ? host.slice(4) : `www.${host}`;
+      allowedOrigins.add(`${u.protocol}//${flipped}`);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (
+    reqOrigin &&
+    /^https:\/\/epic-music-space-[a-z0-9-]+\.vercel\.app$/.test(reqOrigin)
+  ) {
+    allowedOrigins.add(reqOrigin);
+  }
+  if (reqOrigin && !allowedOrigins.has(reqOrigin)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   try {
     await moderateLimiter.consume(`video-upload:${ip}`);
   } catch {
@@ -39,36 +68,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Resolve CORS origin from a server-side allowlist ────────────────────
-  // Echoing the request's Origin header would let an attacker pass a host
-  // they control, so we pin to the canonical site host (and accept the
-  // www-flipped variant + the request host when it's a known
-  // *.vercel.app preview of this project).
-  const reqOrigin = req.headers.get("origin");
-  let canonical = "";
-  try {
-    canonical = new URL(getSiteUrl()).origin;
-  } catch {
-    canonical = "";
-  }
-  const allowedOrigins = new Set<string>();
-  if (canonical) {
-    allowedOrigins.add(canonical);
-    try {
-      const u = new URL(canonical);
-      const host = u.host;
-      const flipped = host.startsWith("www.") ? host.slice(4) : `www.${host}`;
-      allowedOrigins.add(`${u.protocol}//${flipped}`);
-    } catch {
-      /* ignore */
-    }
-  }
-  if (
-    reqOrigin &&
-    /^https:\/\/epic-music-space-[a-z0-9-]+\.vercel\.app$/.test(reqOrigin)
-  ) {
-    allowedOrigins.add(reqOrigin);
-  }
+  // ── Resolve CORS origin from the same server-side allowlist used for
+  // same-origin request enforcement above.
   const corsOrigin =
     reqOrigin && allowedOrigins.has(reqOrigin)
       ? reqOrigin

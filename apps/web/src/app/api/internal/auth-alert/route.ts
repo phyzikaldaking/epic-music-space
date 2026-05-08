@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
+import { getClientIp } from "@/lib/authIdentity";
 import { track } from "@/lib/analytics";
 
-type AuthAlertPayload = {
-  service?: string;
-  event?: string;
-  severity?: string;
-  ts?: string;
-  meta?: Record<string, unknown>;
-};
+const authAlertPayloadSchema = z.object({
+  service: z.string().trim().min(1).max(120).optional(),
+  event: z.string().trim().min(1).max(120).optional(),
+  severity: z.enum(["info", "warning", "error", "critical"]).optional(),
+  ts: z.string().datetime().optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
+});
 
 const allowedEvents = new Set([
   "verification_email_send_failed",
@@ -16,10 +18,12 @@ const allowedEvents = new Set([
 ]);
 
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "unknown";
+  const origin = req.headers.get("origin");
+  if (origin && origin !== req.nextUrl.origin) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+
+  const ip = getClientIp(req.headers);
 
   try {
     await strictLimiter.consume(`auth-alert:${ip}`);
@@ -27,7 +31,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 429 });
   }
 
-  const body = (await req.json().catch(() => ({}))) as AuthAlertPayload;
+  const contentType = req.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    return NextResponse.json({ ok: false, error: "invalid_content_type" }, { status: 415 });
+  }
+
+  const parsed = authAlertPayloadSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
+  }
+  const body = parsed.data;
 
   if (!body.event || !allowedEvents.has(body.event)) {
     return NextResponse.json({ ok: false, error: "invalid_event" }, { status: 400 });

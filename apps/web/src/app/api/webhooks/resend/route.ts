@@ -19,8 +19,8 @@ export const runtime = "nodejs";
 async function verifyResendSignature(req: NextRequest, body: string): Promise<boolean> {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
   if (!secret) {
-    console.warn("[resend-webhook] RESEND_WEBHOOK_SECRET not set — skipping signature check");
-    return true; // allow in dev; fail closed in prod via env discipline
+    console.error("[resend-webhook] RESEND_WEBHOOK_SECRET not configured — refusing webhook");
+    return false;
   }
 
   const svix_id = req.headers.get("svix-id") ?? "";
@@ -47,6 +47,10 @@ async function verifyResendSignature(req: NextRequest, body: string): Promise<bo
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
+
+  if (!process.env.RESEND_WEBHOOK_SECRET) {
+    return NextResponse.json({ error: "Webhook receiver not configured" }, { status: 503 });
+  }
 
   const valid = await verifyResendSignature(req, rawBody);
   if (!valid) {

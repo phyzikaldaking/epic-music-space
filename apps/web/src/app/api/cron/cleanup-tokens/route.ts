@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireCronRequest } from "@/lib/routeAuth";
 
 export const runtime = "nodejs";
 
@@ -14,10 +15,8 @@ export const runtime = "nodejs";
  * header so only the scheduler can trigger this endpoint.
  */
 export async function POST(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const cron = requireCronRequest(req);
+  if (!cron.ok) return cron.response;
 
   const now = new Date();
 

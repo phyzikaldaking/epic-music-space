@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendNotificationEmail } from "@/lib/email";
+import { requireCronRequest } from "@/lib/routeAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -16,10 +17,8 @@ const MAX_ATTEMPTS = 4;
  * SUPPRESSED rows (bounced recipients) are never retried.
  */
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const cron = requireCronRequest(req);
+  if (!cron.ok) return cron.response;
 
   const pending = await prisma.emailOutbox.findMany({
     where: {

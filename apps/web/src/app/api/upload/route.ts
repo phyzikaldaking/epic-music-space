@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
+import { randomUUID } from "node:crypto";
 import { auth } from "@/lib/auth";
+import { getClientIp } from "@/lib/authIdentity";
 import { createServerSupabaseClient } from "@/lib/supabase";
 import { moderateLimiter } from "@/lib/rateLimit";
 import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
 import { getRequestId, jsonWithRequestId, withRequestId } from "@/lib/requestTracing";
+import { getSiteUrl } from "@/lib/site";
 
 // ─── Allowed MIME types per upload type ────────────────────────────────────
 // iPhone Voice Memos and most iTunes-purchased songs report `audio/mp4` /
@@ -66,10 +69,25 @@ const MAX_STEM_SIZE  = 500 * 1024 * 1024; // 500 MB
  */
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "unknown";
+  const reqOrigin = req.headers.get("origin");
+  const ip = getClientIp(req.headers);
+
+  let canonical = "";
+  try {
+    canonical = new URL(getSiteUrl()).origin;
+  } catch {
+    canonical = req.nextUrl.origin;
+  }
+  const allowedOrigins = new Set<string>([req.nextUrl.origin, canonical].filter(Boolean));
+  if (
+    reqOrigin &&
+    /^https:\/\/epic-music-space-[a-z0-9-]+\.vercel\.app$/.test(reqOrigin)
+  ) {
+    allowedOrigins.add(reqOrigin);
+  }
+  if (reqOrigin && !allowedOrigins.has(reqOrigin)) {
+    return jsonWithRequestId(requestId, { error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     await moderateLimiter.consume(ip);
@@ -183,7 +201,7 @@ export async function POST(req: NextRequest) {
   const ext = safeExt || (isStem ? "zip" : isAudio ? "mp3" : "jpg");
   const bucket = isAudio || isStem ? "audio" : "covers";
   const pathPrefix = isStem ? `stems/${session.user.id}` : session.user.id;
-  const storagePath = `${pathPrefix}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const storagePath = `${pathPrefix}/${randomUUID()}.${ext}`;
 
   const signedResult = await withRouteTimeout("upload-create-signed-url", 5000, async () =>
     supabase.storage.from(bucket).createSignedUploadUrl(storagePath)
