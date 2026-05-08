@@ -21,10 +21,12 @@ export function buildContentSecurityPolicy(nonce: string, env = process.env.NODE
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://epicmusicspace.com https://www.epicmusicspace.com https://*.amazonaws.com https://*.supabase.co https://lh3.googleusercontent.com https://images.unsplash.com https://image.mux.com",
     "media-src 'self' blob: https://*.amazonaws.com https://*.supabase.co https://stream.mux.com https://*.mux.com",
-    // PostHog: us.i.posthog.com is the ingest endpoint, us-assets.i.posthog.com
-    // serves the SDK + recorder bundles. Adding both lets posthog-js capture
-    // pageviews + autocapture clicks without CSP blocking the requests.
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://api.stripe.com https://checkout.stripe.com https://stream.mux.com https://*.mux.com https://*.litix.io https://us.i.posthog.com https://us-assets.i.posthog.com",
+    // PostHog: us.i.posthog.com (ingest), us-assets.i.posthog.com (SDK +
+    // recorder bundles), and us.posthog.com (feature flags + decide
+    // endpoint — note: NO `.i.` infix for flags). Allowing *.posthog.com
+    // covers all three plus future regional endpoints (eu.posthog.com,
+    // eu.i.posthog.com) without another CSP edit when we expand.
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://api.stripe.com https://checkout.stripe.com https://stream.mux.com https://*.mux.com https://*.litix.io https://*.posthog.com",
     "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com https://*.mux.com https://www.youtube.com https://player.vimeo.com https://w.soundcloud.com https://open.spotify.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
