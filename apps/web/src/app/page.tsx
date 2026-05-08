@@ -379,16 +379,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Mobile sticky CTA — walnut-bezel pill, replaces the VC version. */}
-      <div className="studio-mobile-cta" aria-label="Quick action for artists">
-        <Link
-          href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew"
-          className="studio-mobile-cta-btn"
-        >
-          ◉ Open Studio
-        </Link>
-      </div>
-
       {/* Patch-bay ticker. The amber LED message strip across the top
           of every console says "this rig is live and worth listening
           to." Same role as the old marquee, sells the studio idea. */}

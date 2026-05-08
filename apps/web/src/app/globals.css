@@ -1542,46 +1542,10 @@ select:-moz-autofill {
       inset 0 -1px 1px rgba(0, 0, 0, 0.45);
   }
 
-  /* Mobile sticky CTA — replaces the VC version. Walnut-bezel pill. */
-  .studio-mobile-cta {
-    position: fixed;
-    z-index: 70;
-    left: 50%;
-    bottom: calc(env(safe-area-inset-bottom, 0) + 14px);
-    transform: translateX(-50%);
-    display: none;
-    pointer-events: auto;
-  }
-  @media (max-width: 900px) {
-    .studio-mobile-cta { display: block; }
-  }
-  .studio-mobile-cta-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 12px 22px;
-    border-radius: 9999px;
-    font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-    font-size: 14px;
-    background: linear-gradient(180deg, #2a1d14 0%, #1a110b 50%, #140d08 100%);
-    color: #ffd28a;
-    text-shadow: 0 0 6px rgba(255, 176, 74, 0.55);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 210, 138, 0.25),
-      inset 0 -2px 4px rgba(0, 0, 0, 0.7),
-      0 6px 22px rgba(0, 0, 0, 0.55),
-      0 0 18px rgba(255, 138, 30, 0.3);
-    text-decoration: none;
-  }
-  .studio-mobile-cta-btn:hover {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 210, 138, 0.35),
-      inset 0 -2px 4px rgba(0, 0, 0, 0.7),
-      0 6px 22px rgba(0, 0, 0, 0.55),
-      0 0 28px rgba(255, 138, 30, 0.45);
-  }
+  /* (Removed: .studio-mobile-cta pill. It was a fixed-position floating
+     CTA on mobile that overlapped the bottom nav. Sign-up CTAs already
+     live in the hero, the nav, and the footer — the floater was extra
+     friction, not extra clarity.) */
 }
 
 /* ─── Glassmorphism ─────────────────────────────────────────── */
