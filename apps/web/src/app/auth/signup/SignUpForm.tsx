@@ -82,7 +82,7 @@ function SignUpContent({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedRole, setSelectedRole] = useState<RoleValue>("LISTENER");
-  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [confirmPassword, setConfirmPassword] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
@@ -523,19 +523,24 @@ function SignUpContent({
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-white/40">
-                Name
+                Display Name
               </label>
               <input
                 type="text"
                 name="name"
-                autoComplete="name"
+                autoComplete="nickname"
                 autoCapitalize="words"
                 required
                 value={form.name}
                 onChange={(e) => update("name", e.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
-                placeholder="Your name"
+                placeholder="Your stage name or full name"
               />
+              <p className="mt-1.5 text-xs text-white/45">
+                What people will see on your profile — your artist/stage
+                name is fine. We&apos;ll ask for your legal name only when
+                you set up payouts.
+              </p>
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-white/40">
@@ -555,22 +560,12 @@ function SignUpContent({
                 placeholder="you@example.com"
               />
             </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-white/40">
-                Phone (optional)
-              </label>
-              <input
-                type="tel"
-                name="phone"
-                autoComplete="tel"
-                inputMode="tel"
-                value={form.phone}
-                onChange={(e) => update("phone", e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:border-brand-500/60 focus:outline-none focus:ring-1 focus:ring-brand-500/40"
-                placeholder="+15551234567"
-              />
-              <p className="mt-1 text-xs text-white/45">Use international format. We only use this for secure login codes.</p>
-            </div>
+            {/* Phone field intentionally removed from signup. It was
+                optional and only used for SMS login codes — a feature
+                most users never opt into. Users can add a phone later
+                via /settings/security if they want SMS-based recovery.
+                Removing one field from signup measurably bumps
+                conversion. */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <label
