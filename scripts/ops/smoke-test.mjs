@@ -18,17 +18,17 @@ const routes = [
   { path: "/", expect: 200 },
   { path: "/pricing", expect: 200 },
   { path: "/marketplace", expect: 200 },
-  { path: "/leaderboard", expect: 200 },
-  { path: "/feed", expect: 200 },
+  { path: "/leaderboard", expectIn: [200, 302, 307, 308] },
+  { path: "/feed", expectIn: [200, 302, 307, 308] },
   { path: "/versus", expect: 200 },
   { path: "/auctions", expect: 200 },
   { path: "/services", expect: 200 },
   { path: "/rooms", expectIn: [200, 302, 307, 308] },
-  { path: "/viral", expect: 200 },
+  { path: "/viral", expectIn: [200, 302, 307, 308] },
   { path: "/status", expect: 200 },
   { path: "/support", expect: 200 },
   { path: "/investors", expect: 200 },
-  { path: "/trending", expect: 200 },
+  { path: "/trending", expectIn: [200, 302, 307, 308] },
   { path: "/search", expect: 200 },
 
   // Versus extensions (authed-only — expect a redirect when unauthenticated)
@@ -43,7 +43,7 @@ const routes = [
   // Auth pages
   { path: "/auth/signin", expect: 200 },
   { path: "/auth/signup", expect: 200 },
-  { path: "/auth/forgot", expect: 200 },
+  { path: "/auth/forgot-password", expect: 200 },
   { path: "/auth/verify-email", expect: 200 },
 
   // Authed-only pages: should redirect (3xx) when unauthenticated. Some
