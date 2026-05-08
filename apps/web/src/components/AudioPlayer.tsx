@@ -64,9 +64,41 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
     audio.addEventListener("canplay", onCanPlay);
     audio.addEventListener("error", onError);
 
-    audio.src = audioUrl;
+    let cancelled = false;
+
+    async function resolveStreamSrc(): Promise<string> {
+      // For EMS stream proxy URLs, fetch a short-lived signed token so
+      // entitlement checks can unlock full playback safely.
+      if (audioUrl.includes("/api/songs/") && audioUrl.includes("/stream") && !audioUrl.includes("st=")) {
+        const inferredId =
+          songId ??
+          audioUrl.match(/\/api\/songs\/([^/]+)\/stream(?:\?|$)/)?.[1] ??
+          null;
+        if (inferredId) {
+          try {
+            const res = await fetch(`/api/songs/${inferredId}/stream-token`, {
+              method: "GET",
+              credentials: "include",
+            });
+            if (res.ok) {
+              const body = (await res.json()) as { streamUrl?: string };
+              if (body.streamUrl) return body.streamUrl;
+            }
+          } catch {
+            // Fallback to the original URL; stream route still supports preview mode.
+          }
+        }
+      }
+      return audioUrl;
+    }
+
+    void resolveStreamSrc().then((src) => {
+      if (cancelled) return;
+      audio.src = src;
+    });
 
     return () => {
+      cancelled = true;
       audio.pause();
       audio.removeEventListener("loadedmetadata", onLoadedMeta);
       audio.removeEventListener("timeupdate", onTime);
@@ -76,7 +108,7 @@ export default function AudioPlayer({ audioUrl, title, songId }: AudioPlayerProp
       audio.removeEventListener("error", onError);
       audio.src = "";
     };
-  }, [audioUrl]);
+  }, [audioUrl, songId]);
 
   // Reset error state when a fresh src is requested.
   useEffect(() => {

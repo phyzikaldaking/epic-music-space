@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { lenientLimiter, moderateLimiter } from "@/lib/rateLimit";
@@ -9,6 +10,7 @@ import { getRedis } from "@/lib/redis";
 import { enqueueNotification } from "@/lib/queues";
 import { recordStreamRoyalty } from "@/lib/revenueShare";
 import { recordRiskEvent } from "@/lib/riskEvents";
+import { verifyStreamToken } from "@/lib/streamToken";
 
 // Configurable per-play micro-royalty. Defaults to 1 cent ($0.01) per
 // verified, deduplicated play. Set STREAM_ROYALTY_CENTS_PER_PLAY in env to
@@ -20,6 +22,10 @@ const STREAM_ROYALTY_CENTS = Math.max(
 const STREAM_PREVIEW_MAX_BYTES = Math.max(
   256_000,
   Number(process.env.STREAM_PREVIEW_MAX_BYTES ?? "1500000"),
+);
+const STREAM_ABUSE_BAN_SECONDS = Math.max(
+  300,
+  Number(process.env.STREAM_ABUSE_BAN_SECONDS ?? "3600"),
 );
 
 export const runtime = "nodejs";
@@ -35,6 +41,22 @@ function parseByteRange(value: string | null): { start: number; end: number | nu
   const end = m[2] ? Number(m[2]) : null;
   if (end != null && (!Number.isFinite(end) || end < start)) return null;
   return { start, end };
+}
+
+function fingerprintForStream(input: {
+  songId: string;
+  userId: string | null;
+  ip: string;
+  userAgent: string | null;
+}): string {
+  const secret =
+    process.env.STREAM_FINGERPRINT_SECRET?.trim() ||
+    process.env.AUTH_SECRET?.trim() ||
+    process.env.NEXTAUTH_SECRET?.trim() ||
+    "dev-stream-fingerprint-secret";
+  const hourBucket = Math.floor(Date.now() / 3_600_000);
+  const raw = `${secret}:${input.songId}:${input.userId ?? "anon"}:${input.ip}:${input.userAgent ?? "na"}:${hourBucket}`;
+  return createHash("sha256").update(raw).digest("hex").slice(0, 20);
 }
 
 /**
@@ -120,6 +142,15 @@ export async function GET(
   } catch {
     return new NextResponse("Too many requests", { status: 429 });
   }
+  const redis = getRedis();
+  if (redis) {
+    try {
+      const ban = await redis.get(`ems:stream:ban:${ip}`);
+      if (ban) return new NextResponse("Blocked", { status: 403 });
+    } catch {
+      /* ignore redis read issues */
+    }
+  }
 
   const ua = (req.headers.get("user-agent") ?? "").toLowerCase();
   if (
@@ -135,8 +166,11 @@ export async function GET(
   let upstreamUrl: string | null = null;
   let fullAccess = true;
   let previewMode = false;
+  let viewerId: string | null = null;
+  let songIdForFingerprint: string | null = null;
   try {
     const session = await auth();
+    viewerId = session?.user?.id ?? null;
     const song = await prisma.song.findUnique({
       where: { id },
       select: {
@@ -149,7 +183,7 @@ export async function GET(
       },
     });
     if (song?.isActive && song.audioUrl) {
-      const viewerId = session?.user?.id ?? null;
+      songIdForFingerprint = song.id;
       const isOwner = viewerId != null && viewerId === song.artistId;
       if (song.isDraft && !isOwner) {
         return new NextResponse("Not found", { status: 404 });
@@ -169,6 +203,40 @@ export async function GET(
       }
 
       fullAccess = isOwner || hasLicense || song.allowFreeDownload;
+      let signedTokenOk = false;
+      if (fullAccess) {
+        const token = req.nextUrl.searchParams.get("st") ?? "";
+        if (token) {
+          const verified = verifyStreamToken(token, {
+            songId: song.id,
+            userId: viewerId,
+            ip,
+            userAgent: req.headers.get("user-agent"),
+          });
+          signedTokenOk = verified.ok && verified.payload.allowFull;
+          if (!signedTokenOk && redis) {
+            try {
+              const invalidKey = `ems:stream:token-invalid:${ip}`;
+              const invalidCount = await redis.incr(invalidKey);
+              if (invalidCount === 1) await redis.expire(invalidKey, 600);
+              if (invalidCount >= 12) {
+                await redis.set(
+                  `ems:stream:ban:${ip}`,
+                  JSON.stringify({ reason: "invalid_stream_token", count: invalidCount }),
+                  "EX",
+                  STREAM_ABUSE_BAN_SECONDS,
+                );
+              }
+            } catch {
+              /* ignore redis write issues */
+            }
+          }
+        }
+      }
+
+      // Token-gate full streams: if a listener is entitled but missing/invalid
+      // token, we fall back to preview mode instead of hard-failing playback.
+      fullAccess = fullAccess && signedTokenOk;
       previewMode = !fullAccess;
       upstreamUrl = song.audioUrl;
     }
@@ -277,6 +345,17 @@ export async function GET(
     "X-EMS-Playback-Mode",
     previewMode ? "preview-only" : "full",
   );
+  if (!previewMode && songIdForFingerprint) {
+    responseHeaders.set(
+      "X-EMS-Stream-Fingerprint",
+      fingerprintForStream({
+        songId: songIdForFingerprint,
+        userId: viewerId,
+        ip,
+        userAgent: req.headers.get("user-agent"),
+      }),
+    );
+  }
   if (previewMode) {
     responseHeaders.set(
       "X-EMS-Preview-Note",
@@ -401,6 +480,27 @@ export async function POST(
               dayBucket,
               minuteHits,
               dayHits,
+            },
+          });
+        }
+
+        if (minuteHits > 40 || dayHits > 300) {
+          await redis.set(
+            `ems:stream:ban:${ip}`,
+            JSON.stringify({ reason: "stream_burst", minuteHits, dayHits, songId: song.id }),
+            "EX",
+            STREAM_ABUSE_BAN_SECONDS,
+          );
+          void recordRiskEvent({
+            eventType: "fake_play",
+            severity: "HIGH",
+            songId: song.id,
+            ip,
+            reason: "stream_auto_ban",
+            metadata: {
+              minuteHits,
+              dayHits,
+              banSeconds: STREAM_ABUSE_BAN_SECONDS,
             },
           });
         }

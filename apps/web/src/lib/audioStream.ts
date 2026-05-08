@@ -6,6 +6,8 @@
  * The proxy enforces Origin/Referer and rate limits — see
  * `apps/web/src/app/api/songs/[id]/stream/route.ts`.
  */
-export function getStreamUrl(songId: string): string {
-  return `/api/songs/${songId}/stream`;
+export function getStreamUrl(songId: string, token?: string | null): string {
+  const base = `/api/songs/${songId}/stream`;
+  if (!token) return base;
+  return `${base}?st=${encodeURIComponent(token)}`;
 }

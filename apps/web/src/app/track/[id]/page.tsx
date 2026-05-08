@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { unstable_cache } from "next/cache";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { formatPrice } from "@ems/utils";
@@ -26,6 +27,7 @@ import SocialShareBar from "@/components/SocialShareBar";
 import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
+import { issueStreamToken } from "@/lib/streamToken";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -294,6 +296,22 @@ export default async function TrackPage({ params, searchParams }: Props) {
       : Promise.resolve(null),
   ]);
 
+  const reqHeaders = await headers();
+  const requestIp =
+    reqHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    reqHeaders.get("x-real-ip") ??
+    "unknown";
+  const requestUa = reqHeaders.get("user-agent");
+  const allowFullPlayback = isOwner || Boolean(userLicense) || song.allowFreeDownload;
+  const streamToken = issueStreamToken({
+    songId: song.id,
+    userId: session?.user?.id ?? null,
+    ip: requestIp,
+    userAgent: requestUa,
+    allowFull: allowFullPlayback,
+  });
+  const streamUrl = getStreamUrl(song.id, streamToken);
+
   return (
     <div className="studio-room relative min-h-screen">
       <div className="relative z-[1] mx-auto max-w-5xl px-4 py-12">
@@ -430,7 +448,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
             if (src.type === "stream") {
               return (
                 <AudioPlayer
-                  audioUrl={getStreamUrl(song.id)}
+                  audioUrl={streamUrl}
                   title={song.title}
                   songId={song.id}
                 />
@@ -485,7 +503,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
                 id: song.id,
                 title: song.title,
                 artist: song.artist_?.name ?? song.artist,
-                audioUrl: getStreamUrl(song.id),
+                audioUrl: streamUrl,
                 coverUrl: song.coverUrl,
               }}
             />
