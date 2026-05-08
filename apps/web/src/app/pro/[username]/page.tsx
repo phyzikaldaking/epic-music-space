@@ -3,6 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
+import SocialShareBar from "@/components/SocialShareBar";
 import { prisma } from "@/lib/prisma";
 import { SERVICE_KIND_META } from "@/lib/serviceListings";
 import {
@@ -489,6 +490,18 @@ export default async function ProProfilePage({ params }: Props) {
             </div>
           </section>
         )}
+
+        {/* ── Share this profile ──────────────────────────── */}
+        <section className="mb-8">
+          <h2 className="mb-3 text-[10px] font-extrabold uppercase tracking-[0.3em] text-white/45">
+            Share profile
+          </h2>
+          <SocialShareBar
+            url={`${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/pro/${username}`}
+            title={`${user.name ?? username} — ${roleLabel} on Epic Music Space`}
+            hashtags={["EpicMusicSpace", roleLabel === "Engineer" ? "MixingEngineer" : "MusicProducer", "HireMe"]}
+          />
+        </section>
 
         {/* Mobile-only CTA pinned at the bottom of the column */}
         <div className="sticky bottom-4 z-10 mt-10 sm:hidden">

@@ -170,8 +170,33 @@ export default function LicensingPage() {
           </p>
         </section>
 
+        <section id="sound-kit-eula">
+          <h2 className="mb-3 text-xl font-bold text-white">12. Sound Kit &amp; Sample Pack End-User License</h2>
+          <p className="mb-3 text-sm">
+            When you purchase a Drum Kit, Sample Pack, or similar downloadable sound product
+            (&ldquo;Sound Kit&rdquo;) from a seller on the Platform, you receive a
+            non-exclusive, non-transferable, worldwide commercial license to use the sounds
+            contained in the Sound Kit in your own original musical compositions and productions,
+            subject to the following conditions:
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            <li><strong>Permitted:</strong> Using one or more sounds from the Sound Kit as elements within your own original music recordings, beats, and compositions, whether for commercial or non-commercial release.</li>
+            <li><strong>Permitted:</strong> Distributing, selling, streaming, or licensing the resulting original musical works that incorporate the sounds.</li>
+            <li><strong>Prohibited:</strong> Re-selling, redistributing, or sublicensing the raw Sound Kit files themselves (the original audio files as delivered), including uploading them to any sample marketplace, cloud storage accessible by the public, or competing platform.</li>
+            <li><strong>Prohibited:</strong> Clearing or claiming ownership of the underlying samples — all original intellectual property in the Sound Kit remains with the creator/seller.</li>
+            <li><strong>Prohibited:</strong> Using sounds in productions for third parties without confirming your license covers such use (a single-purchase license covers one artist's productions; team or unlimited licenses may be available separately from the seller).</li>
+          </ul>
+          <p className="mt-3 text-sm">
+            This license grants you no right to the creator&apos;s name, likeness, or trademarks.
+            EMS does not warrant that the sounds are cleared for all territories or uses — verify
+            clearance requirements for sync licensing, film/TV, and broadcast separately.
+            In the event of a dispute, the specific license terms displayed on the product
+            listing page at time of purchase shall govern.
+          </p>
+        </section>
+
         <section>
-          <h2 className="mb-3 text-xl font-bold text-white">12. Contact</h2>
+          <h2 className="mb-3 text-xl font-bold text-white">13. Contact</h2>
           <p className="mb-3 text-sm">
             Auction participants can download auditable auction records (bids,
             settlement status, and transaction references) from the auction

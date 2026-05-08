@@ -125,7 +125,63 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="mb-3 text-xl font-bold text-white">12. Contact</h2>
+          <h2 className="mb-3 text-xl font-bold text-white">12. User Content &amp; Content License to EMS</h2>
+          <p>
+            When you upload, post, or otherwise submit any audio, artwork, text, metadata, or
+            other content (&ldquo;User Content&rdquo;) to the Platform, you represent and warrant that:
+          </p>
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
+            <li>You own or have obtained all necessary rights, licenses, consents, and permissions to upload, reproduce, distribute, and publicly perform the User Content on the Platform.</li>
+            <li>The User Content does not infringe any third-party intellectual property rights, including copyrights, trademarks, trade secrets, or moral rights.</li>
+            <li>No sample, loop, sound kit element, or recording embedded in the User Content was taken from a copyrighted source without an appropriate commercial license.</li>
+            <li>The User Content does not violate any applicable law or regulation.</li>
+          </ul>
+          <p className="mt-3 text-sm">
+            By submitting User Content you grant Epic Music Space, LLC a worldwide, non-exclusive,
+            royalty-free, sublicensable license to host, cache, display, distribute, and promote
+            the User Content solely as necessary to operate and market the Platform (including
+            embedding previews in social-media cards, Stories, and third-party embeds that you
+            explicitly trigger). This license terminates when you delete the User Content from
+            the Platform, except as needed to wind down distributed copies or comply with legal
+            obligations.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-xl font-bold text-white">13. User Indemnification</h2>
+          <p>
+            You agree to indemnify, defend, and hold harmless Epic Music Space, LLC, its
+            officers, directors, employees, and agents from and against any claims, damages,
+            obligations, losses, liabilities, costs, and expenses (including reasonable
+            attorneys&apos; fees) arising out of or related to: (a) your User Content;
+            (b) your use or misuse of the Platform; (c) your violation of these Terms;
+            or (d) your violation of any third-party right, including any intellectual property
+            or privacy right.
+          </p>
+          <p className="mt-3 text-sm">
+            EMS reserves the right to assume the exclusive defense and control of any matter
+            subject to indemnification by you, and you agree to cooperate with EMS in asserting
+            any available defenses.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-xl font-bold text-white">14. DMCA Safe Harbor &amp; Takedown</h2>
+          <p>
+            EMS complies with the Digital Millennium Copyright Act (17 U.S.C. § 512). If you
+            believe content on the Platform infringes your copyright, submit a takedown notice
+            to our Designated Agent at{" "}
+            <a href="mailto:dmca@epicmusicspace.com" className="text-brand-400 hover:underline">
+              dmca@epicmusicspace.com
+            </a>{" "}
+            as described on our{" "}
+            <a href="/dmca" className="text-brand-400 hover:underline">DMCA Policy page</a>.
+            Repeat infringers will have their accounts terminated.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-xl font-bold text-white">15. Contact</h2>
           <p>
             Questions about these Terms? Contact us at{" "}
             <a href="mailto:legal@epicmusicspace.com" className="text-brand-400 hover:underline">

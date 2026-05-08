@@ -21,6 +21,7 @@ import TrackCommentThread from "@/components/TrackCommentThread";
 import TrackLikeButton from "@/components/TrackLikeButton";
 import StemsOpenInStudioButton from "@/components/StemsOpenInStudioButton";
 import CoWriterCta from "@/components/CoWriterCta";
+import SocialShareBar from "@/components/SocialShareBar";
 import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
@@ -191,6 +192,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description,
       images: song.coverUrl ? [{ url: song.coverUrl }] : [],
       type: "music.song",
+      ...(song.audioUrl ? { audio: [{ url: song.audioUrl, type: "audio/mpeg" }] } : {}),
     },
     twitter: {
       card: "summary_large_image",
@@ -486,6 +488,16 @@ export default async function TrackPage({ params, searchParams }: Props) {
               }}
             />
           )}
+
+          {/* Share to social platforms */}
+          <div className="mt-4">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">Share this track</p>
+            <SocialShareBar
+              url={`${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/track/${song.id}`}
+              title={`${song.title} by ${song.artist}`}
+              hashtags={["EpicMusicSpace", "NewMusic", ...(song.genre ? [song.genre.replace(/\s/g, "")] : [])]}
+            />
+          </div>
 
           {/* Licensing economics */}
           <div className="glass rounded-2xl p-5">
