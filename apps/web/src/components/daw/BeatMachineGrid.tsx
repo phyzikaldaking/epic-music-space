@@ -15,8 +15,8 @@ interface Props {
   laneRecommendations: Partial<Record<DrumKind, LaneEqRecommendation>>;
   recentlyAppliedLanes: Set<DrumKind>;
   onApplyLaneRecommendation: (rec: LaneEqRecommendation) => void;
-    previewRecommendation: LaneEqRecommendation | null;
-    onTogglePreviewRecommendation: (rec: LaneEqRecommendation | null) => void;
+  previewRecommendation: LaneEqRecommendation | null;
+  onTogglePreviewRecommendation: (rec: LaneEqRecommendation | null) => void;
   onToggleStep: (lane: DrumKind, step: number) => void;
   onToggleEnabled: () => void;
   onClear: () => void;
@@ -89,8 +89,8 @@ export default function BeatMachineGrid({
   laneRecommendations,
   recentlyAppliedLanes,
   onApplyLaneRecommendation,
-    previewRecommendation,
-    onTogglePreviewRecommendation,
+  previewRecommendation,
+  onTogglePreviewRecommendation,
   onToggleStep,
   onToggleEnabled,
   onClear,
@@ -378,7 +378,7 @@ export default function BeatMachineGrid({
                         ? "border-yellow-300/60 bg-yellow-500/30 text-yellow-100"
                         : "border-cyan-300/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20"
                     }`}
-                    title="Preview this recommendation (hear before/after)"
+                    title="Preview this recommendation (hear before/after). Cmd+Left/Right to cycle."
                   >
                     👁 preview
                   </button>

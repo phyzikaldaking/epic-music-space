@@ -442,7 +442,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [exportTruePeakTarget, setExportTruePeakTarget] = useState<ExportTruePeakTarget>(-1);
   const [recentlyAppliedLanes, setRecentlyAppliedLanes] = useState<Set<DrumKind>>(new Set());
   const [recommendationConfidenceThreshold, setRecommendationConfidenceThreshold] = useState(0.4);
-    const [previewRecommendation, setPreviewRecommendation] = useState<LaneEqRecommendation | null>(null);
+  const [previewRecommendation, setPreviewRecommendation] = useState<LaneEqRecommendation | null>(null);
   const sessionStartedAt = useRef<number>(Date.now());
   const wasRecordingRef = useRef(false);
   const clientPresenceId = useMemo(() => {
@@ -1304,6 +1304,35 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         return;
       }
 
+      // Cmd+Left / Cmd+Right: cycle lane EQ recommendations and preview each
+      if ((e.metaKey || e.ctrlKey) && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        const actionableRecs = buildBestActionableLaneEqRecommendations(filteredLaneEqRecommendations);
+        if (!actionableRecs.length) {
+          setNotice({ tone: "info", message: "No lane EQ recommendations available to preview." });
+          return;
+        }
+
+        const currentIndex = actionableRecs.findIndex(
+          (rec) => rec.lane === previewRecommendation?.lane && rec.type === previewRecommendation?.type,
+        );
+        const delta = e.key === "ArrowRight" ? 1 : -1;
+        const nextIndex =
+          currentIndex === -1
+            ? delta > 0
+              ? 0
+              : actionableRecs.length - 1
+            : (currentIndex + delta + actionableRecs.length) % actionableRecs.length;
+        const nextRec = actionableRecs[nextIndex];
+
+        togglePreviewRecommendation(nextRec);
+        setNotice({
+          tone: "info",
+          message: `Preview ${nextIndex + 1}/${actionableRecs.length}: ${nextRec.type.toUpperCase()} ${Math.round(nextRec.valueHz)} Hz on ${nextRec.lane.toUpperCase()}.`,
+        });
+        return;
+      }
+
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       switch (e.key) {
         case " ":
@@ -1352,8 +1381,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     transport?.metronomeOn,
     snapshot,
     laneTopRecommendations,
+    filteredLaneEqRecommendations,
     applyLaneEqRecommendation,
+    buildBestActionableLaneEqRecommendations,
     applyAllLaneEqRecommendations,
+    previewRecommendation,
+    togglePreviewRecommendation,
   ]);
 
   // ── Beat machine helpers ────────────────────────────────────────────────
@@ -2835,6 +2868,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               <ShortcutRow combo="M" action="Toggle metronome" />
               <ShortcutRow combo="T" action="Tap tempo" />
               <ShortcutRow combo="Home" action="Rewind to start" />
+              <ShortcutRow combo="Cmd/Ctrl + Y" action="Apply top lane EQ recommendation" />
+              <ShortcutRow combo="Cmd/Ctrl + Shift + R" action="Apply all lane EQ recommendations" />
+              <ShortcutRow combo="Cmd/Ctrl + ← / →" action="Cycle and preview lane EQ recommendations" />
               <ShortcutRow combo="?" action="Toggle this help panel" />
             </div>
           </div>
