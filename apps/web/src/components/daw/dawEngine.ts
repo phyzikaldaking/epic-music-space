@@ -168,6 +168,10 @@ export interface TransportState {
   masterLufs: number;
   /** Linear true-peak amplitude 0..1 of the most recent frame. */
   masterTruePeak: number;
+  /** Stereo phase correlation meter, -1 (out of phase) .. +1 (in phase). */
+  masterPhaseCorrelation: number;
+  /** True when monitor output is collapsed to mono for translation checks. */
+  monoPreviewOn: boolean;
   /** Punch-in / punch-out recording mode. When enabled, recording only
    *  captures between punchInSec and punchOutSec, leaving the rest of
    *  the existing take intact. */
@@ -424,6 +428,15 @@ export class DawEngine {
   private masterEqHigh: BiquadFilterNode | null = null;
   private masterLimiter: DynamicsCompressorNode | null = null;
   private masterAnalyser: AnalyserNode | null = null;
+  private monitorOutGain: GainNode | null = null;
+  private monoOutGain: GainNode | null = null;
+  private monoSplitter: ChannelSplitterNode | null = null;
+  private monoMerger: ChannelMergerNode | null = null;
+  private monoSumGain: GainNode | null = null;
+  private phaseLeftAnalyser: AnalyserNode | null = null;
+  private phaseRightAnalyser: AnalyserNode | null = null;
+  private phaseLeftBuf: Float32Array | null = null;
+  private phaseRightBuf: Float32Array | null = null;
   private masterMeterBuf: Uint8Array | null = null;
   private masterSpectrumAnalyser: AnalyserNode | null = null;
   private masterSpectrumBuf: Uint8Array | null = null;
@@ -537,6 +550,8 @@ export class DawEngine {
     masterSpectrum: new Array(32).fill(0),
     masterLufs: -Infinity,
     masterTruePeak: 0,
+    masterPhaseCorrelation: 1,
+    monoPreviewOn: false,
     punchInEnabled: false,
     punchInSec: 0,
     punchOutSec: 4,
@@ -610,6 +625,20 @@ export class DawEngine {
       this.masterAnalyser = this.ctx.createAnalyser();
       this.masterAnalyser.fftSize = 512;
       this.masterMeterBuf = new Uint8Array(this.masterAnalyser.fftSize);
+      this.monitorOutGain = this.ctx.createGain();
+      this.monitorOutGain.gain.value = 1;
+      this.monoOutGain = this.ctx.createGain();
+      this.monoOutGain.gain.value = 0;
+      this.monoSplitter = this.ctx.createChannelSplitter(2);
+      this.monoMerger = this.ctx.createChannelMerger(2);
+      this.monoSumGain = this.ctx.createGain();
+      this.monoSumGain.gain.value = 0.5;
+      this.phaseLeftAnalyser = this.ctx.createAnalyser();
+      this.phaseLeftAnalyser.fftSize = 1024;
+      this.phaseRightAnalyser = this.ctx.createAnalyser();
+      this.phaseRightAnalyser.fftSize = 1024;
+      this.phaseLeftBuf = new Float32Array(this.phaseLeftAnalyser.fftSize);
+      this.phaseRightBuf = new Float32Array(this.phaseRightAnalyser.fftSize);
       // Spectrum analyser — wider FFT for finer resolution.
       this.masterSpectrumAnalyser = this.ctx.createAnalyser();
       this.masterSpectrumAnalyser.fftSize = 2048;
@@ -637,7 +666,15 @@ export class DawEngine {
         .connect(this.masterEqHigh)
         .connect(this.masterLimiter)
         .connect(this.masterAnalyser);
-      this.masterAnalyser.connect(this.ctx.destination);
+      this.masterAnalyser.connect(this.monitorOutGain).connect(this.ctx.destination);
+      this.masterAnalyser.connect(this.monoSplitter);
+      this.monoSplitter.connect(this.monoSumGain, 0);
+      this.monoSplitter.connect(this.monoSumGain, 1);
+      this.monoSumGain.connect(this.monoMerger, 0, 0);
+      this.monoSumGain.connect(this.monoMerger, 0, 1);
+      this.monoMerger.connect(this.monoOutGain).connect(this.ctx.destination);
+      this.monoSplitter.connect(this.phaseLeftAnalyser, 0);
+      this.monoSplitter.connect(this.phaseRightAnalyser, 1);
       // Side branches — both tap the post-EQ signal so their readings
       // reflect what we route to the speakers.
       this.masterEqHigh.connect(this.masterSpectrumAnalyser);
@@ -775,6 +812,32 @@ export class DawEngine {
       // LUFS approximation. -0.691 is the K-weighted offset baseline.
       this.transport.masterLufs = rms > 0 ? -0.691 + 10 * Math.log10(rms * rms) : -Infinity;
       this.transport.masterTruePeak = truePeak;
+    }
+    if (
+      this.phaseLeftAnalyser &&
+      this.phaseRightAnalyser &&
+      this.phaseLeftBuf &&
+      this.phaseRightBuf
+    ) {
+      this.phaseLeftAnalyser.getFloatTimeDomainData(
+        this.phaseLeftBuf as unknown as Float32Array<ArrayBuffer>,
+      );
+      this.phaseRightAnalyser.getFloatTimeDomainData(
+        this.phaseRightBuf as unknown as Float32Array<ArrayBuffer>,
+      );
+      let sumLR = 0;
+      let sumL2 = 0;
+      let sumR2 = 0;
+      const len = Math.min(this.phaseLeftBuf.length, this.phaseRightBuf.length);
+      for (let i = 0; i < len; i++) {
+        const l = this.phaseLeftBuf[i] ?? 0;
+        const r = this.phaseRightBuf[i] ?? 0;
+        sumLR += l * r;
+        sumL2 += l * l;
+        sumR2 += r * r;
+      }
+      const denom = Math.sqrt(sumL2 * sumR2);
+      this.transport.masterPhaseCorrelation = denom > 1e-8 ? Math.max(-1, Math.min(1, sumLR / denom)) : 1;
     }
 
     // Update transport position when playing.
@@ -1347,6 +1410,13 @@ export class DawEngine {
       this.masterLimiter.threshold.value = 0;
       this.masterLimiter.ratio.value = 1;
     }
+    this.notify();
+  }
+
+  setMonoPreview(on: boolean) {
+    this.transport.monoPreviewOn = on;
+    if (this.monitorOutGain) this.monitorOutGain.gain.value = on ? 0 : 1;
+    if (this.monoOutGain) this.monoOutGain.gain.value = on ? 1 : 0;
     this.notify();
   }
 
@@ -2486,6 +2556,8 @@ export class DawEngine {
     this.transport.bpm = file.transport.bpm;
     this.transport.masterDb = file.transport.masterDb;
     this.transport.masterLimiterOn = file.transport.masterLimiterOn;
+    this.setMonoPreview(false);
+    this.transport.masterPhaseCorrelation = 1;
     this.transport.loopEnabled = file.transport.loopEnabled;
     this.transport.loopStartSec = file.transport.loopStartSec;
     this.transport.loopEndSec = file.transport.loopEndSec;

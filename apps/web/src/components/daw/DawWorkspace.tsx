@@ -932,6 +932,19 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     });
   }, []);
 
+  const toggleMonoPreview = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    const snap = engine.getSnapshot();
+    engine.setMonoPreview(!snap.transport.monoPreviewOn);
+    setNotice({
+      tone: "info",
+      message: snap.transport.monoPreviewOn
+        ? "Stereo preview restored."
+        : "Mono preview enabled for translation checks.",
+    });
+  }, []);
+
   const submitComment = useCallback(
     async (rawMessage: string) => {
       const message = rawMessage.trim();
@@ -2304,10 +2317,13 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           spectrum={transport.masterSpectrum}
           masterLufs={transport.masterLufs}
           masterTruePeak={transport.masterTruePeak}
+          phaseCorrelation={transport.masterPhaseCorrelation}
+          monoPreviewOn={transport.monoPreviewOn}
           tracks={tracks}
           aux={snapshot?.aux ?? null}
           onCenterLowEnd={applyMonoSafeBalance}
           onTightenStereoFx={tightenStereoFx}
+          onToggleMonoPreview={toggleMonoPreview}
         />
       )}
 
@@ -2994,18 +3010,24 @@ function MixIntelligencePanel({
   spectrum,
   masterLufs,
   masterTruePeak,
+  phaseCorrelation,
+  monoPreviewOn,
   tracks,
   aux,
   onCenterLowEnd,
   onTightenStereoFx,
+  onToggleMonoPreview,
 }: {
   spectrum: number[];
   masterLufs: number;
   masterTruePeak: number;
+  phaseCorrelation: number;
+  monoPreviewOn: boolean;
   tracks: TrackState[];
   aux: AuxBusState | null;
   onCenterLowEnd: () => void;
   onTightenStereoFx: () => void;
+  onToggleMonoPreview: () => void;
 }) {
   const sub = avgBand(spectrum, 0, 2);
   const lowMid = avgBand(spectrum, 3, 8);
@@ -3087,6 +3109,16 @@ function MixIntelligencePanel({
             : "Mono compatibility looks healthy.",
       tone: monoRisk >= 2 ? "warn" : monoRisk === 1 ? "neutral" : "ok",
     },
+    {
+      label: "Phase correlation",
+      detail:
+        phaseCorrelation < 0
+          ? "Out-of-phase risk detected. Collapse suspect FX or center layered low-end."
+          : phaseCorrelation < 0.25
+            ? "Wide but fragile stereo image. Check mono preview before print."
+            : "Phase relationship is stable.",
+      tone: phaseCorrelation < 0 ? "warn" : phaseCorrelation < 0.25 ? "neutral" : "ok",
+    },
   ];
 
   return (
@@ -3134,8 +3166,19 @@ function MixIntelligencePanel({
         >
           Tighten stereo FX
         </button>
+        <button
+          type="button"
+          onClick={onToggleMonoPreview}
+          className={`rounded-lg border px-3 py-1.5 text-xs font-bold uppercase tracking-wider ${
+            monoPreviewOn
+              ? "border-amber-300/40 bg-amber-500/15 text-amber-100"
+              : "border-white/20 text-white/80 hover:bg-white/10"
+          }`}
+        >
+          {monoPreviewOn ? "Mono preview on" : "Mono preview"}
+        </button>
         <p className="text-xs text-white/55">
-          Mono checks: {lowEndWideCount} low-end lane{lowEndWideCount === 1 ? "" : "s"} wide · {stereoFxHeavyCount} stereo-heavy FX lane{stereoFxHeavyCount === 1 ? "" : "s"}.
+          Mono checks: {lowEndWideCount} low-end lane{lowEndWideCount === 1 ? "" : "s"} wide · {stereoFxHeavyCount} stereo-heavy FX lane{stereoFxHeavyCount === 1 ? "" : "s"} · phase {phaseCorrelation.toFixed(2)}.
         </p>
       </div>
     </section>
