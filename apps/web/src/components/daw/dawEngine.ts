@@ -199,6 +199,8 @@ export interface BeatMachineState {
   bankPatterns: Record<PatternBank, BeatPattern>;
   /** Drum kit preset — modulates synthesis on each hit. */
   kit: DrumKitId;
+  /** Optional file name per lane when a custom one-shot sample is assigned. */
+  laneSampleNames: Record<DrumKind, string | null>;
 }
 
 export interface AuxBusState {
@@ -301,6 +303,8 @@ export interface ProjectFile {
   beat: {
     enabled: boolean;
     pattern: BeatPattern;
+    kit: DrumKitId;
+    laneSamples: Record<DrumKind, { name: string; audioBlob: Blob } | null>;
   };
   midi: {
     wave: SynthWave;
@@ -373,6 +377,45 @@ function clonePattern(p: BeatPattern): BeatPattern {
   return out;
 }
 
+function emptyBeatLaneSampleNames(): Record<DrumKind, string | null> {
+  return DRUM_LANES.reduce((acc, lane) => {
+    acc[lane] = null;
+    return acc;
+  }, {} as Record<DrumKind, string | null>);
+}
+
+function findSampleTrimRange(buffer: AudioBuffer, threshold: number): { start: number; end: number } {
+  const frames = buffer.length;
+  let start = 0;
+  let end = Math.max(0, frames - 1);
+  let foundStart = false;
+  for (let i = 0; i < frames; i++) {
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      if (Math.abs(buffer.getChannelData(ch)[i] ?? 0) >= threshold) {
+        start = i;
+        foundStart = true;
+        break;
+      }
+    }
+    if (foundStart) break;
+  }
+  let foundEnd = false;
+  for (let i = frames - 1; i >= 0; i--) {
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      if (Math.abs(buffer.getChannelData(ch)[i] ?? 0) >= threshold) {
+        end = i;
+        foundEnd = true;
+        break;
+      }
+    }
+    if (foundEnd) break;
+  }
+  if (!foundStart || !foundEnd || end <= start) {
+    return { start: 0, end: frames - 1 };
+  }
+  return { start, end };
+}
+
 export class DawEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -412,7 +455,12 @@ export class DawEngine {
       D: emptyPattern(),
     },
     kit: "acoustic",
+    laneSampleNames: emptyBeatLaneSampleNames(),
   };
+  private beatLaneSamples: Record<DrumKind, AudioBuffer | null> = DRUM_LANES.reduce((acc, lane) => {
+    acc[lane] = null;
+    return acc;
+  }, {} as Record<DrumKind, AudioBuffer | null>);
   /** Beat track ID that drum hits route into. Created in init() so the
    *  user sees it as a real strip in the mixer. */
   private beatTrackId: TrackId | null = null;
@@ -1999,6 +2047,81 @@ export class DawEngine {
     this.notify();
   }
 
+  async setBeatLaneSample(lane: DrumKind, file: File): Promise<boolean> {
+    if (!this.init() || !this.ctx) return false;
+    try {
+      const data = await file.arrayBuffer();
+      const decoded = await this.ctx.decodeAudioData(data.slice(0));
+      const buffer = this.prepareBeatLaneSample(decoded);
+      this.beatLaneSamples[lane] = buffer;
+      this.beatMachine.laneSampleNames[lane] = file.name;
+      this.notify();
+      return true;
+    } catch (err) {
+      console.warn("[DawEngine] beat lane sample decode failed", { lane, file: file.name, err });
+      return false;
+    }
+  }
+
+  clearBeatLaneSample(lane: DrumKind) {
+    this.beatLaneSamples[lane] = null;
+    this.beatMachine.laneSampleNames[lane] = null;
+    this.notify();
+  }
+
+  /**
+   * Sampler cleanup pass for producer one-shots:
+   * - trims leading/trailing silence
+   * - removes DC offset
+   * - peak normalizes to leave a small headroom margin
+   * - applies tiny fades to avoid click edges
+   */
+  private prepareBeatLaneSample(buffer: AudioBuffer): AudioBuffer {
+    if (!this.ctx || buffer.length === 0) return buffer;
+
+    const trim = findSampleTrimRange(buffer, 0.0035);
+    const start = Math.max(0, trim.start);
+    const end = Math.max(start, trim.end);
+    const length = Math.max(1, end - start + 1);
+    const out = this.ctx.createBuffer(buffer.numberOfChannels, length, buffer.sampleRate);
+
+    let peak = 0;
+    const channelData: Float32Array[] = [];
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      const dst = out.getChannelData(ch);
+      channelData.push(dst);
+      let mean = 0;
+      for (let i = 0; i < length; i++) mean += src[start + i] ?? 0;
+      mean /= length;
+      for (let i = 0; i < length; i++) {
+        const value = (src[start + i] ?? 0) - mean;
+        dst[i] = value;
+        const abs = Math.abs(value);
+        if (abs > peak) peak = abs;
+      }
+    }
+
+    const targetPeak = 0.92;
+    const scale = peak > 0 ? Math.min(6, targetPeak / peak) : 1;
+    const fadeSamples = Math.min(Math.floor(out.sampleRate * 0.003), Math.floor(length / 2));
+
+    for (const dst of channelData) {
+      for (let i = 0; i < length; i++) {
+        let value = dst[i] * scale;
+        if (fadeSamples > 0 && i < fadeSamples) {
+          value *= i / fadeSamples;
+        }
+        if (fadeSamples > 0 && i >= length - fadeSamples) {
+          value *= (length - i) / fadeSamples;
+        }
+        dst[i] = Math.max(-1, Math.min(1, value));
+      }
+    }
+
+    return out;
+  }
+
   /** Look-ahead beat scheduler — same pattern as the metronome. Walks
    *  forward 200ms in audio-context time and schedules every drum hit
    *  whose step bucket falls in that window. */
@@ -2024,6 +2147,7 @@ export class DawEngine {
             scheduleDrumHit(ctx, beatTrack.fxIn, lane, {
               when: this.beatNextTime,
               kit: this.beatMachine.kit,
+              sampleBuffer: this.beatLaneSamples[lane],
             });
           }
         }
@@ -2149,6 +2273,7 @@ export class DawEngine {
               scheduleDrumHit(offline, chain.inNode, lane, {
                 when,
                 kit: this.beatMachine.kit,
+                sampleBuffer: this.beatLaneSamples[lane],
               });
             }
           }
@@ -2291,6 +2416,20 @@ export class DawEngine {
         audioBlob,
       });
     }
+    const laneSamples = DRUM_LANES.reduce((acc, lane) => {
+      const buffer = this.beatLaneSamples[lane];
+      const name = this.beatMachine.laneSampleNames[lane];
+      if (!buffer || !name) {
+        acc[lane] = null;
+        return acc;
+      }
+      acc[lane] = {
+        name,
+        audioBlob: audioBufferToWav(buffer),
+      };
+      return acc;
+    }, {} as Record<DrumKind, { name: string; audioBlob: Blob } | null>);
+
     return {
       version: 1,
       savedAt: new Date().toISOString(),
@@ -2305,6 +2444,8 @@ export class DawEngine {
       beat: {
         enabled: this.beatMachine.enabled,
         pattern: this.beatMachine.pattern,
+        kit: this.beatMachine.kit,
+        laneSamples,
       },
       midi: {
         wave: this.midi.wave,
@@ -2360,6 +2501,23 @@ export class DawEngine {
     // Restore beat + midi.
     this.beatMachine.pattern = file.beat.pattern;
     this.beatMachine.enabled = file.beat.enabled;
+    this.beatMachine.kit = file.beat.kit;
+    this.beatMachine.laneSampleNames = emptyBeatLaneSampleNames();
+    this.beatLaneSamples = DRUM_LANES.reduce((acc, lane) => {
+      acc[lane] = null;
+      return acc;
+    }, {} as Record<DrumKind, AudioBuffer | null>);
+    for (const lane of DRUM_LANES) {
+      const sample = file.beat.laneSamples?.[lane] ?? null;
+      if (!sample) continue;
+      try {
+        const data = await sample.audioBlob.arrayBuffer();
+        this.beatLaneSamples[lane] = await this.ctx.decodeAudioData(data.slice(0));
+        this.beatMachine.laneSampleNames[lane] = sample.name;
+      } catch (err) {
+        console.warn("[DawEngine] failed to hydrate beat lane sample", { lane, err });
+      }
+    }
     this.midi = {
       ...this.midi,
       wave: file.midi.wave,
@@ -2767,6 +2925,7 @@ export class DawEngine {
           D: clonePattern(this.beatMachine.bankPatterns.D),
         },
         kit: this.beatMachine.kit,
+        laneSampleNames: { ...this.beatMachine.laneSampleNames },
       },
       midi: {
         ...this.midi,

@@ -11,11 +11,14 @@ import {
   type TransportState,
 } from "./dawEngine";
 import {
+  DRUM_LANES,
+  STEPS,
   demoPattern,
   emptyPattern as emptyBeatPattern,
   renderPatternToBuffer,
   trapDemoPattern,
   type BeatPattern,
+  type DrumKind,
   type DrumKitId,
 } from "./beatMachine";
 import BeatMachineGrid from "./BeatMachineGrid";
@@ -38,6 +41,7 @@ import { useSession } from "next-auth/react";
 const MasterPanel = dynamic(() => import("./MasterPanel"), { ssr: false });
 const StemLoopBrowser = dynamic(() => import("./StemLoopBrowser"), { ssr: false });
 const SampleLibraryPanel = dynamic(() => import("./SampleLibraryPanel"), { ssr: false });
+const ProducerKitUploader = dynamic(() => import("./ProducerKitUploader"), { ssr: false });
 const OpenStudioSessionsPanel = dynamic(() => import("./OpenStudioSessionsPanel"), { ssr: false });
 const MidiPanel = dynamic(() => import("./MidiPanel"), { ssr: false });
 
@@ -62,6 +66,7 @@ type RecordReviewState = {
 };
 
 type LoudnessTarget = -16 | -14 | -10;
+type ExportLoudnessPreset = "streaming" | "club" | "broadcast";
 
 type BrowserHealth = {
   webAudio: boolean;
@@ -317,6 +322,34 @@ function isFocusMode(value: unknown): value is FocusMode {
   return value === "all" || value === "record" || value === "arrange" || value === "mix" || value === "publish";
 }
 
+function deriveKitTrackColor(name: string): string {
+  const lower = name.toLowerCase();
+  if (/kick|snare|hat|clap|drum|perc|rim|cymbal/.test(lower)) return "#22d3ee";
+  if (/808|bass|sub/.test(lower)) return "#a78bfa";
+  if (/vox|vocal|chant|adlib/.test(lower)) return "#ec4899";
+  if (/fx|impact|riser|sweep|noise/.test(lower)) return "#10b981";
+  return "#f59e0b";
+}
+
+function deriveKitTrackName(fileName: string, index: number): string {
+  const base = fileName.replace(/\.[^.]+$/, "").trim();
+  if (!base) return `Kit sample ${index + 1}`;
+  return base.slice(0, 40);
+}
+
+function inferLaneFromFileName(fileName: string): DrumKind | null {
+  const lower = fileName.toLowerCase();
+  if (/\b(808|sub|bass)\b/.test(lower)) return "bass808";
+  if (/\b(openhat|open[-_ ]hat|oh)\b/.test(lower)) return "openHat";
+  if (/\b(hihat|hi[-_ ]hat|hat|chh)\b/.test(lower)) return "hat";
+  if (/\b(snare|sd|rim)\b/.test(lower)) return "snare";
+  if (/\b(clap|cp)\b/.test(lower)) return "clap";
+  if (/\b(kick|bd)\b/.test(lower)) return "kick";
+  if (/\b(crash|cym|ride)\b/.test(lower)) return "crash";
+  if (/\b(perc|percussion|conga|shaker|tom)\b/.test(lower)) return "perc";
+  return null;
+}
+
 function parseStudioCommentPayload(payload: unknown): StudioComment | null {
   if (!payload || typeof payload !== "object") return null;
   const candidate = payload as Partial<StudioComment>;
@@ -363,6 +396,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("Untitled session");
   const [tapFlash, setTapFlash] = useState<number | null>(null);
+  const [manualBpmInput, setManualBpmInput] = useState("90");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [sessionNotes, setSessionNotes] = useState("");
@@ -387,6 +421,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [showRecordWizard, setShowRecordWizard] = useState(true);
   const [heavyUiReady, setHeavyUiReady] = useState(false);
   const [loudnessTarget, setLoudnessTarget] = useState<LoudnessTarget>(-14);
+  const [exportLoudnessPreset, setExportLoudnessPreset] = useState<ExportLoudnessPreset>("streaming");
   const sessionStartedAt = useRef<number>(Date.now());
   const wasRecordingRef = useRef(false);
   const clientPresenceId = useMemo(() => {
@@ -696,6 +731,11 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   );
 
   useEffect(() => {
+    if (typeof transport?.bpm !== "number") return;
+    setManualBpmInput(String(transport.bpm));
+  }, [transport?.bpm]);
+
+  useEffect(() => {
     if (transport?.isRecording) {
       wasRecordingRef.current = true;
       return;
@@ -952,11 +992,43 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     return () => window.clearInterval(timer);
   }, [autosaveOn, createAutosaveVersion]);
 
+  const laneSampleSignature = useMemo(() => {
+    if (!beat) return "";
+    return JSON.stringify(beat.laneSampleNames);
+  }, [beat]);
+
+  useEffect(() => {
+    if (!autosaveOn) return;
+    if (!snapshot) return;
+    const timer = window.setTimeout(() => {
+      void createAutosaveVersion();
+    }, 2200);
+    return () => window.clearTimeout(timer);
+  }, [autosaveOn, beat?.kit, createAutosaveVersion, laneSampleSignature, snapshot, transport?.bpm]);
+
   // ── Tap tempo + keyboard shortcuts ──────────────────────────────────────
+  function applyManualBpmInput(input: string) {
+    if (!ensureInit()) return;
+    const parsed = Number(input);
+    if (!Number.isFinite(parsed)) {
+      setManualBpmInput(String(transport?.bpm ?? 90));
+      return;
+    }
+    const clamped = Math.max(40, Math.min(240, Math.round(parsed)));
+    engineRef.current?.setBpm(clamped);
+    setManualBpmInput(String(clamped));
+  }
+
+  function nudgeBpm(delta: number) {
+    const current = transport?.bpm ?? 90;
+    applyManualBpmInput(String(current + delta));
+  }
+
   function handleTapTempo() {
     if (!ensureInit()) return;
     const bpm = engineRef.current?.tapTempo();
     if (bpm) {
+      setManualBpmInput(String(bpm));
       setTapFlash(bpm);
       setTimeout(() => setTapFlash(null), 700);
     }
@@ -1030,6 +1102,113 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       setRenderingBeat(false);
     }
   }
+
+  const assignBeatLaneSample = useCallback(
+    async (lane: DrumKind, file: File) => {
+      if (!ensureInit()) return;
+      const ok = await engineRef.current?.setBeatLaneSample(lane, file);
+      if (ok) {
+        pushAuditEvent("beat", `Assigned ${file.name} to ${lane}`);
+        setNotice({
+          tone: "success",
+          message: `${lane.toUpperCase()} now uses ${file.name} (auto-trimmed, leveled, and lane-EQ shaped).`,
+        });
+        return;
+      }
+      setNotice({ tone: "error", message: `Couldn't decode ${file.name}. Try WAV, MP3, or FLAC.` });
+    },
+    [ensureInit, pushAuditEvent],
+  );
+
+  const clearBeatLaneSample = useCallback(
+    (lane: DrumKind) => {
+      engineRef.current?.clearBeatLaneSample(lane);
+      pushAuditEvent("beat", `Cleared custom sample on ${lane}`);
+      setNotice({ tone: "info", message: `${lane.toUpperCase()} reverted to kit sound.` });
+    },
+    [pushAuditEvent],
+  );
+
+  const importSoundKitFiles = useCallback(
+    async (files: File[]) => {
+      if (!ensureInit()) return;
+      const engine = engineRef.current;
+      if (!engine) return;
+
+      const allowedByExt = /\.(wav|mp3|m4a|aif|aiff|flac|ogg)$/i;
+      const audioFiles = files.filter((file) => file.type.startsWith("audio/") || allowedByExt.test(file.name));
+      if (audioFiles.length === 0) {
+        setNotice({ tone: "warning", message: "No audio files found. Upload WAV, MP3, FLAC, AIFF, or M4A samples." });
+        return;
+      }
+
+      const limited = audioFiles.slice(0, 24);
+      const usedFiles = new Set<File>();
+      let laneAssigned = 0;
+
+      for (const file of limited) {
+        const lane = inferLaneFromFileName(file.name);
+        if (!lane) continue;
+        if (usedFiles.has(file)) continue;
+        const ok = await engine.setBeatLaneSample(lane, file);
+        if (!ok) continue;
+        usedFiles.add(file);
+        laneAssigned += 1;
+      }
+
+      const trackFiles = limited.filter((file) => !usedFiles.has(file));
+      let imported = 0;
+      let firstTrackId: TrackId | null = null;
+
+      for (let i = 0; i < trackFiles.length; i++) {
+        const file = trackFiles[i];
+        const trackName = deriveKitTrackName(file.name, i);
+        const trackId = engine.addTrack(trackName, deriveKitTrackColor(trackName));
+        if (!firstTrackId) firstTrackId = trackId;
+        try {
+          await engine.importAudioFile(trackId, file);
+          imported += 1;
+        } catch (err) {
+          console.warn("[DawWorkspace] kit import failed", { file: file.name, err });
+        }
+      }
+
+      if (!imported && laneAssigned === 0) {
+        setNotice({ tone: "error", message: "Couldn't import this kit. Try smaller files or another format." });
+        return;
+      }
+
+      if (firstTrackId) setFocusedId(firstTrackId);
+      setSnapshot(engine.getSnapshot());
+      setStats((s) => ({ ...s, imports: s.imports + imported + laneAssigned }));
+      pushAuditEvent(
+        "import",
+        `Imported ${imported} tracks and mapped ${laneAssigned} lane sample${laneAssigned === 1 ? "" : "s"}`,
+      );
+      setNotice({
+        tone: "success",
+        message:
+          imported + laneAssigned === limited.length
+            ? `Imported ${imported} track sample${imported === 1 ? "" : "s"} and auto-mapped ${laneAssigned} lane one-shot${laneAssigned === 1 ? "" : "s"}.`
+            : `Imported ${imported + laneAssigned}/${limited.length} kit files. Some files couldn't be decoded.`,
+      });
+    },
+    [ensureInit, pushAuditEvent],
+  );
+
+  const applyBeatLaneSteps = useCallback(
+    (lane: DrumKind, nextSteps: boolean[]) => {
+      if (!beat) return;
+      const engine = engineRef.current;
+      if (!engine) return;
+      const nextPattern = emptyBeatPattern();
+      for (const laneId of DRUM_LANES) {
+        nextPattern[laneId] = laneId === lane ? [...nextSteps] : [...beat.pattern[laneId]];
+      }
+      engine.setBeatPattern(nextPattern);
+    },
+    [beat],
+  );
 
   async function toggleRecording() {
     if (!ensureInit()) return;
@@ -1640,20 +1819,67 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
         <div className="flex-1" />
 
-        <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
-          BPM
+        <div className="rounded-xl border border-white/12 bg-black/30 px-2 py-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white/70">BPM</span>
+            <button
+              type="button"
+              onClick={() => nudgeBpm(-1)}
+              className="rounded-md border border-white/15 px-2 py-1 text-xs font-bold text-white/80 hover:bg-white/10"
+              title="Decrease BPM by 1"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min={40}
+              max={240}
+              value={manualBpmInput}
+              onChange={(e) => setManualBpmInput(e.target.value)}
+              onBlur={(e) => applyManualBpmInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applyManualBpmInput((e.target as HTMLInputElement).value);
+              }}
+              className="w-16 rounded-md border border-white/15 bg-black/40 px-2 py-1 text-center text-sm font-mono"
+              aria-label="Manual BPM"
+              title="Type BPM and press Enter"
+            />
+            <button
+              type="button"
+              onClick={() => nudgeBpm(1)}
+              className="rounded-md border border-white/15 px-2 py-1 text-xs font-bold text-white/80 hover:bg-white/10"
+              title="Increase BPM by 1"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={() => applyManualBpmInput(String(Math.max(40, Math.round((transport?.bpm ?? 90) / 2))))}
+              className="rounded-md border border-white/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white/70 hover:bg-white/10"
+              title="Half-time"
+            >
+              1/2
+            </button>
+            <button
+              type="button"
+              onClick={() => applyManualBpmInput(String(Math.min(240, Math.round((transport?.bpm ?? 90) * 2))))}
+              className="rounded-md border border-white/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white/70 hover:bg-white/10"
+              title="Double-time"
+            >
+              ×2
+            </button>
+          </div>
           <input
-            type="number"
+            type="range"
             min={40}
             max={240}
+            step={1}
             value={transport?.bpm ?? 90}
-            onChange={(e) => {
-              if (!ensureInit()) return;
-              engineRef.current?.setBpm(Number(e.target.value));
-            }}
-            className="w-16 rounded-md border border-white/15 bg-black/40 px-2 py-1 text-sm font-mono"
+            onChange={(e) => applyManualBpmInput(e.target.value)}
+            className="mt-2 w-full accent-accent-400"
+            aria-label="BPM slider"
           />
-        </label>
+        </div>
 
         <button
           type="button"
@@ -1833,7 +2059,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       </div>
 
       <p className="-mt-3 mb-6 text-center text-[10px] uppercase tracking-[0.28em] text-white/30">
-        Space play · R record · L loop · M metronome · T tap · Home rewind · Drop audio file onto a track to import
+        Space play · R record · L loop · M metronome · T tap · Home rewind · A-W-S-E-D... play synth · Drop audio on a track to import
       </p>
 
       {!showSplash && (
@@ -2006,6 +2232,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             activeStep={beat.activeStep}
             activeBank={beat.activeBank}
             kit={beat.kit}
+            laneSampleNames={beat.laneSampleNames}
             onToggleStep={(lane, step) => {
               const cur = beat.pattern[lane][step];
               engineRef.current?.setBeatStep(lane, step, !cur);
@@ -2015,6 +2242,29 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             onRenderToTrack={renderBeatToTrack}
             onSelectBank={(bank) => engineRef.current?.setActivePatternBank(bank)}
             onSelectKit={(kit) => engineRef.current?.setBeatKit(kit)}
+            onAssignLaneSample={assignBeatLaneSample}
+            onClearLaneSample={clearBeatLaneSample}
+            onFillLane={(lane, on) => {
+              applyBeatLaneSteps(lane, Array(STEPS).fill(on));
+            }}
+            onRandomizeLane={(lane, density) => {
+              applyBeatLaneSteps(
+                lane,
+                Array.from({ length: STEPS }, (_, index) => {
+                  if (index % 4 === 0) return Math.random() < Math.max(density, 0.55);
+                  return Math.random() < density;
+                }),
+              );
+            }}
+            onShiftLane={(lane, direction) => {
+              const current = beat.pattern[lane];
+              const offset = direction === "left" ? -1 : 1;
+              const shifted = Array.from({ length: STEPS }, (_, index) => {
+                const source = (index - offset + STEPS) % STEPS;
+                return Boolean(current[source]);
+              });
+              applyBeatLaneSteps(lane, shifted);
+            }}
             rendering={renderingBeat}
           />
         </div>
@@ -2091,6 +2341,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </div>
       )}
 
+      {!showSplash && (showArrangeTools || showRecordTools) && (
+        <div className="mb-6">
+          <ProducerKitUploader onImportFiles={importSoundKitFiles} />
+        </div>
+      )}
+
       {/* ── Gear Rack ──────────────────────────────────────────────────────── */}
       {!showSplash && focusedTrack && showMixTools && (
         <div className="mb-6">
@@ -2156,11 +2412,29 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           onExport={async () => {
             const engine = engineRef.current;
             if (!engine) throw new Error("Engine not initialized");
-            const wav = await engine.exportWav();
+            const targetLufs: Record<ExportLoudnessPreset, number> = {
+              streaming: -14,
+              broadcast: -16,
+              club: -9,
+            };
+            const originalDb = transport.masterDb;
+            const currentLufs = Number.isFinite(transport.masterLufs)
+              ? transport.masterLufs
+              : targetLufs[exportLoudnessPreset];
+            const correction = Math.max(-6, Math.min(6, targetLufs[exportLoudnessPreset] - currentLufs));
+            engine.setMasterDb(Math.max(-24, Math.min(6, originalDb + correction)));
+            let wav: Blob;
+            try {
+              wav = await engine.exportWav();
+            } finally {
+              engine.setMasterDb(originalDb);
+            }
             setStats((s) => ({ ...s, exports: s.exports + 1 }));
-            pushAuditEvent("export", "Exported WAV mixdown");
+            pushAuditEvent("export", `Exported WAV mixdown (${exportLoudnessPreset})`);
             return wav;
           }}
+          loudnessPreset={exportLoudnessPreset}
+          onSetLoudnessPreset={setExportLoudnessPreset}
           onPublish={publishMix}
           onAiMaster={aiMasterMix}
         />
@@ -2175,6 +2449,11 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           lastAutosaveAt={lastAutosaveAt}
           versions={versions}
           onRestoreVersion={handleLoad}
+          onRecoverLatest={() => {
+            const latest = versions[0];
+            if (!latest) return Promise.resolve();
+            return handleLoad(latest.id);
+          }}
           onPublishForum={postPreviewToForum}
           postingForum={postingForum}
           canPost={canExport}
@@ -2935,6 +3214,7 @@ function CollaborationPresencePanel({
   lastAutosaveAt,
   versions,
   onRestoreVersion,
+  onRecoverLatest,
   onPublishForum,
   postingForum,
   canPost,
@@ -2949,6 +3229,7 @@ function CollaborationPresencePanel({
   lastAutosaveAt: number | null;
   versions: VersionEntry[];
   onRestoreVersion: (id: string) => Promise<void>;
+  onRecoverLatest: () => Promise<void>;
   onPublishForum: () => Promise<void>;
   postingForum: boolean;
   canPost: boolean;
@@ -3008,6 +3289,14 @@ function CollaborationPresencePanel({
           <p className="text-xs text-white/45">
             {lastAutosaveAt ? `Last autosave ${new Date(lastAutosaveAt).toLocaleTimeString()}` : "Autosave runs every 45s while active."}
           </p>
+          <button
+            type="button"
+            onClick={() => void onRecoverLatest()}
+            disabled={versions.length === 0}
+            className="mt-2 w-full rounded-lg border border-cyan-400/35 bg-cyan-500/10 px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider text-cyan-100 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Recover latest autosave
+          </button>
           <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto">
             {versions.map((v) => (
               <li key={v.id}>

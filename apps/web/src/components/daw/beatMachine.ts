@@ -112,7 +112,26 @@ interface VoiceOptions {
   kit?: DrumKitId;
   /** Optional pitch in semitones from middle C for pitched lanes (808). */
   pitchSemis?: number;
+  /** Optional one-shot sample that replaces synthesized drum voice for this hit. */
+  sampleBuffer?: AudioBuffer | null;
 }
+
+interface LaneSampleTone {
+  hpHz?: number;
+  lpHz?: number;
+  gain: number;
+}
+
+const LANE_SAMPLE_TONE: Record<DrumKind, LaneSampleTone> = {
+  kick: { hpHz: 20, lpHz: 9000, gain: 1.0 },
+  snare: { hpHz: 120, lpHz: 12000, gain: 0.95 },
+  clap: { hpHz: 500, lpHz: 14000, gain: 0.92 },
+  hat: { hpHz: 4000, lpHz: 16000, gain: 0.88 },
+  openHat: { hpHz: 3200, lpHz: 16000, gain: 0.9 },
+  perc: { hpHz: 250, lpHz: 12500, gain: 0.92 },
+  bass808: { hpHz: 20, lpHz: 220, gain: 1.05 },
+  crash: { hpHz: 1800, lpHz: 16000, gain: 0.85 },
+};
 
 interface KitParams {
   // Kick
@@ -347,7 +366,35 @@ export function scheduleDrumHit(
   kind: DrumKind,
   opts: VoiceOptions,
 ) {
-  const { when, velocity = 1, kit = "acoustic", pitchSemis = 0 } = opts;
+  const { when, velocity = 1, kit = "acoustic", pitchSemis = 0, sampleBuffer = null } = opts;
+
+  if (sampleBuffer) {
+    const source = ctx.createBufferSource();
+    const laneTone = LANE_SAMPLE_TONE[kind];
+    const amp = ctx.createGain();
+    source.buffer = sampleBuffer;
+    const outGain = Math.max(0, Math.min(1.2, velocity * laneTone.gain));
+    amp.gain.setValueAtTime(outGain, when);
+    let chain: AudioNode = source;
+    if (laneTone.hpHz) {
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.setValueAtTime(laneTone.hpHz, when);
+      chain.connect(hp);
+      chain = hp;
+    }
+    if (laneTone.lpHz) {
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.setValueAtTime(laneTone.lpHz, when);
+      chain.connect(lp);
+      chain = lp;
+    }
+    chain.connect(amp).connect(dest);
+    source.start(when);
+    return;
+  }
+
   const params = KITS[kit];
 
   // Optional saturation stage for lo-fi / hyperpop crunch. drive=0 ⇒ no

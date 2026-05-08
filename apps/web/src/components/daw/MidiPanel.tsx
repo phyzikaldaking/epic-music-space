@@ -31,6 +31,13 @@ const KEY_TO_MIDI: Record<string, number> = {
   k: 72,
 };
 
+const WAVE_SHORTCUTS: Record<string, SynthWave> = {
+  "1": "sine",
+  "2": "triangle",
+  "3": "sawtooth",
+  "4": "square",
+};
+
 export default function MidiPanel({
   state,
   noteLo = 60,
@@ -52,6 +59,11 @@ export default function MidiPanel({
       if (e.repeat) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const wave = WAVE_SHORTCUTS[e.key];
+      if (wave) {
+        onSetParam("wave", wave);
+        return;
+      }
       const note = KEY_TO_MIDI[e.key.toLowerCase()];
       if (note === undefined) return;
       onNoteOn(note, 0.8);
@@ -69,7 +81,7 @@ export default function MidiPanel({
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [onNoteOn, onNoteOff]);
+  }, [onNoteOn, onNoteOff, onSetParam]);
 
   const keys = useMemo(() => {
     const out: { note: number; isBlack: boolean; label: string }[] = [];
@@ -79,8 +91,6 @@ export default function MidiPanel({
     }
     return out;
   }, [noteLo, noteHi]);
-
-  const whiteCount = keys.filter((k) => !k.isBlack).length;
 
   return (
     <section className="rounded-2xl border border-white/10 bg-gradient-to-r from-[#0c0c14] via-[#10121c] to-[#0c0c14] p-4">
@@ -92,6 +102,9 @@ export default function MidiPanel({
           <p className="mt-0.5 text-xs text-white/55">
             Polyphonic synth routed through the Synth track. Connect a MIDI
             keyboard or use your computer keys (A–K).
+          </p>
+          <p className="mt-1 text-[11px] text-white/45">
+            Key map: A W S E D F T G Y H U J K. Sound quick-switch: 1 sine, 2 triangle, 3 saw, 4 square.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -197,17 +210,58 @@ export default function MidiPanel({
         />
       </div>
 
-      {/* Keyboard — white keys laid out as flex children, black keys
-          absolutely positioned over the gaps. */}
-      <div
-        className="relative h-28 select-none overflow-hidden rounded-lg bg-black/40"
-        style={{
-          // CSS custom prop so we can size black keys relative to whites
-          // without recomputing per-key.
-          ["--white-count" as string]: whiteCount,
-        }}
-      >
-        <div className="flex h-full">
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        {WAVES.map((wave, index) => {
+          const active = state.wave === wave;
+          return (
+            <button
+              key={wave}
+              type="button"
+              onClick={() => onSetParam("wave", wave)}
+              className={`rounded-md border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider transition ${
+                active
+                  ? "border-violet-400/70 bg-violet-500/20 text-violet-100"
+                  : "border-white/15 bg-white/[0.03] text-white/70 hover:bg-white/[0.08]"
+              }`}
+              title={`Press ${index + 1} for ${wave}`}
+            >
+              {index + 1}. {wave}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Keyboard — simplified two-row layout to stay accessible and
+          avoid inline-style positioning constraints. */}
+      <div className="select-none rounded-lg border border-white/10 bg-black/40 p-2">
+        <div className="mb-1 grid grid-cols-12 gap-1">
+          {keys
+            .filter((k) => k.isBlack)
+            .map((k) => {
+              const isActive = state.activeNotes.includes(k.note);
+              return (
+                <button
+                  key={k.note}
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    onNoteOn(k.note, 0.85);
+                  }}
+                  onPointerUp={() => onNoteOff(k.note)}
+                  onPointerLeave={() => onNoteOff(k.note)}
+                  className={`h-10 rounded-md border border-black/70 text-[10px] font-bold transition-colors ${
+                    isActive
+                      ? "bg-violet-700 text-violet-100"
+                      : "bg-zinc-900 text-white/75 hover:bg-zinc-800"
+                  }`}
+                  aria-label={`MIDI note ${k.note}`}
+                >
+                  {k.label}
+                </button>
+              );
+            })}
+        </div>
+        <div className="grid grid-cols-12 gap-1">
           {keys
             .filter((k) => !k.isBlack)
             .map((k) => {
@@ -222,49 +276,18 @@ export default function MidiPanel({
                   }}
                   onPointerUp={() => onNoteOff(k.note)}
                   onPointerLeave={() => onNoteOff(k.note)}
-                  className="flex-1 border-r border-black/40 last:border-r-0 transition-colors"
-                  style={{
-                    background: isActive ? "#a78bfa" : "linear-gradient(180deg, #f3f4f6 0%, #d1d5db 100%)",
-                  }}
+                  className={`h-14 rounded-md border border-black/30 text-[10px] font-bold transition-colors ${
+                    isActive
+                      ? "bg-violet-400 text-black"
+                      : "bg-zinc-100 text-black/70 hover:bg-zinc-200"
+                  }`}
                 >
-                  <span className="block h-full text-[8px] font-bold text-black/45">
-                    {k.label === "C" && (
-                      <span className="absolute bottom-1 ml-1 font-mono text-[9px]">{`${k.label}${Math.floor(k.note / 12) - 1}`}</span>
-                    )}
-                  </span>
+                  {k.label}
+                  {k.label === "C" ? <span className="ml-1 font-mono text-[9px]">{Math.floor(k.note / 12) - 1}</span> : null}
                 </button>
               );
             })}
         </div>
-
-        {/* Black keys layer */}
-        {keys
-          .filter((k) => k.isBlack)
-          .map((k) => {
-            // Find this black key's white-key neighbor index to position it.
-            const whiteBefore = keys.filter(
-              (other) => !other.isBlack && other.note < k.note,
-            ).length;
-            const isActive = state.activeNotes.includes(k.note);
-            return (
-              <button
-                key={k.note}
-                type="button"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  onNoteOn(k.note, 0.85);
-                }}
-                onPointerUp={() => onNoteOff(k.note)}
-                onPointerLeave={() => onNoteOff(k.note)}
-                className="absolute top-0 h-[60%] w-[calc(100%/var(--white-count)*0.6)] rounded-b-md border border-black/60 transition-colors"
-                style={{
-                  left: `calc(${whiteBefore} * 100% / var(--white-count) - (100% / var(--white-count)) * 0.3)`,
-                  background: isActive ? "#7c3aed" : "linear-gradient(180deg, #1f1f1f 0%, #050505 100%)",
-                }}
-                aria-label={`MIDI note ${k.note}`}
-              />
-            );
-          })}
       </div>
 
       <p className="mt-2 text-[10px] text-white/35">

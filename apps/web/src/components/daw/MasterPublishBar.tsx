@@ -6,6 +6,8 @@ interface Props {
   limiterOn: boolean;
   canExport: boolean;
   emptyReason?: string;
+  loudnessPreset: "streaming" | "club" | "broadcast";
+  onSetLoudnessPreset: (preset: "streaming" | "club" | "broadcast") => void;
   onToggleLimiter: () => void;
   onExport: () => Promise<Blob>;
   /** Hands the rendered WAV to the upload pipeline. Returns the new
@@ -22,6 +24,8 @@ export default function MasterPublishBar({
   limiterOn,
   canExport,
   emptyReason,
+  loudnessPreset,
+  onSetLoudnessPreset,
   onToggleLimiter,
   onExport,
   onPublish,
@@ -129,6 +133,20 @@ export default function MasterPublishBar({
       >
         Limiter {limiterOn ? "on" : "off"}
       </button>
+
+      <label className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.03] px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-white/65">
+        Target
+        <select
+          value={loudnessPreset}
+          onChange={(event) => onSetLoudnessPreset(event.target.value as "streaming" | "club" | "broadcast")}
+          className="rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-white"
+          title="Export loudness target"
+        >
+          <option value="streaming">Streaming (-14)</option>
+          <option value="club">Club (-9)</option>
+          <option value="broadcast">Broadcast (-16)</option>
+        </select>
+      </label>
 
       <button
         type="button"
