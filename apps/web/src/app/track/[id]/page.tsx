@@ -8,7 +8,9 @@ import { notFound } from "next/navigation";
 import AudioPlayer from "@/components/AudioPlayer";
 import SongCard from "@/components/SongCard";
 import LicenseButton from "@/components/LicenseButton";
+import LicenseTierPicker from "@/components/LicenseTierPicker";
 import StickyLicenseBar from "@/components/StickyLicenseBar";
+import { RackPanel, LCDScreen, VUMeter } from "@/components/studio";
 import ReportUserButton from "@/components/ReportUserButton";
 import TrackActions from "@/components/TrackActions";
 import { getStreamUrl } from "@/lib/audioStream";
@@ -27,6 +29,14 @@ interface Props {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ checkout?: string }>;
 }
+
+type LicenseVariantPublic = {
+  id: string;
+  name: string;
+  priceUsd: number;
+  terms?: string;
+  totalLicenses?: number;
+};
 
 type TrackDetail = {
   id: string;
@@ -49,7 +59,32 @@ type TrackDetail = {
   artist_: { id: string; name: string | null; image: string | null } | null;
   _count: { licenses: number };
   isDemo: boolean;
+  licenseVariants?: LicenseVariantPublic[] | null;
 };
+
+function toLicenseVariants(input: unknown): LicenseVariantPublic[] | null {
+  if (!Array.isArray(input)) return null;
+
+  const parsed: LicenseVariantPublic[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== "object") continue;
+    const raw = item as Record<string, unknown>;
+    const id = typeof raw.id === "string" ? raw.id : null;
+    const name = typeof raw.name === "string" ? raw.name : null;
+    const priceUsd = typeof raw.priceUsd === "number" ? raw.priceUsd : null;
+    if (!id || !name || priceUsd == null) continue;
+
+    parsed.push({
+      id,
+      name,
+      priceUsd,
+      terms: typeof raw.terms === "string" ? raw.terms : undefined,
+      totalLicenses: typeof raw.totalLicenses === "number" ? raw.totalLicenses : undefined,
+    });
+  }
+
+  return parsed.length > 0 ? parsed : null;
+}
 
 const getTrack = unstable_cache(
   async (id: string): Promise<TrackDetail | null> => {
@@ -61,7 +96,13 @@ const getTrack = unstable_cache(
           _count: { select: { licenses: true } },
         },
       });
-      if (song) return { ...song, isDemo: false } as TrackDetail;
+      if (song) {
+        return {
+          ...song,
+          isDemo: false,
+          licenseVariants: toLicenseVariants(song.licenseVariants),
+        } as TrackDetail;
+      }
     } catch {
       // DB unavailable — fall through to demo check
     }
@@ -118,7 +159,11 @@ const getRelatedTracks = unstable_cache(
         },
       });
 
-      return rows.map((row) => ({ ...row, isDemo: false }));
+      return rows.map((row) => ({
+        ...row,
+        isDemo: false,
+        licenseVariants: toLicenseVariants(row.licenseVariants),
+      }));
     } catch {
       return [];
     }
@@ -161,6 +206,17 @@ export default async function TrackPage({ params, searchParams }: Props) {
 
   const [song, session] = await Promise.all([getTrack(id), auth()]);
   if (!song) notFound();
+
+  // Best-effort view counter. Don't await — page render must not block on
+  // the increment, and a failure here is purely cosmetic. Skip for the
+  // owner so producers don't inflate their own funnel by reloading.
+  if (!song.isDemo && session?.user?.id !== song.artist_?.id) {
+    void prisma.song
+      .update({ where: { id }, data: { viewCount: { increment: 1 } } })
+      .catch(() => {
+        /* ignore — analytics-only */
+      });
+  }
 
   const remaining = song.totalLicenses - song.soldLicenses;
   const soldOutPct = song.totalLicenses > 0
@@ -235,7 +291,8 @@ export default async function TrackPage({ params, searchParams }: Props) {
   ]);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-12">
+    <div className="studio-room relative min-h-screen">
+      <div className="relative z-[1] mx-auto max-w-5xl px-4 py-12">
       {!song.isDemo && (
         <StickyLicenseBar
           songId={song.id}
@@ -480,10 +537,23 @@ export default async function TrackPage({ params, searchParams }: Props) {
                 Sold out
               </div>
             ) : session ? (
-              <LicenseButton
-                songId={song.id}
-                licensePrice={song.licensePrice.toString()}
-              />
+              Array.isArray(song.licenseVariants) && song.licenseVariants.length > 0 ? (
+                <LicenseTierPicker
+                  songId={song.id}
+                  basePrice={Number(song.licensePrice.toString())}
+                  variants={song.licenseVariants as {
+                    id: string;
+                    name: string;
+                    priceUsd: number;
+                    terms?: string;
+                  }[]}
+                />
+              ) : (
+                <LicenseButton
+                  songId={song.id}
+                  licensePrice={song.licensePrice.toString()}
+                />
+              )
             ) : (
               <a
                 href={`/auth/signin?callbackUrl=/track/${song.id}`}
@@ -509,67 +579,118 @@ export default async function TrackPage({ params, searchParams }: Props) {
         </div>
       </div>
 
-      {/* Owner-only analytics */}
+      {/* Owner-only analytics — meter bridge for this single channel.
+          Shows the same funnel logic as ProducerInsights but track-scoped. */}
       {ownerStats && (
-        <section className="mt-12 rounded-2xl border border-brand-500/25 bg-brand-500/4 p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <span className="rounded-full bg-brand-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-brand-300">
-              Artist view
-            </span>
-            <h2 className="text-lg font-bold">Track performance</h2>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {[
-              { label: "Page views", value: ownerStats.views },
-              { label: "Plays", value: ownerStats.plays },
-              { label: "Distinct listeners", value: ownerStats.distinctListeners },
-              { label: "Likes", value: ownerStats.likes },
-              { label: "Licenses sold", value: song.soldLicenses },
-            ].map((s) => (
-              <div key={s.label} className="rounded-xl border border-white/8 bg-white/3 p-3">
-                <p className="text-[10px] uppercase tracking-widest text-white/40">{s.label}</p>
-                <p className="mt-1 text-xl font-extrabold tabular-nums">{s.value}</p>
+        <div className="mt-12">
+          <RackPanel label="Channel Performance" unit="CH-A" led="amber">
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                <LCDScreen label="Views" value={ownerStats.views} size="md" />
+                <LCDScreen label="Plays" value={ownerStats.plays} size="md" />
+                <LCDScreen
+                  label="Listeners"
+                  value={ownerStats.distinctListeners}
+                  size="md"
+                />
+                <LCDScreen
+                  label="Likes"
+                  value={ownerStats.likes}
+                  size="md"
+                  tone="cyan"
+                />
+                <LCDScreen
+                  label="Sold"
+                  value={song.soldLicenses}
+                  size="md"
+                  tone="cyan"
+                />
               </div>
-            ))}
-          </div>
-          {ownerStats.views > 0 && (
-            <p className="mt-3 text-xs text-white/45">
-              Conversion: {((song.soldLicenses / Math.max(ownerStats.views, 1)) * 100).toFixed(1)}% of visitors who view this track buy a license.
-            </p>
-          )}
-          {ownerStats.recentBuyers.length > 0 && (
-            <div className="mt-5">
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-white/45">
-                Recent buyers
-              </h3>
-              <ul className="space-y-1.5">
-                {ownerStats.recentBuyers.map((b) => (
-                  <li key={b.id} className="flex items-center gap-2 text-sm">
-                    <span className="text-white/65">
-                      {b.holderUsername ? (
-                        <Link href={`/studio/${b.holderUsername}`} className="hover:underline">
-                          {b.holderName ?? "anonymous"}
-                        </Link>
-                      ) : (
-                        b.holderName ?? "anonymous"
+              {ownerStats.views > 0 && (
+                <div className="rounded-md studio-faceplate-dark p-3">
+                  <div className="grid grid-cols-3 items-end gap-3">
+                    <VUMeter
+                      value={Math.min(
+                        1,
+                        ownerStats.plays / Math.max(ownerStats.views, 1),
                       )}
-                    </span>
-                    <span className="ml-auto text-xs text-white/35">
-                      ${b.price.toFixed(2)} ·{" "}
-                      {new Date(b.purchasedAt).toLocaleDateString()}
-                    </span>
-                    <ReportUserButton
-                      reportedUserId={b.holderId}
-                      context={{ kind: "transaction", id: b.id }}
-                      label=""
-                      className="rounded-md border border-white/10 bg-white/4 px-1.5 py-0.5 text-[10px] text-white/45 hover:bg-white/10"
+                      label="View → Play"
+                      readout={`${(
+                        (ownerStats.plays / Math.max(ownerStats.views, 1)) *
+                        100
+                      ).toFixed(1)}%`}
+                      size="sm"
                     />
-                  </li>
-                ))}
-              </ul>
+                    <VUMeter
+                      value={Math.min(
+                        1,
+                        song.soldLicenses / Math.max(ownerStats.plays, 1),
+                      )}
+                      label="Play → Sale"
+                      readout={`${(
+                        (song.soldLicenses / Math.max(ownerStats.plays, 1)) *
+                        100
+                      ).toFixed(2)}%`}
+                      size="sm"
+                    />
+                    <VUMeter
+                      value={Math.min(
+                        1,
+                        song.soldLicenses / Math.max(ownerStats.views, 1),
+                      )}
+                      label="View → Sale"
+                      readout={`${(
+                        (song.soldLicenses / Math.max(ownerStats.views, 1)) *
+                        100
+                      ).toFixed(2)}%`}
+                      size="sm"
+                    />
+                  </div>
+                </div>
+              )}
+              {ownerStats.recentBuyers.length > 0 && (
+                <div className="rounded-md studio-faceplate-dark p-3">
+                  <p className="studio-label mb-2 text-white/55">
+                    Recent buyers · session log
+                  </p>
+                  <ul className="space-y-1.5">
+                    {ownerStats.recentBuyers.map((b) => (
+                      <li
+                        key={b.id}
+                        className="flex items-center gap-2 text-sm border-b border-white/[0.04] last:border-0 py-1"
+                      >
+                        <span className="text-white/70">
+                          {b.holderUsername ? (
+                            <Link
+                              href={`/studio/${b.holderUsername}`}
+                              className="hover:text-tube-300"
+                            >
+                              {b.holderName ?? "anonymous"}
+                            </Link>
+                          ) : (
+                            b.holderName ?? "anonymous"
+                          )}
+                        </span>
+                        <span className="ml-auto text-readout-amber tabular-nums text-xs">
+                          ${b.price.toFixed(2)}
+                        </span>
+                        <span className="studio-label text-white/35">
+                          {new Date(b.purchasedAt).toLocaleDateString()}
+                        </span>
+                        <ReportUserButton
+                          reportedUserId={b.holderId}
+                          context={{ kind: "transaction", id: b.id }}
+                          label=""
+                          className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-white/40 hover:bg-white/10"
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-          )}
-        </section>
+          </RackPanel>
+        </div>
       )}
 
       {/* Related tracks */}
@@ -626,6 +747,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
       <section className="mt-12">
         <TrackCommentThread songId={song.id} />
       </section>
+      </div>
     </div>
   );
 }

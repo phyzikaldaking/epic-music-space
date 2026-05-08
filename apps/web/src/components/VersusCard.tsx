@@ -112,7 +112,10 @@ export default function VersusCard({
   const pctA = total > 0 ? Math.round((votesA / total) * 100) : 50;
   const pctB = 100 - pctA;
 
-  const isExpired = new Date(endsAt) < new Date();
+  const endsAtMs = new Date(endsAt).getTime();
+  const msRemaining = endsAtMs - Date.now();
+  const isExpired = msRemaining <= 0;
+  const isClutch = !isExpired && msRemaining <= 5 * 60 * 1000;
 
   async function vote(songId: string) {
     if (loading || isExpired) return;
@@ -235,9 +238,20 @@ export default function VersusCard({
               title="Live vote count"
             />
           )}
+          {isClutch && (
+            <span className="rounded-full border border-rose-400/40 bg-rose-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-rose-200">
+              Clutch mode
+            </span>
+          )}
         </span>
         <span>{isExpired ? "Ended" : `Ends ${new Date(endsAt).toLocaleString()}`}</span>
       </div>
+
+      {isClutch && (
+        <div className="mb-4 rounded-xl border border-rose-500/35 bg-rose-500/10 px-3 py-2 text-[11px] font-semibold text-rose-200">
+          Final 5 minutes. Every vote can swing this battle.
+        </div>
+      )}
 
       <div className="flex items-center gap-4">
         <SongSide song={songA} votes={votesA} pct={pctA} side="A" audioRef={audioARef} otherRef={audioBRef} />
@@ -253,14 +267,24 @@ export default function VersusCard({
         </p>
       )}
       {/* Link to full result/share page */}
-      <div className="mt-4 text-center">
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-center">
         <a
           href={`/versus/${matchId}`}
           className="text-xs text-white/30 hover:text-brand-400 transition underline underline-offset-2"
         >
           {isExpired ? "🏆 View results & share" : "🔗 Share this battle"}
         </a>
+        <a
+          href={`/timeline?battle=${encodeURIComponent(matchId)}&focus=debate`}
+          className="text-xs text-white/30 hover:text-amber-300 transition underline underline-offset-2"
+        >
+          💬 Debate this result
+        </a>
       </div>
+
+      <p className="mt-3 text-center text-[11px] text-white/35">
+        🛡️ Integrity-protected voting with anti-spam safeguards.
+      </p>
     </div>
   );
 }

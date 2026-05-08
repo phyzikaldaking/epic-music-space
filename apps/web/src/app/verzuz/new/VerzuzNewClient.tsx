@@ -95,11 +95,10 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
     });
   }
 
-  const equalLength = songsA.length === songsB.length;
-  const enoughSongs = songsA.length > 0 && songsB.length > 0;
+  const exactRounds = songsA.length === 10 && songsB.length === 10;
 
   async function submit() {
-    if (busy || !opponent || !enoughSongs || !equalLength) return;
+    if (busy || !opponent || !exactRounds) return;
     setBusy(true);
     setError(null);
     try {
@@ -164,7 +163,7 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
 
       <section className="rounded-2xl border border-white/10 bg-white/4 p-5">
         <p className="mb-2 text-xs font-bold uppercase tracking-widest text-white/55">
-          Step 2 · Theme + format (optional)
+          Step 2 · Theme + schedule (required)
         </p>
         <input
           type="text"
@@ -174,19 +173,21 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
           maxLength={80}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
         />
-        <label className="mt-3 block text-xs font-bold uppercase tracking-widest text-white/55">
-          Start time (optional)
+        <label htmlFor="verzuz-start-time" className="mt-3 block text-xs font-bold uppercase tracking-widest text-white/55">
+          Start time (required)
         </label>
         <input
+          id="verzuz-start-time"
           type="datetime-local"
           value={startsAtLocal}
           onChange={(e) => setStartsAtLocal(e.target.value)}
           className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
         />
-        <label className="mt-3 block text-xs font-bold uppercase tracking-widest text-white/55">
+        <label htmlFor="verzuz-round-duration" className="mt-3 block text-xs font-bold uppercase tracking-widest text-white/55">
           Round duration
         </label>
         <select
+          id="verzuz-round-duration"
           value={roundDuration}
           onChange={(e) => setRoundDuration(Number(e.target.value))}
           className="mt-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
@@ -201,7 +202,7 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
 
       <section className="rounded-2xl border border-white/10 bg-white/4 p-5">
         <p className="mb-2 text-xs font-bold uppercase tracking-widest text-white/55">
-          Step 3 · Setlists ({songsA.length} vs {songsB.length}, max 10 each)
+          Step 3 · Setlists ({songsA.length}/10 vs {songsB.length}/10)
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           <div>
@@ -321,12 +322,16 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
             )}
           </div>
         </div>
-        {!equalLength && enoughSongs && (
+        {!exactRounds && (
           <p className="mt-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
-            Both setlists must be the same length. You: {songsA.length} · Them: {songsB.length}.
+            Verzuz is locked to 10 rounds. You: {songsA.length}/10 · Them: {songsB.length}/10.
           </p>
         )}
       </section>
+
+      <p className="rounded-xl border border-gold-400/30 bg-gold-500/10 px-4 py-3 text-xs text-gold-100">
+        Scheduled event format: 10 rounds, 1 song per round, artist/producer only.
+      </p>
 
       {error && (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -337,7 +342,7 @@ export default function VerzuzNewClient({ mySongs }: { mySongs: Song[] }) {
       <button
         type="button"
         onClick={submit}
-        disabled={!opponent || !enoughSongs || !equalLength || busy}
+        disabled={!opponent || !exactRounds || busy || !startsAtLocal.trim()}
         className="w-full rounded-2xl bg-gold-500 py-3 text-sm font-black uppercase tracking-widest text-[#0a0a0a] transition hover:bg-gold-400 disabled:opacity-40"
       >
         {busy ? "Staging…" : "Stage the Verzuz →"}

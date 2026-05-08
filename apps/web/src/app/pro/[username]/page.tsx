@@ -312,7 +312,7 @@ export default async function ProProfilePage({ params }: Props) {
               {credits.map((c, idx) => (
                 <div
                   key={`${c.artist}-${c.title}-${idx}`}
-                  className="group relative flex gap-4 overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d14] p-3 transition hover:border-white/25"
+                  className="group relative flex gap-4 overflow-hidden rounded-2xl border border-white/10 studio-faceplate-dark p-3 transition hover:border-white/25"
                 >
                   <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-brand-900/40 to-accent-900/30">
                     {c.coverUrl ? (
@@ -415,7 +415,7 @@ export default async function ProProfilePage({ params }: Props) {
                   <Link
                     key={s.id}
                     href={`/services/${s.id}`}
-                    className="flex flex-col gap-3 rounded-2xl border border-white/8 bg-[#0d0d14] p-4 transition hover:border-brand-500/40"
+                    className="flex flex-col gap-3 rounded-2xl border border-white/8 studio-faceplate-dark p-4 transition hover:border-brand-500/40"
                   >
                     <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-gradient-to-br from-brand-900/40 to-accent-900/20">
                       {s.coverUrl ? (
@@ -449,7 +449,7 @@ export default async function ProProfilePage({ params }: Props) {
             </h2>
             <div className="space-y-3">
               {reviews.map((r) => (
-                <div key={r.id} className="rounded-2xl border border-white/8 bg-[#0d0d14] p-4">
+                <div key={r.id} className="rounded-2xl border border-white/8 studio-faceplate-dark p-4">
                   <div className="flex items-center gap-3">
                     <div className="relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-white/10">
                       {r.buyer.image ? (

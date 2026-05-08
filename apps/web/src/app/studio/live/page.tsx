@@ -1,6 +1,5 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { DISTRICT_META } from "@/lib/scoring";
@@ -57,18 +56,18 @@ export default async function VirtualStudioPage({
   searchParams: Promise<{ genre?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user?.id) {
-    redirect("/auth/signin?callbackUrl=/studio/live");
-  }
+  // Anonymous visitors can browse sessions — auth only required to join/host.
 
   const { genre } = await searchParams;
   const activeGenre = genre ?? "all";
 
   // Fetch the current user's own studio username so "My Studio" links correctly
-  const myStudio = await prisma.studio.findFirst({
-    where: { userId: session.user.id },
-    select: { username: true, bio: true },
-  }).catch(() => null);
+  const myStudio = session?.user?.id
+    ? await prisma.studio.findFirst({
+        where: { userId: session.user.id },
+        select: { username: true, bio: true },
+      }).catch(() => null)
+    : null;
 
   // Active live rooms (LiveKit-backed listening sessions)
   const liveRoomRows = await prisma.room.findMany({
@@ -278,7 +277,7 @@ export default async function VirtualStudioPage({
               >
                 🎙️ Open a Room
               </Link>
-              {session.user && (
+              {session?.user && (
                 <Link
                   href={myStudio ? `/studio/${myStudio.username}` : "/studio/new"}
                   className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-5 py-3 text-sm font-semibold text-white/70 transition hover:bg-white/6 hover:text-white"
@@ -317,7 +316,7 @@ export default async function VirtualStudioPage({
 
         {studios.length === 0 ? (
           /* ── Empty state ──────────────────────────────────────────────── */
-          <div className="rounded-3xl border border-white/8 bg-[#0d0d14] p-16 text-center">
+          <div className="rounded-3xl border border-white/8 studio-faceplate-dark p-16 text-center">
             <div className="mb-4 flex justify-center">
               <span className="text-4xl sm:text-6xl">🎧</span>
             </div>
@@ -373,7 +372,7 @@ export default async function VirtualStudioPage({
         )}
 
         {/* ── How it works ──────────────────────────────────────────────── */}
-        <div className="mt-16 rounded-3xl border border-white/8 bg-[#0d0d14] p-8">
+        <div className="mt-16 rounded-3xl border border-white/8 studio-faceplate-dark p-8">
           <h2 className="mb-6 text-center text-lg font-bold text-white/70">
             How a listening session works
           </h2>
@@ -509,7 +508,7 @@ function SessionCard({ studio }: { studio: SessionStudio }) {
   return (
     <Link
       href={`/studio/${studio.username}`}
-      className="session-card-hover group flex flex-col gap-3 rounded-2xl border border-white/8 bg-[#0d0d14] p-4 transition hover:border-brand-500/30 hover:bg-brand-500/4"
+      className="session-card-hover group flex flex-col gap-3 rounded-2xl border border-white/8 studio-faceplate-dark p-4 transition hover:border-brand-500/30 hover:bg-brand-500/4"
     >
       <div className="flex items-center gap-3">
         {/* Avatar */}

@@ -16,4 +16,12 @@ describe("buildContentSecurityPolicy", () => {
 
     expect(csp).toContain("'unsafe-eval'");
   });
+
+  it("allows Supabase realtime websocket connections", () => {
+    const csp = buildContentSecurityPolicy("nonce123", "production");
+    const connectDirective = csp.split("; ").find((part) => part.startsWith("connect-src")) ?? "";
+
+    expect(connectDirective).toContain("https://*.supabase.co");
+    expect(connectDirective).toContain("wss://*.supabase.co");
+  });
 });

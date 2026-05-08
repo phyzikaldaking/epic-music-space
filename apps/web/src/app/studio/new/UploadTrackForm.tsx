@@ -11,6 +11,7 @@ import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 import { validateUpload } from "@/lib/uploadValidation";
 import { uploadImage, ClientUploadError } from "@/lib/clientImageUpload";
 import { validateTrackSubmission } from "@/lib/trackPublishValidation";
+import { ToggleSwitch } from "@/components/studio";
 
 type UploadState = "idle" | "uploading" | "done" | "error";
 
@@ -81,6 +82,14 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
   const [totalLicenses, setTotalLicenses] = useState("100");
   const [bpm, setBpm] = useState("");
   const [key, setKey] = useState("");
+  // Drafts + scheduled releases. saveAsDraft wins over a scheduledAt input
+  // — explicit "save without publishing" should always honor that intent.
+  const [saveAsDraft, setSaveAsDraft] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
+  // Optional tiered licensing. The base licensePrice is always BASIC; up
+  // to 5 additional tiers (premium, exclusive, etc.) can be layered on.
+  type TierDraft = { id: string; name: string; priceUsd: string; terms: string };
+  const [tiers, setTiers] = useState<TierDraft[]>([]);
 
   const [audioFile, setAudioFile] = useState<File | null>(null);
   // _coverFile stored only to allow clearing on error via setCoverFile(null)
@@ -412,6 +421,14 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
       allowFreeDownload,
       isLegacy,
       originalReleaseYear,
+      saveAsDraft,
+      scheduledAt,
+      licenseVariants: tiers.map((t) => ({
+        id: t.id,
+        name: t.name,
+        priceUsd: t.priceUsd,
+        terms: t.terms,
+      })),
     });
     if (!check.ok) {
       setError(check.reason);
@@ -484,7 +501,8 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
   })();
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12">
+    <div className="studio-room relative min-h-screen pb-[max(env(safe-area-inset-bottom),3rem)]">
+      <div className="relative z-[1] mx-auto max-w-2xl px-4 py-8 sm:py-12">
       <div className="mb-8">
         <h1 className="text-3xl font-extrabold text-gradient-ems">Upload Track</h1>
         <p className="mt-1 text-sm text-white/50">
@@ -1005,6 +1023,8 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
               <label className="mb-1 block text-xs text-white/50">BPM</label>
               <input
                 type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 min="20"
                 max="999"
                 value={bpm}
@@ -1052,6 +1072,7 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
                 <input
                   required
                   type="number"
+                  inputMode="decimal"
                   min="0.50"
                   step="0.01"
                   value={licensePrice}
@@ -1070,6 +1091,7 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
                 <input
                   required
                   type="number"
+                  inputMode="decimal"
                   min="0.01"
                   max="100"
                   step="0.01"
@@ -1088,6 +1110,8 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
               <input
                 required
                 type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 min="1"
                 max="10000"
                 value={totalLicenses}
@@ -1175,6 +1199,161 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
           </label>
         </div>
 
+        {/* ── Release timing (draft / schedule) ────────────────────────── */}
+        <details className="rounded-xl border border-white/10 bg-white/[0.02] open:border-cyan-500/30 open:bg-cyan-500/5">
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-white/80">
+            Release timing
+            <span className="ml-2 text-xs font-normal text-white/40">
+              {saveAsDraft
+                ? "Saving as draft"
+                : scheduledAt
+                ? `Scheduled · ${new Date(scheduledAt).toLocaleString()}`
+                : "Publish immediately (default)"}
+            </span>
+          </summary>
+          <div className="space-y-3 border-t border-white/8 px-4 py-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <ToggleSwitch
+                checked={saveAsDraft}
+                onChange={setSaveAsDraft}
+                label="Save as draft"
+                labelOn="DRFT"
+                labelOff="LIVE"
+                tone="amber"
+              />
+              <p className="text-xs text-white/50 sm:flex-1">
+                Stays out of marketplace, trending, and search until you flip
+                it live from <em>/studio/manage</em>. You can keep editing it
+                freely.
+              </p>
+            </div>
+
+            <div>
+              <label
+                htmlFor="scheduledAt"
+                className="block text-xs font-bold uppercase tracking-widest text-white/55"
+              >
+                Schedule release
+              </label>
+              <input
+                id="scheduledAt"
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                disabled={saveAsDraft}
+                className="mt-1.5 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm disabled:opacity-40"
+              />
+              <p className="mt-1 text-xs text-white/40">
+                Track auto-publishes at this time. Leave blank to publish on
+                submit.
+              </p>
+            </div>
+          </div>
+        </details>
+
+        {/* ── License tiers (optional) ─────────────────────────────────── */}
+        <details className="rounded-xl border border-white/10 bg-white/[0.02] open:border-gold-500/30 open:bg-gold-500/5">
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-white/80">
+            License tiers
+            <span className="ml-2 text-xs font-normal text-white/40">
+              {tiers.length === 0
+                ? `Single price · $${licensePrice}`
+                : `${tiers.length + 1} tier${tiers.length === 0 ? "" : "s"} (Basic + ${tiers.length} more)`}
+            </span>
+          </summary>
+          <div className="space-y-3 border-t border-white/8 px-4 py-4">
+            <p className="text-xs text-white/55">
+              Your <strong className="text-white/80">License price</strong>{" "}
+              above is the <strong className="text-white/80">Basic</strong>{" "}
+              tier. Add up to 5 more tiers — premium, exclusive, etc. — each
+              with its own price and terms. Buyers pick a tier at checkout.
+            </p>
+            {tiers.map((t, i) => (
+              <div
+                key={i}
+                className="flex flex-col gap-2 rounded-lg border border-white/10 bg-black/30 p-3 sm:grid sm:grid-cols-[1fr_120px_auto] sm:items-start"
+              >
+                <div className="space-y-1">
+                  <input
+                    aria-label={`Tier ${i + 1} name`}
+                    placeholder="Tier name (e.g. Premium, Exclusive)"
+                    value={t.name}
+                    onChange={(e) =>
+                      setTiers((prev) =>
+                        prev.map((row, idx) =>
+                          idx === i
+                            ? {
+                                ...row,
+                                name: e.target.value,
+                                id: row.id || e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+                              }
+                            : row,
+                        ),
+                      )
+                    }
+                    className="w-full rounded-md border border-white/15 bg-black/30 px-2 py-1.5 text-sm"
+                  />
+                  <input
+                    aria-label={`Tier ${i + 1} terms`}
+                    placeholder="Terms (e.g. unlimited streams, 100k plays cap)"
+                    value={t.terms}
+                    onChange={(e) =>
+                      setTiers((prev) =>
+                        prev.map((row, idx) =>
+                          idx === i ? { ...row, terms: e.target.value } : row,
+                        ),
+                      )
+                    }
+                    className="w-full rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-xs text-white/70"
+                  />
+                </div>
+                <div>
+                  <input
+                    aria-label={`Tier ${i + 1} price`}
+                    type="number"
+                    inputMode="decimal"
+                    min="0.5"
+                    step="0.5"
+                    placeholder="$"
+                    value={t.priceUsd}
+                    onChange={(e) =>
+                      setTiers((prev) =>
+                        prev.map((row, idx) =>
+                          idx === i ? { ...row, priceUsd: e.target.value } : row,
+                        ),
+                      )
+                    }
+                    className="w-full rounded-md border border-white/15 bg-black/30 px-2 py-1.5 text-sm font-semibold text-gold-400"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setTiers((prev) => prev.filter((_, idx) => idx !== i))
+                  }
+                  className="self-start rounded-md border border-white/10 px-2 py-1 text-xs text-white/55 hover:bg-white/5"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            {tiers.length < 5 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setTiers((prev) => [
+                    ...prev,
+                    { id: "", name: "", priceUsd: "", terms: "" },
+                  ])
+                }
+                className="rounded-lg border border-gold-500/30 bg-gold-500/8 px-3 py-1.5 text-xs font-bold text-gold-300 hover:bg-gold-500/15"
+              >
+                + Add a tier
+              </button>
+            )}
+          </div>
+        </details>
+
         {error && (
           <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
             {error}
@@ -1196,10 +1375,14 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
           {submitting ? (
             <span className="flex items-center justify-center gap-2">
               <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              Publishing…
+              {saveAsDraft ? "Saving draft…" : "Publishing…"}
             </span>
           ) : uploading ? (
             "Uploading files…"
+          ) : saveAsDraft ? (
+            "Save as draft"
+          ) : scheduledAt ? (
+            `Schedule for ${new Date(scheduledAt).toLocaleDateString()} ⏱`
           ) : (
             "Publish to Marketplace ⚡"
           )}
@@ -1223,6 +1406,7 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
           .
         </p>
       </form>
+      </div>
     </div>
   );
 }

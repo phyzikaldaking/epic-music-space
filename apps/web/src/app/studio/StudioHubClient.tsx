@@ -156,6 +156,64 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
           onClick={() => trackClick("feature_live", "/studio/live")}
         />
       </div>
+
+      {/* ── Publish checklist reminder ──────────────────────────────────── */}
+      <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <p className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-cyan-200/75">
+          Publish Checklist
+        </p>
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {[
+            "Cover art uploaded",
+            "Track title & artist name set",
+            "Genre + BPM / key tagged",
+            "Preview clip trimmed (best 30s)",
+            "License type selected",
+            "Price set",
+          ].map((item) => (
+            <li key={item} className="flex items-center gap-2 text-sm text-white/60">
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-white/20 text-[10px]">
+                ✓
+              </span>
+              {item}
+            </li>
+          ))}
+        </ul>
+        <Link
+          href="/studio/new"
+          onClick={() => trackClick("checklist_publish", "/studio/new")}
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition hover:opacity-95"
+        >
+          ⚡ Publish a Track
+        </Link>
+      </div>
+
+      {/* ── "What do you want to do next?" cross-platform strip ────────── */}
+      <div className="mt-6">
+        <p className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-white/40">
+          Keep Moving
+        </p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {[
+            { href: "/versus", icon: "⚔️", label: "Enter a Battle", sub: "Submit a track to the 1v1 floor" },
+            { href: "/studio/live", icon: "🎙️", label: "Open a Session", sub: "Go live and let fans in the room" },
+            { href: "/timeline", icon: "📰", label: "Check Timeline", sub: "See what the community is doing" },
+          ].map(({ href, icon, label, sub }) => (
+            <Link
+              key={href}
+              href={href}
+              onClick={() => trackClick(`keep_moving_${href.replace("/", "")}`, href)}
+              className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 transition hover:border-white/20 hover:bg-white/6"
+            >
+              <span className="text-xl leading-none" aria-hidden>{icon}</span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white/90">{label}</p>
+                <p className="text-xs text-white/40">{sub}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

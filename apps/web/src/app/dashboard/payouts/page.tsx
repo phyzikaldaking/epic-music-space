@@ -177,13 +177,22 @@ export default async function PayoutsPage(props: {
     connectStatus.currentlyDue.length > 0;
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12">
+    <div className="studio-room relative min-h-screen">
+      <div className="relative z-[1] mx-auto max-w-4xl px-4 py-12">
       <div className="mb-10">
-        <Link href="/dashboard" className="text-sm text-white/40 hover:text-white/70 transition mb-4 inline-block">
-          ← Dashboard
+        <Link href="/dashboard" className="studio-label text-white/40 hover:text-tube-400 transition mb-4 inline-block">
+          ← Control Room
         </Link>
-        <h1 className="text-4xl font-extrabold text-gradient-ems">Payouts</h1>
-        <p className="mt-2 text-white/50">Your revenue share, paid directly to you.</p>
+        <div className="flex items-center gap-3">
+          <span aria-hidden className="led-on-amber h-2.5 w-2.5 rounded-full" />
+          <h1 className="font-display text-5xl uppercase tracking-wider text-white">
+            Payouts
+          </h1>
+          <span className="studio-label ml-auto text-white/35">PAY-01</span>
+        </div>
+        <p className="mt-2 text-white/55">
+          Your revenue share, paid directly to you.
+        </p>
       </div>
 
       {/* ── Success toast ───────────────────────────────────────────────── */}
@@ -287,6 +296,7 @@ export default async function PayoutsPage(props: {
         itemized on each payout above. Stripe processes transfers within 2
         business days. Minimum payout: $10.00.
       </p>
+      </div>
     </div>
   );
 }

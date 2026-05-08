@@ -3,9 +3,9 @@
  *
  * Architecture (signal flow per track):
  *
- *   [BufferSource | LiveMicSource]  →  EQ/Comp  →  Gain  →  Pan  →  ┐
- *                                                            sends →  ├→  Shared Reverb/Delay Returns
- *   [BufferSource | LiveMicSource]  →  EQ/Comp  →  Gain  →  Pan  →  ┘
+ *   [BufferSource | LiveMicSource]  →  EQ/Comp  →  VocalBus  →  Gain  →  Pan  →  ┐
+ *                                                                         sends →  ├→  Shared Reverb/Delay Returns
+ *   [BufferSource | LiveMicSource]  →  EQ/Comp  →  VocalBus  →  Gain  →  Pan  →  ┘
  *                                                           dry + returns → MasterGain → AnalyserNode → destination
  *
  * The master AnalyserNode powers the output meter without forcing every
@@ -45,6 +45,12 @@ export interface TrackFx {
   compEnabled: boolean;
   compThreshDb: number; // -60..0
   compRatio: number; // 1..20
+  /** EMS vocal bus — console-style drive/tone/parallel crush. */
+  vocalBusEnabled: boolean;
+  vocalBusDriveDb: number; // 0..18
+  vocalBusPresenceDb: number; // -6..+6 @ 3.2 kHz
+  vocalBusAirDb: number; // -6..+8 @ 10.5 kHz
+  vocalBusCrush: number; // 0..1 parallel compression blend
   /** Reverb send into the shared hall/plate return. */
   reverbWet: number; // 0..1
   reverbDecaySec: number; // 0.2..6, shared return follows the most recent edit
@@ -81,9 +87,9 @@ export interface TrackState {
 
 interface TrackInternal {
   state: TrackState;
-  // Signal flow: fxIn → sidechainDuck → EQ → comp/bypass → gain → pan → meter → master
-  //                                                                ├→ reverbSend → shared reverb return
-  //                                                                └→ delaySend → shared delay return
+  // Signal flow: fxIn → sidechainDuck → EQ → comp/bypass → vocal bus → gain → pan → meter → master
+  //                                                                            ├→ reverbSend → shared reverb return
+  //                                                                            └→ delaySend → shared delay return
   fxIn: GainNode;
   /** Gain node that's modulated by the sidechain source's amplitude
    *  during tick(). Default 1.0 (no ducking). */
@@ -94,6 +100,14 @@ interface TrackInternal {
   comp: DynamicsCompressorNode;
   compBypass: GainNode;
   compMix: GainNode;
+  vocalBusDrive: GainNode;
+  vocalBusSaturator: WaveShaperNode;
+  vocalBusPresence: BiquadFilterNode;
+  vocalBusAir: BiquadFilterNode;
+  vocalBusDryGain: GainNode;
+  vocalBusCrush: DynamicsCompressorNode;
+  vocalBusCrushGain: GainNode;
+  vocalBusSum: GainNode;
   reverbSendGain: GainNode;
   delaySendGain: GainNode;
   gainNode: GainNode;
@@ -296,6 +310,50 @@ const DB_TO_LINEAR = (db: number): number => Math.pow(10, db / 20);
 const TRANSPORT_START_LEAD_SEC = 0.05;
 const VOCAL_MAX_AUTO_GAIN = 2.0;
 const VOCAL_TARGET_PEAK = 0.82;
+const DEFAULT_TRACK_FX: TrackFx = {
+  eqLowDb: 0,
+  eqMidDb: 0,
+  eqHighDb: 0,
+  compEnabled: true,
+  compThreshDb: -18,
+  compRatio: 3,
+  vocalBusEnabled: false,
+  vocalBusDriveDb: 0,
+  vocalBusPresenceDb: 0,
+  vocalBusAirDb: 0,
+  vocalBusCrush: 0,
+  reverbWet: 0,
+  reverbDecaySec: 2.5,
+  delayWet: 0,
+  delayBeats: 0.5,
+  delayFeedback: 0.35,
+};
+
+function completeTrackFx(fx?: Partial<TrackFx> | null): TrackFx {
+  return { ...DEFAULT_TRACK_FX, ...(fx ?? {}) };
+}
+
+function buildConsoleSaturationCurve(amount: number): Float32Array<ArrayBuffer> {
+  const clamped = Math.max(0, Math.min(1, amount));
+  const samples = 2048;
+  const curve = new Float32Array(
+    new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT),
+  );
+  if (clamped <= 0) {
+    for (let i = 0; i < samples; i++) {
+      curve[i] = (i / (samples - 1)) * 2 - 1;
+    }
+    return curve;
+  }
+
+  const drive = 1 + clamped * 7;
+  const normalizer = Math.tanh(drive);
+  for (let i = 0; i < samples; i++) {
+    const x = (i / (samples - 1)) * 2 - 1;
+    curve[i] = Math.tanh(x * drive) / normalizer;
+  }
+  return curve;
+}
 
 function clonePattern(p: BeatPattern): BeatPattern {
   // Use emptyPattern() as the base so the type system sees all 8 lanes
@@ -752,11 +810,35 @@ export class DawEngine {
     comp.knee.value = 6;
     comp.attack.value = 0.005;
     comp.release.value = 0.1;
-    // Comp bypass: we drive both `comp` and a unity gain in parallel,
-    // and crossfade. Cleaner than reconnecting nodes mid-stream.
+    // Comp bypass stays closed by default. When compression is disabled,
+    // the compressor is slackened into a unity no-op instead of rewiring.
     const compBypass = ctx.createGain();
     compBypass.gain.value = 0; // start with bypass closed → comp engaged
     const compMix = ctx.createGain();
+
+    const vocalBusDrive = ctx.createGain();
+    vocalBusDrive.gain.value = 1;
+    const vocalBusSaturator = ctx.createWaveShaper();
+    vocalBusSaturator.curve = buildConsoleSaturationCurve(0);
+    vocalBusSaturator.oversample = "2x";
+    const vocalBusPresence = ctx.createBiquadFilter();
+    vocalBusPresence.type = "peaking";
+    vocalBusPresence.frequency.value = 3200;
+    vocalBusPresence.Q.value = 0.85;
+    const vocalBusAir = ctx.createBiquadFilter();
+    vocalBusAir.type = "highshelf";
+    vocalBusAir.frequency.value = 10500;
+    const vocalBusDryGain = ctx.createGain();
+    vocalBusDryGain.gain.value = 1;
+    const vocalBusCrush = ctx.createDynamicsCompressor();
+    vocalBusCrush.threshold.value = -30;
+    vocalBusCrush.knee.value = 10;
+    vocalBusCrush.ratio.value = 14;
+    vocalBusCrush.attack.value = 0.002;
+    vocalBusCrush.release.value = 0.07;
+    const vocalBusCrushGain = ctx.createGain();
+    vocalBusCrushGain.gain.value = 0;
+    const vocalBusSum = ctx.createGain();
 
     const reverbSendGain = ctx.createGain();
     reverbSendGain.gain.value = 0;
@@ -778,9 +860,18 @@ export class DawEngine {
     eqHigh.connect(compBypass); // parallel bypass path
     comp.connect(compMix);
     compBypass.connect(compMix);
+    compMix.connect(vocalBusDrive);
+    vocalBusDrive.connect(vocalBusSaturator);
+    vocalBusSaturator.connect(vocalBusPresence);
+    vocalBusPresence.connect(vocalBusAir);
+    vocalBusAir.connect(vocalBusDryGain);
+    vocalBusAir.connect(vocalBusCrush);
+    vocalBusDryGain.connect(vocalBusSum);
+    vocalBusCrush.connect(vocalBusCrushGain);
+    vocalBusCrushGain.connect(vocalBusSum);
     // Out the strip → fader / pan / meter / master. Time-based FX are
     // post-fader sends to shared aux returns.
-    compMix.connect(gainNode);
+    vocalBusSum.connect(gainNode);
     gainNode.connect(panNode);
     panNode.connect(meterAnalyser);
     meterAnalyser.connect(this.master);
@@ -803,19 +894,7 @@ export class DawEngine {
         hasAudio: false,
         durationSec: 0,
         level: 0,
-        fx: {
-          eqLowDb: 0,
-          eqMidDb: 0,
-          eqHighDb: 0,
-          compEnabled: true,
-          compThreshDb: -18,
-          compRatio: 3,
-          reverbWet: 0,
-          reverbDecaySec: 2.5,
-          delayWet: 0,
-          delayBeats: 0.5,
-          delayFeedback: 0.35,
-        },
+        fx: { ...DEFAULT_TRACK_FX },
         sidechainFromId: null,
         sidechainAmount: 0.6,
       },
@@ -827,6 +906,14 @@ export class DawEngine {
       comp,
       compBypass,
       compMix,
+      vocalBusDrive,
+      vocalBusSaturator,
+      vocalBusPresence,
+      vocalBusAir,
+      vocalBusDryGain,
+      vocalBusCrush,
+      vocalBusCrushGain,
+      vocalBusSum,
       reverbSendGain,
       delaySendGain,
       gainNode,
@@ -890,26 +977,85 @@ export class DawEngine {
     if (params.threshDb !== undefined) {
       const clamped = Math.max(-60, Math.min(0, params.threshDb));
       t.state.fx.compThreshDb = clamped;
-      t.comp.threshold.value = clamped;
     }
     if (params.ratio !== undefined) {
       const clamped = Math.max(1, Math.min(20, params.ratio));
       t.state.fx.compRatio = clamped;
-      t.comp.ratio.value = clamped;
     }
     if (params.enabled !== undefined) {
       t.state.fx.compEnabled = params.enabled;
-      // Crossfade comp ↔ bypass over 20ms to avoid a click on toggle.
-      const now = this.ctx!.currentTime;
-      if (params.enabled) {
-        t.compMix.gain.cancelScheduledValues(now);
-        t.compBypass.gain.linearRampToValueAtTime(0, now + 0.02);
-      } else {
-        t.compBypass.gain.cancelScheduledValues(now);
-        t.compBypass.gain.linearRampToValueAtTime(1, now + 0.02);
-      }
     }
+    const now = this.ctx!.currentTime;
+    const targetThreshold = t.state.fx.compEnabled ? t.state.fx.compThreshDb : 0;
+    const targetRatio = t.state.fx.compEnabled ? t.state.fx.compRatio : 1;
+    t.comp.threshold.cancelScheduledValues(now);
+    t.comp.threshold.setValueAtTime(t.comp.threshold.value, now);
+    t.comp.threshold.linearRampToValueAtTime(targetThreshold, now + 0.02);
+    t.comp.ratio.cancelScheduledValues(now);
+    t.comp.ratio.setValueAtTime(t.comp.ratio.value, now);
+    t.comp.ratio.linearRampToValueAtTime(targetRatio, now + 0.02);
+    t.compBypass.gain.cancelScheduledValues(now);
+    t.compBypass.gain.setValueAtTime(t.compBypass.gain.value, now);
+    t.compBypass.gain.linearRampToValueAtTime(0, now + 0.02);
     this.notify();
+  }
+
+  setTrackVocalBus(
+    id: TrackId,
+    params: {
+      enabled?: boolean;
+      driveDb?: number;
+      presenceDb?: number;
+      airDb?: number;
+      crush?: number;
+    },
+  ) {
+    const t = this.tracks.get(id);
+    if (!t) return;
+    if (params.enabled !== undefined) t.state.fx.vocalBusEnabled = params.enabled;
+    if (params.driveDb !== undefined) {
+      t.state.fx.vocalBusDriveDb = Math.max(0, Math.min(18, params.driveDb));
+    }
+    if (params.presenceDb !== undefined) {
+      t.state.fx.vocalBusPresenceDb = Math.max(-6, Math.min(6, params.presenceDb));
+    }
+    if (params.airDb !== undefined) {
+      t.state.fx.vocalBusAirDb = Math.max(-6, Math.min(8, params.airDb));
+    }
+    if (params.crush !== undefined) {
+      t.state.fx.vocalBusCrush = Math.max(0, Math.min(1, params.crush));
+    }
+    this.applyVocalBusState(t);
+    this.notify();
+  }
+
+  private applyVocalBusState(t: TrackInternal) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const fx = completeTrackFx(t.state.fx);
+    t.state.fx = fx;
+    const enabled = fx.vocalBusEnabled;
+    const driveDb = enabled ? fx.vocalBusDriveDb : 0;
+    const crush = enabled ? fx.vocalBusCrush : 0;
+    t.vocalBusDrive.gain.cancelScheduledValues(now);
+    t.vocalBusDrive.gain.setValueAtTime(t.vocalBusDrive.gain.value, now);
+    t.vocalBusDrive.gain.linearRampToValueAtTime(DB_TO_LINEAR(driveDb), now + 0.02);
+    t.vocalBusSaturator.curve = buildConsoleSaturationCurve(driveDb / 18);
+    t.vocalBusPresence.gain.cancelScheduledValues(now);
+    t.vocalBusPresence.gain.setValueAtTime(t.vocalBusPresence.gain.value, now);
+    t.vocalBusPresence.gain.linearRampToValueAtTime(
+      enabled ? fx.vocalBusPresenceDb : 0,
+      now + 0.02,
+    );
+    t.vocalBusAir.gain.cancelScheduledValues(now);
+    t.vocalBusAir.gain.setValueAtTime(t.vocalBusAir.gain.value, now);
+    t.vocalBusAir.gain.linearRampToValueAtTime(enabled ? fx.vocalBusAirDb : 0, now + 0.02);
+    t.vocalBusDryGain.gain.cancelScheduledValues(now);
+    t.vocalBusDryGain.gain.setValueAtTime(t.vocalBusDryGain.gain.value, now);
+    t.vocalBusDryGain.gain.linearRampToValueAtTime(enabled ? 0.96 - crush * 0.14 : 1, now + 0.02);
+    t.vocalBusCrushGain.gain.cancelScheduledValues(now);
+    t.vocalBusCrushGain.gain.setValueAtTime(t.vocalBusCrushGain.gain.value, now);
+    t.vocalBusCrushGain.gain.linearRampToValueAtTime(enabled ? crush * 0.7 : 0, now + 0.02);
   }
 
   setTrackReverb(id: TrackId, params: { wet?: number; decaySec?: number }) {
@@ -1237,7 +1383,7 @@ export class DawEngine {
       const src = this.ctx.createBufferSource();
       src.buffer = t.buffer;
       // Sources go in at fxIn (top of chain) so playback gets the same
-      // EQ / Comp / Reverb / Delay treatment as live monitoring.
+      // EQ / comp / vocal bus / sends treatment as live monitoring.
       src.connect(t.fxIn);
       try {
         src.start(startAt, Math.max(0, offset));
@@ -1591,17 +1737,16 @@ export class DawEngine {
   }
 
   /**
-   * Immediately play back the recorded audio on a track through the master bus,
+   * Immediately play back the recorded audio on a track through its strip FX,
    * independent of transport state (useful for quick "hear-back" after recording).
    */
   previewTake(id: TrackId): void {
     if (!this.ctx) return;
-    const out = this.master ?? this.ctx.destination;
     const t = this.tracks.get(id);
     if (!t?.buffer) return;
     const src = this.ctx.createBufferSource();
     src.buffer = t.buffer;
-    src.connect(out);
+    src.connect(t.fxIn);
     src.start(0);
   }
 
@@ -1966,7 +2111,7 @@ export class DawEngine {
   }
 
   /**
-   * Construct an FX chain (EQ → comp → reverb → delay) inside an
+   * Construct an FX chain (EQ → comp → vocal bus → reverb → delay) inside an
    * OfflineAudioContext that mirrors the live track's parameter values.
    * Returns the input node (route source/drum hits in here) and the
    * output node (connect to master).
@@ -1975,25 +2120,26 @@ export class DawEngine {
     offline: OfflineAudioContext,
     state: TrackState,
   ): { inNode: GainNode; outNode: GainNode; reverbSend: GainNode; delaySend: GainNode } {
+    const fx = completeTrackFx(state.fx);
     const fxIn = offline.createGain();
     const eqLow = offline.createBiquadFilter();
     eqLow.type = "lowshelf";
     eqLow.frequency.value = 200;
-    eqLow.gain.value = state.fx.eqLowDb;
+    eqLow.gain.value = fx.eqLowDb;
     const eqMid = offline.createBiquadFilter();
     eqMid.type = "peaking";
     eqMid.frequency.value = 1000;
     eqMid.Q.value = 1;
-    eqMid.gain.value = state.fx.eqMidDb;
+    eqMid.gain.value = fx.eqMidDb;
     const eqHigh = offline.createBiquadFilter();
     eqHigh.type = "highshelf";
     eqHigh.frequency.value = 5000;
-    eqHigh.gain.value = state.fx.eqHighDb;
+    eqHigh.gain.value = fx.eqHighDb;
     const compMix = offline.createGain();
-    if (state.fx.compEnabled) {
+    if (fx.compEnabled) {
       const comp = offline.createDynamicsCompressor();
-      comp.threshold.value = state.fx.compThreshDb;
-      comp.ratio.value = state.fx.compRatio;
+      comp.threshold.value = fx.compThreshDb;
+      comp.ratio.value = fx.compRatio;
       comp.knee.value = 6;
       comp.attack.value = 0.005;
       comp.release.value = 0.1;
@@ -2002,21 +2148,57 @@ export class DawEngine {
     } else {
       eqHigh.connect(compMix);
     }
+    const vocalBusDrive = offline.createGain();
+    vocalBusDrive.gain.value = DB_TO_LINEAR(fx.vocalBusEnabled ? fx.vocalBusDriveDb : 0);
+    const vocalBusSaturator = offline.createWaveShaper();
+    vocalBusSaturator.curve = buildConsoleSaturationCurve(
+      fx.vocalBusEnabled ? fx.vocalBusDriveDb / 18 : 0,
+    );
+    vocalBusSaturator.oversample = "2x";
+    const vocalBusPresence = offline.createBiquadFilter();
+    vocalBusPresence.type = "peaking";
+    vocalBusPresence.frequency.value = 3200;
+    vocalBusPresence.Q.value = 0.85;
+    vocalBusPresence.gain.value = fx.vocalBusEnabled ? fx.vocalBusPresenceDb : 0;
+    const vocalBusAir = offline.createBiquadFilter();
+    vocalBusAir.type = "highshelf";
+    vocalBusAir.frequency.value = 10500;
+    vocalBusAir.gain.value = fx.vocalBusEnabled ? fx.vocalBusAirDb : 0;
+    const vocalBusDryGain = offline.createGain();
+    vocalBusDryGain.gain.value = fx.vocalBusEnabled ? 0.96 - fx.vocalBusCrush * 0.14 : 1;
+    const vocalBusCrush = offline.createDynamicsCompressor();
+    vocalBusCrush.threshold.value = -30;
+    vocalBusCrush.knee.value = 10;
+    vocalBusCrush.ratio.value = 14;
+    vocalBusCrush.attack.value = 0.002;
+    vocalBusCrush.release.value = 0.07;
+    const vocalBusCrushGain = offline.createGain();
+    vocalBusCrushGain.gain.value = fx.vocalBusEnabled ? fx.vocalBusCrush * 0.7 : 0;
+    const vocalBusSum = offline.createGain();
     const gainNode = offline.createGain();
     gainNode.gain.value = DB_TO_LINEAR(state.gainDb);
     const panNode = offline.createStereoPanner();
     panNode.pan.value = state.pan;
     const outNode = offline.createGain();
     const reverbSend = offline.createGain();
-    reverbSend.gain.value = state.fx.reverbWet;
+    reverbSend.gain.value = fx.reverbWet;
     const delaySend = offline.createGain();
-    delaySend.gain.value = state.fx.delayWet;
+    delaySend.gain.value = fx.delayWet;
 
     // Wire (mirrors live chain).
     fxIn.connect(eqLow);
     eqLow.connect(eqMid);
     eqMid.connect(eqHigh);
-    compMix.connect(gainNode);
+    compMix.connect(vocalBusDrive);
+    vocalBusDrive.connect(vocalBusSaturator);
+    vocalBusSaturator.connect(vocalBusPresence);
+    vocalBusPresence.connect(vocalBusAir);
+    vocalBusAir.connect(vocalBusDryGain);
+    vocalBusAir.connect(vocalBusCrush);
+    vocalBusDryGain.connect(vocalBusSum);
+    vocalBusCrush.connect(vocalBusCrushGain);
+    vocalBusCrushGain.connect(vocalBusSum);
+    vocalBusSum.connect(gainNode);
     gainNode.connect(panNode);
     panNode.connect(outNode);
     panNode.connect(reverbSend);
@@ -2140,22 +2322,34 @@ export class DawEngine {
 
     // Restore tracks.
     for (const t of file.tracks) {
+      const fx = completeTrackFx(t.fx);
       const id = this.addTrack(t.name, t.color);
       this.setTrackGainDb(id, t.gainDb);
       this.setTrackPan(id, t.pan);
       this.setTrackMute(id, t.muted);
       this.setTrackSolo(id, t.solo);
       this.setTrackArmed(id, t.armed);
-      this.setTrackEq(id, "low", t.fx.eqLowDb);
-      this.setTrackEq(id, "mid", t.fx.eqMidDb);
-      this.setTrackEq(id, "high", t.fx.eqHighDb);
+      this.setTrackEq(id, "low", fx.eqLowDb);
+      this.setTrackEq(id, "mid", fx.eqMidDb);
+      this.setTrackEq(id, "high", fx.eqHighDb);
       this.setTrackComp(id, {
-        threshDb: t.fx.compThreshDb,
-        ratio: t.fx.compRatio,
-        enabled: t.fx.compEnabled,
+        threshDb: fx.compThreshDb,
+        ratio: fx.compRatio,
+        enabled: fx.compEnabled,
       });
-      this.setTrackReverb(id, { wet: t.fx.reverbWet });
-      this.setTrackDelay(id, { wet: t.fx.delayWet });
+      this.setTrackVocalBus(id, {
+        enabled: fx.vocalBusEnabled,
+        driveDb: fx.vocalBusDriveDb,
+        presenceDb: fx.vocalBusPresenceDb,
+        airDb: fx.vocalBusAirDb,
+        crush: fx.vocalBusCrush,
+      });
+      this.setTrackReverb(id, { wet: fx.reverbWet, decaySec: fx.reverbDecaySec });
+      this.setTrackDelay(id, {
+        wet: fx.delayWet,
+        beats: fx.delayBeats,
+        feedback: fx.delayFeedback,
+      });
 
       if (t.audioBlob) {
         try {

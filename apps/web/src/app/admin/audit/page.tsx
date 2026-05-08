@@ -90,7 +90,7 @@ export default async function AdminAuditPage({ searchParams }: Props) {
         </button>
       </form>
 
-      <div className="overflow-x-auto rounded-2xl border border-white/8 bg-[#141414]">
+      <div className="overflow-x-auto rounded-2xl border border-white/8 studio-faceplate">
         <table className="w-full min-w-[800px] text-sm">
           <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/40">
             <tr>

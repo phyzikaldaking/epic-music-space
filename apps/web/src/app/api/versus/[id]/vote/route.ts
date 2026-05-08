@@ -9,6 +9,7 @@ import { enqueueAnalytics, enqueueNotification } from "@/lib/queues";
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import { recordRiskEvent } from "@/lib/riskEvents";
+import { getRedis } from "@/lib/redis";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -17,6 +18,11 @@ interface Params {
 const voteSchema = z.object({
   votedSongId: z.string().cuid(),
 });
+
+function getLeadSide(votesA: number, votesB: number): "A" | "B" | "TIE" {
+  if (votesA === votesB) return "TIE";
+  return votesA > votesB ? "A" : "B";
+}
 
 export async function POST(req: NextRequest, { params }: Params) {
   const ip =
@@ -149,6 +155,33 @@ export async function POST(req: NextRequest, { params }: Params) {
     return matchRow;
   });
 
+  const previousLead = getLeadSide(match.votesA, match.votesB);
+  const nextLead = getLeadSide(updated.votesA, updated.votesB);
+  const msRemaining = Math.max(0, match.endsAt.getTime() - Date.now());
+  const inClutchWindow = msRemaining <= 60_000;
+  const clutchLeadFlip =
+    inClutchWindow
+    && previousLead !== "TIE"
+    && nextLead !== "TIE"
+    && previousLead !== nextLead;
+
+  const previousLeaderSongId =
+    previousLead === "A" ? match.songAId : previousLead === "B" ? match.songBId : null;
+  const nextLeaderSongId =
+    nextLead === "A" ? match.songAId : nextLead === "B" ? match.songBId : null;
+  const previousLeaderArtistId =
+    previousLead === "A"
+      ? match.songA.artistId
+      : previousLead === "B"
+        ? match.songB.artistId
+        : null;
+  const nextLeaderArtistId =
+    nextLead === "A"
+      ? match.songA.artistId
+      : nextLead === "B"
+        ? match.songB.artistId
+        : null;
+
   // Vote shifted scores — bust homepage / track / battles caches.
   revalidateTag(CACHE_TAGS.songs, "max");
   revalidateTag(CACHE_TAGS.battles, "max");
@@ -195,6 +228,73 @@ export async function POST(req: NextRequest, { params }: Params) {
     })();
   }
 
+  if (clutchLeadFlip && previousLeaderSongId && nextLeaderSongId && previousLeaderArtistId && nextLeaderArtistId) {
+    void (async () => {
+      try {
+        let shouldNotify = true;
+        const redis = getRedis();
+        if (redis) {
+          const dedupeKey = `ems:versus:lead-flip:${matchId}:${nextLeaderSongId}`;
+          const dedupe = await redis.set(dedupeKey, "1", "EX", 30, "NX");
+          shouldNotify = dedupe === "OK";
+        }
+        if (!shouldNotify) return;
+
+        const body = `Clutch minute lead flip: now ${updated.votesA}-${updated.votesB}. Your battle just swung.`;
+        await Promise.allSettled([
+          enqueueNotification({
+            userId: previousLeaderArtistId,
+            type: "VERSUS_LEAD_FLIP",
+            title: "Clutch lead flipped",
+            body,
+            metadata: {
+              matchId,
+              previousLead: previousLead,
+              nextLead,
+              votesA: updated.votesA,
+              votesB: updated.votesB,
+              previousLeaderSongId,
+              nextLeaderSongId,
+            },
+          }),
+          enqueueNotification({
+            userId: nextLeaderArtistId,
+            type: "VERSUS_LEAD_FLIP",
+            title: "You just took the lead",
+            body,
+            metadata: {
+              matchId,
+              previousLead,
+              nextLead,
+              votesA: updated.votesA,
+              votesB: updated.votesB,
+              previousLeaderSongId,
+              nextLeaderSongId,
+            },
+          }),
+        ]);
+
+        await enqueueAnalytics({
+          event: "versus_clutch_lead_flip",
+          userId: session.user.id,
+          songId: votedSongId,
+          metadata: {
+            matchId,
+            previousLead,
+            nextLead,
+            votesA: updated.votesA,
+            votesB: updated.votesB,
+            previousLeaderSongId,
+            nextLeaderSongId,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn("[versus:vote] clutch lead-flip notify failed", err);
+      }
+    })();
+  }
+
   // Broadcast real-time vote update via Supabase
   const supabase = createServerSupabaseClient();
   if (supabase) {
@@ -204,6 +304,24 @@ export async function POST(req: NextRequest, { params }: Params) {
         event: "vote_update",
         payload: { matchId, votesA: updated.votesA, votesB: updated.votesB },
       }),
+      ...(clutchLeadFlip && previousLeaderSongId && nextLeaderSongId
+        ? [
+            supabase.channel(CHANNELS.versus(matchId)).send({
+              type: "broadcast",
+              event: "lead_flip_alert",
+              payload: {
+                matchId,
+                votesA: updated.votesA,
+                votesB: updated.votesB,
+                previousLead,
+                nextLead,
+                previousLeaderSongId,
+                nextLeaderSongId,
+                secondsRemaining: Math.max(0, Math.floor(msRemaining / 1000)),
+              },
+            }),
+          ]
+        : []),
       // Notify leaderboard listeners that scores changed
       supabase.channel(CHANNELS.leaderboard).send({
         type: "broadcast",

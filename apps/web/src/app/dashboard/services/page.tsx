@@ -106,7 +106,7 @@ export default async function ServicesDashboard() {
         </Link>
       </div>
 
-      <section className="mb-8 rounded-2xl border border-white/10 bg-[#0d0d14] p-5">
+      <section className="mb-8 rounded-2xl border border-white/10 studio-faceplate-dark p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-brand-300">
@@ -232,7 +232,7 @@ export default async function ServicesDashboard() {
               <Link
                 key={s.id}
                 href={`/services/${s.id}`}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-[#0d0d14] p-4 transition hover:border-brand-500/30"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 studio-faceplate-dark p-4 transition hover:border-brand-500/30"
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{s.title}</p>

@@ -10,6 +10,7 @@ import SongCard from "@/components/SongCard";
 import FollowButton from "@/components/FollowButton";
 import TipArtistButton from "@/components/TipArtistButton";
 import MessageButton from "@/components/MessageButton";
+import CustomBeatRequestButton from "@/components/CustomBeatRequestButton";
 import ReportUserButton from "@/components/ReportUserButton";
 import PostCard from "@/components/PostCard";
 import { BADGE_META } from "@/lib/badges";
@@ -184,6 +185,12 @@ export default async function StudioProfilePage({ params }: Props) {
       : 0;
 
   const totalLicensesSold = user.songs.reduce((s, x) => s + x.soldLicenses, 0);
+  const battleWins = user.songs.reduce((s, x) => s + x.versusWins, 0);
+  const battleLosses = user.songs.reduce((s, x) => s + x.versusLosses, 0);
+  const totalBattles = battleWins + battleLosses;
+  const battleWinRate = totalBattles > 0 ? Math.round((battleWins / totalBattles) * 100) : null;
+  const isSeasonContender = totalBattles >= 12 && battleWins >= 8;
+  const isDivisionLeaderCandidate = totalBattles >= 8 && (battleWinRate ?? 0) >= 65;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
@@ -261,6 +268,21 @@ export default async function StudioProfilePage({ params }: Props) {
             <span>{user._count.followers} followers</span>
             <span>{user._count.following} following</span>
             <span>{totalLicensesSold} licenses sold</span>
+            {totalBattles > 0 && (
+              <span className="rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 font-semibold text-rose-200">
+                ⚔️ {battleWins}W-{battleLosses}L{battleWinRate !== null ? ` (${battleWinRate}%)` : ""}
+              </span>
+            )}
+            {isSeasonContender && (
+              <span className="rounded-full border border-emerald-400/35 bg-emerald-500/12 px-2 py-0.5 font-semibold text-emerald-200">
+                🏁 Season contender
+              </span>
+            )}
+            {!isSeasonContender && isDivisionLeaderCandidate && (
+              <span className="rounded-full border border-amber-400/35 bg-amber-500/12 px-2 py-0.5 font-semibold text-amber-200">
+                🏆 Division leader pace
+              </span>
+            )}
           </div>
           {/* Badges row */}
           {user.badges.length > 0 && (
@@ -306,6 +328,16 @@ export default async function StudioProfilePage({ params }: Props) {
                 🎤 Verzuz
               </Link>
               <MessageButton peerId={user.id} />
+              {session.user.id !== user.id &&
+                (user.role === "PRODUCER" ||
+                  user.role === "ENGINEER" ||
+                  user.role === "ARTIST" ||
+                  user.role === "LABEL") && (
+                  <CustomBeatRequestButton
+                    peerId={user.id}
+                    peerName={user.name ?? username}
+                  />
+                )}
               {session.user.id !== user.id && (
                 <ReportUserButton
                   reportedUserId={user.id}

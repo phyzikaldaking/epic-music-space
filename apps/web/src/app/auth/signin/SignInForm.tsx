@@ -2,7 +2,6 @@
 
 import { useState, Suspense, useEffect } from "react";
 import { signIn } from "next-auth/react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { appendCallbackParam, sanitizeCallbackPath } from "@/lib/safeCallback";
 import { isCapacitorWebView } from "@/lib/runtime";
@@ -377,12 +376,12 @@ function SignInContent({
               {error}
               {error.includes("needs verification") && (
                 <div className="mt-2">
-                  <Link
+                  <a
                     href={`/auth/verify-email?email=${encodeURIComponent(email)}&callbackUrl=${encodeURIComponent(callbackUrl)}`}
                     className="underline hover:text-red-300"
                   >
                     Resend link
-                  </Link>
+                  </a>
                   <span className="ml-2 text-red-300/80">and check spam/promotions folder.</span>
                 </div>
               )}
@@ -458,9 +457,9 @@ function SignInContent({
                 <div>
                   <div className="mb-1.5 flex items-center justify-between">
                     <label className="block text-sm font-medium text-white/70">Password</label>
-                    <Link href="/auth/forgot-password" className="text-xs text-brand-300 hover:underline">
+                    <a href="/auth/forgot-password" className="text-xs text-brand-300 hover:underline">
                       Forgot?
-                    </Link>
+                    </a>
                   </div>
                   <input
                     type="password"
@@ -609,21 +608,21 @@ function SignInContent({
 
           <p className="mt-6 text-center text-sm text-white/40">
             Don&apos;t have an account?{" "}
-            <Link href={appendCallbackParam("/auth/signup", callbackUrl)} className="text-brand-400 hover:underline">
+            <a href={appendCallbackParam("/auth/signup", callbackUrl)} className="text-brand-400 hover:underline">
               Sign up
-            </Link>
+            </a>
           </p>
 
           {/* Escape hatch for tire-kickers — let them poke around the studio
               without committing to an account first. They'll be asked for an
               email when they hit save/publish, which is the right moment. */}
           <div className="mt-3 text-center">
-            <Link
+            <a
               href="/studio/try"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/55 underline decoration-dotted underline-offset-4 hover:text-white"
             >
               <span aria-hidden>↳</span> Just looking? Try the studio without an account
-            </Link>
+            </a>
           </div>
 
           <div className="mt-5 grid grid-cols-1 gap-2 text-xs text-white/60 sm:grid-cols-3">

@@ -12,7 +12,7 @@ export default function LeaderboardLoading() {
         <div className="h-9 w-24 animate-pulse rounded-xl bg-white/6" />
       </div>
       {/* Table rows */}
-      <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+      <div className="overflow-hidden rounded-2xl border border-white/8 studio-faceplate">
         <div className="border-b border-white/8 bg-white/[0.02] px-5 py-3.5 grid grid-cols-5 gap-4">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="h-3 w-16 animate-pulse rounded bg-white/6" />

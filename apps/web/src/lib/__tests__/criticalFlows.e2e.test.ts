@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 const authMock = vi.hoisted(() => vi.fn());
 const limiterConsumeMock = vi.hoisted(() => vi.fn());
 const bcryptHashMock = vi.hoisted(() => vi.fn());
+const isLikelyBotMock = vi.hoisted(() => vi.fn(() => false));
 const emitAuthEventMock = vi.hoisted(() => vi.fn());
 const riskEventMock = vi.hoisted(() => vi.fn());
 const sendVerificationEmailMock = vi.hoisted(() => vi.fn());
@@ -62,7 +63,7 @@ vi.mock("@/lib/rateLimit", () => ({
 vi.mock("bcryptjs", () => ({ default: { hash: bcryptHashMock } }));
 vi.mock("@/lib/authObservability", () => ({ emitAuthEvent: emitAuthEventMock }));
 vi.mock("@/lib/riskEvents", () => ({ recordRiskEvent: riskEventMock }));
-vi.mock("@/lib/botCheck", () => ({ isLikelyBot: vi.fn(() => false) }));
+vi.mock("@/lib/botCheck", () => ({ isLikelyBot: isLikelyBotMock }));
 vi.mock("@/lib/turnstile", () => ({ verifyTurnstileToken: vi.fn(() => ({ ok: true })) }));
 vi.mock("@/lib/email", () => ({
   sendVerificationEmail: sendVerificationEmailMock,
@@ -112,6 +113,7 @@ describe("critical commerce and account E2E surfaces", () => {
     vi.clearAllMocks();
     process.env.DATABASE_URL = "postgres://test";
     limiterConsumeMock.mockResolvedValue(undefined);
+    isLikelyBotMock.mockReturnValue(false);
     bcryptHashMock.mockResolvedValue("hashed-password");
     emitAuthEventMock.mockResolvedValue(undefined);
     riskEventMock.mockResolvedValue(undefined);
@@ -153,6 +155,9 @@ describe("critical commerce and account E2E surfaces", () => {
     expect(res.status).toBe(201);
     expect(body.requiresVerification).toBe(true);
     expect(body.studioUsername).toBe("artist-one");
+    expect(isLikelyBotMock).toHaveBeenCalledWith({
+      headers: expect.any(Headers),
+    });
     expect(txMock.user.create).toHaveBeenCalled();
     expect(prismaMock.verificationToken.create).toHaveBeenCalled();
   });

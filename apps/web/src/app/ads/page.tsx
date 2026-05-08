@@ -109,7 +109,7 @@ export default async function AdsPage({
           ].map((s) => (
             <div
               key={s.label}
-              className="rounded-2xl border border-white/8 bg-[#141414] p-5 card-hover-neon"
+              className="rounded-2xl border border-white/8 studio-faceplate p-5 card-hover-neon"
             >
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-widest text-white/35">
@@ -181,7 +181,7 @@ export default async function AdsPage({
             )}
           </div>
           {activeAds.length === 0 ? (
-            <div className="rounded-2xl border border-white/8 bg-[#141414] p-8 text-center text-sm text-white/30">
+            <div className="rounded-2xl border border-white/8 studio-faceplate p-8 text-center text-sm text-white/30">
               No active ad placements at the moment. Be the first!
             </div>
           ) : (
@@ -189,7 +189,7 @@ export default async function AdsPage({
               {activeAds.map((ad) => (
                 <div
                   key={ad.id}
-                  className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414] card-hover-neon"
+                  className="overflow-hidden rounded-2xl border border-white/8 studio-faceplate card-hover-neon"
                 >
                   <div className="relative h-36 w-full">
                     <Image

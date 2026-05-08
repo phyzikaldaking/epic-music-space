@@ -53,7 +53,7 @@ export default async function LibraryPage() {
       </div>
 
       {saved.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-[#141414] p-10 text-center">
+        <div className="rounded-2xl border border-white/10 studio-faceplate p-10 text-center">
           <p className="mb-3 text-4xl" aria-hidden>📀</p>
           <p className="text-sm font-semibold text-white/85">
             No saved tracks yet.

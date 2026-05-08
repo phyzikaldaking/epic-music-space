@@ -269,80 +269,114 @@ export default async function HomePage() {
   const displayStats = candidateStats.filter((s) => s.value >= s.threshold);
 
   return (
-    <div className="vc-page">
+    <div className="relative">
       <HomeVisualEffectsGate />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: faqStructuredDataJson }}
       />
 
-      <section className="vc-hero">
+      {/* Studio control-room hero — replaces the prior Vice City hero.
+          Reads as the front of a piece of pro audio gear: walnut top
+          trim, ON-AIR LEDs, recessed LCD readouts, brushed steel
+          faceplate. The first impression of the site IS the brand. */}
+      <section className="studio-hero relative overflow-hidden">
         <AnimatedBackdropClient variant="hero" />
-        <div className="vc-stars" aria-hidden="true" />
-        {/* Hero background: brand gradient backdrop + animated stars + the
-            scan/grain texture stack. We dropped the Unsplash stock photo —
-            it was reading "early-stage product" and adding 200KB+ to LCP.
-            The gradient + AnimatedBackdrop carries the visual now. */}
-        <div className="vc-studio-tint" aria-hidden="true" />
-        <div className="vc-studio-overlay" aria-hidden="true" />
-        <div className="vc-studio-scan" aria-hidden="true" />
-        <div className="vc-grain" aria-hidden="true" />
-        <div className="vc-grid-floor" aria-hidden="true" />
-        <div className="vc-horizon" aria-hidden="true" />
 
-        <div className="vc-hero-content">
+        <div className="relative z-[1] mx-auto max-w-6xl px-4 pb-16 pt-10 sm:pt-16">
+          {/* Top status bar — like the front-panel labels on a multi-channel
+              recorder. Tells the visitor at a glance what this thing is. */}
+          <div className="mb-8 flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-3 py-1.5">
+              <span aria-hidden className="led-on-rec h-1.5 w-1.5 rounded-full animate-pulse" />
+              <span className="studio-label text-rec-400">On Air</span>
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-3 py-1.5">
+              <span aria-hidden className="led-on-amber h-1.5 w-1.5 rounded-full" />
+              <span className="studio-label text-tube-300">Live Sessions</span>
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-3 py-1.5">
+              <span aria-hidden className="led-on-green h-1.5 w-1.5 rounded-full" />
+              <span className="studio-label text-white/70">Console Online</span>
+            </span>
+            <span className="studio-label ml-auto text-white/35 hidden sm:inline">
+              EMS-01 · Master Console
+            </span>
+          </div>
+
           <HomeHeroMessaging />
           <HomeSplitCtas
             placement="hero"
-            containerClassName="vc-hero-ctas"
-            artistClassName="vc-btn vc-btn-pink"
-            listenerClassName="vc-btn vc-btn-ghost"
+            containerClassName="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center"
+            artistClassName="studio-engage-btn rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
+            listenerClassName="rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
           />
-          <p className="vc-hero-trustline">
-            Free to start. No credit card required. Artist payouts remain
-            transparent with a flat 10% platform fee.
+          <p className="mt-5 text-center studio-label text-white/55">
+            Free to start · no card · flat 10% platform fee · 100% artist revenue
           </p>
           <p className="mt-3 text-center text-sm text-white/55">
             Just curious?{" "}
             <Link
               href="/studio/try"
-              className="font-semibold text-cyan-300 underline decoration-dotted underline-offset-4 hover:text-cyan-200"
+              className="font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
             >
               Try the studio with no signup →
             </Link>
           </p>
 
           {sampleSongs[0] && (
-            <HeroNowSpinning
-              song={sampleSongs[0]}
-              secondary={sampleSongs[1] ?? null}
-            />
+            <div className="mt-10">
+              <HeroNowSpinning
+                song={sampleSongs[0]}
+                secondary={sampleSongs[1] ?? null}
+              />
+            </div>
           )}
 
-          {/* Only render the stats strip if we have ≥3 real numbers to brag
-              about. A wall of "0+" reads "nobody's here" — worse than not
-              showing the section. */}
+          {/* Stats meter bridge. Each stat is an LCD readout — reads as
+              the level meters on the front of a console. Only renders when
+              we have ≥3 real numbers to show. */}
           {displayStats.length >= 3 && (
-            <div className="vc-hero-stats" role="list" aria-label="Platform highlights">
+            <div
+              role="list"
+              aria-label="Platform highlights"
+              className="mt-10 grid gap-3 sm:grid-cols-2 md:grid-cols-4"
+            >
               {displayStats.map((stat) => (
-                <div key={stat.label} className="vc-hero-stat" role="listitem">
-                  <span className="num">{stat.num}</span>
-                  <span className="label">{stat.label}</span>
+                <div
+                  key={stat.label}
+                  role="listitem"
+                  className="studio-screen p-4"
+                >
+                  <p className="studio-label relative z-10 text-white/45">
+                    {stat.label}
+                  </p>
+                  <p className="text-readout-amber relative z-10 mt-1 text-3xl font-bold tabular-nums">
+                    {stat.num}
+                  </p>
                 </div>
               ))}
             </div>
           )}
 
-          <div className="vc-hero-links" aria-label="Jump to key sections">
-            <a href="#journey" className="vc-hero-link-pill">
-              How It Works
-            </a>
-            <a href="#charts" className="vc-hero-link-pill">
-              Trending Now
-            </a>
-            <a href="#drops" className="vc-hero-link-pill">
-              New Releases
-            </a>
+          {/* Jump-to chips — patch-bay buttons. */}
+          <div
+            aria-label="Jump to key sections"
+            className="mt-8 flex flex-wrap justify-center gap-2"
+          >
+            {[
+              { href: "#journey", label: "How It Works" },
+              { href: "#charts", label: "Trending Now" },
+              { href: "#drops", label: "New Releases" },
+            ].map((p) => (
+              <a
+                key={p.href}
+                href={p.href}
+                className="rounded-md studio-faceplate-dark px-4 py-2 studio-label text-white/60 transition hover:text-tube-300"
+              >
+                {p.label}
+              </a>
+            ))}
           </div>
         </div>
       </section>
@@ -977,11 +1011,11 @@ export default async function HomePage() {
           </p>
           <HomeSplitCtas
             placement="closing"
-            containerClassName="vc-hero-ctas vc-closing-ctas"
-            artistClassName="vc-btn vc-btn-pink"
-            listenerClassName="vc-btn vc-btn-chrome"
+            containerClassName="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center"
+            artistClassName="studio-engage-btn rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
+            listenerClassName="rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
           />
-          <p className="vc-hero-trustline vc-closing-trustline">
+          <p className="mt-5 studio-label text-center text-white/55">
             Trusted payments, transparent fee disclosures, and creator-first
             ownership terms.
           </p>

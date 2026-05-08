@@ -10,8 +10,9 @@ import { usePathname } from "next/navigation";
 interface NavLink {
   href: string;
   label: string;
-  icon?: string;
+  navChip?: string;
   description?: string;
+  activePrefixes?: string[];
 }
 
 interface Props {
@@ -20,10 +21,10 @@ interface Props {
 }
 
 const FOOTER_LINKS: { href: string; label: string; icon: string }[] = [
-  { href: "/profile/edit", label: "Profile", icon: "👤" },
-  { href: "/settings/notifications", label: "Notifications", icon: "🔔" },
-  { href: "/settings/privacy", label: "Privacy & data", icon: "🔒" },
-  { href: "/support", label: "Support", icon: "❓" },
+  { href: "/profile/edit", label: "Profile", icon: "PF" },
+  { href: "/settings/notifications", label: "Notifications", icon: "NT" },
+  { href: "/settings/privacy", label: "Privacy & data", icon: "PR" },
+  { href: "/support", label: "Support", icon: "SP" },
 ];
 
 const LEGAL_LINKS: { href: string; label: string }[] = [
@@ -241,7 +242,8 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                 {navLinks.map((link) => {
                   const active =
                     pathname === link.href ||
-                    (link.href !== "/" && pathname.startsWith(`${link.href}/`));
+                    (link.href !== "/" && pathname.startsWith(`${link.href}/`)) ||
+                    (link.activePrefixes?.some((prefix) => pathname.startsWith(prefix)) ?? false);
                   return (
                     <li key={link.href}>
                       <Link
@@ -257,13 +259,13 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                       >
                         <span
                           aria-hidden
-                          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-base ${
+                          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-black uppercase tracking-[0.12em] ${
                             active
                               ? "bg-brand-500/30 ring-1 ring-brand-400/45"
                               : "bg-white/5 ring-1 ring-white/10"
                           }`}
                         >
-                          {link.icon ?? "•"}
+                          {link.navChip ?? link.label.slice(0, 2)}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-bold">{link.label}</span>
@@ -298,7 +300,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                           data-ui-sfx="page"
                           className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-white/65 transition hover:bg-white/5 hover:text-white"
                         >
-                          <span aria-hidden className="text-base">
+                          <span aria-hidden className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-white/12 bg-white/5 px-1 text-[10px] font-black uppercase tracking-[0.08em]">
                             {link.icon}
                           </span>
                           <span>{link.label}</span>
@@ -315,7 +317,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                         }}
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-red-300 transition hover:bg-red-500/10"
                       >
-                        <span aria-hidden className="text-base">↩</span>
+                        <span aria-hidden className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-red-400/30 bg-red-500/10 px-1 text-[10px] font-black uppercase tracking-[0.08em]">SO</span>
                         <span>Sign out</span>
                       </button>
                     </li>

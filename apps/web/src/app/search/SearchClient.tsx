@@ -282,7 +282,7 @@ export default function SearchClient({
       )}
 
       {!trimmedQuery && !hasFilters && (
-        <div className="rounded-2xl border border-white/8 bg-[#141414] p-6 text-sm text-white/55">
+        <div className="rounded-2xl border border-white/8 studio-faceplate p-6 text-sm text-white/55">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="mb-2 font-semibold text-white/85">Search anything on EMS</p>

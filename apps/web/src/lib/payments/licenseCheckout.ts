@@ -30,6 +30,18 @@ type CreateLicenseCheckoutInput = {
   userId: string;
   userEmail?: string | null;
   analytics: LicenseCheckoutAnalytics;
+  // Optional tier id from Song.licenseVariants. When provided, the tier's
+  // priceUsd overrides the base licensePrice on the Stripe line item and
+  // the tier's totalLicenses cap (if set) is enforced separately.
+  licenseTierId?: string;
+};
+
+type LicenseVariantShape = {
+  id: string;
+  name: string;
+  priceUsd: number;
+  terms?: string;
+  totalLicenses?: number;
 };
 
 export type LicenseCheckoutResult = {
@@ -68,7 +80,26 @@ export async function createLicenseCheckoutSession(
     throw new LicenseCheckoutError("Song not found", 404);
   }
 
-  const checkoutAmountUsd = Number(song.licensePrice) * input.quantity;
+  // Tier resolution. If the buyer picked a tier, find it in the song's
+  // licenseVariants JSON and use its price + name. A tier id that doesn't
+  // exist (stale UI, manipulated request) gets a 404 — never silently fall
+  // back to the base price, since the buyer clicked a specific button.
+  const variants = (song.licenseVariants ?? null) as LicenseVariantShape[] | null;
+  const selectedTier =
+    input.licenseTierId && Array.isArray(variants)
+      ? variants.find((v) => v?.id === input.licenseTierId) ?? null
+      : null;
+  if (input.licenseTierId && !selectedTier) {
+    throw new LicenseCheckoutError("License tier not available", 404);
+  }
+  const unitPriceUsd = selectedTier
+    ? Number(selectedTier.priceUsd)
+    : Number(song.licensePrice);
+  const productName = selectedTier
+    ? `License (${selectedTier.name}): ${song.title} by ${song.artist}`
+    : `License: ${song.title} by ${song.artist}`;
+
+  const checkoutAmountUsd = unitPriceUsd * input.quantity;
   const risk = await computeRiskScore(input.userId, {
     action: "CHECKOUT",
     checkoutAmountUsd,
@@ -114,10 +145,14 @@ export async function createLicenseCheckoutSession(
                     {
                       price_data: {
                         currency: "usd",
-                        unit_amount: Math.round(Number(song.licensePrice) * 100),
+                        unit_amount: Math.round(unitPriceUsd * 100),
                         product_data: {
-                          name: `License: ${song.title} by ${song.artist}`,
-                          description: `Digital music license — ${String(song.revenueSharePct)}% revenue share per license`,
+                          name: productName,
+                          description:
+                            (selectedTier?.terms
+                              ? `${selectedTier.terms} · `
+                              : "") +
+                            `Digital music license — ${String(song.revenueSharePct)}% revenue share per license`,
                           images: song.coverUrl ? [song.coverUrl] : [],
                         },
                       },
@@ -132,6 +167,12 @@ export async function createLicenseCheckoutSession(
                     quantity: String(input.quantity),
                     idempotencyKey: input.idempotencyKey,
                     checkoutSource: input.requestSource,
+                    ...(selectedTier
+                      ? {
+                          licenseTierId: selectedTier.id,
+                          licenseTierName: selectedTier.name,
+                        }
+                      : {}),
                   },
                   success_url: `${baseUrl}/track/${input.songId}?checkout=success${
                     input.requestSource === "api/stripe/checkout"
@@ -155,7 +196,7 @@ export async function createLicenseCheckoutSession(
       data: {
         userId: input.userId,
         songId: input.songId,
-        amount: Number(song.licensePrice) * input.quantity,
+        amount: unitPriceUsd * input.quantity,
         currency: "usd",
         type: "LICENSE_PURCHASE",
         status: "PENDING",
@@ -164,6 +205,12 @@ export async function createLicenseCheckoutSession(
           quantity: input.quantity,
           idempotencyKey: input.idempotencyKey,
           checkoutSource: input.requestSource,
+          ...(selectedTier
+            ? {
+                licenseTierId: selectedTier.id,
+                licenseTierName: selectedTier.name,
+              }
+            : {}),
         },
       },
     });

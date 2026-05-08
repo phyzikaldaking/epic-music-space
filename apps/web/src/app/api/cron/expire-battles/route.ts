@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { enqueueNotification } from "@/lib/queues";
 import { requireCronRequest } from "@/lib/routeAuth";
 import { awardBadge } from "@/lib/badges";
+import { recordVersusDefenseOutcome } from "@/lib/versusDefense";
 
 export const runtime = "nodejs";
 
@@ -39,8 +40,8 @@ export async function GET(req: NextRequest) {
       endsAt: { lte: new Date() },
     },
     include: {
-      songA: { select: { id: true, artistId: true, title: true } },
-      songB: { select: { id: true, artistId: true, title: true } },
+      songA: { select: { id: true, artistId: true, title: true, genre: true } },
+      songB: { select: { id: true, artistId: true, title: true, genre: true } },
     },
     take: 50,
   });
@@ -86,6 +87,13 @@ export async function GET(req: NextRequest) {
       // it. awardBadge is idempotent — duplicates no-op.
       if (!tie) {
         await awardBadge(winnerArtist.artistId, "FIRST_BATTLE_WIN").catch(() => null);
+        await recordVersusDefenseOutcome({
+          genre: winnerArtist.genre,
+          winnerSongId,
+          winnerArtistId: winnerArtist.artistId,
+          loserSongId,
+          loserArtistId: loserArtist.artistId,
+        }).catch(() => null);
       }
 
       await Promise.allSettled([

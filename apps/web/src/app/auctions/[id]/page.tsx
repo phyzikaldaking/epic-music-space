@@ -157,9 +157,9 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
     <div className="mx-auto max-w-4xl px-4 py-12">
       <Link
         href="/auctions"
-        className="mb-8 inline-flex items-center gap-2 text-sm text-white/40 hover:text-white transition"
+        className="studio-label mb-6 inline-flex items-center gap-2 text-white/45 hover:text-tube-300 transition"
       >
-        ← All auctions
+        ← Broadcast booth
       </Link>
 
       <div className="grid gap-8 lg:grid-cols-[1fr_380px]">

@@ -79,7 +79,7 @@ export default function MessagesClient({ viewerId }: { viewerId: string }) {
   }
 
   return (
-    <ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+    <ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/8 studio-faceplate">
       {rows.map((c) => (
         <li key={c.id}>
           <Link

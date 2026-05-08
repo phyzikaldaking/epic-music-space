@@ -39,9 +39,19 @@ const PUBLIC_PATHS = [
 ];
 
 const PUBLIC_EXACT = new Set<string>(["/"]);
+const PUBLIC_METADATA_PATHS = new Set<string>([
+  "/favicon.ico",
+  "/icon",
+  "/manifest.webmanifest",
+  "/opengraph-image",
+  "/robots.txt",
+  "/sitemap.xml",
+]);
 
 function isPublicPath(pathname: string): boolean {
-  if (PUBLIC_EXACT.has(pathname)) return true;
+  if (PUBLIC_EXACT.has(pathname) || PUBLIC_METADATA_PATHS.has(pathname)) {
+    return true;
+  }
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
@@ -77,8 +87,7 @@ export async function proxy(req: NextRequest) {
 
   if (
     pathname.startsWith("/_next/") ||
-    pathname === "/favicon.ico" ||
-    pathname === "/manifest.webmanifest" ||
+    PUBLIC_METADATA_PATHS.has(pathname) ||
     pathname.endsWith(".png") ||
     pathname.endsWith(".jpg") ||
     pathname.endsWith(".jpeg") ||
@@ -101,8 +110,7 @@ function shouldAttachCsp(pathname: string) {
   return !(
     pathname.startsWith("/api/") ||
     pathname.startsWith("/_next/") ||
-    pathname === "/favicon.ico" ||
-    pathname === "/manifest.webmanifest" ||
+    PUBLIC_METADATA_PATHS.has(pathname) ||
     pathname.includes(".")
   );
 }

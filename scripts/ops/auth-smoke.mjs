@@ -4,6 +4,20 @@ const DEFAULT_BASE_URL = process.env.SYNTHETICS_BASE_URL ?? "https://epicmusicsp
 
 const checks = [
   { name: "signin_page", method: "GET", path: "/auth/signin", expected: [200] },
+  {
+    name: "signup_page",
+    method: "GET",
+    path: "/auth/signup",
+    expected: [200],
+    failIfBodyIncludes: ["Couldn't verify the request", "normal browser"],
+  },
+  {
+    name: "metadata_icon_public",
+    method: "GET",
+    path: "/icon?size=192",
+    expected: [200],
+    failIfBodyIncludes: ["Sign in", "callbackUrl"],
+  },
   { name: "nextauth_providers", method: "GET", path: "/api/auth/providers", expected: [200] },
   {
     name: "register_not_false_bot_block",

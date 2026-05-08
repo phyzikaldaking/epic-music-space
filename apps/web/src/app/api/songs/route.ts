@@ -24,7 +24,12 @@ export async function GET(req: NextRequest) {
   if (cached) return NextResponse.json(publicSongs(cached));
 
   const songs = await prisma.song.findMany({
-    where: { isActive: true },
+    // Drafts and future-scheduled tracks must never leak onto public surfaces.
+    where: {
+      isActive: true,
+      isDraft: false,
+      OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date() } }],
+    },
     orderBy: [{ aiScore: "desc" }, { createdAt: "desc" }],
     take: 50,
   });

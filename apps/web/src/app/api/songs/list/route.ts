@@ -78,8 +78,19 @@ export async function GET(req: NextRequest) {
   const songs = await prisma.song.findMany({
     where: {
       isActive: true,
-      // mine-mode shows the artist their full catalog including legacy tracks.
-      ...(mineOnly ? { artistId: myArtistId! } : { isLegacy: false }),
+      // mine-mode shows the artist their full catalog including legacy
+      // tracks AND drafts/scheduled (so they can find them in /studio/new
+      // pickers). Public mode hides drafts and unreleased scheduled tracks.
+      ...(mineOnly
+        ? { artistId: myArtistId! }
+        : {
+            isLegacy: false,
+            isDraft: false,
+            OR: [
+              { scheduledAt: null },
+              { scheduledAt: { lte: new Date() } },
+            ],
+          }),
       ...(genre ? { genre: { equals: genre, mode: "insensitive" } } : {}),
       ...(search
         ? {

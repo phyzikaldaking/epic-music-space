@@ -3,7 +3,7 @@ export default function StudioLiveLoading() {
     <div className="mx-auto max-w-7xl px-4 py-12">
       <div className="mb-8 h-9 w-40 animate-pulse rounded-lg bg-white/8" />
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 rounded-2xl border border-white/8 bg-[#141414] p-6">
+        <div className="lg:col-span-2 rounded-2xl border border-white/8 studio-faceplate p-6">
           <div className="mb-4 h-6 w-32 animate-pulse rounded bg-white/8" />
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -17,7 +17,7 @@ export default function StudioLiveLoading() {
             ))}
           </div>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-[#141414] p-6">
+        <div className="rounded-2xl border border-white/8 studio-faceplate p-6">
           <div className="mb-4 h-6 w-24 animate-pulse rounded bg-white/8" />
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (

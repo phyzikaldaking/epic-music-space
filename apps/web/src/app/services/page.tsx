@@ -46,24 +46,46 @@ export default async function ServicesPage({
             ? [tab as ServiceListingKind]
             : undefined;
 
-  const listings = await prisma.serviceListing.findMany({
-    where: {
-      status: "LIVE",
-      ...(kindFilter ? { kind: { in: kindFilter } } : {}),
-    },
-    orderBy: [{ totalSold: "desc" }, { createdAt: "desc" }],
-    take: 60,
-    include: {
-      provider: {
-        select: {
-          id: true, name: true, image: true, username: true, role: true,
-          isVerified: true,
-          grammyWins: true, grammyNominations: true,
-          riaaPlatinum: true, riaaGold: true, billboardNumberOne: true,
+  const [listings, featuredProducers] = await Promise.all([
+    prisma.serviceListing.findMany({
+      where: {
+        status: "LIVE",
+        ...(kindFilter ? { kind: { in: kindFilter } } : {}),
+      },
+      orderBy: [{ totalSold: "desc" }, { createdAt: "desc" }],
+      take: 60,
+      include: {
+        provider: {
+          select: {
+            id: true, name: true, image: true, username: true, role: true,
+            isVerified: true,
+            grammyWins: true, grammyNominations: true,
+            riaaPlatinum: true, riaaGold: true, billboardNumberOne: true,
+          },
         },
       },
-    },
-  });
+    }),
+    // Featured-producer rail. Surfaces top producers/engineers by license
+    // sales so cold-start producers can climb in here organically. Verified
+    // accounts get priority within ties.
+    prisma.user.findMany({
+      where: {
+        role: { in: ["PRODUCER", "ENGINEER", "LABEL"] },
+        studio: { isNot: null },
+      },
+      orderBy: [{ isVerified: "desc" }, { createdAt: "desc" }],
+      take: 8,
+      select: {
+        id: true,
+        name: true,
+        image: true,
+        role: true,
+        isVerified: true,
+        studio: { select: { username: true } },
+        _count: { select: { songs: true, followers: true } },
+      },
+    }),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12">
@@ -101,6 +123,67 @@ export default async function ServicesPage({
           </Link>
         ))}
       </div>
+
+      {/* Producer spotlight rail */}
+      {featuredProducers.length > 0 && (
+        <section className="mb-8">
+          <div className="mb-3 flex items-end justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-white/55">
+              Featured producers
+            </h2>
+            <Link
+              href="/marketplace?role=PRODUCER"
+              className="text-xs font-bold text-brand-300 hover:underline"
+            >
+              Browse producer beats →
+            </Link>
+          </div>
+          <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+            {featuredProducers.map((p) => {
+              const username = p.studio?.username;
+              const href = username ? `/studio/${username}` : `/profile`;
+              return (
+                <Link
+                  key={p.id}
+                  href={href}
+                  className="flex w-44 flex-shrink-0 flex-col items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.03] p-3 transition hover:border-brand-500/40 hover:bg-brand-500/5"
+                >
+                  <div className="relative h-16 w-16 overflow-hidden rounded-full bg-white/10">
+                    {p.image ? (
+                      <Image
+                        src={p.image}
+                        alt={p.name ?? ""}
+                        fill
+                        sizes="64px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xl font-bold text-white/60">
+                        {(p.name ?? "?")[0]?.toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <p className="truncate text-sm font-semibold text-white/90">
+                    {p.name ?? username ?? "Producer"}
+                    {p.isVerified && (
+                      <span className="ml-1 text-sky-300" title="Verified">
+                        ✓
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/35">
+                    {p.role.toLowerCase()}
+                  </p>
+                  <p className="text-[11px] text-white/45">
+                    {p._count.songs} track{p._count.songs !== 1 ? "s" : ""} ·{" "}
+                    {p._count.followers} follower{p._count.followers !== 1 ? "s" : ""}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {listings.length === 0 ? (
         <div className="rounded-2xl border border-white/8 bg-white/3 px-5 py-16 text-center">

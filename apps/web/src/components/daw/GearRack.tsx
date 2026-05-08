@@ -12,6 +12,8 @@ import type { ReactElement } from "react";
  *     record-arm on the supplied track.
  *   • Avalon 737 — vocal chain preset (slight low-cut, mid presence,
  *     gentle compression, plate reverb).
+ *   • EMS Frontline Bus — platform-native vocal bus for upfront lead
+ *     capture: drive, presence, air, and parallel compression.
  *   • Pultec EQP-1A — boosting low + air preset (low shelf +3,
  *     high shelf +3, comp off).
  *   • Lexicon 480L — long hall reverb preset (decay 4s, wet 0.35).
@@ -32,6 +34,13 @@ export interface GearApplyHandlers {
   onArm: () => void;
   onSetEq: (band: "low" | "mid" | "high", db: number) => void;
   onSetComp: (params: { threshDb?: number; ratio?: number; enabled?: boolean }) => void;
+  onSetVocalBus: (params: {
+    enabled?: boolean;
+    driveDb?: number;
+    presenceDb?: number;
+    airDb?: number;
+    crush?: number;
+  }) => void;
   onSetReverb: (params: { wet?: number; decaySec?: number }) => void;
   onSetDelay: (params: { wet?: number; beats?: number; feedback?: number }) => void;
 }
@@ -94,6 +103,50 @@ const PRESETS: GearPreset[] = [
           </g>
         ))}
         <text x="80" y="72" fontSize="7" textAnchor="middle" fill="#caa063" fontFamily="ui-monospace, monospace" letterSpacing="2">AVALON</text>
+      </svg>
+    ),
+  },
+  {
+    id: "frontline",
+    name: "EMS Frontline",
+    subtitle: "Vocal bus · loud upfront",
+    era: "Platform sound",
+    apply: ({ onSetEq, onSetComp, onSetVocalBus, onSetReverb, onSetDelay }) => {
+      onSetEq("low", -3);
+      onSetEq("mid", 2);
+      onSetEq("high", 3);
+      onSetComp({ enabled: true, threshDb: -26, ratio: 5 });
+      onSetVocalBus({
+        enabled: true,
+        driveDb: 6,
+        presenceDb: 3.5,
+        airDb: 4,
+        crush: 0.35,
+      });
+      onSetReverb({ wet: 0.12, decaySec: 1.2 });
+      onSetDelay({ wet: 0.07, beats: 0.25, feedback: 0.18 });
+    },
+    Glyph: () => (
+      <svg viewBox="0 0 160 80" className="h-20 w-auto" aria-hidden="true">
+        <rect x="2" y="2" width="156" height="76" rx="3" fill="#16120b" stroke="#fbbf24" strokeOpacity="0.5" />
+        <rect x="10" y="10" width="140" height="18" rx="2" fill="#090807" stroke="#fbbf24" strokeOpacity="0.35" />
+        <text x="18" y="23" fontSize="10" fill="#fde68a" fontFamily="ui-monospace, monospace" letterSpacing="2">EMS FRONTLINE</text>
+        <path d="M17 55 C31 26, 45 72, 59 43 S87 30, 101 54 S129 62, 143 31" fill="none" stroke="#22d3ee" strokeWidth="2.5" strokeLinecap="round" />
+        {[28, 56, 88, 120].map((cx, index) => (
+          <g key={cx}>
+            <circle cx={cx} cy="54" r="8" fill="#080604" stroke="#fbbf24" />
+            <line
+              x1={cx}
+              y1="48"
+              x2={cx + (index % 2 === 0 ? 4 : -4)}
+              y2="54"
+              stroke="#fde68a"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+            />
+          </g>
+        ))}
+        <rect x="118" y="14" width="22" height="8" rx="1" fill="#22d3ee" opacity="0.8" />
       </svg>
     ),
   },
@@ -170,7 +223,7 @@ export default function GearRack({ onApplyToTrack }: Props) {
         </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {PRESETS.map((preset) => (
           <button
             key={preset.id}

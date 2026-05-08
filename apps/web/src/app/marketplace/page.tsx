@@ -283,12 +283,28 @@ export default async function MarketplacePage(props: {
   const rawQuery = firstSearchParam(searchParams.q) || firstSearchParam(searchParams.search);
   const searchQuery = rawQuery.toLowerCase().trim();
   const genreFilter = firstSearchParam(searchParams.genre).toLowerCase().trim();
+  // Producer-role filter: when set, restrict the marketplace to tracks
+  // uploaded by users with the matching role. Lets buyers find "tracks
+  // from producers" without wading through artist uploads.
+  const roleFilterRaw = firstSearchParam(searchParams.role).toUpperCase().trim();
+  const roleFilter = (
+    ["PRODUCER", "ENGINEER", "ARTIST", "LABEL"].includes(roleFilterRaw)
+      ? roleFilterRaw
+      : ""
+  ) as "PRODUCER" | "ENGINEER" | "ARTIST" | "LABEL" | "";
 
   let allSongs: RawTrack[] = [];
 
   try {
     allSongs = await prisma.song.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        isDraft: false,
+        OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date() } }],
+        ...(roleFilter
+          ? { artist_: { role: roleFilter } }
+          : {}),
+      },
       select: {
         id: true,
         title: true,
@@ -404,7 +420,7 @@ export default async function MarketplacePage(props: {
                 <Link href="/auth/signup" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/15 bg-white/[0.05] px-6 text-sm font-black uppercase tracking-[0.12em] text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-gold-200/40 hover:bg-gold-200/10">Sell Your Music</Link>
               </div>
             </div>
-            <div className="rounded-[1.75rem] border border-white/10 bg-black/30 p-5 shadow-2xl shadow-black/40 backdrop-blur-xl">
+            <div className="studio-faceplate p-5">
               <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
                 <div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/38">Crown Track</p><h2 className="mt-2 line-clamp-1 text-2xl font-black tracking-[-0.04em] text-white">{topSong?.title ?? "Catalog Loading"}</h2><p className="mt-1 line-clamp-1 text-sm text-white/50">{topSong?.artist ?? "Epic Music Space"}</p></div>
                 <div className="grid h-16 w-16 place-items-center rounded-2xl border border-gold-200/25 bg-gold-200/10 text-xs font-black uppercase tracking-[0.12em] text-gold-100 shadow-lg shadow-gold-500/10">Crown</div>
@@ -468,7 +484,7 @@ export default async function MarketplacePage(props: {
         </section>
 
         {dominanceStrip.length > 0 && (
-          <section className="mt-8 overflow-hidden rounded-[2rem] border border-gold-200/15 bg-black/35 p-5 shadow-2xl shadow-black/45 backdrop-blur-2xl">
+          <section className="mt-8 studio-faceplate overflow-hidden p-5">
             <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div><p className="text-xs font-black uppercase tracking-[0.24em] text-gold-100/80 sm:tracking-[0.28em]">Dominance Strip</p><h2 className="mt-2 break-words text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl md:text-5xl md:tracking-[-0.055em]">Top screens controlling the floor</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-white/50">These are the songs currently owning the marketplace attention layer. Boosts, sales, and EMS score decide who stays visible.</p></div>
               <div className="rounded-full border border-gold-200/20 bg-gold-200/10 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-gold-100">Live Rank Cycle</div>
@@ -501,11 +517,11 @@ export default async function MarketplacePage(props: {
 
         <section className="mt-8 grid gap-8 lg:grid-cols-[320px_1fr]">
           <aside className="space-y-5 lg:sticky lg:top-6 lg:self-start">
-            <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.045] p-5 shadow-2xl shadow-black/35 backdrop-blur-2xl"><div className="mb-5 flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-gold-100/70">Pro Filters</p><h2 className="mt-1 text-2xl font-black tracking-[-0.045em] text-white">Refine the floor</h2></div><div className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-lg shadow-cyan-300/60" /></div><Suspense><MarketplaceFilters totalCount={rankedSongs.length} /></Suspense></div>
-            <div className="rounded-[1.75rem] border border-white/10 bg-black/30 p-5 shadow-2xl shadow-black/35 backdrop-blur-2xl"><div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">Live Presence</p><p className="mt-1 text-sm text-white/55">See who is active around the catalog.</p></div><SectionErrorBoundary title="Live Presence"><MarketplacePresence compact /></SectionErrorBoundary></div></div>
+            <div className="studio-faceplate p-5"><div className="mb-5 flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-gold-100/70">Pro Filters</p><h2 className="mt-1 text-2xl font-black tracking-[-0.045em] text-white">Refine the floor</h2></div><div className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-lg shadow-cyan-300/60" /></div><Suspense><MarketplaceFilters totalCount={rankedSongs.length} /></Suspense></div>
+            <div className="studio-faceplate p-5"><div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">Live Presence</p><p className="mt-1 text-sm text-white/55">See who is active around the catalog.</p></div><SectionErrorBoundary title="Live Presence"><MarketplacePresence compact /></SectionErrorBoundary></div></div>
           </aside>
           <div id="marketplace-catalog" className="space-y-8">
-            <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/35 backdrop-blur-2xl"><div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-200/75">Ranked Catalog</p><h2 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white md:text-5xl">Studio monitor listings</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/50">Every screen represents a track competing for attention, licensing, and placement. Stronger score means stronger visibility.</p></div><div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/48">{displaySongs.length} {searchQuery ? "results" : "active listings"}</div></div></div>
+            <div className="studio-faceplate p-5"><div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-200/75">Ranked Catalog</p><h2 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white md:text-5xl">Studio monitor listings</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/50">Every screen represents a track competing for attention, licensing, and placement. Stronger score means stronger visibility.</p></div><div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/48">{displaySongs.length} {searchQuery ? "results" : "active listings"}</div></div></div>
             <SectionErrorBoundary title="Waveform Compare"><MarketplaceConfidencePanel tracks={displaySongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore, soldLicenses: song.soldLicenses }))} /></SectionErrorBoundary>
             <SectionErrorBoundary title="Saved Searches"><MarketplaceRetentionTools tracks={displaySongs.map((song) => ({ id: song.id, title: song.title }))} /></SectionErrorBoundary>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">

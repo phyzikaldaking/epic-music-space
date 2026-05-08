@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
   // signup that's almost certainly going to be deleted in moderation. Soft
   // fail: if BotID is misconfigured the helper returns false (not bot) so
   // we never lock real users out.
-  if (await isLikelyBot()) {
+  if (await isLikelyBot({ headers: req.headers })) {
     await emitAuthEvent("register_bot_blocked", {
       ip,
       reason: "botid_block",

@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import Providers from "@/components/Providers";
-import DeferredGlobalWidgets from "@/components/DeferredGlobalWidgets";
 import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -139,7 +136,7 @@ export default function RootLayout({
       lang="en"
       className={`${bebasNeue.variable} ${orbitron.variable} ${audiowide.variable}`}
     >
-      <body className="min-h-screen bg-[#0a0a0a] text-white antialiased" suppressHydrationWarning>
+      <body className="studio-room min-h-screen text-white antialiased" suppressHydrationWarning>
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[200] focus:rounded-md focus:bg-brand-500 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:outline-none focus:ring-2 focus:ring-accent-400"
@@ -151,11 +148,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: structuredDataJson }}
         />
         <Providers>
-          <Navbar />
-          {/* Bottom-nav adds 56px on mobile so we pad <main> a bit more there. */}
-          <main id="main-content" className="pb-32 md:pb-20">{children}</main>
-          <Footer />
-          <DeferredGlobalWidgets />
+          {children}
         </Providers>
       </body>
     </html>

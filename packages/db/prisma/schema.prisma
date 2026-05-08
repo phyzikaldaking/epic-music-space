@@ -287,6 +287,19 @@ model Song {
   versusWins   Int      @default(0)
   versusLosses Int      @default(0)
   streamCount  Int      @default(0)
+  // Track-page views (distinct from streamCount, which counts /stream hits).
+  // Lets producers compute a real funnel: viewCount -> streamCount -> licenses.
+  viewCount    Int      @default(0)
+  // Drafts + scheduled releases. isDraft=true keeps the song out of every
+  // public surface (marketplace, trending, profile, search). scheduledAt
+  // is the timestamp a cron flips isDraft -> false. Both honor the existing
+  // isActive flag, which remains the producer's manual on/off switch.
+  isDraft      Boolean  @default(false)
+  scheduledAt  DateTime?
+  // License tier variants (basic/premium/exclusive/etc.). When set, the
+  // top-level licensePrice is the BASIC tier and this JSON describes
+  // additional tiers. Shape: [{ id, name, priceUsd, terms, totalLicenses }].
+  licenseVariants Json?
   district     District @default(INDIE_BLOCKS)
   stemUrl   String?
   stemFiles Json?
@@ -344,6 +357,10 @@ model Song {
   @@index([isActive, genre])
   @@index([isActive, bpm])
   @@index([stemSeparationStatus])
+  // Drafts + scheduled releases — used by the publish-scheduled-tracks cron
+  // and by the producer "drafts" tab on /studio/manage.
+  @@index([isDraft])
+  @@index([scheduledAt])
 }
 
 enum StemSeparationStatus {
@@ -873,6 +890,17 @@ model Auction {
   startingBid  Decimal  @db.Decimal(10, 2)
   reservePrice Decimal? @db.Decimal(10, 2)
   currentBid   Decimal? @db.Decimal(10, 2)
+  // Optional "buy it now" — when set and a bid >= this amount lands, the
+  // auction settles immediately at that price.
+  instantBuyPrice Decimal? @db.Decimal(10, 2)
+  // Anti-snipe controls. windowMinutes: if a bid lands within this many
+  // minutes of endsAt, extend by extensionMinutes. Defaults match the
+  // previous hardcoded 2/2 behaviour in the bid route.
+  antiSnipeWindowMinutes    Int @default(2)
+  antiSnipeExtensionMinutes Int @default(2)
+  // Soft "ending soon" notification timestamp — flipped by the cron so we
+  // don't re-notify when anti-snipe extends past the original window.
+  endingSoonNotifiedAt DateTime?
   winnerId String?
   winner   User?   @relation("AuctionWinner", fields: [winnerId], references: [id])
   status    AuctionStatus @default(ACTIVE)

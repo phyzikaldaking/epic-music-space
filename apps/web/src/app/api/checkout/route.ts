@@ -10,6 +10,9 @@ import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
 
 const checkoutSchema = z.object({
   songId: z.string().cuid(),
+  // Optional license tier id. When omitted, the buyer gets the base
+  // licensePrice (Basic tier) — preserves the legacy single-tier flow.
+  licenseTierId: z.string().min(1).max(40).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -61,10 +64,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid songId" }, { status: 400 });
   }
 
-  const { songId } = parsed.data;
+  const { songId, licenseTierId } = parsed.data;
   const idempotencyKey = buildIdempotencyKey(req, "checkout", [
     session.user.id,
     songId,
+    licenseTierId ?? "base",
   ]);
 
   // Enforce subscription tier license cap
@@ -107,6 +111,7 @@ export async function POST(req: NextRequest) {
         songId,
         userId: session.user.id,
         userEmail: session.user.email,
+        licenseTierId,
       }),
     );
     if (!checkoutResult.ok) return checkoutResult.response;

@@ -81,12 +81,20 @@ export default function AuctionsPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-12">
+    <div className="studio-room relative min-h-screen">
+      <div className="relative z-[1] mx-auto max-w-5xl px-4 py-12">
       <div className="mb-10">
-        <h1 className="text-4xl font-extrabold">Live Auctions</h1>
-        <p className="mt-2 text-white/50">
-          Bid on exclusive music licenses — winner gets the license and earns revenue share on every
-          future sale.
+        <div className="flex items-center gap-3">
+          <span aria-hidden className="led-on-rec h-2.5 w-2.5 rounded-full animate-pulse" />
+          <span className="studio-label text-rec-400">On Air</span>
+          <span className="studio-label ml-auto text-white/35">BR-01</span>
+        </div>
+        <h1 className="font-display mt-1 text-5xl uppercase tracking-wider text-white">
+          Live Auctions
+        </h1>
+        <p className="mt-2 text-white/55">
+          Bid on exclusive music licenses — winner gets the license and earns
+          revenue share on every future sale.
         </p>
       </div>
 
@@ -187,6 +195,7 @@ export default function AuctionsPage() {
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

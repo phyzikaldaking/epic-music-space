@@ -56,7 +56,10 @@ const footerNav = [
 
 export default function Footer() {
   return (
-    <footer className="border-t border-white/8 bg-[#070709]">
+    <footer className="relative border-t border-white/[0.06] bg-[#06080a]">
+      {/* Walnut top trim — same silhouette as the navbar but mirrored
+          at the bottom of the page. The site sits inside a rack. */}
+      <span aria-hidden className="studio-walnut absolute inset-x-0 top-0 h-1" />
       <div className="mx-auto max-w-7xl px-4 py-14">
         {/* Top row: brand + nav grid */}
         <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
@@ -64,19 +67,21 @@ export default function Footer() {
           <div>
             <Link
               href="/"
-              className="inline-flex items-center gap-2.5 text-lg font-extrabold tracking-tight focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+              className="inline-flex items-center gap-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 rounded-md"
             >
-              <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-brand-500/30 bg-brand-500/20 glow-purple-sm">
+              <span className="studio-tube-bezel relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md">
                 <svg
                   aria-hidden="true"
-                  className="h-4 w-4 text-accent-300"
+                  className="studio-tube-bezel-icon h-4 w-4 text-tube-400"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                 >
                   <path d="M12 3v10.55A4 4 0 1 0 14 17V7h6V3h-8Z" />
                 </svg>
               </span>
-              <span className="text-gradient-ems">Epic Music Space</span>
+              <span className="font-display text-lg uppercase tracking-[0.14em] text-white">
+                Epic Music Space
+              </span>
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-6 text-white/42">
               Host live listening sessions, upload music, and sell clear digital

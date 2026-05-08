@@ -9,9 +9,9 @@ export const runtime = "nodejs";
 const createSchema = z.object({
   artistBId: z.string().cuid(),
   theme: z.string().min(2).max(80).optional(),
-  // 1–10 rounds. Each artist contributes that many songs in order.
-  songsA: z.array(z.string().cuid()).min(1).max(10),
-  songsB: z.array(z.string().cuid()).min(1).max(10),
+  // Verzuz is a scheduled 10-round event format.
+  songsA: z.array(z.string().cuid()).length(10),
+  songsB: z.array(z.string().cuid()).length(10),
   // Round duration; defaults to 3 min, capped at 10 to keep the
   // ladder honest. Voting + auto-advance both honor this.
   roundDurationSec: z.number().int().min(60).max(600).optional(),
@@ -47,6 +47,12 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!["ARTIST", "PRODUCER"].includes(session.user.role)) {
+    return NextResponse.json(
+      { error: "Only artists and producers can stage a scheduled Verzuz event." },
+      { status: 403 },
+    );
   }
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
@@ -99,6 +105,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const start = startsAt ? new Date(startsAt) : null;
+  if (!start || Number.isNaN(start.getTime())) {
+    return NextResponse.json(
+      { error: "Verzuz requires a valid scheduled start time." },
+      { status: 400 },
+    );
+  }
+  if (start.getTime() <= Date.now() + 60_000) {
+    return NextResponse.json(
+      { error: "Verzuz events must be scheduled at least 1 minute ahead." },
+      { status: 400 },
+    );
+  }
+
   // Verify ownership: every songsA must belong to artistA (caller),
   // every songsB to artistBId. Stops a bad actor from staging someone
   // else's catalog without consent.
@@ -136,11 +156,6 @@ export async function POST(req: NextRequest) {
     where: { id: session.user.id },
     select: { name: true },
   });
-  let start = startsAt ? new Date(startsAt) : new Date();
-  // If a creator picks a start time that's already in the past, treat
-  // it as "start now" so matches don't get stuck in a confusing state.
-  if (start.getTime() < Date.now() - 60_000) start = new Date();
-
   const created = await prisma.$transaction(async (tx) => {
     const match = await tx.verzuzMatch.create({
       data: {
@@ -152,7 +167,7 @@ export async function POST(req: NextRequest) {
         totalRounds: songsA.length,
         roundDurationSec: roundDurationSec ?? 180,
         startsAt: start,
-        status: start.getTime() <= Date.now() ? "LIVE" : "SCHEDULED",
+        status: "SCHEDULED",
       },
     });
     await tx.verzuzRound.createMany({

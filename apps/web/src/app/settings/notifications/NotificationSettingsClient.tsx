@@ -70,7 +70,7 @@ export default function NotificationSettingsClient() {
           {error}
         </p>
       )}
-      <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+      <div className="overflow-hidden rounded-2xl border border-white/8 studio-faceplate">
         <div className="hidden border-b border-white/8 px-5 py-2 text-[10px] font-bold uppercase tracking-widest text-white/35 sm:flex sm:items-center">
           <span className="flex-1">Notification</span>
           <span className="w-20 text-center">In-app</span>

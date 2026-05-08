@@ -1,7 +1,7 @@
 export default function SignUpLoading() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-6 rounded-2xl border border-white/8 bg-[#141414] p-8">
+      <div className="w-full max-w-md space-y-6 rounded-2xl border border-white/8 studio-faceplate p-8">
         {/* Logo area */}
         <div className="text-center">
           <div className="mx-auto mb-4 h-10 w-10 animate-pulse rounded-full bg-white/8" />

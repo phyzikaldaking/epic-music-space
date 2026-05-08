@@ -11,8 +11,12 @@ export const runtime = "nodejs";
 
 type Params = { params: Promise<{ id: string }> };
 
-const ANTI_SNIPE_WINDOW_MS = 2 * 60 * 1000;
-const ANTI_SNIPE_EXTENSION_MS = 2 * 60 * 1000;
+// Defaults applied when an Auction row's anti-snipe columns are NULL
+// (legacy rows from before the columns existed). These match the
+// previous hardcoded 2/2-minute behaviour so live auctions don't change
+// semantics when this code deploys.
+const DEFAULT_ANTI_SNIPE_WINDOW_MIN = 2;
+const DEFAULT_ANTI_SNIPE_EXTENSION_MIN = 2;
 
 const bidSchema = z.object({
   amount: z
@@ -141,9 +145,21 @@ export async function POST(req: NextRequest, { params }: Params) {
 
         const now = new Date();
         const msRemaining = auction.endsAt.getTime() - now.getTime();
-        const antiSnipeExtended = msRemaining <= ANTI_SNIPE_WINDOW_MS;
+        // Per-auction anti-snipe windows. Producers can tune these from the
+        // create-auction form; legacy rows (no row exists / NULL columns)
+        // fall back to the historical 2-minute default.
+        const windowMs =
+          (auction.antiSnipeWindowMinutes ?? DEFAULT_ANTI_SNIPE_WINDOW_MIN) *
+          60 *
+          1000;
+        const extensionMs =
+          (auction.antiSnipeExtensionMinutes ??
+            DEFAULT_ANTI_SNIPE_EXTENSION_MIN) *
+          60 *
+          1000;
+        const antiSnipeExtended = msRemaining <= windowMs;
         const nextEndsAt = antiSnipeExtended
-          ? new Date(auction.endsAt.getTime() + ANTI_SNIPE_EXTENSION_MS)
+          ? new Date(auction.endsAt.getTime() + extensionMs)
           : auction.endsAt;
 
         const updateRes = await tx.auction.updateMany({

@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { SessionProvider } from "next-auth/react";
 import { PlayerProvider } from "@/contexts/PlayerContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import SentryUserBridge from "@/components/SentryUserBridge";
 import UISfxController from "@/components/UISfxController";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import DeferredGlobalWidgets from "@/components/DeferredGlobalWidgets";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isAuthRoute =
+    !pathname || pathname === "/auth" || pathname.startsWith("/auth/");
+
   useEffect(() => {
     const loader = document.getElementById("__ems-loading");
     if (!loader) {
@@ -43,7 +51,22 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <SentryUserBridge />
       <UISfxController />
       <PlayerProvider>
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          {isAuthRoute ? (
+            <main id="main-content" className="pb-12">
+              {children}
+            </main>
+          ) : (
+            <>
+              <Navbar />
+              <main id="main-content" className="pb-32 md:pb-20">
+                {children}
+              </main>
+              <Footer />
+              <DeferredGlobalWidgets />
+            </>
+          )}
+        </ToastProvider>
       </PlayerProvider>
     </SessionProvider>
   );

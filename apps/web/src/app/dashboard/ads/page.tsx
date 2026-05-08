@@ -62,7 +62,7 @@ export default async function AdsDashboardPage() {
             return (
               <div
                 key={p.id}
-                className="rounded-2xl border border-white/10 bg-[#0d0d14] p-5"
+                className="rounded-2xl border border-white/10 studio-faceplate-dark p-5"
               >
                 <div className="flex flex-col gap-4 sm:flex-row">
                   <div className="relative h-24 w-40 flex-shrink-0 overflow-hidden rounded-xl bg-white/5">

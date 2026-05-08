@@ -235,7 +235,7 @@ export default function OrderWorkspace({
         {/* Left: brief + revisions + actions */}
         <div className="space-y-5">
           {/* Brief */}
-          <section className="rounded-3xl border border-white/8 bg-[#0d0d14] p-5">
+          <section className="rounded-3xl border border-white/8 studio-faceplate-dark p-5">
             <h2 className="text-xs font-bold uppercase tracking-widest text-white/45">Brief</h2>
             {order.briefText ? (
               <p className="mt-2 whitespace-pre-line text-sm text-white/80">{order.briefText}</p>
@@ -256,7 +256,7 @@ export default function OrderWorkspace({
 
           {/* Revisions */}
           {order.revisions.length > 0 && (
-            <section className="rounded-3xl border border-white/8 bg-[#0d0d14] p-5">
+            <section className="rounded-3xl border border-white/8 studio-faceplate-dark p-5">
               <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-white/45">Deliveries ({order.revisions.length})</h2>
               <div className="space-y-3">
                 {order.revisions.map((r) => (
@@ -443,7 +443,7 @@ export default function OrderWorkspace({
         </div>
 
         {/* Right: chat */}
-        <aside className="flex h-[600px] flex-col rounded-3xl border border-white/8 bg-[#0d0d14]">
+        <aside className="flex h-[600px] flex-col rounded-3xl border border-white/8 studio-faceplate-dark">
           <div className="border-b border-white/8 px-5 py-3">
             <h3 className="text-sm font-bold uppercase tracking-widest text-white/60">Order chat</h3>
           </div>

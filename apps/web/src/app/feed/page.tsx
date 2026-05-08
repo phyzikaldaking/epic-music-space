@@ -20,12 +20,18 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
     : onboardingValue ?? null;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-extrabold">Feed</h1>
+    <div className="ems-shell">
+      <div className="ems-head">
+        <p className="ems-kicker">Timeline</p>
+        <h1 className="ems-title">Following Feed</h1>
+        <p className="ems-sub">Updates, clips, and behind-the-scenes from artists you follow.</p>
+        <div className="ems-divider" aria-hidden />
+      </div>
       <FeedClient
         initialMode={session?.user?.id ? "following" : "all"}
         viewerId={session?.user?.id ?? null}
         onboarding={onboarding}
+        composerPrefill={null}
       />
     </div>
   );

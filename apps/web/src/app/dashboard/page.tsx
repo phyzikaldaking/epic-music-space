@@ -8,6 +8,7 @@ import ProviderDashboardCard from "@/components/ProviderDashboardCard";
 import ContinueListeningRail from "@/components/ContinueListeningRail";
 import ResendVerificationButton from "@/components/ResendVerificationButton";
 import DashboardTimingBeacon from "@/components/DashboardTimingBeacon";
+import ProducerInsights from "@/components/ProducerInsights";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -308,8 +309,8 @@ export default async function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050509]">
-      <div className="mx-auto max-w-7xl px-4 py-10">
+    <div className="studio-room relative min-h-screen">
+      <div className="relative z-[1] mx-auto max-w-7xl px-4 py-10">
         <DashboardTimingBeacon />
         {/* ── Trial expiry banner ──────────────────────── */}
         {trialDaysLeft !== null && trialDaysLeft > 0 && (
@@ -700,7 +701,7 @@ export default async function DashboardPage() {
             )}
           </div>
           {user.licenses.length === 0 ? (
-            <div className="rounded-2xl border border-white/8 bg-[#141414] p-10 text-center">
+            <div className="rounded-2xl border border-white/8 studio-faceplate p-10 text-center">
               <p className="mb-2 text-4xl">🎟️</p>
               <p className="font-semibold text-white/50">No licenses yet.</p>
               <Link
@@ -711,7 +712,7 @@ export default async function DashboardPage() {
               </Link>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-white/8 bg-[#141414]">
+            <div className="overflow-x-auto rounded-2xl border border-white/8 studio-faceplate">
               <table className="w-full min-w-[640px] text-sm">
                 <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
                   <tr>
@@ -790,6 +791,11 @@ export default async function DashboardPage() {
           )}
         </section>
 
+        {/* ── Producer Insights (funnel + top performer + stalled) ──── */}
+        {user.role !== "LISTENER" && user.songs.length > 0 && (
+          <ProducerInsights artistId={userId} />
+        )}
+
         {/* ── Artist: My Songs ─────────────────────────── */}
         {user.role !== "LISTENER" && (
           <section className="mb-12">
@@ -803,7 +809,7 @@ export default async function DashboardPage() {
               </Link>
             </div>
             {user.songs.length === 0 ? (
-              <div className="rounded-2xl border border-white/8 bg-[#141414] p-10 text-center">
+              <div className="rounded-2xl border border-white/8 studio-faceplate p-10 text-center">
                 <p className="mb-3 text-4xl">🎙️</p>
                 <p className="text-lg font-semibold text-white/85">
                   Upload your first track to start earning
@@ -829,7 +835,7 @@ export default async function DashboardPage() {
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+              <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 studio-faceplate">
                 <table className="w-full text-sm">
                   <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
                     <tr>
@@ -898,7 +904,7 @@ export default async function DashboardPage() {
                 Browse all →
               </Link>
             </div>
-            <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+            <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 studio-faceplate">
               <table className="w-full text-sm">
                 <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
                   <tr>
@@ -950,7 +956,7 @@ export default async function DashboardPage() {
                 Browse all →
               </Link>
             </div>
-            <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+            <div className="overflow-x-auto overflow-hidden rounded-2xl border border-white/8 studio-faceplate">
               <table className="w-full text-sm">
                 <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
                   <tr>
@@ -1011,7 +1017,7 @@ export default async function DashboardPage() {
             </span>
           </div>
           {user.badges.length === 0 ? (
-            <div className="rounded-2xl border border-white/8 bg-[#141414] p-6 text-center text-white/30 text-sm">
+            <div className="rounded-2xl border border-white/8 studio-faceplate p-6 text-center text-white/30 text-sm">
               No badges yet — invite friends, win battles, and sell licenses to earn them!
             </div>
           ) : (
@@ -1041,7 +1047,7 @@ export default async function DashboardPage() {
             </Link>
           </div>
           {inviteData ? (
-            <div className="rounded-2xl border border-white/8 bg-[#141414] p-6">
+            <div className="rounded-2xl border border-white/8 studio-faceplate p-6">
               <p className="text-xs font-semibold uppercase tracking-widest text-white/35 mb-3">
                 Your invite code
               </p>
@@ -1080,7 +1086,7 @@ export default async function DashboardPage() {
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-white/8 bg-[#141414] p-6 text-center text-sm text-white/30">
+            <div className="rounded-2xl border border-white/8 studio-faceplate p-6 text-center text-sm text-white/30">
               Your invite link will appear here after signing in.
             </div>
           )}
@@ -1095,7 +1101,7 @@ export default async function DashboardPage() {
                 {formatPrice(artistEarnings)} total
               </span>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#141414]">
+            <div className="overflow-hidden rounded-2xl border border-white/8 studio-faceplate">
               <table className="w-full text-sm">
                 <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
                   <tr>
@@ -1147,11 +1153,11 @@ export default async function DashboardPage() {
         <section>
           <h2 className="mb-5 text-xl font-bold">Transaction History</h2>
           {user.transactions.length === 0 ? (
-            <div className="rounded-2xl border border-white/8 bg-[#141414] p-8 text-center text-white/35 text-sm">
+            <div className="rounded-2xl border border-white/8 studio-faceplate p-8 text-center text-white/35 text-sm">
               No transactions yet.
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-white/8 bg-[#141414]">
+            <div className="overflow-x-auto rounded-2xl border border-white/8 studio-faceplate">
               <table className="w-full min-w-[640px] text-sm">
                 <thead className="border-b border-white/8 bg-white/3 text-xs uppercase tracking-widest text-white/35">
                   <tr>

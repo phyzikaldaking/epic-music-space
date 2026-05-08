@@ -39,17 +39,16 @@ export default async function VerzuzListPage() {
         className="pointer-events-none absolute inset-x-0 top-0 h-[60vh] bg-[radial-gradient(circle_at_15%_20%,rgba(124,58,237,0.4),transparent_55%),radial-gradient(circle_at_85%_30%,rgba(0,245,255,0.32),transparent_55%)]"
       />
       <div className="relative mx-auto max-w-5xl px-4 py-10">
-        <div className="mb-8 text-center">
-          <span className="rounded-full border border-gold-400/35 bg-gold-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.32em] text-gold-200">
-            Verzuz
-          </span>
+        <div className="ems-head mb-8 text-center">
+          <p className="ems-kicker text-gold-200">Verzuz Events</p>
           <h1 className="mt-4 text-4xl font-black tracking-tight md:text-6xl">
             <span className="text-gradient-ems">10-round artist showdowns.</span>
           </h1>
-          <p className="mx-auto mt-3 max-w-2xl text-sm text-white/55">
+          <p className="mx-auto mt-3 max-w-2xl ems-sub">
             Two artists, ten songs each, head-to-head. Fans vote round-by-round.
             Whoever wins the most rounds takes the match.
           </p>
+          <div className="mx-auto mt-3 h-px w-full max-w-2xl bg-gradient-to-r from-gold-400/30 via-white/20 to-cyan-300/30" aria-hidden />
           <div className="mt-5 flex justify-center gap-2">
             <Link
               href="/verzuz/new"

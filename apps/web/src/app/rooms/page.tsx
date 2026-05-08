@@ -60,7 +60,7 @@ export default async function RoomsIndexPage() {
       </div>
 
       {liveRooms.length === 0 ? (
-        <div className="rounded-3xl border border-white/8 bg-[#0d0d14] p-16 text-center">
+        <div className="rounded-3xl border border-white/8 studio-faceplate-dark p-16 text-center">
           <p className="text-6xl">🎧</p>
           <h2 className="mt-4 text-xl font-bold">No live rooms right now</h2>
           <p className="mt-2 max-w-md mx-auto text-sm text-white/45">

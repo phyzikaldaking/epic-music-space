@@ -272,7 +272,7 @@ export default async function WalletPage() {
             collect a tip to start earning.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#0d0d14]">
+          <div className="overflow-hidden rounded-2xl border border-white/8 studio-faceplate-dark">
             <table className="w-full text-sm">
               <thead className="bg-white/5 text-left text-xs font-bold uppercase tracking-widest text-white/45">
                 <tr>
@@ -319,7 +319,7 @@ export default async function WalletPage() {
             Receipts appear as soon as royalty events post to your ledger.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-white/8 bg-[#0d0d14]">
+          <div className="overflow-x-auto rounded-2xl border border-white/8 studio-faceplate-dark">
             <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-white/5 text-left text-xs font-bold uppercase tracking-widest text-white/45">
                 <tr>

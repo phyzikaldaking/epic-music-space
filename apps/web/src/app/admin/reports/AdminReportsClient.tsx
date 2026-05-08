@@ -89,13 +89,13 @@ export default function AdminReportsClient() {
       {loading ? (
         <p className="text-sm text-white/40">Loading…</p>
       ) : reports.length === 0 ? (
-        <p className="rounded-2xl border border-white/8 bg-[#141414] p-8 text-center text-sm text-white/40">
+        <p className="rounded-2xl border border-white/8 studio-faceplate p-8 text-center text-sm text-white/40">
           Nothing in the {status.toLowerCase()} queue.
         </p>
       ) : (
         <ul className="space-y-3">
           {reports.map((r) => (
-            <li key={r.id} className="rounded-2xl border border-white/8 bg-[#141414] p-4">
+            <li key={r.id} className="rounded-2xl border border-white/8 studio-faceplate p-4">
               <div className="mb-2 flex flex-wrap items-baseline gap-3 text-xs text-white/55">
                 <span className="rounded-full border border-yellow-500/35 bg-yellow-500/10 px-2 py-0.5 font-bold uppercase tracking-widest text-yellow-200">
                   {r.reason}

@@ -53,7 +53,7 @@ export default async function OrdersDashboard() {
               <Link
                 key={o.id}
                 href={`/dashboard/orders/${o.id}`}
-                className="flex flex-col gap-3 rounded-2xl border border-white/8 bg-[#0d0d14] p-4 transition hover:border-brand-500/30 sm:flex-row sm:items-start sm:justify-between"
+                className="flex flex-col gap-3 rounded-2xl border border-white/8 studio-faceplate-dark p-4 transition hover:border-brand-500/30 sm:flex-row sm:items-start sm:justify-between"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">

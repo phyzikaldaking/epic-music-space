@@ -120,7 +120,7 @@ export default function ThreadClient({
   const profileHref = peer.studio?.username ? `/studio/${peer.studio.username}` : "#";
 
   return (
-    <div className="flex h-[calc(100vh-180px)] min-h-[480px] flex-col rounded-2xl border border-white/8 bg-[#141414]">
+    <div className="flex h-[calc(100vh-180px)] min-h-[480px] flex-col rounded-2xl border border-white/8 studio-faceplate">
       <header className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
         <Link
           href="/messages"

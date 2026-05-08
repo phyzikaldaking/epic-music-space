@@ -57,9 +57,10 @@ const nextConfig = {
   },
   poweredByHeader: false,
   transpilePackages: ["@ems/utils"],
-  // Keep build stability first for deployment. This optimization can
-  // regress build reliability on some dependency graphs.
-  experimental: {},
+  // Disable PPR to avoid Next.js 16 hydration issues
+  experimental: {
+    ppr: false,
+  },
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 60 * 60 * 24 * 365,

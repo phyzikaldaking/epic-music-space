@@ -10,6 +10,13 @@ const createAuctionSchema = z.object({
   songId: z.string().min(1),
   startingBid: z.number().positive().max(100_000),
   reservePrice: z.number().positive().max(100_000).optional(),
+  // Optional "buy it now" — when set and a bid >= this lands, the auction
+  // settles immediately at this price.
+  instantBuyPrice: z.number().positive().max(100_000).optional(),
+  // Anti-snipe controls (per-auction). Defaults match historical behaviour.
+  // 0 disables anti-snipe entirely; max 30 minutes is plenty.
+  antiSnipeWindowMinutes: z.number().int().min(0).max(30).default(2),
+  antiSnipeExtensionMinutes: z.number().int().min(0).max(30).default(2),
   durationHours: z.number().int().min(1).max(168).default(48),
 });
 
@@ -75,7 +82,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { songId, startingBid, reservePrice, durationHours } = parsed.data;
+  const {
+    songId,
+    startingBid,
+    reservePrice,
+    instantBuyPrice,
+    antiSnipeWindowMinutes,
+    antiSnipeExtensionMinutes,
+    durationHours,
+  } = parsed.data;
+
+  // Reject combos that would never trigger anti-snipe correctly. If you
+  // want extension you need both a window and an extension, otherwise the
+  // setting silently no-ops and surprises producers.
+  if (
+    (antiSnipeWindowMinutes === 0) !== (antiSnipeExtensionMinutes === 0)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Anti-snipe window and extension must both be 0 (disabled) or both >0.",
+      },
+      { status: 400 },
+    );
+  }
+  if (
+    typeof instantBuyPrice === "number" &&
+    instantBuyPrice <= startingBid
+  ) {
+    return NextResponse.json(
+      { error: "Instant-buy price must be greater than the starting bid." },
+      { status: 400 },
+    );
+  }
 
   const song = await prisma.song.findUnique({ where: { id: songId } });
   if (!song || song.artistId !== session.user.id) {
@@ -106,6 +145,9 @@ export async function POST(req: NextRequest) {
       sellerId: session.user.id,
       startingBid,
       reservePrice: reservePrice ?? null,
+      instantBuyPrice: instantBuyPrice ?? null,
+      antiSnipeWindowMinutes,
+      antiSnipeExtensionMinutes,
       endsAt,
       status: "ACTIVE",
     },

@@ -40,6 +40,33 @@ const createSongSchema = z.object({
   // and the API can opt out cleanly.
   revenueSharePct: z.coerce.number().min(0, "Revenue share cannot be negative").max(100),
   totalLicenses: z.coerce.number().int().min(1).max(10_000).default(100),
+  // Drafts: client posts isDraft=true to stash the song without making it
+  // public. The draft still needs full validation so flipping it live
+  // later doesn't surprise the producer with a hidden gate.
+  isDraft: z.boolean().optional(),
+  // Scheduled release. Cron flips isDraft -> false at this time. Must be
+  // in the future at submission time.
+  scheduledAt: z
+    .string()
+    .datetime()
+    .refine((s) => new Date(s).getTime() > Date.now(), {
+      message: "Scheduled release must be in the future.",
+    })
+    .optional(),
+  // Tiered licensing. Each entry adds a buyable tier on top of the base
+  // licensePrice (always the BASIC tier).
+  licenseVariants: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(40),
+        name: z.string().min(1).max(60),
+        priceUsd: z.number().min(0.5).max(100_000),
+        terms: z.string().max(500).optional(),
+        totalLicenses: z.number().int().min(1).max(10_000).optional(),
+      }),
+    )
+    .max(6)
+    .optional(),
 });
 
 /**
@@ -126,10 +153,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Pull scheduledAt out of parsed.data so we can convert string -> Date
+  // before handing it to Prisma (the field is DateTime in the schema).
+  const { scheduledAt, licenseVariants, ...restCreate } = parsed.data;
+
   const song = await prisma.song.create({
     data: {
-      ...parsed.data,
+      ...restCreate,
       artistId: session.user.id,
+      scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+      // licenseVariants is JSON in the DB. Prisma's typed input expects
+      // the JSON shape, but our zod schema has already validated structure.
+      licenseVariants: licenseVariants ?? undefined,
     },
   });
 

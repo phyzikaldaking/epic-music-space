@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { ClientOnlyDynamics } from "@/components/ClientDynamics";
 
 const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"));
 const KeyboardShortcuts = dynamic(() => import("@/components/KeyboardShortcuts"));
@@ -10,25 +11,29 @@ const OfflineBanner = dynamic(() => import("@/components/OfflineBanner"));
 const ChatbotWidget = dynamic(() => import("@/components/ChatbotWidget"));
 const InstallAppPrompt = dynamic(() => import("@/components/InstallAppPrompt"));
 const CookieConsent = dynamic(() => import("@/components/CookieConsent"));
-const ClientOnlyDynamics = dynamic(
-  () => import("@/components/ClientDynamics").then((m) => m.ClientOnlyDynamics),
-);
 const GlobalAudioPlayer = dynamic(() => import("@/components/GlobalAudioPlayer"));
-const VercelAnalytics =
-  process.env.NODE_ENV === "production"
-    ? dynamic(() => import("@vercel/analytics/next").then((m) => m.Analytics), { ssr: false })
-    : function DisabledAnalytics() {
-        return null;
-      };
-const VercelSpeedInsights =
-  process.env.NODE_ENV === "production"
-    ? dynamic(() => import("@vercel/speed-insights/next").then((m) => m.SpeedInsights), { ssr: false })
-    : function DisabledSpeedInsights() {
-        return null;
-      };
+// Always declare these as dynamic — branching at module-init between
+// `dynamic(...)` and a stub function returns inconsistently-shaped
+// values that Next.js 16's RSC bundler resolves to undefined, surfacing
+// as "Element type is invalid. Lazy element resolves to undefined" + a
+// BAILOUT_TO_CLIENT_SIDE_RENDERING crash on the homepage. Letting the
+// dynamic loader handle non-prod gating below keeps the lazy element
+// shape stable.
+const VercelAnalytics = dynamic(
+  () => import("@vercel/analytics/next").then((m) => m.Analytics),
+  { ssr: false },
+);
+const VercelSpeedInsights = dynamic(
+  () => import("@vercel/speed-insights/next").then((m) => m.SpeedInsights),
+  { ssr: false },
+);
 
 export default function DeferredGlobalWidgets() {
   const [ready, setReady] = useState(false);
+
+  if (process.env.NODE_ENV !== "production") {
+    return null;
+  }
 
   useEffect(() => {
     const win = window as Window & {
@@ -61,8 +66,12 @@ export default function DeferredGlobalWidgets() {
       <ChatbotWidget />
       <InstallAppPrompt />
       <ClientOnlyDynamics />
-      <VercelAnalytics />
-      <VercelSpeedInsights />
+      {process.env.NODE_ENV === "production" && (
+        <>
+          <VercelAnalytics />
+          <VercelSpeedInsights />
+        </>
+      )}
     </>
   );
 }

@@ -7,7 +7,7 @@ import VerzuzNewClient from "./VerzuzNewClient";
 
 export const metadata: Metadata = {
   title: "New Verzuz",
-  description: "Set up a 10-round Verzuz battle with another artist.",
+  description: "Schedule a 10-round Verzuz event with another artist or producer.",
 };
 
 export default async function VerzuzNewPage() {
@@ -47,10 +47,9 @@ export default async function VerzuzNewPage() {
         Stage a Verzuz
       </h1>
       <p className="mt-2 text-sm text-white/55">
-        Pick an opponent by username, then choose up to 10 of your songs to
-        line up against 10 of theirs. Fans vote round-by-round, the winner of
-        each round earns a point, the artist with the most rounds takes the
-        match.
+        Scheduled event mode for artists and producers: pick an opponent by
+        username, set a start time, then lock in 10 songs each (1 song per
+        round). Fans vote round-by-round and the side with the most rounds wins.
       </p>
       <div className="mt-6">
         <VerzuzNewClient mySongs={mySongs} />

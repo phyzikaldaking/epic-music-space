@@ -58,11 +58,13 @@ export default function FeedClient({
   viewerId,
   onboarding,
   authCallbackPath = "/feed",
+  composerPrefill = null,
 }: {
   initialMode: "all" | "following";
   viewerId: string | null;
   onboarding: string | null;
   authCallbackPath?: string;
+  composerPrefill?: string | null;
 }) {
   const [mode, setMode] = useState<"all" | "following">(initialMode);
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -162,7 +164,7 @@ export default function FeedClient({
       )}
 
       {viewerId ? (
-        <PostComposer onPosted={handlePosted} />
+        <PostComposer onPosted={handlePosted} prefillBody={composerPrefill} />
       ) : (
         <div className="glass rounded-2xl p-4 text-center text-sm text-white/60">
           <a href={`/auth/signin?callbackUrl=${encodeURIComponent(authCallbackPath)}`} className="text-brand-400 hover:underline">

@@ -20,7 +20,7 @@ export default function MarketplaceLoading() {
         {Array.from({ length: 12 }).map((_, i) => (
           <div
             key={i}
-            className="overflow-hidden rounded-lg border border-white/8 bg-[#141414]"
+            className="overflow-hidden rounded-lg border border-white/8 studio-faceplate"
           >
             <div className="aspect-square w-full animate-pulse bg-white/6" />
             <div className="p-4 space-y-3">

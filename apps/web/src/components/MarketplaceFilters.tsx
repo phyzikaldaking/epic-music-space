@@ -37,6 +37,17 @@ const TEMPO_OPTIONS = [
   { value: "fast", label: "130+ BPM" },
 ];
 
+// Producer-role filter — lets buyers find tracks uploaded by users of a
+// specific role (producers, engineers, labels) without needing to know
+// which artist is which. Empty value = no filter.
+const ROLE_OPTIONS = [
+  { value: "", label: "All creators" },
+  { value: "PRODUCER", label: "Producers" },
+  { value: "ENGINEER", label: "Engineers" },
+  { value: "ARTIST", label: "Artists" },
+  { value: "LABEL", label: "Labels" },
+];
+
 interface Props {
   totalCount: number;
 }
@@ -50,6 +61,7 @@ export default function MarketplaceFilters({ totalCount }: Props) {
   const genre  = searchParams.get("genre")  ?? "";
   const sort   = searchParams.get("sort")   ?? "trending";
   const tempo  = searchParams.get("tempo")  ?? "";
+  const role   = searchParams.get("role")   ?? "";
 
   const update = useCallback(
     (key: string, value: string) => {
@@ -64,7 +76,7 @@ export default function MarketplaceFilters({ totalCount }: Props) {
     [router, pathname, searchParams]
   );
 
-  const hasFilters = search || genre || tempo || sort !== "trending";
+  const hasFilters = search || genre || tempo || role || sort !== "trending";
 
   return (
     <div className="mb-10 border-y border-white/10 py-5">
@@ -133,6 +145,28 @@ export default function MarketplaceFilters({ totalCount }: Props) {
             }`}
           >
             {g}
+          </button>
+        ))}
+      </div>
+
+      {/* Role segmented filter — lets buyers find tracks from producers,
+          engineers, labels without scanning artist names. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-widest text-white/35">
+          Creator
+        </span>
+        {ROLE_OPTIONS.map((option) => (
+          <button
+            key={option.value || "any-role"}
+            type="button"
+            onClick={() => update("role", option.value)}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+              role === option.value
+                ? "bg-brand-500 text-white"
+                : "border border-white/15 text-white/50 hover:border-white/30 hover:text-white/80"
+            }`}
+          >
+            {option.label}
           </button>
         ))}
       </div>

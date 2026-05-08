@@ -723,21 +723,50 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     setAuditEvents((prev) => [entry, ...prev].slice(0, 24));
   }, []);
 
+  const applyFrontlineVocalBus = useCallback((trackId: TrackId) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.setTrackEq(trackId, "low", -3);
+    engine.setTrackEq(trackId, "mid", 2);
+    engine.setTrackEq(trackId, "high", 3);
+    engine.setTrackComp(trackId, { enabled: true, threshDb: -26, ratio: 5 });
+    engine.setTrackVocalBus(trackId, {
+      enabled: true,
+      driveDb: 6,
+      presenceDb: 3.5,
+      airDb: 4,
+      crush: 0.35,
+    });
+    engine.setTrackReverb(trackId, { wet: 0.12, decaySec: 1.2 });
+    engine.setTrackDelay(trackId, { wet: 0.07, beats: 0.25, feedback: 0.18 });
+  }, []);
+
+  const findVocalTrack = useCallback(() => {
+    const engine = engineRef.current;
+    const liveTracks = engine?.getSnapshot().tracks ?? [];
+    return liveTracks.find((track) => /vocal/i.test(track.name)) ?? liveTracks[0] ?? null;
+  }, []);
+
   const applySoundPreset = useCallback((preset: "record" | "mix") => {
     const engine = engineRef.current;
     if (!engine) return;
     if (preset === "record") {
+      const vocalTrack = findVocalTrack();
+      if (vocalTrack) {
+        applyFrontlineVocalBus(vocalTrack.id);
+        setFocusedId(vocalTrack.id);
+      }
       engine.setLatencyMode("recording");
       engine.setVocalCaptureProfile("punchy");
       engine.setMetronome(true);
-      setNotice({ tone: "success", message: "Record preset loaded: low-latency + punchy + metronome on." });
+      setNotice({ tone: "success", message: "Record preset loaded: frontline vocal bus, low latency, and metronome on." });
       return;
     }
     engine.setLatencyMode("mixing");
     engine.setVocalCaptureProfile("smooth");
     engine.setMetronome(false);
     setNotice({ tone: "success", message: "Mix preset loaded: stable playback + smooth vocal profile." });
-  }, []);
+  }, [applyFrontlineVocalBus, findVocalTrack]);
 
   const launchInstantRecordSetup = useCallback(() => {
     if (!ensureInit()) return;
@@ -756,6 +785,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     engine.setBpm(92);
     engine.setLatencyMode("recording");
     engine.setVocalCaptureProfile("punchy");
+    applyFrontlineVocalBus(vocalTrack.id);
     engine.setMetronome(true);
     engine.setLoopEnabled(false);
     engine.setPunchIn(false, 0, 4);
@@ -767,9 +797,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     pushAuditEvent("record", "Instant record setup armed the vocal lane");
     setNotice({
       tone: "success",
-      message: `Instant setup ready: ${vocalTrack.name} armed, metronome on, record mode active.`,
+      message: `Instant setup ready: ${vocalTrack.name} armed with frontline vocal bus, metronome on.`,
     });
-  }, [ensureInit, pushAuditEvent]);
+  }, [applyFrontlineVocalBus, ensureInit, pushAuditEvent]);
 
   const nudgeMasterToTarget = useCallback(() => {
     const engine = engineRef.current;
@@ -1053,9 +1083,11 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       onArm: () => engine.setTrackArmed(id, true),
       onSetEq: (band, db) => engine.setTrackEq(id, band, db),
       onSetComp: (params) => engine.setTrackComp(id, params),
+      onSetVocalBus: (params) => engine.setTrackVocalBus(id, params),
       onSetReverb: (params) => engine.setTrackReverb(id, params),
       onSetDelay: (params) => engine.setTrackDelay(id, params),
     });
+    setNotice({ tone: "success", message: `Rack preset applied to ${focusedTrack.name}.` });
   }
 
   // ── AI Master: bounce mix → upload → matchering → load mastered ────────
@@ -1348,7 +1380,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           </p>
           <h1 className="mt-1 text-3xl font-extrabold sm:text-4xl">Next-gen recording board</h1>
           <p className="mt-1 max-w-xl text-sm text-white/65">
-            Send-first FX, adaptive latency, MIDI capture, beat patterns, master render, and
+            Frontline vocal bus, adaptive latency, MIDI capture, beat patterns, master render, and
             catalog publishing in one browser-native studio.
           </p>
         </div>
@@ -1374,9 +1406,18 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           onTemplate={(preset) => {
             if (!ensureInit()) return;
             if (preset === "vocal") {
+              const vocalTrack = findVocalTrack();
               engineRef.current?.setBpm(92);
+              engineRef.current?.setLatencyMode("recording");
+              engineRef.current?.setVocalCaptureProfile("punchy");
+              if (vocalTrack) {
+                applyFrontlineVocalBus(vocalTrack.id);
+                engineRef.current?.setTrackArmed(vocalTrack.id, true);
+                setFocusedId(vocalTrack.id);
+              }
               setFocusMode("record");
-              pushAuditEvent("record", "Loaded Vocal template (92 BPM)");
+              pushAuditEvent("record", "Loaded Vocal template (92 BPM + frontline bus)");
+              setNotice({ tone: "success", message: "Vocal template loaded with the frontline bus." });
               return;
             }
             if (preset === "club") {
@@ -1800,6 +1841,13 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         <StudioSoundCoach
           transport={transport ?? null}
           onPreset={applySoundPreset}
+          onFrontlineBus={() => {
+            const vocalTrack = findVocalTrack();
+            if (!vocalTrack) return;
+            applyFrontlineVocalBus(vocalTrack.id);
+            setFocusedId(vocalTrack.id);
+            setNotice({ tone: "success", message: `Frontline bus loaded on ${vocalTrack.name}.` });
+          }}
         />
       )}
 
@@ -1868,6 +1916,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                 onRename={(name) => engineRef.current?.renameTrack(track.id, name)}
                 onSetEq={(band, db) => engineRef.current?.setTrackEq(track.id, band, db)}
                 onSetComp={(params) => engineRef.current?.setTrackComp(track.id, params)}
+                onSetVocalBus={(params) => engineRef.current?.setTrackVocalBus(track.id, params)}
                 onSetReverb={(params) => engineRef.current?.setTrackReverb(track.id, params)}
                 onSetDelay={(params) => engineRef.current?.setTrackDelay(track.id, params)}
                 onSetSidechain={(sourceId, amount) =>
@@ -2196,7 +2245,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
 function BlueprintStatusPanel({ ready }: { ready: boolean }) {
   const items = [
-    ["Send-first FX", "Shared reverb and delay returns reduce duplicate processors."],
+    ["Frontline bus", "Drive, air, and parallel crush keep lead vocals up front."],
     ["Adaptive latency", "Record and mix modes keep the engine honest for the task."],
     ["Cloud handoff", "Rendered WAVs flow into the existing catalog publish path."],
   ];
@@ -2283,9 +2332,11 @@ function StudioExecutionBar({
 function StudioSoundCoach({
   transport,
   onPreset,
+  onFrontlineBus,
 }: {
   transport: TransportState | null;
   onPreset: (preset: "record" | "mix") => void;
+  onFrontlineBus: () => void;
 }) {
   const qualityTips = [
     "Record in Record latency mode, then switch to Mix when editing.",
@@ -2307,6 +2358,13 @@ function StudioSoundCoach({
             className="rounded-lg border border-cyan-300/30 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-cyan-100 transition hover:bg-cyan-300/10"
           >
             Record preset
+          </button>
+          <button
+            type="button"
+            onClick={onFrontlineBus}
+            className="rounded-lg border border-amber-300/35 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-amber-100 transition hover:bg-amber-300/10"
+          >
+            Frontline bus
           </button>
           <button
             type="button"
@@ -3385,6 +3443,7 @@ function TrackStrip({
   onRename,
   onSetEq,
   onSetComp,
+  onSetVocalBus,
   onSetReverb,
   onSetDelay,
   onSetSidechain,
@@ -3414,6 +3473,13 @@ function TrackStrip({
   onRename: (name: string) => void;
   onSetEq: (band: "low" | "mid" | "high", db: number) => void;
   onSetComp: (params: { threshDb?: number; ratio?: number; enabled?: boolean }) => void;
+  onSetVocalBus: (params: {
+    enabled?: boolean;
+    driveDb?: number;
+    presenceDb?: number;
+    airDb?: number;
+    crush?: number;
+  }) => void;
   onSetReverb: (params: { wet?: number; decaySec?: number }) => void;
   onSetDelay: (params: { wet?: number; beats?: number; feedback?: number }) => void;
   onSetSidechain: (sourceId: TrackId | null, amount?: number) => void;
@@ -3593,6 +3659,7 @@ function TrackStrip({
           sidechainOptions={sidechainOptions}
           onSetEq={onSetEq}
           onSetComp={onSetComp}
+          onSetVocalBus={onSetVocalBus}
           onSetReverb={onSetReverb}
           onSetDelay={onSetDelay}
           onSetSidechain={onSetSidechain}

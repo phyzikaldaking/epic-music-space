@@ -23,6 +23,22 @@
 
 import { classifyAudioSource } from "@/lib/audioSource";
 
+export interface LicenseVariantInput {
+  id: string;
+  name: string;
+  priceUsd: string | number;
+  terms?: string;
+  totalLicenses?: string | number;
+}
+
+export interface LicenseVariant {
+  id: string;
+  name: string;
+  priceUsd: number;
+  terms?: string;
+  totalLicenses?: number;
+}
+
 export interface TrackFormState {
   title: string;
   artistName: string;
@@ -40,6 +56,14 @@ export interface TrackFormState {
   allowFreeDownload: boolean;
   isLegacy: boolean;
   originalReleaseYear: string;
+  // Draft / scheduling. saveAsDraft=true overrides any scheduledAt — it's
+  // explicitly a "don't publish yet" signal. scheduledAt is an ISO string
+  // (datetime-local control output) or empty for "publish now."
+  saveAsDraft?: boolean;
+  scheduledAt?: string;
+  // Optional tiered licensing. The base licensePrice is always the BASIC
+  // tier; additional tiers are layered on top.
+  licenseVariants?: LicenseVariantInput[];
 }
 
 export interface TrackPublishPayload {
@@ -59,6 +83,9 @@ export interface TrackPublishPayload {
   licensePrice: number;
   revenueSharePct: number;
   totalLicenses: number;
+  isDraft?: boolean;
+  scheduledAt?: string;
+  licenseVariants?: LicenseVariant[];
 }
 
 export type TrackPublishCheck =
@@ -143,6 +170,73 @@ export function validateTrackSubmission(state: TrackFormState): TrackPublishChec
   const stem = state.stemUrl.trim();
   const cover = state.coverUrl.trim();
 
+  // Scheduled-release validation: must be in the future. Past timestamps
+  // would publish immediately on the next cron tick, defeating the
+  // intent — surface that to the producer instead of silently fixing it.
+  let scheduledAtIso: string | undefined;
+  if (state.scheduledAt && state.scheduledAt.trim()) {
+    const date = new Date(state.scheduledAt);
+    if (Number.isNaN(date.getTime())) {
+      return { ok: false, reason: "Invalid release date." };
+    }
+    if (date.getTime() <= Date.now()) {
+      return {
+        ok: false,
+        reason: "Scheduled release must be in the future.",
+      };
+    }
+    scheduledAtIso = date.toISOString();
+  }
+
+  // License-tier variants: each must have a valid name and a price >=
+  // the basic licensePrice (a "premium" tier cheaper than basic is a UX
+  // bug, not a feature). totalLicenses defaults to the parent track cap
+  // when not specified per tier.
+  let licenseVariants: LicenseVariant[] | undefined;
+  if (state.licenseVariants && state.licenseVariants.length > 0) {
+    if (state.licenseVariants.length > 6) {
+      return { ok: false, reason: "At most 6 license tiers per track." };
+    }
+    licenseVariants = [];
+    const seenIds = new Set<string>();
+    for (const v of state.licenseVariants) {
+      const id = (v.id ?? "").trim();
+      const name = (v.name ?? "").trim();
+      if (!id || !name) {
+        return { ok: false, reason: "Each license tier needs an id and a name." };
+      }
+      if (seenIds.has(id)) {
+        return { ok: false, reason: `Duplicate license tier id: ${id}` };
+      }
+      seenIds.add(id);
+      const priceNumV = parseDecimal(String(v.priceUsd));
+      if (!Number.isFinite(priceNumV) || priceNumV < 0.5) {
+        return {
+          ok: false,
+          reason: `License tier "${name}" needs a price of at least $0.50.`,
+        };
+      }
+      let totalV: number | undefined;
+      if (v.totalLicenses !== undefined && v.totalLicenses !== "") {
+        const t = parseDecimal(String(v.totalLicenses));
+        if (!Number.isFinite(t) || t < 1) {
+          return {
+            ok: false,
+            reason: `License tier "${name}" needs at least 1 total license.`,
+          };
+        }
+        totalV = Math.round(t);
+      }
+      licenseVariants.push({
+        id,
+        name,
+        priceUsd: priceNumV,
+        terms: v.terms?.trim() || undefined,
+        totalLicenses: totalV,
+      });
+    }
+  }
+
   return {
     ok: true,
     payload: {
@@ -162,6 +256,9 @@ export function validateTrackSubmission(state: TrackFormState): TrackPublishChec
       licensePrice: priceNum,
       revenueSharePct: revShareNum,
       totalLicenses: Math.round(totalLicensesNum),
+      isDraft: state.saveAsDraft || undefined,
+      scheduledAt: scheduledAtIso,
+      licenseVariants,
     },
   };
 }

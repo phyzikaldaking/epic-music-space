@@ -15,11 +15,16 @@ export default async function MessagesPage() {
   }
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-1 text-3xl font-extrabold">
-        <span className="text-gradient-ems">Messages</span>
-      </h1>
-      <p className="mb-6 text-sm text-white/45">
-        Direct conversations with other artists and listeners.
+      <div className="mb-6 flex items-center gap-3">
+        <span aria-hidden className="led-on-amber h-2.5 w-2.5 rounded-full" />
+        <h1 className="font-display text-4xl uppercase tracking-wider text-white">
+          Talkback
+        </h1>
+        <span className="studio-label ml-auto text-white/35">MSG-01</span>
+      </div>
+      <p className="mb-6 text-sm text-white/55">
+        Direct conversations with other artists and listeners — like the
+        talkback channel between rooms.
       </p>
       <MessagesClient viewerId={session.user.id} />
     </div>

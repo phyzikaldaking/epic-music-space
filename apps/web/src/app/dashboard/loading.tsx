@@ -14,7 +14,7 @@ export default function DashboardLoading() {
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className="rounded-2xl border border-white/8 bg-[#141414] p-5"
+            className="rounded-2xl border border-white/8 studio-faceplate p-5"
           >
             <div className="mb-3 flex items-center justify-between">
               <div className="h-3 w-24 animate-pulse rounded bg-white/6" />
@@ -25,7 +25,7 @@ export default function DashboardLoading() {
         ))}
       </div>
       {/* Table skeleton */}
-      <div className="rounded-2xl border border-white/8 bg-[#141414] overflow-hidden">
+      <div className="rounded-2xl border border-white/8 studio-faceplate overflow-hidden">
         <div className="border-b border-white/8 bg-white/[0.02] px-5 py-3.5 flex gap-10">
           {["Song", "License #", "Price", "Status", "Date"].map((h) => (
             <div key={h} className="h-3 w-16 animate-pulse rounded bg-white/6" />

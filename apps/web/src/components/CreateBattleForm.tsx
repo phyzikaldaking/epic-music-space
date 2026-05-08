@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 
 interface Song {
   id: string;
@@ -23,10 +24,13 @@ const DURATIONS = [
   { label: "72h", value: 72 },
 ];
 
+type BattleFormat = "quick" | "onsite";
+
 export default function CreateBattleForm({ songs }: CreateBattleFormProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [battleFormat, setBattleFormat] = useState<BattleFormat>("quick");
   const [durationHours, setDurationHours] = useState(24);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -44,21 +48,35 @@ export default function CreateBattleForm({ songs }: CreateBattleFormProps) {
   function close() {
     setOpen(false);
     setSelected([]);
+    setBattleFormat("quick");
     setError("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (selected.length < 2) { setError("Select at least 2 songs."); return; }
+    if (battleFormat === "quick" && selected.length !== 2) {
+      setError("Quick 1v1 needs exactly 2 of your songs (1 per round).");
+      return;
+    }
+    if (battleFormat === "onsite" && selected.length < 2) {
+      setError("Select at least 2 songs.");
+      return;
+    }
     setError("");
     setLoading(true);
 
     try {
-      const isRoyale = selected.length > 2;
-      const url = isRoyale ? "/api/versus/royale" : "/api/versus";
-      const body = isRoyale
-        ? { songIds: selected, durationHours }
-        : { songAId: selected[0], songBId: selected[1], durationHours };
+      let url = "/api/versus";
+      let body: Record<string, unknown> = { songAId: selected[0], songBId: selected[1], durationHours };
+      let successPath: string | null = null;
+
+      if (battleFormat === "quick") {
+        url = "/api/versus/quick-1v1";
+        body = { songIds: selected, durationHours };
+      } else if (selected.length > 2) {
+        url = "/api/versus/royale";
+        body = { songIds: selected, durationHours };
+      }
 
       const res = await fetch(url, {
         method: "POST",
@@ -66,11 +84,24 @@ export default function CreateBattleForm({ songs }: CreateBattleFormProps) {
         body: JSON.stringify(body),
       });
 
-      const data = await res.json() as { error?: string };
+      const data = await res.json() as {
+        error?: string;
+        id?: string;
+        quickSessionHref?: string;
+        rounds?: Array<{ href: string }>;
+      };
       if (!res.ok) { setError(data.error ?? "Failed to create battle."); return; }
 
+      if (battleFormat === "quick") {
+        successPath = data.quickSessionHref ?? (data.rounds?.[0]?.href ?? null);
+      }
+
       close();
-      router.refresh();
+      if (successPath) {
+        router.push(successPath);
+      } else {
+        router.refresh();
+      }
     } catch {
       setError("An unexpected error occurred.");
     } finally {
@@ -111,14 +142,61 @@ export default function CreateBattleForm({ songs }: CreateBattleFormProps) {
               <div>
                 <h2 className="text-xl font-extrabold">⚔️ Create Battle</h2>
                 <p className="mt-1 text-xs text-white/40">
-                  {selected.length === 0
-                    ? "Pick 2–10 songs"
-                    : selected.length === 2
-                      ? "2 selected — 1v1 Battle"
-                      : `${selected.length} selected — Battle Royale`}
+                  {battleFormat === "quick"
+                    ? selected.length === 2
+                      ? "Quick 1v1 ready — 2 rounds"
+                      : "Quick 1v1 — pick exactly 2 songs"
+                    : selected.length === 0
+                      ? "Pick 2–10 songs"
+                      : selected.length === 2
+                        ? "2 selected — On-site 1v1"
+                        : `${selected.length} selected — Battle Royale`}
                 </p>
               </div>
               <button type="button" onClick={close} className="mt-0.5 text-white/40 hover:text-white transition text-xl leading-none">✕</button>
+            </div>
+
+            <div className="px-7 pt-5">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBattleFormat("quick");
+                    setSelected((prev) => prev.slice(0, 2));
+                    setError("");
+                  }}
+                  className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                    battleFormat === "quick"
+                      ? "border-cyan-400/50 bg-cyan-500/15 text-cyan-100"
+                      : "border-white/15 bg-white/5 text-white/65 hover:bg-white/10"
+                  }`}
+                >
+                  <p className="font-black uppercase tracking-[0.14em]">Quick 1v1</p>
+                  <p className="mt-1 text-[11px] text-white/70">Random on-site opponents · 2 rounds · 1 song per round</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBattleFormat("onsite");
+                    setError("");
+                  }}
+                  className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                    battleFormat === "onsite"
+                      ? "border-brand-500/50 bg-brand-500/15 text-brand-100"
+                      : "border-white/15 bg-white/5 text-white/65 hover:bg-white/10"
+                  }`}
+                >
+                  <p className="font-black uppercase tracking-[0.14em]">On-site Event</p>
+                  <p className="mt-1 text-[11px] text-white/70">Direct 1v1 or Royale from your catalog</p>
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-gold-200/90">
+                10-song battles are scheduled events in Verzuz for artists/producers only. 
+                <Link href="/verzuz/new" className="ml-1 font-bold underline underline-offset-2 hover:text-gold-100">
+                  Stage one here
+                </Link>
+                .
+              </p>
             </div>
 
             {/* Song picker grid */}
@@ -127,7 +205,8 @@ export default function CreateBattleForm({ songs }: CreateBattleFormProps) {
                 {songs.map((song) => {
                   const idx = selected.indexOf(song.id);
                   const isSelected = idx !== -1;
-                  const isDisabled = !isSelected && selected.length >= 10;
+                  const maxSelectable = battleFormat === "quick" ? 2 : 10;
+                  const isDisabled = !isSelected && selected.length >= maxSelectable;
                   return (
                     <button
                       key={song.id}
@@ -188,11 +267,15 @@ export default function CreateBattleForm({ songs }: CreateBattleFormProps) {
               {/* Mode indicator */}
               {selected.length >= 2 && (
                 <div className={`rounded-xl border px-4 py-2.5 text-sm font-medium ${
-                  mode === "royale"
+                  battleFormat === "quick"
+                    ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-200"
+                    : mode === "royale"
                     ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
                     : "border-brand-500/30 bg-brand-500/10 text-brand-300"
                 }`}>
-                  {mode === "royale"
+                  {battleFormat === "quick"
+                    ? "⚡ Quick 1v1 — two live matches generated against random on-site opponents"
+                    : mode === "royale"
                     ? `🏆 Battle Royale — ${selected.length} songs, community picks the winner`
                     : "⚔️ 1v1 — head-to-head, highest votes wins"}
                 </div>
@@ -212,7 +295,7 @@ export default function CreateBattleForm({ songs }: CreateBattleFormProps) {
                 </button>
                 <button
                   type="submit"
-                  disabled={loading || selected.length < 2}
+                  disabled={loading || selected.length < 2 || (battleFormat === "quick" && selected.length !== 2)}
                   className="flex-1 rounded-xl bg-brand-500 py-3 text-sm font-bold text-white transition hover:bg-brand-600 disabled:opacity-40 glow-purple-sm"
                 >
                   {loading ? (
@@ -222,6 +305,10 @@ export default function CreateBattleForm({ songs }: CreateBattleFormProps) {
                     </span>
                   ) : selected.length < 2 ? (
                     "Select 2+ songs"
+                  ) : battleFormat === "quick" && selected.length !== 2 ? (
+                    "Pick exactly 2 songs"
+                  ) : battleFormat === "quick" ? (
+                    "Start Quick 2-Round 1v1 ⚡"
                   ) : mode === "royale" ? (
                     `Launch Royale (${selected.length} songs) 🏆`
                   ) : (

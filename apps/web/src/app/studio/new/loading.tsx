@@ -2,7 +2,7 @@ export default function StudioNewLoading() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-12">
       <div className="mb-8 h-9 w-52 animate-pulse rounded-lg bg-white/8" />
-      <div className="rounded-2xl border border-white/8 bg-[#141414] p-8">
+      <div className="rounded-2xl border border-white/8 studio-faceplate p-8">
         <div className="space-y-6">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i}>

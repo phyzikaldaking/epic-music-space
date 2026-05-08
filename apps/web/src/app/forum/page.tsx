@@ -23,13 +23,14 @@ export default async function ForumPage({ searchParams }: ForumPageProps) {
   const postId = Array.isArray(postValue) ? (postValue[0] ?? null) : (postValue ?? null);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6">
-        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-300/85">Community</p>
-        <h1 className="mt-1 text-2xl font-extrabold">Forum Timeline</h1>
-        <p className="mt-1 text-sm text-white/65">
+    <div className="ems-shell">
+      <div className="ems-head">
+        <p className="ems-kicker">Community</p>
+        <h1 className="ems-title">Forum Timeline</h1>
+        <p className="ems-sub">
           Share updates, ask questions, and talk music with artists and listeners.
         </p>
+        <div className="ems-divider" aria-hidden />
       </div>
 
       {postId && (
@@ -48,6 +49,7 @@ export default async function ForumPage({ searchParams }: ForumPageProps) {
         viewerId={session?.user?.id ?? null}
         onboarding={onboarding}
         authCallbackPath="/forum"
+        composerPrefill={null}
       />
     </div>
   );

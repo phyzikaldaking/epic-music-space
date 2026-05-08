@@ -24,6 +24,13 @@ export default async function StudioIndexPage() {
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
+      <div className="ems-shell-wide pb-0">
+        <header className="ems-head">
+          <p className="ems-kicker">Studio System</p>
+          <p className="ems-sub">Create, mix, publish, and run live listening sessions from one control center.</p>
+          <div className="ems-divider" />
+        </header>
+      </div>
       <StudioHubClient studioUsername={studio?.username ?? null} />
     </div>
   );
@@ -32,7 +39,12 @@ export default async function StudioIndexPage() {
 function PublicStudioLanding() {
   return (
     <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
-      <div className="mx-auto max-w-6xl px-4 py-10 pb-[calc(env(safe-area-inset-bottom)+3rem)] sm:py-16">
+      <div className="ems-shell-wide pb-[calc(env(safe-area-inset-bottom)+3rem)] sm:py-16">
+        <header className="ems-head">
+          <p className="ems-kicker">Studio System</p>
+          <p className="ems-sub">From first drum pattern to licensed release, the workflow stays in one lane.</p>
+          <div className="ems-divider" />
+        </header>
         <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-brand-500/10 via-accent-500/5 to-transparent p-6 sm:p-12">
           <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-brand-500/20 blur-[120px]" />
           <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-accent-500/15 blur-[120px]" />

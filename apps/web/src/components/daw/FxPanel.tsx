@@ -19,6 +19,13 @@ interface Props {
   sidechainOptions: SidechainOption[];
   onSetEq: (band: "low" | "mid" | "high", db: number) => void;
   onSetComp: (params: { threshDb?: number; ratio?: number; enabled?: boolean }) => void;
+  onSetVocalBus: (params: {
+    enabled?: boolean;
+    driveDb?: number;
+    presenceDb?: number;
+    airDb?: number;
+    crush?: number;
+  }) => void;
   onSetReverb: (params: { wet?: number; decaySec?: number }) => void;
   onSetDelay: (params: { wet?: number; beats?: number; feedback?: number }) => void;
   onSetSidechain: (sourceId: TrackId | null, amount?: number) => void;
@@ -31,6 +38,7 @@ export default function FxPanel({
   sidechainOptions,
   onSetEq,
   onSetComp,
+  onSetVocalBus,
   onSetReverb,
   onSetDelay,
   onSetSidechain,
@@ -119,6 +127,65 @@ export default function FxPanel({
               value={fx.compRatio}
               suffix=":1"
               onChange={(v) => onSetComp({ ratio: v })}
+            />
+          </FxBlock>
+
+          <FxBlock
+            title="Vocal bus"
+            subtitle={fx.vocalBusEnabled ? "frontline" : "bypassed"}
+            toggle={
+              <button
+                type="button"
+                onClick={() => onSetVocalBus({ enabled: !fx.vocalBusEnabled })}
+                className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-widest transition ${
+                  fx.vocalBusEnabled
+                    ? "bg-amber-300 text-black"
+                    : "border border-white/15 text-white/55 hover:bg-white/10"
+                }`}
+              >
+                {fx.vocalBusEnabled ? "On" : "Off"}
+              </button>
+            }
+          >
+            <Slider
+              label="Drive"
+              min={0}
+              max={18}
+              step={0.5}
+              value={fx.vocalBusDriveDb}
+              suffix="dB"
+              onChange={(v) => onSetVocalBus({ driveDb: v })}
+              accent="amber"
+            />
+            <Slider
+              label="Presence"
+              min={-6}
+              max={6}
+              step={0.5}
+              value={fx.vocalBusPresenceDb}
+              suffix="dB"
+              onChange={(v) => onSetVocalBus({ presenceDb: v })}
+              accent="amber"
+            />
+            <Slider
+              label="Air"
+              min={-6}
+              max={8}
+              step={0.5}
+              value={fx.vocalBusAirDb}
+              suffix="dB"
+              onChange={(v) => onSetVocalBus({ airDb: v })}
+              accent="amber"
+            />
+            <Slider
+              label="Crush"
+              min={0}
+              max={1}
+              step={0.01}
+              value={fx.vocalBusCrush}
+              suffix=""
+              onChange={(v) => onSetVocalBus({ crush: v })}
+              accent="amber"
             />
           </FxBlock>
 
@@ -254,12 +321,13 @@ function Slider({
   value: number;
   suffix: string;
   onChange: (v: number) => void;
-  accent?: "white" | "brand" | "cyan" | "violet";
+  accent?: "white" | "brand" | "cyan" | "violet" | "amber";
 }) {
   const accentClass =
     accent === "brand" ? "accent-brand-500" :
     accent === "cyan" ? "accent-accent-500" :
     accent === "violet" ? "accent-violet-500" :
+    accent === "amber" ? "accent-amber-300" :
     "accent-white";
   return (
     <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/55">
@@ -285,6 +353,7 @@ function fxSummary(fx: TrackFx): string {
   const parts: string[] = [];
   if (fx.eqLowDb || fx.eqMidDb || fx.eqHighDb) parts.push("EQ");
   if (fx.compEnabled) parts.push("Comp");
+  if (fx.vocalBusEnabled) parts.push("Frontline bus");
   if (fx.reverbWet > 0.01) parts.push("Verb send");
   if (fx.delayWet > 0.01) parts.push("Dly send");
   return parts.length > 0 ? parts.join(" · ") : "flat";

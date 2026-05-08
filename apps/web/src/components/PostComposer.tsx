@@ -19,8 +19,14 @@ const ALLOWED_IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "gif", "heic",
 
 type Mode = "idle" | "uploading" | "submitting";
 
-export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
-  const [body, setBody] = useState("");
+export default function PostComposer({
+  onPosted,
+  prefillBody,
+}: {
+  onPosted?: () => void;
+  prefillBody?: string | null;
+}) {
+  const [body, setBody] = useState((prefillBody ?? "").trim());
   const [mode, setMode] = useState<Mode>("idle");
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -40,6 +46,12 @@ export default function PostComposer({ onPosted }: { onPosted?: () => void }) {
   const attachedSong = mySongs?.find((s) => s.id === songId) ?? null;
 
   // Lazy-load the artist's catalog once when they open the picker.
+  useEffect(() => {
+    const next = (prefillBody ?? "").trim();
+    if (!next) return;
+    setBody((current) => (current.trim().length === 0 ? next : current));
+  }, [prefillBody]);
+
   useEffect(() => {
     if (!showSongPicker || mySongs !== null) return;
     void (async () => {

@@ -1025,6 +1025,324 @@ select:-moz-autofill {
   background-color: rgba(10, 10, 12, 0.92) !important;
 }
 
+/* ─── Analog studio surfaces ─────────────────────────────────
+   These are the load-bearing visual primitives. Every page should
+   reach for `.studio-faceplate` instead of inventing yet another
+   bg-[#hex] + border-white/N combo. Replaces `.glass-card` over time —
+   keep both available during the transition, prefer studio-* for new code.
+*/
+@layer utilities {
+  /* Brushed-steel faceplate. The default panel surface. Gradient runs
+     vertically so the top edge catches highlight, the bottom edge sits
+     in shadow — sells the idea this is a milled metal plate. */
+  .studio-faceplate {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.04) 0%,
+        rgba(255, 255, 255, 0.02) 30%,
+        rgba(0, 0, 0, 0.18) 100%
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.012) 0px,
+        rgba(255, 255, 255, 0.012) 1px,
+        rgba(0, 0, 0, 0.025) 1px,
+        rgba(0, 0, 0, 0.025) 2px
+      ),
+      #1a1c20;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+      0 1px 0 rgba(0, 0, 0, 0.5),
+      0 12px 40px -12px rgba(0, 0, 0, 0.7);
+    color: #e8e8ea;
+  }
+
+  /* Darker recessed faceplate — the secondary panel, like a sub-bay
+     inside a bigger rack module. Use for nested cards. */
+  .studio-faceplate-dark {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.025) 0%,
+        rgba(0, 0, 0, 0.25) 100%
+      ),
+      #0e1014;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.65);
+    color: #d8d9de;
+  }
+
+  /* Walnut side caps — wrap a console section to read as analog gear.
+     Tile is hand-rolled so we don't depend on an image asset. */
+  .studio-walnut {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.06) 0%,
+        rgba(0, 0, 0, 0.4) 100%
+      ),
+      repeating-linear-gradient(
+        102deg,
+        #2a1810 0px,
+        #3b2317 6px,
+        #2a1810 12px,
+        #1f120b 18px
+      );
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 rgba(255, 200, 150, 0.08),
+      0 6px 20px -8px rgba(0, 0, 0, 0.7);
+  }
+
+  /* The dark recessed LCD-style readout screen. Use inside .studio-faceplate
+     for any numeric value that's "displayed" by the device (price, BPM,
+     plays, $). Combine with .text-readout-amber or .text-readout-cyan. */
+  .studio-screen {
+    background:
+      radial-gradient(
+        circle at 50% 30%,
+        rgba(0, 245, 255, 0.05) 0%,
+        rgba(0, 0, 0, 0) 60%
+      ),
+      #06090c;
+    box-shadow:
+      inset 0 2px 6px rgba(0, 0, 0, 0.85),
+      inset 0 0 0 1px rgba(0, 0, 0, 0.4),
+      inset 0 0 18px rgba(0, 245, 255, 0.04),
+      0 1px 0 rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    /* Faint scanlines so it reads as a phosphor display, not a div. */
+    position: relative;
+  }
+  .studio-screen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.025) 0px,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    border-radius: inherit;
+    mix-blend-mode: overlay;
+  }
+
+  /* LCD readout text — amber (warm tube) or cyan (digital). */
+  .text-readout-amber {
+    font-family: var(--font-orbitron), Orbitron, ui-monospace, monospace;
+    color: #ffb04a;
+    text-shadow:
+      0 0 6px rgba(255, 176, 74, 0.55),
+      0 0 14px rgba(255, 138, 30, 0.35);
+    letter-spacing: 0.04em;
+  }
+  .text-readout-cyan {
+    font-family: var(--font-orbitron), Orbitron, ui-monospace, monospace;
+    color: #66faff;
+    text-shadow:
+      0 0 6px rgba(102, 250, 255, 0.45),
+      0 0 14px rgba(0, 245, 255, 0.3);
+    letter-spacing: 0.04em;
+  }
+  .text-readout-rec {
+    font-family: var(--font-orbitron), Orbitron, ui-monospace, monospace;
+    color: #ff6e63;
+    text-shadow:
+      0 0 6px rgba(255, 90, 74, 0.55),
+      0 0 14px rgba(232, 38, 28, 0.3);
+    letter-spacing: 0.04em;
+  }
+
+  /* Stenciled panel label — the screen-printed text above a knob/fader.
+     Always uppercase, always kerned wide, always Bebas Neue. */
+  .studio-label {
+    font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 11px;
+    line-height: 1;
+  }
+  .studio-label-lg {
+    font-family: var(--font-bebas-neue), "Bebas Neue", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 22px;
+    line-height: 0.95;
+  }
+
+  /* Rack-rail screws — decorative dots in the corners of a faceplate
+     so it really reads as bolted hardware. Combine with absolute
+     positioning. Two sizes. */
+  .studio-screw {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background:
+      radial-gradient(
+        circle at 35% 30%,
+        rgba(255, 255, 255, 0.45) 0%,
+        rgba(255, 255, 255, 0.15) 30%,
+        rgba(0, 0, 0, 0.85) 70%
+      );
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 1px 1px rgba(0, 0, 0, 0.6);
+  }
+  .studio-screw::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      45deg,
+      transparent 45%,
+      rgba(0, 0, 0, 0.5) 45%,
+      rgba(0, 0, 0, 0.5) 55%,
+      transparent 55%
+    );
+    border-radius: inherit;
+  }
+
+  /* Active "LED on" indicator — the little lit dot on a piece of hardware
+     that says "this is recording" / "this is selected". Three colours. */
+  .led-on-amber {
+    background: radial-gradient(circle at 35% 30%, #ffd28a 0%, #ff8a1e 60%, #6b2a00 100%);
+    box-shadow:
+      0 0 6px rgba(255, 138, 30, 0.85),
+      0 0 14px rgba(255, 138, 30, 0.45),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.45);
+  }
+  .led-on-rec {
+    background: radial-gradient(circle at 35% 30%, #ff8e84 0%, #e8261c 55%, #5a0d08 100%);
+    box-shadow:
+      0 0 6px rgba(232, 38, 28, 0.85),
+      0 0 16px rgba(232, 38, 28, 0.5),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.5);
+  }
+  .led-on-green {
+    background: radial-gradient(circle at 35% 30%, #b6ff8b 0%, #3aaa3a 55%, #0d3a0d 100%);
+    box-shadow:
+      0 0 6px rgba(58, 170, 58, 0.85),
+      0 0 14px rgba(58, 170, 58, 0.45),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.5);
+  }
+  .led-off {
+    background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.12) 0%, rgba(0, 0, 0, 0.6) 60%);
+    box-shadow:
+      inset 0 1px 1px rgba(0, 0, 0, 0.7),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  /* Sticky navbar — chrome + walnut top trim. Replaces the prior
+     bg-[#0a0a0a]/85 backdrop nav so the global header reads as a piece
+     of mounted gear instead of a generic translucent bar. */
+  .studio-nav {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.03) 0%,
+        rgba(0, 0, 0, 0.55) 100%
+      ),
+      rgba(10, 11, 14, 0.85);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    backdrop-filter: blur(18px) saturate(160%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 1px 0 rgba(0, 0, 0, 0.5),
+      0 4px 14px -6px rgba(0, 0, 0, 0.7);
+  }
+
+  /* The "tube" logo bezel — circular metal cup with an amber filament
+     glow inside. Used by the navbar logo + any other place that wants
+     a small "ON" indicator wrapped around an icon. */
+  .studio-tube-bezel {
+    background: radial-gradient(
+      circle at 35% 30%,
+      #1a1c20 0%,
+      #06090c 70%
+    );
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      inset 0 -2px 4px rgba(0, 0, 0, 0.7),
+      0 0 12px rgba(255, 138, 30, 0.35);
+  }
+  .studio-tube-bezel-icon {
+    filter: drop-shadow(0 0 4px rgba(255, 176, 74, 0.65));
+  }
+
+  /* Engage button — the big illuminated commit button, the studio-gear
+     equivalent of "PRESS TO RECORD" / "PRESS TO ENGAGE." Walnut bezel,
+     amber-glow text, recessed bevel. Used for primary actions on
+     studio-themed surfaces. */
+  .studio-engage-btn {
+    background: linear-gradient(
+      180deg,
+      #2a1d14 0%,
+      #1a110b 50%,
+      #140d08 100%
+    );
+    color: #ffd28a;
+    text-shadow: 0 0 6px rgba(255, 176, 74, 0.55);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 210, 138, 0.25),
+      inset 0 -2px 4px rgba(0, 0, 0, 0.7),
+      0 2px 6px rgba(0, 0, 0, 0.5),
+      0 0 14px rgba(255, 138, 30, 0.18);
+  }
+  .studio-engage-btn:hover:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 210, 138, 0.35),
+      inset 0 -2px 4px rgba(0, 0, 0, 0.7),
+      0 2px 6px rgba(0, 0, 0, 0.5),
+      0 0 22px rgba(255, 138, 30, 0.32);
+  }
+
+  /* The page background of the entire site when running in "studio mode."
+     A subtle vignette + faint dot grid evokes a darkened control room. */
+  .studio-room {
+    background:
+      radial-gradient(
+        ellipse at 50% 0%,
+        rgba(255, 138, 30, 0.06) 0%,
+        rgba(0, 0, 0, 0) 50%
+      ),
+      radial-gradient(
+        ellipse at 50% 100%,
+        rgba(102, 92, 231, 0.05) 0%,
+        rgba(0, 0, 0, 0) 60%
+      ),
+      #0a0b0e;
+  }
+  .studio-room::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image: radial-gradient(
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px
+    );
+    background-size: 24px 24px;
+    background-position: 0 0;
+    mask-image: radial-gradient(
+      ellipse at center,
+      rgba(0, 0, 0, 0.85) 0%,
+      rgba(0, 0, 0, 0) 70%
+    );
+  }
+}
+
 /* ─── Glassmorphism ─────────────────────────────────────────── */
 @layer utilities {
   .text-balance {
@@ -1039,12 +1357,35 @@ select:-moz-autofill {
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  /* Elevated glass for cards */
+  /* Elevated panel — legacy alias for the studio brushed-steel
+     faceplate. Every page that still uses `.glass-card` instantly
+     inherits the analog-studio surface treatment without per-file
+     migration. New code should reach for `.studio-faceplate` directly. */
   .glass-card {
-    background: rgba(20, 20, 20, 0.8);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.04) 0%,
+        rgba(255, 255, 255, 0.02) 30%,
+        rgba(0, 0, 0, 0.18) 100%
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.012) 0px,
+        rgba(255, 255, 255, 0.012) 1px,
+        rgba(0, 0, 0, 0.025) 1px,
+        rgba(0, 0, 0, 0.025) 2px
+      ),
+      #1a1c20;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+      0 1px 0 rgba(0, 0, 0, 0.5),
+      0 12px 40px -12px rgba(0, 0, 0, 0.7);
+    color: #e8e8ea;
   }
 
   /* Purple-tinted glass */
@@ -1856,5 +2197,66 @@ select:-moz-autofill {
     radial-gradient(circle at 20% 25%, rgba(245, 158, 11, 0.22) 0%, transparent 55%),
     radial-gradient(circle at 80% 80%, rgba(180, 140, 40, 0.16) 0%, transparent 55%),
     linear-gradient(180deg, #160d04 0%, #0a0700 100%);
+}
+
+/* ── Shared app-shell rhythm ────────────────────────────────────────── */
+.ems-shell {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 42rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.ems-shell-wide {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 72rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.ems-head {
+  margin-bottom: 1.5rem;
+}
+
+.ems-kicker {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(34, 211, 238, 0.88);
+}
+
+.ems-title {
+  margin-top: 0.25rem;
+  font-size: 1.6rem;
+  line-height: 1.1;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.97);
+}
+
+.ems-sub {
+  margin-top: 0.3rem;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.ems-divider {
+  margin-top: 0.85rem;
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(34, 211, 238, 0.32) 0%,
+    rgba(124, 58, 237, 0.28) 42%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
 }
 
