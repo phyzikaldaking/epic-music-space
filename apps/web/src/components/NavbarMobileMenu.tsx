@@ -147,31 +147,31 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
               touchStartX.current = null;
               touchDeltaX.current = 0;
             }}
-            className={`fixed right-0 top-0 z-[11001] flex h-[100dvh] w-[88vw] max-w-sm flex-col overflow-hidden border-l border-white/10 bg-[#0a0a0e] shadow-[0_0_60px_rgba(124,58,237,0.25)] motion-safe:transition-transform motion-reduce:transition-none duration-300 ease-out ${
+            className={`studio-room fixed right-0 top-0 z-[11001] flex h-[100dvh] w-[88vw] max-w-sm flex-col overflow-hidden border-l border-white/10 shadow-[0_0_60px_rgba(0,0,0,0.6)] motion-safe:transition-transform motion-reduce:transition-none duration-300 ease-out ${
               open ? "translate-x-0" : "translate-x-full"
             }`}
           >
-            {/* Decorative gradient header */}
-            <div className="relative overflow-hidden border-b border-white/8 pt-[env(safe-area-inset-top)]">
-              <div
+            {/* Studio-style header — walnut top trim + brushed-steel surface
+                + tube-bezel logo with amber LED. Same visual language as the
+                desktop navbar, so opening the panel doesn't feel like a
+                portal into a different product. */}
+            <div className="studio-faceplate relative overflow-hidden border-b border-white/8 pt-[env(safe-area-inset-top)]">
+              <span
                 aria-hidden
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(124,58,237,0.45),transparent_55%),radial-gradient(circle_at_85%_70%,rgba(0,245,255,0.32),transparent_55%),linear-gradient(135deg,#0c0a18,#070713)]"
-              />
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-x-0 top-0 h-full bg-[repeating-linear-gradient(115deg,rgba(255,255,255,0.04)_0_2px,transparent_2px_18px)] mix-blend-screen"
+                className="studio-walnut pointer-events-none absolute inset-x-0 top-0 h-1"
               />
               <div className="relative flex items-center justify-between gap-3 px-5 pb-5 pt-6">
                 <Link
                   href="/"
                   onClick={close}
                   data-ui-sfx="page"
-                  className="flex items-center gap-2.5 text-lg font-extrabold tracking-tight"
+                  className="flex items-center gap-2.5 font-display text-lg uppercase tracking-[0.14em]"
                 >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-500/40 bg-brand-500/20 text-accent-300 shadow-[0_0_24px_rgba(124,58,237,0.35)]">
-                    <svg aria-hidden="true" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                  <span className="studio-tube-bezel relative flex h-9 w-9 items-center justify-center rounded-md">
+                    <svg aria-hidden="true" className="studio-tube-bezel-icon h-4 w-4 text-tube-400" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 3v10.55A4 4 0 1 0 14 17V7h6V3h-8Z" />
                     </svg>
+                    <span aria-hidden className="led-on-amber absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full" />
                   </span>
                   <span className="text-gradient-ems">Epic Music Space</span>
                 </Link>
@@ -181,7 +181,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                   onClick={close}
                   aria-label="Close menu"
                   data-ui-sfx="menu-close"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-white/4 text-white/65 hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+                  className="flex h-8 w-8 items-center justify-center rounded-md studio-faceplate-dark text-white/70 hover:text-tube-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50"
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -189,15 +189,15 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                 </button>
               </div>
 
-              {/* User chip (signed in) or CTAs (signed out) */}
+              {/* User chip (signed in) or CTAs (signed out) — studio palette */}
               {isLoggedIn ? (
                 <Link
                   href="/dashboard"
                   onClick={close}
                   data-ui-sfx="page"
-                  className="relative mx-5 mb-5 flex items-center gap-3 rounded-2xl border border-white/12 bg-white/4 p-3 text-left backdrop-blur transition hover:bg-white/8"
+                  className="studio-faceplate-dark relative mx-5 mb-5 flex items-center gap-3 rounded-md p-3 text-left transition hover:text-tube-200"
                 >
-                  <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-brand-500 to-accent-500 text-base font-black">
+                  <div className="studio-tube-bezel flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-md text-base font-black text-tube-300">
                     {userImage ? (
                       <Image src={userImage} alt="" width={44} height={44} unoptimized className="h-full w-full object-cover" />
                     ) : (
@@ -208,11 +208,11 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                     <p className="truncate text-sm font-bold text-white">
                       {session?.user?.name ?? session?.user?.email ?? "Your account"}
                     </p>
-                    <p className="text-[10px] uppercase tracking-widest text-white/45">
+                    <p className="studio-label text-white/45">
                       Tap to open dashboard
                     </p>
                   </div>
-                  <span aria-hidden className="text-lg text-white/35">›</span>
+                  <span aria-hidden className="text-lg text-tube-300/60">›</span>
                 </Link>
               ) : (
                 <div className="relative mx-5 mb-5 grid grid-cols-2 gap-2">
@@ -220,7 +220,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                     href="/auth/signin"
                     onClick={close}
                     data-ui-sfx="page"
-                    className="flex items-center justify-center rounded-xl border border-white/15 bg-white/4 py-2.5 text-sm font-semibold text-white/85 hover:bg-white/8"
+                    className="flex items-center justify-center rounded-md studio-faceplate-dark py-2.5 font-display text-sm uppercase tracking-[0.14em] text-white/85 hover:text-white"
                   >
                     Sign in
                   </Link>
@@ -228,7 +228,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                     href="/auth/signup"
                     onClick={close}
                     data-ui-sfx="page"
-                    className="flex items-center justify-center rounded-xl bg-brand-500 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand-500/35 hover:bg-brand-600"
+                    className="studio-engage-btn flex items-center justify-center rounded-md py-2.5 font-display text-sm uppercase tracking-[0.14em]"
                   >
                     Get started
                   </Link>
@@ -251,24 +251,24 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                         onClick={close}
                         data-ui-sfx="page"
                         aria-current={active ? "page" : undefined}
-                        className={`flex items-center gap-3 rounded-xl px-3 py-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${
+                        className={`flex items-center gap-3 rounded-md px-3 py-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 ${
                           active
-                            ? "bg-gradient-to-r from-brand-500/22 via-brand-500/10 to-transparent text-white shadow-[inset_0_0_0_1px_rgba(124,58,237,0.45)]"
+                            ? "studio-faceplate-dark text-white"
                             : "text-white/75 hover:bg-white/5 hover:text-white"
                         }`}
                       >
                         <span
                           aria-hidden
-                          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-black uppercase tracking-[0.12em] ${
+                          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md studio-label ${
                             active
-                              ? "bg-brand-500/30 ring-1 ring-brand-400/45"
-                              : "bg-white/5 ring-1 ring-white/10"
+                              ? "bg-tube-300/15 text-tube-200 ring-1 ring-tube-300/40"
+                              : "bg-white/5 text-white/55 ring-1 ring-white/10"
                           }`}
                         >
                           {link.navChip ?? link.label.slice(0, 2)}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-bold">{link.label}</span>
+                          <span className="block font-display text-sm uppercase tracking-[0.08em]">{link.label}</span>
                           {link.description && (
                             <span className="block truncate text-[11px] text-white/45">
                               {link.description}
@@ -276,7 +276,7 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                           )}
                         </span>
                         {active && (
-                          <span className="ml-auto h-2 w-2 flex-shrink-0 rounded-full bg-accent-400 shadow-[0_0_10px_rgba(0,245,255,0.85)]" />
+                          <span aria-hidden className="led-on-amber ml-auto h-2 w-2 flex-shrink-0 rounded-full" />
                         )}
                       </Link>
                     </li>
@@ -284,11 +284,12 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                 })}
               </ul>
 
-              {/* Account row (signed in only) */}
+              {/* Account row (signed in only) — stenciled "ACCOUNT" eyebrow,
+                  studio-label chip icons, walnut accent on sign-out. */}
               {isLoggedIn && (
                 <>
                   <div className="mx-5 my-2 border-t border-white/8" />
-                  <p className="px-5 pt-2 text-[10px] font-black uppercase tracking-[0.24em] text-white/40">
+                  <p className="studio-label px-5 pt-2 text-tube-300">
                     Account
                   </p>
                   <ul className="flex flex-col gap-0.5 px-3 py-2" role="list">
@@ -298,9 +299,9 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                           href={link.href}
                           onClick={close}
                           data-ui-sfx="page"
-                          className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-white/65 transition hover:bg-white/5 hover:text-white"
+                          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-white/65 transition hover:bg-white/5 hover:text-white"
                         >
-                          <span aria-hidden className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-white/12 bg-white/5 px-1 text-[10px] font-black uppercase tracking-[0.08em]">
+                          <span aria-hidden className="inline-flex h-6 min-w-6 items-center justify-center rounded-sm bg-white/5 px-1 studio-label text-white/65 ring-1 ring-white/10">
                             {link.icon}
                           </span>
                           <span>{link.label}</span>
@@ -315,9 +316,9 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
                           close();
                           void signOut({ callbackUrl: "/" });
                         }}
-                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-red-300 transition hover:bg-red-500/10"
+                        className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-rec-400 transition hover:bg-rec-500/10"
                       >
-                        <span aria-hidden className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-red-400/30 bg-red-500/10 px-1 text-[10px] font-black uppercase tracking-[0.08em]">SO</span>
+                        <span aria-hidden className="inline-flex h-6 min-w-6 items-center justify-center rounded-sm bg-rec-500/10 px-1 studio-label text-rec-400 ring-1 ring-rec-500/30">SO</span>
                         <span>Sign out</span>
                       </button>
                     </li>
@@ -326,9 +327,9 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
               )}
 
               {/* Footer / legal */}
-              <div className="mx-5 mb-5 mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-white/8 pt-4 text-[11px] text-white/35">
+              <div className="mx-5 mb-5 mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-white/8 pt-4 studio-label text-white/40">
                 {LEGAL_LINKS.map((l) => (
-                  <Link key={l.href} href={l.href} onClick={close} data-ui-sfx="page" className="hover:text-white/70">
+                  <Link key={l.href} href={l.href} onClick={close} data-ui-sfx="page" className="hover:text-tube-300">
                     {l.label}
                   </Link>
                 ))}
@@ -344,37 +345,26 @@ export default function NavbarMobileMenu({ publicLinks, authedLinks }: Props) {
 
   return (
     <div className="md:hidden">
-      {open ? (
-        <button
-          ref={btnRef}
-          type="button"
-          aria-label="Close navigation menu"
-          data-ui-sfx="menu-close"
-          aria-expanded="true"
-          aria-controls="mobile-nav"
-          onClick={close}
-          className="relative z-[11002] flex h-10 w-10 items-center justify-center rounded-lg border border-white/25 bg-white/8 text-white shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 active:scale-95"
-        >
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label={open ? "Close navigation menu" : "Open navigation menu"}
+        data-ui-sfx={open ? "menu-close" : "menu-open"}
+        aria-expanded={open ? "true" : "false"}
+        aria-controls="mobile-nav"
+        onClick={() => (open ? close() : setOpen(true))}
+        className="studio-faceplate-dark relative z-[11002] flex h-10 w-10 items-center justify-center rounded-md text-white/85 transition hover:text-tube-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 active:scale-95"
+      >
+        {open ? (
           <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
-        </button>
-      ) : (
-        <button
-          ref={btnRef}
-          type="button"
-          aria-label="Open navigation menu"
-          data-ui-sfx="menu-open"
-          aria-expanded="false"
-          aria-controls="mobile-nav"
-          onClick={() => setOpen(true)}
-          className="relative z-[11002] flex h-10 w-10 items-center justify-center rounded-lg border border-white/25 bg-white/5 text-white shadow-sm transition hover:border-white/40 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 active:scale-95"
-        >
+        ) : (
           <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
           </svg>
-        </button>
-      )}
+        )}
+      </button>
 
       {overlay}
     </div>

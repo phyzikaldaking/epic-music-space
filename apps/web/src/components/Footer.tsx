@@ -90,13 +90,13 @@ export default function Footer() {
             <div className="mt-5 flex gap-3">
               <Link
                 href="/get-the-app"
-                className="inline-flex items-center rounded-lg bg-brand-500/15 border border-brand-500/25 px-3 py-1.5 text-xs font-semibold text-brand-300 transition hover:bg-brand-500/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+                className="inline-flex items-center rounded-md studio-faceplate-dark px-3 py-1.5 font-display text-xs uppercase tracking-[0.14em] text-white/85 transition hover:text-tube-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50"
               >
                 Get the app
               </Link>
               <Link
                 href="/auth/signup"
-                className="inline-flex items-center rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-brand-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+                className="studio-engage-btn inline-flex items-center rounded-md px-3 py-1.5 font-display text-xs uppercase tracking-[0.14em] focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50"
               >
                 Get started
               </Link>

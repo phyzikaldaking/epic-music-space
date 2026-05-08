@@ -127,13 +127,13 @@ export default function NotificationBell() {
       <button
         onClick={handleOpen}
         aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
-        className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 text-white/60 transition hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+        className="relative flex h-8 w-8 items-center justify-center rounded-md studio-faceplate-dark text-white/65 transition hover:text-tube-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50"
       >
         <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white leading-none">
+          <span className="led-on-rec absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white leading-none">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
@@ -151,14 +151,14 @@ export default function NotificationBell() {
           <div
             role="dialog"
             aria-label="Notifications"
-            className="fixed inset-x-3 top-16 z-50 mx-auto max-w-sm rounded-2xl border border-white/15 bg-gradient-to-b from-[#15151c] to-[#0d0d12] shadow-[0_20px_60px_rgba(124,58,237,0.25)] backdrop-blur-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-10 sm:mx-0 sm:w-80"
+            className="studio-faceplate fixed inset-x-3 top-16 z-50 mx-auto max-w-sm rounded-xl shadow-2xl shadow-black/60 sm:absolute sm:inset-x-auto sm:right-0 sm:top-10 sm:mx-0 sm:w-80"
           >
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <div className="flex items-center gap-2">
-                <span aria-hidden className="text-base">🔔</span>
-                <span className="text-sm font-bold text-white/85">Notifications</span>
+                <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
+                <span className="studio-label text-tube-300">Notifications</span>
                 {unreadCount > 0 && (
-                  <span className="rounded-full bg-brand-500 px-1.5 py-0.5 text-[10px] font-black text-white">
+                  <span className="led-on-rec rounded-full px-1.5 py-0.5 text-[10px] font-black text-white">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
@@ -168,7 +168,7 @@ export default function NotificationBell() {
                 <Link
                   href="/notifications"
                   onClick={() => setOpen(false)}
-                  className="text-[11px] font-semibold text-brand-400 hover:underline"
+                  className="text-[11px] font-semibold text-tube-400 hover:text-tube-300"
                 >
                   See all
                 </Link>
@@ -202,13 +202,13 @@ export default function NotificationBell() {
                       {!n.read && (
                         <span
                           aria-hidden
-                          className="ml-1 mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-accent-400 shadow-[0_0_8px_rgba(0,245,255,0.85)]"
+                          className="led-on-amber ml-1 mt-2 h-2 w-2 flex-shrink-0 rounded-full"
                         />
                       )}
                     </>
                   );
                   const cls = `flex gap-3 px-4 py-3 transition ${
-                    n.read ? "opacity-60" : "bg-brand-500/8"
+                    n.read ? "opacity-60" : "bg-tube-300/[0.06]"
                   } ${href ? "hover:bg-white/5" : ""}`;
                   return href ? (
                     <Link key={n.id} href={href} onClick={() => setOpen(false)} className={cls}>

@@ -16,13 +16,13 @@ export default function NavbarAuth() {
       <>
         <Link
           href="/auth/signin"
-          className="hidden rounded-lg border border-white/15 px-4 py-1.5 text-sm text-white/70 transition hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 sm:inline-flex"
+          className="hidden rounded-md studio-faceplate-dark px-4 py-1.5 font-display text-sm uppercase tracking-[0.14em] text-white/80 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 sm:inline-flex"
         >
           Sign in
         </Link>
         <Link
           href="/auth/signup"
-          className="hidden rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 glow-purple-sm sm:inline-flex"
+          className="studio-engage-btn hidden rounded-md px-4 py-1.5 font-display text-sm uppercase tracking-[0.14em] focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 sm:inline-flex"
         >
           Get started
         </Link>
@@ -35,16 +35,16 @@ export default function NavbarAuth() {
   return (
     <div className="flex items-center gap-3">
       <div className="hidden md:flex items-center gap-2.5">
-        <div className="h-7 w-7 rounded-full bg-brand-500/20 border border-brand-500/40 flex items-center justify-center text-xs font-bold text-brand-400">
+        <div className="studio-tube-bezel flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-tube-300">
           {initial}
         </div>
-        <span className="text-sm text-white/55">
+        <span className="text-sm text-white/65">
           {session.user?.name ?? session.user?.email}
         </span>
       </div>
       <Link
         href="/profile/edit"
-        className="hidden rounded-lg border border-white/15 px-3 py-1.5 text-sm text-white/70 transition hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 sm:inline-flex"
+        className="hidden rounded-md studio-faceplate-dark px-3 py-1.5 font-display text-sm uppercase tracking-[0.14em] text-white/75 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 sm:inline-flex"
       >
         Profile
       </Link>
@@ -52,7 +52,7 @@ export default function NavbarAuth() {
         href="/settings/notifications"
         aria-label="Notification settings"
         title="Notifications"
-        className="hidden rounded-lg border border-white/15 px-2 py-1.5 text-sm text-white/55 transition hover:bg-white/8 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 sm:inline-flex"
+        className="hidden rounded-md studio-faceplate-dark px-2 py-1.5 text-sm text-white/65 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 sm:inline-flex"
       >
         ⚙
       </Link>

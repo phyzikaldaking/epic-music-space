@@ -1700,9 +1700,19 @@ select:-moz-autofill {
       0 0 40px rgba(255, 215, 0, 0.2);
   }
 
-  /* ─── Gradient text ─────────────────────────────────────── */
+  /* ─── Gradient text ───────────────────────────────────────
+     The brand "EMS" gradient. Was purple→cyan (Vice City era);
+     redefined here to amber→tube-cyan so every component using
+     the class — Trust Center h1, NavbarMobileMenu logo, the
+     30+ pages that brand a hero word with this — picks up the
+     analog-studio palette without any per-file changes. */
   .text-gradient-ems {
-    background: linear-gradient(135deg, #6c5ce7 0%, #00f5ff 100%);
+    background: linear-gradient(
+      135deg,
+      #ffb04a 0%,    /* tube-amber phosphor */
+      #ffd28a 35%,   /* warm filament glow  */
+      #66faff 100%   /* tube-cyan readout   */
+    );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
