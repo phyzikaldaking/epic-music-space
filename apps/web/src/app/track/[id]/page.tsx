@@ -15,6 +15,7 @@ import ReportUserButton from "@/components/ReportUserButton";
 import TrackActions from "@/components/TrackActions";
 import { getStreamUrl } from "@/lib/audioStream";
 import SaveTrackButton from "@/components/SaveTrackButton";
+import AddToPlaylistButton from "@/components/AddToPlaylistButton";
 import EmbeddedAudioPreview from "@/components/EmbeddedAudioPreview";
 import { classifyAudioSource } from "@/lib/audioSource";
 import TrackCommentThread from "@/components/TrackCommentThread";
@@ -466,6 +467,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <SaveTrackButton songId={song.id} initiallySaved={initialSaved} />
               <TrackLikeButton songId={song.id} />
+              <AddToPlaylistButton songId={song.id} signInRedirect={`/track/${song.id}`} />
               <StemsOpenInStudioButton
                 songId={song.id}
                 hasAccess={isOwner || Boolean(userLicense)}

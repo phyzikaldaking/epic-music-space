@@ -2181,3 +2181,48 @@ model GuestShare {
   @@index([expiresAt])
   @@index([createdAt])
 }
+
+// ─────────────────────────────────────────
+// PLAYLISTS
+// User-curated collections of songs. Loose foreign keys (no Prisma
+// relations) follow the SavedTrack pattern — keeps cascade behavior
+// explicit at the application layer and avoids cross-domain coupling.
+// ─────────────────────────────────────────
+
+model Playlist {
+  id          String   @id @default(cuid())
+  ownerId     String
+  name        String   @db.VarChar(120)
+  description String?  @db.Text
+  coverUrl    String?
+  // When true, /playlists/[id] is reachable by anyone with the link
+  // (used for share-by-link). When false, only the owner can view it.
+  isPublic    Boolean  @default(false)
+  // URL-safe public share token. Issued lazily on first share so we
+  // don't leak ids; rotated when the owner clicks "regenerate link".
+  shareToken  String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ownerId, updatedAt])
+  @@index([isPublic, updatedAt])
+}
+
+model PlaylistTrack {
+  id         String   @id @default(cuid())
+  playlistId String
+  songId     String
+  // Manual ordering — front-end persists drag-to-reorder by writing
+  // back position values. Float so we can insert between two rows
+  // without renumbering the whole list.
+  position   Float    @default(0)
+  addedAt    DateTime @default(now())
+  // Who added the track. Always equals the playlist owner today, but
+  // tracked separately so collaborative playlists become a 1-column
+  // change instead of a backfill.
+  addedById  String
+
+  @@unique([playlistId, songId])
+  @@index([playlistId, position])
+  @@index([songId])
+}

@@ -37,6 +37,7 @@ const footerNav = [
     links: [
       { label: "Profile", href: "/profile/edit" },
       { label: "Library", href: "/library" },
+      { label: "Playlists", href: "/playlists" },
       { label: "Notifications", href: "/settings/notifications" },
       { label: "Privacy & data", href: "/settings/privacy" },
       { label: "Support", href: "/support" },
