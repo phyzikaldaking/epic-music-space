@@ -214,6 +214,25 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
           ))}
         </div>
       </div>
+
+      {/* ── Weekly Battle Season nudge ─────────────────────────────── */}
+      <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <p className="mb-1 text-xs font-black uppercase tracking-[0.18em] text-brand-200/75">
+          Weekly Battle Season
+        </p>
+        <p className="mt-1 text-sm font-bold text-white">Enter the arena. Chase the weekly board.</p>
+        <p className="mt-2 text-sm text-white/55">
+          Win a battle for +10pts. Call a result correctly for +10pts. Vote during a clutch flip for +25pts.
+          Standings reset every Sunday — anyone can rise.
+        </p>
+        <Link
+          href="/versus"
+          onClick={() => trackClick("battle_season", "/versus")}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-brand-400/35 bg-brand-500/12 px-4 py-2.5 text-sm font-black uppercase tracking-wider text-brand-200 transition hover:bg-brand-500/20"
+        >
+          Go to Battle Arena →
+        </Link>
+      </div>
     </div>
   );
 }

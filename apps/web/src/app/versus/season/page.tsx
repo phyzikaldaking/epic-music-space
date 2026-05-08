@@ -4,6 +4,7 @@ import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import { Suspense } from "react";
 import AdSlot from "@/components/ads/AdSlot";
+import { getWeekLabel, getMsUntilWeekReset, getWeeklyArtistTopN, getWeeklyFanTopN, getWeekBounds } from "@/lib/weeklyseason";
 
 export const metadata: Metadata = {
   title: "Versus Season Circuit",
@@ -73,6 +74,63 @@ export default async function VersusSeasonPage() {
   const nowUtc = new Date();
   const seasonQuarter = Math.floor(nowUtc.getUTCMonth() / 3) + 1;
   const seasonLabel = `${nowUtc.getUTCFullYear()} Season Q${seasonQuarter}`;
+
+  // ── Weekly leaders ────────────────────────────────────────────────────
+  const weekLabel = getWeekLabel();
+  const weekResetMs = getMsUntilWeekReset();
+  const { start: weekStart } = getWeekBounds();
+
+  const [weeklyArtistEntries, weeklyFanEntries, weeklyMatchWins] = await Promise.all([
+    getWeeklyArtistTopN(5),
+    getWeeklyFanTopN(5),
+    prisma.versusMatch.findMany({
+      where: { status: "COMPLETED", endsAt: { gte: weekStart } },
+      select: {
+        songA: { select: { artistId: true } },
+        songB: { select: { artistId: true } },
+        votesA: true,
+        votesB: true,
+      },
+    }),
+  ]);
+
+  // Tally actual wins from Prisma this week (independent of Redis pts)
+  const weeklyWinTally = new Map<string, number>();
+  for (const m of weeklyMatchWins) {
+    const winnerArtistId = m.votesA >= m.votesB ? m.songA.artistId : m.songB.artistId;
+    if (!winnerArtistId) continue;
+    weeklyWinTally.set(winnerArtistId, (weeklyWinTally.get(winnerArtistId) ?? 0) + 1);
+  }
+
+  // Hydrate artist names for Redis entries
+  const artistIdsToHydrate = weeklyArtistEntries.map((e) => e.id);
+  const fanIdsToHydrate = weeklyFanEntries.map((e) => e.id);
+  const [weeklyArtistUsers, weeklyFanUsers] = await Promise.all([
+    artistIdsToHydrate.length > 0
+      ? prisma.user.findMany({
+          where: { id: { in: artistIdsToHydrate } },
+          select: { id: true, name: true, image: true },
+        })
+      : Promise.resolve([]),
+    fanIdsToHydrate.length > 0
+      ? prisma.user.findMany({
+          where: { id: { in: fanIdsToHydrate } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const artistNameMap = new Map(weeklyArtistUsers.map((u) => [u.id, u.name ?? "Artist"]));
+  const fanNameMap = new Map(weeklyFanUsers.map((u) => [u.id, u.name ?? "Fan"]));
+
+  // Formatted reset string
+  const weekResetSecs = Math.floor(weekResetMs / 1_000);
+  const weekResetH = Math.floor(weekResetSecs / 3_600);
+  const weekResetD = Math.floor(weekResetH / 24);
+  const weekResetLabel =
+    weekResetD > 0 ? `${weekResetD}d ${weekResetH % 24}h` :
+    weekResetH > 0 ? `${weekResetH}h ${Math.floor((weekResetSecs % 3_600) / 60)}m` :
+    `${Math.floor(weekResetSecs / 60)}m`;
 
   const standings: StandingRow[] = users
     .map((u) => {
@@ -192,6 +250,87 @@ export default async function VersusSeasonPage() {
       <Suspense>
         <AdSlot location="VERSUS_BANNER" className="mb-8" />
       </Suspense>
+
+      {/* ── THIS WEEK: live weekly leaders + countdown ── */}
+      <section className="mb-8 overflow-hidden rounded-2xl border border-amber-400/25 bg-gradient-to-br from-amber-500/[0.07] via-black/10 to-rose-500/[0.05]">
+        <div className="flex items-center justify-between border-b border-white/8 px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+            <p className="text-[10px] font-black uppercase tracking-[0.26em] text-amber-200/90">
+              This Week
+            </p>
+            <span className="text-[11px] font-bold text-white/50">{weekLabel}</span>
+          </div>
+          <span className="text-[11px] tabular-nums text-white/35">
+            Resets in {weekResetLabel}
+          </span>
+        </div>
+
+        <div className="grid gap-0 sm:grid-cols-2">
+          {/* Artist weekly leaders */}
+          <div className="px-5 py-4">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.22em] text-amber-200/70">
+              Artist Leaders
+            </p>
+            {weeklyArtistEntries.length > 0 ? (
+              <ol className="space-y-2">
+                {weeklyArtistEntries.map((entry, i) => (
+                  <li key={entry.id} className="flex items-center gap-2.5">
+                    <span className="w-4 shrink-0 text-center text-[10px] font-black text-white/25">
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-white/80">
+                      {artistNameMap.get(entry.id) ?? "Artist"}
+                    </span>
+                    <span className="shrink-0 text-[11px] font-black text-amber-300">
+                      {entry.points}pt
+                    </span>
+                    {weeklyWinTally.get(entry.id) ? (
+                      <span className="shrink-0 text-[10px] text-emerald-400">
+                        {weeklyWinTally.get(entry.id)}W
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-[11px] text-white/30">No activity yet — first win takes the lead.</p>
+            )}
+          </div>
+
+          {/* Fan leaders */}
+          <div className="border-t border-white/8 px-5 py-4 sm:border-l sm:border-t-0">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.22em] text-rose-200/70">
+              Fan Pick Leaders
+            </p>
+            {weeklyFanEntries.length > 0 ? (
+              <ol className="space-y-2">
+                {weeklyFanEntries.map((entry, i) => (
+                  <li key={entry.id} className="flex items-center gap-2.5">
+                    <span className="w-4 shrink-0 text-center text-[10px] font-black text-white/25">
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-white/80">
+                      {fanNameMap.get(entry.id) ?? "Fan"}
+                    </span>
+                    <span className="shrink-0 text-[11px] font-black text-rose-300">
+                      {entry.points}pt
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-[11px] text-white/30">No correct picks yet this week. Make your prediction on any live battle.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="border-t border-white/8 px-5 py-3">
+          <p className="text-[10px] text-white/30">
+            Weekly standings reset every Sunday midnight UTC. Points carry into season record.
+          </p>
+        </div>
+      </section>
 
       <div className="mb-8 rounded-3xl border border-emerald-400/25 bg-gradient-to-br from-emerald-500/[0.1] via-black/20 to-cyan-500/[0.08] px-6 py-8">
         <p className="text-[11px] font-black uppercase tracking-[0.24em] text-emerald-200/90">

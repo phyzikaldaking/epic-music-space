@@ -13,6 +13,9 @@ import CreateBattleForm from "@/components/CreateBattleForm";
 import AdSlot from "@/components/ads/AdSlot";
 import { tallyRounds } from "@/lib/verzuz";
 import { getArtistDefenseCounters, getSongDefenseCounters } from "@/lib/versusDefense";
+import WeeklySeasonBanner from "@/components/WeeklySeasonBanner";
+import MainCardCountdown from "@/components/MainCardCountdown";
+import { getWeekLabel, getMsUntilWeekReset, getWeeklyArtistTopN } from "@/lib/weeklyseason";
 
 export const metadata = {
   title: "Versus Battles",
@@ -472,6 +475,28 @@ export default async function VersusPage({
     };
   });
 
+  // ── Weekly season leaderboard data for banner ────────────────────────
+  const weeklyArtistEntries = await getWeeklyArtistTopN(3);
+  const weeklyArtistIds = weeklyArtistEntries.map((e) => e.id);
+  const weeklyArtistUsers =
+    weeklyArtistIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: weeklyArtistIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+  const weeklyNameMap = new Map(weeklyArtistUsers.map((u) => [u.id, u.name ?? "Artist"]));
+  const weeklyTopArtists = weeklyArtistEntries.map((e) => ({
+    name: weeklyNameMap.get(e.id) ?? "Artist",
+    points: e.points,
+  }));
+  const weekLabel = getWeekLabel();
+  const weekResetMs = getMsUntilWeekReset();
+  const weekRenderedAt = Date.now();
+
+  // ── Pick the top active 1v1 as tonight's featured Main Event ───────────
+  const mainEvent = allActive.find((b) => b.type === "1v1") ?? null;
+
   const judgeNow = allActive.slice(0, 3);
 
   const isEmpty = endingSoonFiltered.length === 0
@@ -486,6 +511,15 @@ export default async function VersusPage({
         <p className="ems-sub">Live ladders, season stakes, and recap-ready outcomes in one place.</p>
         <div className="ems-divider" />
       </header>
+
+      {/* ── Weekly season banner ── */}
+      <WeeklySeasonBanner
+        weekLabel={weekLabel}
+        resetMs={weekResetMs}
+        renderedAt={weekRenderedAt}
+        topArtists={weeklyTopArtists}
+        liveMatchCount={allActive.length}
+      />
       {/* ── Header — premium, high-contrast, single confident statement ── */}
       <div className="relative mb-10 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#1a0530] via-[#0d0220] to-[#000] px-6 py-10 sm:px-10 sm:py-12 shadow-[0_30px_120px_-40px_rgba(255,45,146,0.45)]">
         <AnimatedBackdropClient variant="versus" />
@@ -548,6 +582,83 @@ export default async function VersusPage({
           </a>
         </div>
       )}
+
+      {/* ── Tonight's Main Event — top active 1v1 in UFC main-card style ── */}
+      {mainEvent && mainEvent.type === "1v1" && (() => {
+        const m = mainEvent.data;
+        const totalVotes = m.votesA + m.votesB;
+        const pctA = totalVotes > 0 ? Math.round((m.votesA / totalVotes) * 100) : 50;
+        const pctB = 100 - pctA;
+        return (
+          <section className="mb-8">
+            <div className="mb-3 flex items-center gap-2.5">
+              <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-rose-200/90">
+                Tonight&apos;s Main Event
+              </p>
+            </div>
+            <Link
+              href={`/versus/${m.id}`}
+              className="group block overflow-hidden rounded-3xl border border-rose-400/25 bg-gradient-to-br from-[#1a0a14] via-[#12070f] to-[#0a0010] p-5 shadow-[0_20px_80px_-20px_rgba(255,45,100,0.3)] transition hover:border-rose-400/40"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <span className="rounded-full border border-rose-400/35 bg-rose-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-rose-200">
+                  Main Card · 1v1
+                </span>
+                <span className="text-[11px]">
+                  <MainCardCountdown endsAt={mainEvent.endsAt.toISOString()} />
+                </span>
+              </div>
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+                {/* Fighter A */}
+                <div className="text-center">
+                  <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-500/20 text-xl">
+                    🎵
+                  </div>
+                  <p className="line-clamp-2 text-sm font-black leading-tight text-white">{m.songA.title}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-white/50">{m.songA.artist}</p>
+                  <p className="mt-1 text-[10px] font-semibold text-brand-300">
+                    {m.songA.versusWins}W‑{m.songA.versusLosses}L
+                  </p>
+                </div>
+                {/* VS divider */}
+                <div className="flex flex-col items-center gap-1 px-1">
+                  <span className="text-2xl font-black tracking-tight text-white/80">VS</span>
+                  <span className="rounded-full border border-white/12 bg-white/5 px-2 py-0.5 text-[9px] font-bold uppercase text-white/40">
+                    {m.songA.genre ?? "Open"}
+                  </span>
+                </div>
+                {/* Fighter B */}
+                <div className="text-center">
+                  <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-accent-500/20 text-xl">
+                    🎵
+                  </div>
+                  <p className="line-clamp-2 text-sm font-black leading-tight text-white">{m.songB.title}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-white/50">{m.songB.artist}</p>
+                  <p className="mt-1 text-[10px] font-semibold text-accent-300">
+                    {m.songB.versusWins}W‑{m.songB.versusLosses}L
+                  </p>
+                </div>
+              </div>
+              {/* Vote bar */}
+              <div className="mt-5">
+                <div className="mb-1 flex justify-between text-[10px] font-bold">
+                  <span className="text-brand-300">{pctA}%</span>
+                  <span className="text-white/35">{totalVotes} votes cast</span>
+                  <span className="text-accent-300">{pctB}%</span>
+                </div>
+                <div className="flex h-2 overflow-hidden rounded-full">
+                  <div className="bg-brand-500 transition-all" style={{ width: `${pctA}%` }} />
+                  <div className="bg-accent-500 transition-all" style={{ width: `${pctB}%` }} />
+                </div>
+              </div>
+              <p className="mt-4 text-center text-[11px] font-black uppercase tracking-widest text-white/40 transition group-hover:text-white/75">
+                Cast Your Vote →
+              </p>
+            </Link>
+          </section>
+        );
+      })()}
 
       <section className="mb-8 rounded-2xl border border-emerald-400/25 bg-emerald-500/[0.06] p-4">
         <div className="mb-4 flex items-center justify-between">

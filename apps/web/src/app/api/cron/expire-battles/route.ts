@@ -4,6 +4,8 @@ import { enqueueNotification } from "@/lib/queues";
 import { requireCronRequest } from "@/lib/routeAuth";
 import { awardBadge } from "@/lib/badges";
 import { recordVersusDefenseOutcome } from "@/lib/versusDefense";
+import { awardArtistWeeklyPoints } from "@/lib/weeklyseason";
+import { resolvePicksForMatch } from "@/lib/fanPredictions";
 
 export const runtime = "nodejs";
 
@@ -94,6 +96,8 @@ export async function GET(req: NextRequest) {
           loserSongId,
           loserArtistId: loserArtist.artistId,
         }).catch(() => null);
+        await awardArtistWeeklyPoints(winnerArtist.artistId, 10).catch(() => null);
+        await resolvePicksForMatch(match.id, winnerIsA ? "A" : "B").catch(() => null);
       }
 
       await Promise.allSettled([
