@@ -107,18 +107,27 @@ for (const check of checks) {
   console.log(`[smoke] ✓ ${check.path} — ${check.description}`);
 }
 
-// CSP shape check on the homepage. The Google-OAuth bug week also surfaced a
-// CSP that blocked Next's flight scripts (no 'strict-dynamic'); the page
-// 200'd but never hydrated. Catch that class by inspecting the header and
-// failing if script-src is too strict.
+// CSP + nonce-on-scripts check on the homepage.
+//
+// We check TWO things, because checking just the header is insufficient:
+//   1. Header has script-src with a nonce + strict-dynamic
+//   2. The HTML actually USES that nonce on its inline <script> tags
+//
+// Regression 96f9769 had a perfect CSP header but layout.tsx no longer
+// passed nonce={nonce} to its inline scripts, so Next's auto-injected
+// flight payloads rendered without nonces and hydration broke. Header
+// alone was green; the page was dead.
 try {
   const res = await fetch(`${BASE}/`, { redirect: "follow", headers: { "User-Agent": "ems-smoke/1" } });
   const csp = res.headers.get("content-security-policy") ?? "";
   const scriptSrc = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src"));
+  const headerNonceMatch = scriptSrc?.match(/'nonce-([a-zA-Z0-9+/=_-]+)'/);
+  const headerNonce = headerNonceMatch?.[1] ?? null;
+
   if (!scriptSrc) {
     console.error(`[smoke] ✗ /  — Content-Security-Policy header missing script-src directive`);
     failed++;
-  } else if (!/nonce-/.test(scriptSrc)) {
+  } else if (!headerNonce) {
     console.error(`[smoke] ✗ /  — script-src has no nonce: ${scriptSrc}`);
     failed++;
   } else if (!/strict-dynamic/.test(scriptSrc) && !/'unsafe-inline'/.test(scriptSrc)) {
@@ -128,7 +137,22 @@ try {
     console.error(`[smoke] ✗ /  — script-src missing 'strict-dynamic' (hydration will break): ${scriptSrc}`);
     failed++;
   } else {
-    console.log(`[smoke] ✓ / — CSP script-src has nonce + strict-dynamic`);
+    // Header looks right. Now verify the body actually uses the nonce.
+    const html = await res.text();
+    const inlineScripts = html.match(/<script(?![^>]*\bsrc=)[^>]*>/g) ?? [];
+    const noncedScripts = inlineScripts.filter((tag) =>
+      new RegExp(`nonce=["']?${headerNonce}["']?`).test(tag),
+    );
+    if (inlineScripts.length > 0 && noncedScripts.length === 0) {
+      console.error(
+        `[smoke] ✗ /  — CSP nonce in header but ${inlineScripts.length} inline scripts carry NO nonce attribute (hydration will break). First script: ${inlineScripts[0]?.slice(0, 160)}`,
+      );
+      failed++;
+    } else {
+      console.log(
+        `[smoke] ✓ / — CSP nonce + strict-dynamic correct, ${noncedScripts.length}/${inlineScripts.length} inline scripts nonced`,
+      );
+    }
   }
 } catch (err) {
   console.error(`[smoke] ✗ / — CSP probe threw: ${err.message}`);

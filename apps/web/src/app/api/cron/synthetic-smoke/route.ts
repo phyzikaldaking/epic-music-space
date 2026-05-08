@@ -98,8 +98,16 @@ export async function GET(req: NextRequest) {
   const failures: FailedCheck[] = [];
   const checks: Record<string, "ok" | "fail" | "skip"> = {};
 
-  // ── (1) CSP shape — fast, no sandbox needed. Run first so we don't pay
-  //        the VM boot cost when CSP is already wrong.
+  // ── (1) CSP shape + nonce-on-scripts — fast, no sandbox needed.
+  //        Run first so we don't pay the VM boot cost when the page is
+  //        already obviously broken. We check TWO things:
+  //          (a) The CSP header has a nonce-* + strict-dynamic
+  //          (b) The HTML body actually USES that nonce on its script tags
+  //        Just (a) was insufficient: a recent regression (96f9769) had a
+  //        valid CSP header but layout.tsx had stopped passing nonce={nonce}
+  //        to its inline script, so Next's auto-injected flight scripts
+  //        rendered without nonces and the browser blocked everything. The
+  //        synthetic was green because the header was fine.
   try {
     const res = await fetch(target, {
       redirect: "follow",
@@ -108,6 +116,8 @@ export async function GET(req: NextRequest) {
     const csp = res.headers.get("content-security-policy") ?? "";
     const scriptSrc =
       csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src")) ?? "";
+    const headerNonceMatch = scriptSrc.match(/'nonce-([a-zA-Z0-9+/=_-]+)'/);
+    const headerNonce = headerNonceMatch?.[1] ?? null;
 
     if (!scriptSrc) {
       checks.csp = "fail";
@@ -118,7 +128,7 @@ export async function GET(req: NextRequest) {
         context: { target, csp: csp.slice(0, 500) },
         severity: "critical",
       });
-    } else if (!/nonce-/.test(scriptSrc)) {
+    } else if (!headerNonce) {
       checks.csp = "fail";
       failures.push({
         fingerprint: "synthetic:csp:no-nonce",
@@ -137,7 +147,55 @@ export async function GET(req: NextRequest) {
         severity: "critical",
       });
     } else {
-      checks.csp = "ok";
+      // Header looks good — now verify the BODY actually uses the nonce.
+      // This catches the regression class where layout.tsx stops passing
+      // nonce={nonce} to its inline scripts: the header has a nonce, the
+      // page has 30+ inline <script> tags from Next's RSC payload, but
+      // none of them carry the attribute, so 'strict-dynamic' has no
+      // trust root and every chunk gets blocked.
+      const html = await res.text();
+      const inlineScripts = html.match(/<script(?![^>]*\bsrc=)[^>]*>/g) ?? [];
+      const noncedScripts = inlineScripts.filter((tag) =>
+        new RegExp(`nonce=["']?${headerNonce}["']?`).test(tag),
+      );
+      if (inlineScripts.length === 0) {
+        checks.csp = "ok";
+      } else if (noncedScripts.length === 0) {
+        checks.csp = "fail";
+        failures.push({
+          fingerprint: "synthetic:csp:scripts-not-nonced",
+          title: "Synthetic: CSP header has nonce but homepage scripts don't carry it (hydration will break)",
+          body:
+            `Found ${inlineScripts.length} inline <script> tags; 0 carry nonce-${headerNonce.slice(0, 8)}…\n` +
+            `First script tag: ${inlineScripts[0]?.slice(0, 200)}`,
+          context: {
+            target,
+            headerNonce: headerNonce.slice(0, 16),
+            inlineScriptsTotal: inlineScripts.length,
+            firstScript: inlineScripts[0]?.slice(0, 200),
+          },
+          severity: "critical",
+        });
+      } else if (noncedScripts.length / inlineScripts.length < 0.5) {
+        // More than half of inline scripts missing the nonce → likely a
+        // partial regression. Less than half is usually OK because some
+        // inline scripts (analytics injectors etc) are 3rd-party and
+        // intentionally rely on strict-dynamic via nonced root.
+        checks.csp = "fail";
+        failures.push({
+          fingerprint: "synthetic:csp:scripts-partially-nonced",
+          title: "Synthetic: most inline scripts missing nonce attribute",
+          body: `Only ${noncedScripts.length}/${inlineScripts.length} inline scripts carry the CSP nonce`,
+          context: {
+            target,
+            noncedCount: noncedScripts.length,
+            totalCount: inlineScripts.length,
+          },
+          severity: "error",
+        });
+      } else {
+        checks.csp = "ok";
+      }
     }
   } catch (err) {
     checks.csp = "fail";

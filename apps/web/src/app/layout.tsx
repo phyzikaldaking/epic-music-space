@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
 import Providers from "@/components/Providers";
 import { getSiteUrl } from "@/lib/site";
@@ -131,6 +132,16 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // CRITICAL — DO NOT REMOVE.
+  // Pull the per-request nonce that proxy.ts set on the request headers.
+  // Passing it to inline <script> tags is what lets CSP's 'strict-dynamic'
+  // chain trust into Next.js's auto-injected flight-data scripts; without
+  // this, hydration scripts get blocked and the page never becomes
+  // interactive. This regression has shipped to production THREE times
+  // now (most recently in 96f9769); see scripts/smoke-browser.mjs for the
+  // synthetic that was supposed to catch it.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="en"
@@ -143,7 +154,11 @@ export default async function RootLayout({
         >
           Skip to main content
         </a>
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredDataJson }} />
+        <script
+          nonce={nonce}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: structuredDataJson }}
+        />
         <Providers>
           {children}
         </Providers>
