@@ -6,7 +6,13 @@ describe("buildContentSecurityPolicy", () => {
     const csp = buildContentSecurityPolicy("nonce123", "production");
     const scriptDirective = csp.split("; ").find((part) => part.startsWith("script-src")) ?? "";
 
-    expect(scriptDirective).toBe("script-src 'self' 'nonce-nonce123' https://js.stripe.com");
+    // 'strict-dynamic' lets nonced root scripts authorize the inline flight
+    // payloads Next.js injects. The nonce is the trust root; modern browsers
+    // ignore the host allowlist in its presence, but legacy browsers fall back
+    // to it (so 'self' + Stripe still listed for them).
+    expect(scriptDirective).toBe(
+      "script-src 'self' 'nonce-nonce123' 'strict-dynamic' https://js.stripe.com",
+    );
     expect(scriptDirective).not.toContain("'unsafe-inline'");
     expect(scriptDirective).not.toContain("'unsafe-eval'");
   });

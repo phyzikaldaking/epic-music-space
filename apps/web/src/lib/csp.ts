@@ -1,7 +1,16 @@
 export function buildContentSecurityPolicy(nonce: string, env = process.env.NODE_ENV) {
+  // 'strict-dynamic' lets nonced root scripts transitively load further
+  // chunks (Next.js's RSC flight payloads, lazy chunks, etc.) without
+  // requiring a nonce on every inline script. Without this, the browser
+  // blocks all the `self.__next_f.push(...)` inline scripts that Next
+  // injects for hydration — leaving the page dead after SSR.
+  // Note: modern browsers honor 'strict-dynamic' and ignore the host
+  // allowlist; legacy browsers fall back to the allowlist (so we keep
+  // 'self' + Stripe for them).
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
+    "'strict-dynamic'",
     "https://js.stripe.com",
     env === "development" ? "'unsafe-eval'" : null,
   ].filter(Boolean);
