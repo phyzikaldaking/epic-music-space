@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  type AuxBusState,
   DawEngine,
   type EngineSnapshot,
   type MidiSynthState,
+  type TrackState,
   type TrackId,
   type TransportState,
 } from "./dawEngine";
@@ -865,6 +867,70 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       message: `Master nudged to ${nextDb.toFixed(1)} dB toward ${loudnessTarget} LUFS target.`,
     });
   }, [loudnessTarget, transport]);
+
+  const applyMonoSafeBalance = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    const liveTracks = engine.getSnapshot().tracks;
+    let adjusted = 0;
+    for (const track of liveTracks) {
+      const isLowEnd = /kick|808|bass|sub/i.test(track.name);
+      if (!isLowEnd) continue;
+      const needsPanCenter = Math.abs(track.pan) > 0.02;
+      const nextReverb = Math.min(track.fx.reverbWet, 0.12);
+      const nextDelay = Math.min(track.fx.delayWet, 0.08);
+      if (needsPanCenter || nextReverb !== track.fx.reverbWet || nextDelay !== track.fx.delayWet) {
+        engine.setTrackPan(track.id, 0);
+        engine.setTrackReverb(track.id, { wet: nextReverb, decaySec: track.fx.reverbDecaySec });
+        engine.setTrackDelay(track.id, {
+          wet: nextDelay,
+          beats: track.fx.delayBeats,
+          feedback: track.fx.delayFeedback,
+        });
+        adjusted += 1;
+      }
+    }
+    const aux = engine.getSnapshot().aux;
+    if (aux.reverbReturn.level > 0.9) engine.setAuxReverbLevel(0.9);
+    if (aux.delayReturn.level > 0.85) engine.setAuxDelayLevel(0.85);
+    setNotice({
+      tone: "success",
+      message:
+        adjusted > 0
+          ? `Centered low-end on ${adjusted} track${adjusted === 1 ? "" : "s"} for mono compatibility.`
+          : "Low-end already mono-safe.",
+    });
+  }, []);
+
+  const tightenStereoFx = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    const liveTracks = engine.getSnapshot().tracks;
+    let adjusted = 0;
+    for (const track of liveTracks) {
+      const nextReverb = track.fx.reverbWet > 0.2 ? track.fx.reverbWet * 0.82 : track.fx.reverbWet;
+      const nextDelay = track.fx.delayWet > 0.18 ? track.fx.delayWet * 0.8 : track.fx.delayWet;
+      if (nextReverb !== track.fx.reverbWet || nextDelay !== track.fx.delayWet) {
+        engine.setTrackReverb(track.id, { wet: nextReverb, decaySec: track.fx.reverbDecaySec });
+        engine.setTrackDelay(track.id, {
+          wet: nextDelay,
+          beats: track.fx.delayBeats,
+          feedback: track.fx.delayFeedback,
+        });
+        adjusted += 1;
+      }
+    }
+    const aux = engine.getSnapshot().aux;
+    engine.setAuxReverbLevel(Math.min(aux.reverbReturn.level, 0.95));
+    engine.setAuxDelayLevel(Math.min(aux.delayReturn.level, 0.9));
+    setNotice({
+      tone: "success",
+      message:
+        adjusted > 0
+          ? `Tightened stereo FX on ${adjusted} track${adjusted === 1 ? "" : "s"}.`
+          : "Stereo FX are already tight.",
+    });
+  }, []);
 
   const submitComment = useCallback(
     async (rawMessage: string) => {
@@ -2238,6 +2304,10 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           spectrum={transport.masterSpectrum}
           masterLufs={transport.masterLufs}
           masterTruePeak={transport.masterTruePeak}
+          tracks={tracks}
+          aux={snapshot?.aux ?? null}
+          onCenterLowEnd={applyMonoSafeBalance}
+          onTightenStereoFx={tightenStereoFx}
         />
       )}
 
@@ -2924,16 +2994,35 @@ function MixIntelligencePanel({
   spectrum,
   masterLufs,
   masterTruePeak,
+  tracks,
+  aux,
+  onCenterLowEnd,
+  onTightenStereoFx,
 }: {
   spectrum: number[];
   masterLufs: number;
   masterTruePeak: number;
+  tracks: TrackState[];
+  aux: AuxBusState | null;
+  onCenterLowEnd: () => void;
+  onTightenStereoFx: () => void;
 }) {
   const sub = avgBand(spectrum, 0, 2);
   const lowMid = avgBand(spectrum, 3, 8);
   const highMid = avgBand(spectrum, 14, 20);
   const air = avgBand(spectrum, 25, 31);
   const peakDbtp = masterTruePeak > 0 ? 20 * Math.log10(masterTruePeak) : -60;
+  const lowEndTracks = tracks.filter((track) => /kick|808|bass|sub/i.test(track.name));
+  const lowEndWideCount = lowEndTracks.filter(
+    (track) => Math.abs(track.pan) > 0.12 || track.fx.reverbWet > 0.14 || track.fx.delayWet > 0.1,
+  ).length;
+  const stereoFxHeavyCount = tracks.filter(
+    (track) => track.fx.reverbWet > 0.28 || track.fx.delayWet > 0.22,
+  ).length;
+  const monoRisk =
+    (lowEndWideCount > 0 ? 1 : 0) +
+    (stereoFxHeavyCount > 2 ? 1 : 0) +
+    (aux && (aux.reverbReturn.level > 1 || aux.delayReturn.level > 0.95) ? 1 : 0);
 
   const checks: Array<{ label: string; detail: string; tone: "ok" | "warn" | "neutral" }> = [
     {
@@ -2988,6 +3077,16 @@ function MixIntelligencePanel({
           : "True peak safety margin looks good.",
       tone: peakDbtp > -1 ? "warn" : "ok",
     },
+    {
+      label: "Mono compatibility",
+      detail:
+        monoRisk >= 2
+          ? "Mono fold-down risk is elevated. Center low-end and tighten stereo FX."
+          : monoRisk === 1
+            ? "Some mono risk detected. Check low-end panning and wide time FX."
+            : "Mono compatibility looks healthy.",
+      tone: monoRisk >= 2 ? "warn" : monoRisk === 1 ? "neutral" : "ok",
+    },
   ];
 
   return (
@@ -3018,6 +3117,26 @@ function MixIntelligencePanel({
             <p className="mt-1 text-xs text-white/80">{check.detail}</p>
           </div>
         ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onCenterLowEnd}
+          className="rounded-lg border border-cyan-300/35 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-cyan-100 hover:bg-cyan-300/10"
+        >
+          Center low-end
+        </button>
+        <button
+          type="button"
+          onClick={onTightenStereoFx}
+          className="rounded-lg border border-violet-300/35 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-violet-100 hover:bg-violet-300/10"
+        >
+          Tighten stereo FX
+        </button>
+        <p className="text-xs text-white/55">
+          Mono checks: {lowEndWideCount} low-end lane{lowEndWideCount === 1 ? "" : "s"} wide · {stereoFxHeavyCount} stereo-heavy FX lane{stereoFxHeavyCount === 1 ? "" : "s"}.
+        </p>
       </div>
     </section>
   );
