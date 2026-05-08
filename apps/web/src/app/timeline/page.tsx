@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import FeedClient from "@/app/feed/FeedClient";
+import ProductionTimeline from "@/components/daw/ProductionTimeline";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
@@ -165,6 +166,10 @@ export default async function TimelinePage({ searchParams }: Props) {
       )}
 
       {/* ── Feed ───────────────────────────────────────────────────────── */}
+      {/* ── Production Timeline ────────────────────────────────────────── */}
+      <ProductionTimeline />
+
+      {/* ── Community Feed ──────────────────────────────────────────────── */}
       <FeedClient
         initialMode={isAuthed ? "following" : "all"}
         viewerId={session?.user?.id ?? null}
