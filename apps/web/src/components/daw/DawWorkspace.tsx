@@ -2545,6 +2545,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           laneEqRecommendations={laneEqRecommendations}
           onApplyLaneEqRecommendation={applyLaneEqRecommendation}
           onApplyAllLaneEqRecommendations={applyAllLaneEqRecommendations}
+          recommendationConfidenceThreshold={recommendationConfidenceThreshold}
+          onChangeRecommendationConfidenceThreshold={setRecommendationConfidenceThreshold}
         />
       )}
 
@@ -3268,6 +3270,8 @@ function MixIntelligencePanel({
   laneEqRecommendations,
   onApplyLaneEqRecommendation,
   onApplyAllLaneEqRecommendations,
+  recommendationConfidenceThreshold,
+  onChangeRecommendationConfidenceThreshold,
 }: {
   spectrum: number[];
   masterLufs: number;
@@ -3286,6 +3290,8 @@ function MixIntelligencePanel({
   laneEqRecommendations: LaneEqRecommendation[];
   onApplyLaneEqRecommendation: (rec: LaneEqRecommendation) => void;
   onApplyAllLaneEqRecommendations: () => void;
+  recommendationConfidenceThreshold: number;
+  onChangeRecommendationConfidenceThreshold: (threshold: number) => void;
 }) {
   const sub = avgBand(spectrum, 0, 2);
   const lowMid = avgBand(spectrum, 3, 8);
@@ -3454,6 +3460,20 @@ function MixIntelligencePanel({
             >
               Apply all actionable
             </button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-black/25 p-2">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-white/60">Confidence</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={recommendationConfidenceThreshold}
+              onChange={(e) => onChangeRecommendationConfidenceThreshold(Number(e.currentTarget.value))}
+              className="h-1.5 w-16 appearance-none rounded-full bg-white/20 accent-cyan-400"
+              title="Higher values filter out lower-confidence recommendations"
+            />
+            <span className="text-[9px] font-bold text-cyan-100/70">{(recommendationConfidenceThreshold * 100).toFixed(0)}%</span>
           </div>
           <div className="mt-2 grid gap-1.5 md:grid-cols-2">
             {laneEqRecommendations.slice(0, 6).map((rec, idx) => (
