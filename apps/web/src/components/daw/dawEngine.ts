@@ -23,6 +23,7 @@
  */
 
 import {
+  type BeatLaneEqSetting,
   type BeatPattern,
   type DrumKind,
   DRUM_LANES,
@@ -213,6 +214,8 @@ export interface BeatMachineState {
   kit: DrumKitId;
   /** Optional file name per lane when a custom one-shot sample is assigned. */
   laneSampleNames: Record<DrumKind, string | null>;
+  /** Lane-level EQ templates applied before each hit reaches the beat track. */
+  laneEqSettings: Record<DrumKind, BeatLaneEqSetting>;
   /** Low-end occupancy profile per lane for arrangement and mix guidance. */
   laneFrequencyProfiles: Record<DrumKind, LaneFrequencyProfile>;
 }
@@ -284,6 +287,8 @@ export type RenderQuality = "standard" | "high" | "ultra";
 
 export interface RenderMixOptions {
   quality?: RenderQuality;
+  /** Optional export guard ceiling in dBTP. null/undefined disables trim. */
+  truePeakCeilingDbtp?: number | null;
 }
 
 /** On-disk project format. Versioned so we can migrate older saves. */
@@ -319,6 +324,7 @@ export interface ProjectFile {
     pattern: BeatPattern;
     kit: DrumKitId;
     laneSamples: Record<DrumKind, { name: string; audioBlob: Blob } | null>;
+    laneEqSettings?: Record<DrumKind, BeatLaneEqSetting>;
   };
   midi: {
     wave: SynthWave;
@@ -396,6 +402,13 @@ function emptyBeatLaneSampleNames(): Record<DrumKind, string | null> {
     acc[lane] = null;
     return acc;
   }, {} as Record<DrumKind, string | null>);
+}
+
+function emptyBeatLaneEqSettings(): Record<DrumKind, BeatLaneEqSetting> {
+  return DRUM_LANES.reduce((acc, lane) => {
+    acc[lane] = { hpHz: null, lpHz: null };
+    return acc;
+  }, {} as Record<DrumKind, BeatLaneEqSetting>);
 }
 
 const SYNTH_LANE_CENTERS_HZ: Record<DrumKind, number> = {
@@ -574,6 +587,7 @@ export class DawEngine {
     },
     kit: "acoustic",
     laneSampleNames: emptyBeatLaneSampleNames(),
+    laneEqSettings: emptyBeatLaneEqSettings(),
     laneFrequencyProfiles: emptyBeatLaneFrequencyProfiles(),
   };
   private beatLaneSamples: Record<DrumKind, AudioBuffer | null> = DRUM_LANES.reduce((acc, lane) => {
@@ -2223,6 +2237,47 @@ export class DawEngine {
     this.notify();
   }
 
+  setBeatLaneEq(lane: DrumKind, params: Partial<BeatLaneEqSetting>) {
+    const prev = this.beatMachine.laneEqSettings[lane] ?? { hpHz: null, lpHz: null };
+    const next: BeatLaneEqSetting = {
+      hpHz:
+        params.hpHz === undefined
+          ? prev.hpHz
+          : params.hpHz === null
+            ? null
+            : Math.max(20, Math.min(12000, params.hpHz)),
+      lpHz:
+        params.lpHz === undefined
+          ? prev.lpHz
+          : params.lpHz === null
+            ? null
+            : Math.max(20, Math.min(20000, params.lpHz)),
+    };
+    this.beatMachine.laneEqSettings[lane] = next;
+    this.refreshBeatLaneFrequencyProfiles();
+    this.notify();
+  }
+
+  applyBeatAntiOverlapPreset(preset: "kick808-split" | "percussion-lowcut") {
+    if (preset === "kick808-split") {
+      this.setBeatLaneEq("kick", { hpHz: 34, lpHz: 150 });
+      this.setBeatLaneEq("bass808", { hpHz: 24, lpHz: 95 });
+      return;
+    }
+    this.setBeatLaneEq("snare", { hpHz: 170, lpHz: null });
+    this.setBeatLaneEq("clap", { hpHz: 320, lpHz: null });
+    this.setBeatLaneEq("perc", { hpHz: 220, lpHz: null });
+    this.setBeatLaneEq("hat", { hpHz: 4200, lpHz: null });
+    this.setBeatLaneEq("openHat", { hpHz: 3600, lpHz: null });
+    this.setBeatLaneEq("crash", { hpHz: 2200, lpHz: null });
+  }
+
+  clearBeatLaneEqTemplates() {
+    this.beatMachine.laneEqSettings = emptyBeatLaneEqSettings();
+    this.refreshBeatLaneFrequencyProfiles();
+    this.notify();
+  }
+
   async setBeatLaneSample(lane: DrumKind, file: File): Promise<boolean> {
     if (!this.init() || !this.ctx) return false;
     try {
@@ -2323,19 +2378,43 @@ export class DawEngine {
     return buildLaneProfile(lane, "sample", dominantHz, lowBandRatio);
   }
 
+  private applyLaneEqInfluence(
+    lane: DrumKind,
+    baseProfile: LaneFrequencyProfile,
+    eq: BeatLaneEqSetting,
+  ): LaneFrequencyProfile {
+    let dominant = baseProfile.dominantHz;
+    let lowRatio = baseProfile.lowBandRatio;
+    if (eq.hpHz && eq.hpHz > 0) {
+      const hp = eq.hpHz;
+      lowRatio *= hp >= 350 ? 0.2 : hp >= 200 ? 0.42 : hp >= 120 ? 0.62 : 0.8;
+      dominant = Math.max(dominant, hp * 0.9);
+    }
+    if (eq.lpHz && eq.lpHz > 0) {
+      const lp = eq.lpHz;
+      if (lp < 130) lowRatio = Math.min(1, lowRatio + 0.08);
+      dominant = Math.min(dominant, lp * 0.95);
+    }
+    return buildLaneProfile(lane, baseProfile.source, dominant, lowRatio);
+  }
+
   private refreshBeatLaneFrequencyProfiles() {
     for (const lane of DRUM_LANES) {
       const sample = this.beatLaneSamples[lane];
-      if (sample) {
-        this.beatMachine.laneFrequencyProfiles[lane] = this.analyzeBeatLaneSample(lane, sample);
-      } else {
-        this.beatMachine.laneFrequencyProfiles[lane] = buildLaneProfile(
-          lane,
-          "synth",
-          SYNTH_LANE_CENTERS_HZ[lane],
-          SYNTH_LANE_LOW_RATIO[lane],
-        );
-      }
+      const eq = this.beatMachine.laneEqSettings[lane] ?? { hpHz: null, lpHz: null };
+      const baseProfile = sample
+        ? this.analyzeBeatLaneSample(lane, sample)
+        : buildLaneProfile(
+            lane,
+            "synth",
+            SYNTH_LANE_CENTERS_HZ[lane],
+            SYNTH_LANE_LOW_RATIO[lane],
+          );
+      this.beatMachine.laneFrequencyProfiles[lane] = this.applyLaneEqInfluence(
+        lane,
+        baseProfile,
+        eq,
+      );
     }
   }
 
@@ -2418,6 +2497,7 @@ export class DawEngine {
               when: this.beatNextTime,
               kit: this.beatMachine.kit,
               sampleBuffer: this.beatLaneSamples[lane],
+              laneEq: this.beatMachine.laneEqSettings[lane],
             });
           }
         }
@@ -2544,6 +2624,7 @@ export class DawEngine {
                 when,
                 kit: this.beatMachine.kit,
                 sampleBuffer: this.beatLaneSamples[lane],
+                laneEq: this.beatMachine.laneEqSettings[lane],
               });
             }
           }
@@ -2716,6 +2797,7 @@ export class DawEngine {
         pattern: this.beatMachine.pattern,
         kit: this.beatMachine.kit,
         laneSamples,
+        laneEqSettings: { ...this.beatMachine.laneEqSettings },
       },
       midi: {
         wave: this.midi.wave,
@@ -2775,6 +2857,17 @@ export class DawEngine {
     this.beatMachine.enabled = file.beat.enabled;
     this.beatMachine.kit = file.beat.kit;
     this.beatMachine.laneSampleNames = emptyBeatLaneSampleNames();
+    this.beatMachine.laneEqSettings = emptyBeatLaneEqSettings();
+    if (file.beat.laneEqSettings) {
+      for (const lane of DRUM_LANES) {
+        const saved = file.beat.laneEqSettings[lane];
+        if (!saved) continue;
+        this.beatMachine.laneEqSettings[lane] = {
+          hpHz: saved.hpHz,
+          lpHz: saved.lpHz,
+        };
+      }
+    }
     this.beatMachine.laneFrequencyProfiles = emptyBeatLaneFrequencyProfiles();
     this.beatLaneSamples = DRUM_LANES.reduce((acc, lane) => {
       acc[lane] = null;
@@ -2849,10 +2942,40 @@ export class DawEngine {
     this.notify();
   }
 
+  private estimateBufferOversampledTruePeak(buffer: AudioBuffer): number {
+    let peak = 0;
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const data = buffer.getChannelData(ch);
+      const chPeak = this.estimateOversampledTruePeak(data);
+      if (chPeak > peak) peak = chPeak;
+    }
+    return peak;
+  }
+
+  private applyBufferTrimGain(buffer: AudioBuffer, gain: number) {
+    const safe = Math.max(0, Math.min(2, gain));
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const data = buffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = Math.max(-1, Math.min(1, (data[i] ?? 0) * safe));
+      }
+    }
+  }
+
   /** Render mix → WAV blob. Suitable for upload to /api/upload. */
   async exportWav(options: RenderMixOptions = { quality: "ultra" }): Promise<Blob> {
     const quality = options.quality ?? "ultra";
     const buf = await this.renderMix({ quality });
+    const targetDbtp = options.truePeakCeilingDbtp;
+    if (typeof targetDbtp === "number" && Number.isFinite(targetDbtp)) {
+      const peak = this.estimateBufferOversampledTruePeak(buf);
+      const peakDbtp = peak > 0 ? 20 * Math.log10(peak) : -Infinity;
+      if (peakDbtp > targetDbtp) {
+        const trimDb = targetDbtp - peakDbtp;
+        const trimLinear = Math.pow(10, trimDb / 20);
+        this.applyBufferTrimGain(buf, trimLinear);
+      }
+    }
     return audioBufferToWav(buf, {
       bitsPerSample: quality === "standard" ? 16 : 24,
       dither: true,
@@ -3200,6 +3323,7 @@ export class DawEngine {
         },
         kit: this.beatMachine.kit,
         laneSampleNames: { ...this.beatMachine.laneSampleNames },
+        laneEqSettings: { ...this.beatMachine.laneEqSettings },
         laneFrequencyProfiles: { ...this.beatMachine.laneFrequencyProfiles },
       },
       midi: {

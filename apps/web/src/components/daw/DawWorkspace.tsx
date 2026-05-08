@@ -70,6 +70,7 @@ type RecordReviewState = {
 
 type LoudnessTarget = -16 | -14 | -10;
 type ExportLoudnessPreset = "streaming" | "club" | "broadcast";
+type ExportTruePeakTarget = -1 | -1.2 | -2;
 
 type BrowserHealth = {
   webAudio: boolean;
@@ -437,6 +438,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [heavyUiReady, setHeavyUiReady] = useState(false);
   const [loudnessTarget, setLoudnessTarget] = useState<LoudnessTarget>(-14);
   const [exportLoudnessPreset, setExportLoudnessPreset] = useState<ExportLoudnessPreset>("streaming");
+  const [exportTruePeakTarget, setExportTruePeakTarget] = useState<ExportTruePeakTarget>(-1);
   const sessionStartedAt = useRef<number>(Date.now());
   const wasRecordingRef = useRef(false);
   const clientPresenceId = useMemo(() => {
@@ -944,6 +946,33 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         ? "Stereo preview restored."
         : "Mono preview enabled for translation checks.",
     });
+  }, []);
+
+  const applyKick808SplitPreset = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.applyBeatAntiOverlapPreset("kick808-split");
+    setNotice({
+      tone: "success",
+      message: "Applied kick/808 split template: kick punch band + controlled 808 sub lane.",
+    });
+  }, []);
+
+  const applyPercussionLowCutTemplate = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.applyBeatAntiOverlapPreset("percussion-lowcut");
+    setNotice({
+      tone: "success",
+      message: "Applied percussion low-cut template across snare, clap, hats, perc, and crash.",
+    });
+  }, []);
+
+  const clearBeatEqTemplates = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.clearBeatLaneEqTemplates();
+    setNotice({ tone: "info", message: "Cleared beat lane EQ templates." });
   }, []);
 
   const submitComment = useCallback(
@@ -1556,7 +1585,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     if (!engine) return;
     setPostingForum(true);
     try {
-      const wav = await engine.exportWav();
+      const wav = await engine.exportWav({ truePeakCeilingDbtp: exportTruePeakTarget });
       const fileName = `ems-studio-preview-${Date.now()}.wav`;
       const signRes = await fetch("/api/upload", {
         method: "POST",
@@ -2326,6 +2355,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           onCenterLowEnd={applyMonoSafeBalance}
           onTightenStereoFx={tightenStereoFx}
           onToggleMonoPreview={toggleMonoPreview}
+          onApplyKick808Split={applyKick808SplitPreset}
+          onApplyPercussionLowCut={applyPercussionLowCutTemplate}
+          onClearBeatEqTemplates={clearBeatEqTemplates}
         />
       )}
 
@@ -2531,19 +2563,33 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               ? transport.masterLufs
               : targetLufs[exportLoudnessPreset];
             const correction = Math.max(-6, Math.min(6, targetLufs[exportLoudnessPreset] - currentLufs));
-            engine.setMasterDb(Math.max(-24, Math.min(6, originalDb + correction)));
+            const predictedPeakDbtp =
+              transport.masterTruePeak > 0 ? 20 * Math.log10(transport.masterTruePeak) : -Infinity;
+            const predictedAfterLoudness = Number.isFinite(predictedPeakDbtp)
+              ? predictedPeakDbtp + correction
+              : -Infinity;
+            const extraTrimDb = Number.isFinite(predictedAfterLoudness)
+              ? Math.min(0, exportTruePeakTarget - predictedAfterLoudness)
+              : 0;
+            const finalDb = Math.max(-24, Math.min(6, originalDb + correction + extraTrimDb));
+            engine.setMasterDb(finalDb);
             let wav: Blob;
             try {
-              wav = await engine.exportWav();
+              wav = await engine.exportWav({ truePeakCeilingDbtp: exportTruePeakTarget });
             } finally {
               engine.setMasterDb(originalDb);
             }
             setStats((s) => ({ ...s, exports: s.exports + 1 }));
-            pushAuditEvent("export", `Exported WAV mixdown (${exportLoudnessPreset})`);
+            pushAuditEvent(
+              "export",
+              `Exported WAV mixdown (${exportLoudnessPreset}, ceiling ${exportTruePeakTarget.toFixed(1)} dBTP${extraTrimDb < 0 ? `, trim ${extraTrimDb.toFixed(1)} dB` : ""})`,
+            );
             return wav;
           }}
           loudnessPreset={exportLoudnessPreset}
+          truePeakTarget={exportTruePeakTarget}
           onSetLoudnessPreset={setExportLoudnessPreset}
+          onSetTruePeakTarget={setExportTruePeakTarget}
           onPublish={publishMix}
           onAiMaster={aiMasterMix}
         />
@@ -3021,6 +3067,9 @@ function MixIntelligencePanel({
   onCenterLowEnd,
   onTightenStereoFx,
   onToggleMonoPreview,
+  onApplyKick808Split,
+  onApplyPercussionLowCut,
+  onClearBeatEqTemplates,
 }: {
   spectrum: number[];
   masterLufs: number;
@@ -3033,6 +3082,9 @@ function MixIntelligencePanel({
   onCenterLowEnd: () => void;
   onTightenStereoFx: () => void;
   onToggleMonoPreview: () => void;
+  onApplyKick808Split: () => void;
+  onApplyPercussionLowCut: () => void;
+  onClearBeatEqTemplates: () => void;
 }) {
   const sub = avgBand(spectrum, 0, 2);
   const lowMid = avgBand(spectrum, 3, 8);
@@ -3057,6 +3109,12 @@ function MixIntelligencePanel({
     .slice(0, 3)
     .map(({ lane }) => lane.toUpperCase())
     .join(", ");
+  const activeLaneEqCount = beat
+    ? DRUM_LANES.filter((lane) => {
+        const eq = beat.laneEqSettings[lane];
+        return Boolean(eq.hpHz || eq.lpHz);
+      }).length
+    : 0;
   const monoRisk =
     (lowEndWideCount > 0 ? 1 : 0) +
     (stereoFxHeavyCount > 2 ? 1 : 0) +
@@ -3208,8 +3266,29 @@ function MixIntelligencePanel({
         >
           {monoPreviewOn ? "Mono preview on" : "Mono preview"}
         </button>
+        <button
+          type="button"
+          onClick={onApplyKick808Split}
+          className="rounded-lg border border-emerald-300/35 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-emerald-100 hover:bg-emerald-400/10"
+        >
+          Kick/808 split
+        </button>
+        <button
+          type="button"
+          onClick={onApplyPercussionLowCut}
+          className="rounded-lg border border-indigo-300/35 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-indigo-100 hover:bg-indigo-400/10"
+        >
+          Perc low-cut
+        </button>
+        <button
+          type="button"
+          onClick={onClearBeatEqTemplates}
+          className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white/80 hover:bg-white/10"
+        >
+          Clear lane EQ
+        </button>
         <p className="text-xs text-white/55">
-          Mono checks: {lowEndWideCount} low-end lane{lowEndWideCount === 1 ? "" : "s"} wide · {stereoFxHeavyCount} stereo-heavy FX lane{stereoFxHeavyCount === 1 ? "" : "s"} · phase {phaseCorrelation.toFixed(2)}.
+          Mono checks: {lowEndWideCount} low-end lane{lowEndWideCount === 1 ? "" : "s"} wide · {stereoFxHeavyCount} stereo-heavy FX lane{stereoFxHeavyCount === 1 ? "" : "s"} · phase {phaseCorrelation.toFixed(2)} · lane EQ templates {activeLaneEqCount}.
         </p>
       </div>
     </section>

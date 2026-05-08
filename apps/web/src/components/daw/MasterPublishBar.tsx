@@ -7,7 +7,9 @@ interface Props {
   canExport: boolean;
   emptyReason?: string;
   loudnessPreset: "streaming" | "club" | "broadcast";
+  truePeakTarget: -1 | -1.2 | -2;
   onSetLoudnessPreset: (preset: "streaming" | "club" | "broadcast") => void;
+  onSetTruePeakTarget: (target: -1 | -1.2 | -2) => void;
   onToggleLimiter: () => void;
   onExport: () => Promise<Blob>;
   /** Hands the rendered WAV to the upload pipeline. Returns the new
@@ -25,7 +27,9 @@ export default function MasterPublishBar({
   canExport,
   emptyReason,
   loudnessPreset,
+  truePeakTarget,
   onSetLoudnessPreset,
+  onSetTruePeakTarget,
   onToggleLimiter,
   onExport,
   onPublish,
@@ -145,6 +149,20 @@ export default function MasterPublishBar({
           <option value="streaming">Streaming (-14)</option>
           <option value="club">Club (-9)</option>
           <option value="broadcast">Broadcast (-16)</option>
+        </select>
+      </label>
+
+      <label className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.03] px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-white/65">
+        Peak
+        <select
+          value={String(truePeakTarget)}
+          onChange={(event) => onSetTruePeakTarget(Number(event.target.value) as -1 | -1.2 | -2)}
+          className="rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-white"
+          title="True peak ceiling guard"
+        >
+          <option value="-1">-1.0 dBTP</option>
+          <option value="-1.2">-1.2 dBTP</option>
+          <option value="-2">-2.0 dBTP</option>
         </select>
       </label>
 

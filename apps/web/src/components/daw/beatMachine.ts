@@ -103,6 +103,11 @@ export type DrumKitId =
   | "lofi"
   | "acoustic";
 
+export interface BeatLaneEqSetting {
+  hpHz: number | null;
+  lpHz: number | null;
+}
+
 interface VoiceOptions {
   /** When (ctx-time) the hit should sound. */
   when: number;
@@ -114,6 +119,8 @@ interface VoiceOptions {
   pitchSemis?: number;
   /** Optional one-shot sample that replaces synthesized drum voice for this hit. */
   sampleBuffer?: AudioBuffer | null;
+  /** Optional lane-level EQ template applied to sample or synth voices. */
+  laneEq?: BeatLaneEqSetting;
 }
 
 interface LaneSampleTone {
@@ -366,7 +373,35 @@ export function scheduleDrumHit(
   kind: DrumKind,
   opts: VoiceOptions,
 ) {
-  const { when, velocity = 1, kit = "acoustic", pitchSemis = 0, sampleBuffer = null } = opts;
+  const {
+    when,
+    velocity = 1,
+    kit = "acoustic",
+    pitchSemis = 0,
+    sampleBuffer = null,
+    laneEq,
+  } = opts;
+
+  const withLaneEq = (input: AudioNode): AudioNode => {
+    let node = input;
+    const hpHz = laneEq?.hpHz ?? null;
+    const lpHz = laneEq?.lpHz ?? null;
+    if (hpHz && hpHz > 0) {
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.setValueAtTime(hpHz, when);
+      node.connect(hp);
+      node = hp;
+    }
+    if (lpHz && lpHz > 0) {
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.setValueAtTime(lpHz, when);
+      node.connect(lp);
+      node = lp;
+    }
+    return node;
+  };
 
   if (sampleBuffer) {
     const source = ctx.createBufferSource();
@@ -390,6 +425,7 @@ export function scheduleDrumHit(
       chain.connect(lp);
       chain = lp;
     }
+    chain = withLaneEq(chain);
     chain.connect(amp).connect(dest);
     source.start(when);
     return;
@@ -401,7 +437,7 @@ export function scheduleDrumHit(
   // node inserted ⇒ no perf cost on clean kits.
   const out = params.drive > 0 ? createSaturator(ctx, params.drive) : null;
   if (out) out.connect(dest);
-  const target: AudioNode = out ?? dest;
+  const target: AudioNode = withLaneEq(out ?? dest);
 
   switch (kind) {
     case "kick": {
