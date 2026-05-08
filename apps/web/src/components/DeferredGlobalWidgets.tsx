@@ -28,14 +28,14 @@ const VercelSpeedInsights = dynamic(
   { ssr: false },
 );
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
 export default function DeferredGlobalWidgets() {
   const [ready, setReady] = useState(false);
 
-  if (process.env.NODE_ENV !== "production") {
-    return null;
-  }
-
   useEffect(() => {
+    if (!IS_PRODUCTION) return;
+
     const win = window as Window & {
       requestIdleCallback?: (
         callback: () => void,
@@ -53,6 +53,7 @@ export default function DeferredGlobalWidgets() {
     return () => clearTimeout(id);
   }, []);
 
+  if (!IS_PRODUCTION) return null;
   if (!ready) return null;
 
   return (

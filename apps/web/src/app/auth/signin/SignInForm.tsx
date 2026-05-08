@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, Suspense, useEffect } from "react";
+import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { appendCallbackParam, sanitizeCallbackPath } from "@/lib/safeCallback";
@@ -617,12 +618,12 @@ function SignInContent({
               without committing to an account first. They'll be asked for an
               email when they hit save/publish, which is the right moment. */}
           <div className="mt-3 text-center">
-            <a
+            <Link
               href="/studio/try"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/55 underline decoration-dotted underline-offset-4 hover:text-white"
             >
               <span aria-hidden>↳</span> Just looking? Try the studio without an account
-            </a>
+            </Link>
           </div>
 
           <div className="mt-5 grid grid-cols-1 gap-2 text-xs text-white/60 sm:grid-cols-3">

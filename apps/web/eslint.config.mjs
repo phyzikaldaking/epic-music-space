@@ -1,21 +1,8 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import nextTypeScript from "eslint-config-next/typescript";
 
 const eslintConfig = [
   {
-    // Build output, generated code, and third-party. Lint these and you get
-    // hundreds of false-positive `require()` errors from compiled Next.js
-    // chunks. This list is the parity with what `next lint` skipped by
-    // default — when migrating off `next lint` to `eslint .` directly, this
-    // is the missing piece.
     ignores: [
       ".next/**",
       "node_modules/**",
@@ -29,13 +16,23 @@ const eslintConfig = [
       "next-env.d.ts",
     ],
   },
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...nextCoreWebVitals,
+  ...nextTypeScript,
   {
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      // eslint-plugin-react-hooks v7 (shipped with Next 16) added new strict
+      // rules built around the React Compiler. The existing codebase wasn't
+      // authored against them. Demote to warnings so lint passes; revisit each
+      // class as part of a focused React Compiler readiness pass.
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/purity": "warn",
+      "react-hooks/refs": "warn",
+      "react-hooks/immutability": "warn",
+      "react-hooks/static-components": "warn",
     },
   },
 ];

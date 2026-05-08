@@ -1,4 +1,8 @@
-/* eslint-disable react/no-unknown-property */
+/* eslint-disable react/no-unknown-property, react/no-unescaped-entities, @next/next/no-html-link-for-pages */
+// global-error.tsx is Next.js's last-resort error boundary that wraps <html>.
+// It must work even when the React tree is broken, so we use plain <a>/raw
+// quotes rather than next/link or escaped entities — both are documented Next
+// patterns for this file.
 'use client';
 
 export default function GlobalError({
