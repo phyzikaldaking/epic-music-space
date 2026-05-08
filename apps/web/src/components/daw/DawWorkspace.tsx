@@ -1516,12 +1516,42 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </div>
       )}
 
-      {/* ── Transport ──────────────────────────────────────────────────────── */}
-      <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-r from-[#0c0c14] via-[#0a0a12] to-[#0c0c14] p-4 shadow-inner">
+      {/* ── Transport — sticky Pro Tools-style master bar ───────────────────
+          The transport pins to the top of the viewport so REW/PLAY/REC and
+          the time display stay in reach no matter how far the user scrolls
+          through tracks, FX, or the master section. The big REC pill on
+          the left makes it impossible to mistake whether the engine is
+          recording. */}
+      <div className="sticky top-[64px] z-30 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
+      <div
+        className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 shadow-2xl shadow-black/40 backdrop-blur-md transition ${
+          transport?.isRecording
+            ? "border-red-500/45 bg-[linear-gradient(135deg,rgba(40,8,8,0.92),rgba(12,8,12,0.92))]"
+            : "border-white/10 bg-[linear-gradient(135deg,rgba(12,12,20,0.92),rgba(10,10,18,0.92))]"
+        }`}
+      >
         <div className="mb-1 flex w-full items-center justify-between text-[10px] font-black uppercase tracking-[0.24em] text-white/45">
-          <span>Control Room</span>
-          <span className="text-cyan-100/65">
-            {transport?.isRecording ? "REC LIVE" : transport?.isPlaying ? "PLAYBACK" : "STANDBY"}
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className={`inline-block h-2 w-2 rounded-full ${
+                transport?.isRecording
+                  ? "led-on-rec animate-pulse"
+                  : transport?.isPlaying
+                    ? "led-on-green"
+                    : "led-on-amber"
+              }`}
+            />
+            <span>Control Room</span>
+          </div>
+          <span
+            className={
+              transport?.isRecording
+                ? "rounded-full border border-red-400/60 bg-red-500/20 px-2 py-0.5 text-[10px] font-black tracking-[0.32em] text-red-100"
+                : "text-cyan-100/65"
+            }
+          >
+            {transport?.isRecording ? "● REC LIVE" : transport?.isPlaying ? "PLAYBACK" : "STANDBY"}
           </span>
         </div>
 
@@ -1577,15 +1607,21 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             if (!ensureInit()) return;
             void toggleRecording();
           }}
-          className={`flex h-11 items-center gap-2 rounded-full px-4 text-sm font-bold transition ${
+          className={`flex h-11 items-center gap-2 rounded-full px-5 text-sm font-black uppercase tracking-widest transition ${
             transport?.isRecording
-              ? "bg-red-500 text-white animate-pulse hover:bg-red-600"
-              : "border border-red-500/50 text-red-300 hover:bg-red-500/10"
+              ? "bg-red-600 text-white shadow-[0_0_18px_rgba(239,68,68,0.7)] hover:bg-red-700"
+              : "border border-red-500/55 bg-red-500/10 text-red-200 hover:bg-red-500/20"
           }`}
           aria-label={transport?.isRecording ? "Stop recording" : "Record"}
+          aria-pressed={transport?.isRecording ? "true" : "false"}
         >
-          <span className="h-2.5 w-2.5 rounded-full bg-current" />
-          {transport?.isRecording ? "Stop rec" : "Record"}
+          <span
+            aria-hidden
+            className={`h-3 w-3 rounded-full bg-current ${
+              transport?.isRecording ? "animate-pulse" : ""
+            }`}
+          />
+          {transport?.isRecording ? "● Recording" : "Record"}
         </button>
 
         <button
@@ -1795,6 +1831,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           }}
         />
       </div>
+      </div>
 
       <p className="-mt-3 mb-6 text-center text-[10px] uppercase tracking-[0.28em] text-white/30">
         Space play · R record · L loop · M metronome · T tap · Home rewind · Drop audio file onto a track to import
@@ -1837,47 +1874,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </div>
       )}
 
-      {!showSplash && (
-        <StudioSoundCoach
-          transport={transport ?? null}
-          onPreset={applySoundPreset}
-          onFrontlineBus={() => {
-            const vocalTrack = findVocalTrack();
-            if (!vocalTrack) return;
-            applyFrontlineVocalBus(vocalTrack.id);
-            setFocusedId(vocalTrack.id);
-            setNotice({ tone: "success", message: `Frontline bus loaded on ${vocalTrack.name}.` });
-          }}
-        />
-      )}
-
-      {!showSplash && showRecordWizard && (
-        <RecordReadinessWizard
-          browserHealth={browserHealth}
-          transport={transport ?? null}
-          armedTracks={tracks.filter((track) => track.armed).length}
-          onLoadRecordPreset={() => applySoundPreset("record")}
-          onStartRecord={() => {
-            void toggleRecording();
-          }}
-          onDismiss={() => {
-            setShowRecordWizard(false);
-            safeLocalStorageSet(STUDIO_RECORD_WIZARD_KEY, "dismissed");
-          }}
-        />
-      )}
-
-      {!showSplash && (
-        <MasterLoudnessAssistant
-          masterLufs={transport?.masterLufs ?? -60}
-          masterTruePeak={transport?.masterTruePeak ?? 0}
-          target={loudnessTarget}
-          onChangeTarget={(target) => setLoudnessTarget(target)}
-          onNudge={nudgeMasterToTarget}
-        />
-      )}
-
-      {/* ── Track strips ───────────────────────────────────────────────────── */}
+      {/* ── Track strips ─────────────────────────────────────────────────────
+          Pushed up to immediately follow the transport so the recording
+          surface is the FIRST thing the artist sees and clicks. The Sound
+          Coach / Record Readiness Wizard / Loudness Assistant — which are
+          all advisory helpers, not primary controls — render below the
+          tracks so they don't push the actual workspace off-screen. */}
       {showRecordTools && <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
         {showSplash && (
           <div className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-8 text-center">
@@ -1939,12 +1941,60 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                     setNotice({ tone: "success", message: `Take deleted. Hit ↩ Undo in the banner to restore.` });
                   }
                 } : null}
+                onSeek={(sec) => engineRef.current?.seek(sec)}
+                onInputGain={(db) => engineRef.current?.setTrackInputGain(track.id, db)}
+                isRecording={transport?.isRecording ?? false}
                 compact={compactStrips}
               />
             ))}
           </div>
         )}
       </div>}
+
+      {/* ── After-track helpers ─────────────────────────────────────────
+          Sound Coach, Record Readiness Wizard, and Loudness Assistant
+          render below the tracks. They suggest sound presets, walk you
+          through a healthy record session, and meter master loudness —
+          all secondary to the actual track surface above. */}
+      {!showSplash && (
+        <StudioSoundCoach
+          transport={transport ?? null}
+          onPreset={applySoundPreset}
+          onFrontlineBus={() => {
+            const vocalTrack = findVocalTrack();
+            if (!vocalTrack) return;
+            applyFrontlineVocalBus(vocalTrack.id);
+            setFocusedId(vocalTrack.id);
+            setNotice({ tone: "success", message: `Frontline bus loaded on ${vocalTrack.name}.` });
+          }}
+        />
+      )}
+
+      {!showSplash && showRecordWizard && (
+        <RecordReadinessWizard
+          browserHealth={browserHealth}
+          transport={transport ?? null}
+          armedTracks={tracks.filter((track) => track.armed).length}
+          onLoadRecordPreset={() => applySoundPreset("record")}
+          onStartRecord={() => {
+            void toggleRecording();
+          }}
+          onDismiss={() => {
+            setShowRecordWizard(false);
+            safeLocalStorageSet(STUDIO_RECORD_WIZARD_KEY, "dismissed");
+          }}
+        />
+      )}
+
+      {!showSplash && (
+        <MasterLoudnessAssistant
+          masterLufs={transport?.masterLufs ?? -60}
+          masterTruePeak={transport?.masterTruePeak ?? 0}
+          target={loudnessTarget}
+          onChangeTarget={(target) => setLoudnessTarget(target)}
+          onNudge={nudgeMasterToTarget}
+        />
+      )}
 
       {!showSplash && snapshot && showMixTools && <AuxReturnPanel aux={snapshot.aux} />}
 
@@ -3450,6 +3500,9 @@ function TrackStrip({
   onImportFile,
   onDeleteTake,
   onPreviewTake,
+  onSeek,
+  onInputGain,
+  isRecording,
   compact,
 }: {
   track: EngineSnapshot["tracks"][number];
@@ -3486,6 +3539,14 @@ function TrackStrip({
   onImportFile: (file: Blob) => void;
   onDeleteTake: (() => void) | null;
   onPreviewTake: (() => void) | null;
+  /** Click/drag the waveform to scrub. Receives target position in
+   *  seconds. */
+  onSeek: (positionSec: number) => void;
+  /** Per-track input trim, in dB. Range -24..+12. */
+  onInputGain: (db: number) => void;
+  /** True when the transport is currently recording. Combined with
+   *  track.armed to draw the red ring on the track being captured. */
+  isRecording: boolean;
   compact: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
@@ -3506,13 +3567,21 @@ function TrackStrip({
         if (file) onImportFile(file);
       }}
       className={`relative rounded-xl border transition ${compact ? "p-2.5" : "p-3"} ${
-        dragging
-          ? "border-brand-400 bg-brand-500/10"
-          : focused
-            ? "border-white/25 bg-gradient-to-r from-white/[0.07] to-cyan-400/[0.04]"
-            : "border-white/10 bg-gradient-to-r from-white/[0.04] to-transparent"
+        isRecording && track.armed
+          ? "border-red-500/70 bg-red-500/[0.06] shadow-[0_0_0_1px_rgba(239,68,68,0.45),0_0_24px_rgba(239,68,68,0.25)]"
+          : dragging
+            ? "border-brand-400 bg-brand-500/10"
+            : focused
+              ? "border-white/25 bg-gradient-to-r from-white/[0.07] to-cyan-400/[0.04]"
+              : "border-white/10 bg-gradient-to-r from-white/[0.04] to-transparent"
       }`}
     >
+      {isRecording && track.armed && (
+        <span className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-white shadow-[0_0_12px_rgba(239,68,68,0.7)]">
+          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+          Rec
+        </span>
+      )}
       {dragging && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-brand-500/10 text-xs font-bold uppercase tracking-widest text-brand-200">
           Drop audio file to import
@@ -3607,7 +3676,24 @@ function TrackStrip({
           </div>
         )}
 
-        <div className={`grid gap-2 ${compact ? "sm:grid-cols-1" : "sm:grid-cols-[minmax(120px,160px)_minmax(180px,1fr)]"} sm:items-center`}>
+        <div className={`grid gap-2 ${compact ? "sm:grid-cols-1" : "sm:grid-cols-3"} sm:items-center`}>
+          <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/50">
+            Input
+            <input
+              type="range"
+              min={-24}
+              max={12}
+              step={0.5}
+              value={track.inputGainDb ?? -6}
+              onChange={(e) => onInputGain(Number(e.target.value))}
+              className="flex-1 accent-amber-400"
+              title="Mic input trim — lower if the mic is too hot"
+            />
+            <span className="w-10 text-right font-mono text-[10px] tabular-nums text-amber-300/85">
+              {(track.inputGainDb ?? -6).toFixed(1)}
+            </span>
+          </label>
+
           <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/50">
             Pan
             <input
@@ -3641,7 +3727,13 @@ function TrackStrip({
 
       {!compact && peaks.length > 0 && (
         <div className="mt-3">
-          <WaveformView peaks={peaks} color={track.color} progress={progress} />
+          <WaveformView
+            peaks={peaks}
+            color={track.color}
+            progress={progress}
+            durationSec={track.durationSec}
+            onScrub={onSeek}
+          />
         </div>
       )}
 

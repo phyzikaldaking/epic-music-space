@@ -74,6 +74,11 @@ export interface TrackState {
    *  creates a feedback loop (mic → speakers → mic). The DAW UI
    *  surfaces a confirm dialog before flipping this. */
   monitorEnabled: boolean;
+  /** Input trim on the mic before it hits the FX chain or monitor.
+   *  Default: -6 dB (=0.5 linear). Most consumer mics ship hot; running
+   *  at unity slams the input on a normal voice and clips the FX chain.
+   *  Range -24..+12 dB. Adjustable per track via setTrackInputGain. */
+  inputGainDb: number;
   hasAudio: boolean; // true once a buffer or blob is attached
   durationSec: number;
   level: number; // 0..1 instantaneous output level (UI-driven)
@@ -122,6 +127,10 @@ interface TrackInternal {
   source: AudioBufferSourceNode | null;
   liveSource: MediaStreamAudioSourceNode | null;
   liveStream: MediaStream | null;
+  /** Input trim. Sits right after the mic source and before the
+   *  monitor split + FX chain. Mirrors state.inputGainDb. Persistent
+   *  across record sessions so user-set trim survives stop/start. */
+  inputGain: GainNode | null;
   /** Gain node sitting between liveSource and fxIn. Defaults to 0 so the
    *  performer's voice does NOT route to speakers by default — that's
    *  what causes feedback when monitoring without headphones. UI flips
@@ -891,6 +900,7 @@ export class DawEngine {
         solo: false,
         armed: false,
         monitorEnabled: false,
+        inputGainDb: -6,
         hasAudio: false,
         durationSec: 0,
         level: 0,
@@ -926,6 +936,7 @@ export class DawEngine {
       source: null,
       liveSource: null,
       liveStream: null,
+      inputGain: null,
       monitorGain: null,
       recorder: null,
       recordedChunks: [],
@@ -1117,13 +1128,32 @@ export class DawEngine {
     if (!t || !this.ctx) return;
     t.state.monitorEnabled = on;
     if (t.monitorGain) {
-      const target = on ? 1 : 0;
+      const target = on ? 0.7 : 0;
       const now = this.ctx.currentTime;
       // Cancel any in-flight ramp before starting a new one — otherwise
       // rapid toggles compound into surprising values.
       t.monitorGain.gain.cancelScheduledValues(now);
       t.monitorGain.gain.setValueAtTime(t.monitorGain.gain.value, now);
       t.monitorGain.gain.linearRampToValueAtTime(target, now + 0.03);
+    }
+    this.notify();
+  }
+
+  /** Adjust the mic input trim for a track. Range is clamped to
+   *  -24..+12 dB. Persists in TrackState so the value survives a
+   *  stop/start of recording, and applies live if the track currently
+   *  has a recording chain spun up. */
+  setTrackInputGain(id: TrackId, db: number) {
+    const t = this.tracks.get(id);
+    if (!t) return;
+    const clamped = Math.max(-24, Math.min(12, db));
+    t.state.inputGainDb = clamped;
+    if (t.inputGain && this.ctx) {
+      const target = DB_TO_LINEAR(clamped);
+      const now = this.ctx.currentTime;
+      t.inputGain.gain.cancelScheduledValues(now);
+      t.inputGain.gain.setValueAtTime(t.inputGain.gain.value, now);
+      t.inputGain.gain.linearRampToValueAtTime(target, now + 0.03);
     }
     this.notify();
   }
@@ -1583,20 +1613,34 @@ export class DawEngine {
       });
       track.liveStream = stream;
 
-      // Live mic → monitorGain → fxIn (top of FX chain). The monitor gain
-      // starts at 0 so the performer does NOT hear themselves through the
-      // speakers by default — that's what creates the recording feedback
-      // loop when no headphones are plugged in. The DAW UI surfaces a
-      // "Turn on monitor" toggle that explicitly warns the user to wear
-      // headphones first; flipping it calls setTrackMonitor() which fades
-      // the gain up over 30ms to avoid clicks. Recording is unaffected:
-      // MediaRecorder reads the raw stream, not the monitor path.
+      // Live mic → inputGain → monitorGain → fxIn (top of FX chain).
+      //
+      // inputGain is the channel-strip mic preamp trim, defaulted to -6 dB
+      // so a typical hot consumer mic doesn't slam unity into the FX
+      // chain (which then made the monitor "too loud" in user feedback
+      // even with monitorGain at 1.0). Range -24..+12 dB, surfaced as
+      // a per-track Input knob in the channel strip.
+      //
+      // monitorGain starts at 0 so the performer does NOT hear themselves
+      // through the speakers by default — that's what creates the
+      // recording feedback loop without headphones. The UI flips it via
+      // setTrackMonitor() which fades the gain up over 30ms.
+      //
+      // Recording itself is unaffected by either gain: MediaRecorder
+      // reads the raw mic stream, not this graph path.
       const live = this.ctx.createMediaStreamSource(stream);
+      const inputGain = this.ctx.createGain();
+      inputGain.gain.value = DB_TO_LINEAR(track.state.inputGainDb);
+      // Monitor at 0.7 (~-3 dB) when enabled. Unity was loud enough to
+      // drive headphones into pain even with input trim — this matches
+      // the headphone-cue level a real console would default to.
       const monitorGain = this.ctx.createGain();
-      monitorGain.gain.value = track.state.monitorEnabled ? 1 : 0;
-      live.connect(monitorGain);
+      monitorGain.gain.value = track.state.monitorEnabled ? 0.7 : 0;
+      live.connect(inputGain);
+      inputGain.connect(monitorGain);
       monitorGain.connect(track.fxIn);
       track.liveSource = live;
+      track.inputGain = inputGain;
       track.monitorGain = monitorGain;
 
       const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -1628,6 +1672,8 @@ export class DawEngine {
       }
       track.liveSource?.disconnect();
       track.liveSource = null;
+      track.inputGain?.disconnect();
+      track.inputGain = null;
       track.monitorGain?.disconnect();
       track.monitorGain = null;
       this.transport.isRecording = false;
@@ -1668,6 +1714,8 @@ export class DawEngine {
     // Tear down live monitor + stream.
     recordingTrack.liveSource?.disconnect();
     recordingTrack.liveSource = null;
+    recordingTrack.inputGain?.disconnect();
+    recordingTrack.inputGain = null;
     recordingTrack.monitorGain?.disconnect();
     recordingTrack.monitorGain = null;
     recordingTrack.liveStream?.getTracks().forEach((t) => t.stop());

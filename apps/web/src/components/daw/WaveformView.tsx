@@ -9,6 +9,13 @@ interface Props {
   color: string;
   /** Optional progress 0..1 for a played-portion highlight. */
   progress?: number;
+  /** Total length of the audio in seconds. Required when onScrub is set
+   *  so click positions can be translated into engine seek targets. */
+  durationSec?: number;
+  /** Click + drag the waveform to scrub the playhead, like Pro Tools.
+   *  Receives a position in seconds. Caller wires this to engine.seek().
+   *  Omit to keep the waveform display-only. */
+  onScrub?: (positionSec: number) => void;
   className?: string;
 }
 
@@ -22,8 +29,27 @@ interface Props {
  * "Empty" state. We pin DPR at 1.5 for retina sharpness without paying
  * the full pixel cost on dense screens.
  */
-export default function WaveformView({ peaks, color, progress = 0, className = "" }: Props) {
+export default function WaveformView({
+  peaks,
+  color,
+  progress = 0,
+  durationSec,
+  onScrub,
+  className = "",
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef(false);
+  const scrubbable = typeof onScrub === "function" && (durationSec ?? 0) > 0;
+
+  const positionFromEvent = (e: PointerEvent | React.PointerEvent) => {
+    const wrap = wrapRef.current;
+    if (!wrap || !durationSec) return null;
+    const rect = wrap.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    return ratio * durationSec;
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -62,9 +88,57 @@ export default function WaveformView({ peaks, color, progress = 0, className = "
 
   if (peaks.length === 0) return null;
 
+  const playheadPct = `${Math.max(0, Math.min(100, progress * 100))}%`;
+
   return (
-    <div className={`relative h-10 w-full overflow-hidden rounded-md bg-black/30 ${className}`}>
+    <div
+      ref={wrapRef}
+      className={`relative h-10 w-full overflow-hidden rounded-md bg-black/30 ${
+        scrubbable ? "cursor-col-resize select-none" : ""
+      } ${className}`}
+      aria-label={scrubbable ? "Scrub playhead" : undefined}
+      onPointerDown={(e) => {
+        if (!scrubbable) return;
+        const sec = positionFromEvent(e);
+        if (sec == null) return;
+        draggingRef.current = true;
+        try {
+          (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+        } catch {
+          // setPointerCapture can throw if the pointer is gone — safe to ignore.
+        }
+        onScrub?.(sec);
+      }}
+      onPointerMove={(e) => {
+        if (!scrubbable || !draggingRef.current) return;
+        const sec = positionFromEvent(e);
+        if (sec == null) return;
+        onScrub?.(sec);
+      }}
+      onPointerUp={(e) => {
+        if (!scrubbable) return;
+        draggingRef.current = false;
+        try {
+          (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+        } catch {
+          // Pointer already released.
+        }
+      }}
+      onPointerCancel={() => {
+        draggingRef.current = false;
+      }}
+    >
       <canvas ref={canvasRef} className="block h-full w-full" />
+      {scrubbable && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-0 bottom-0 w-px bg-white/85"
+          style={{
+            left: `${Math.max(0, Math.min(100, progress * 100))}%`,
+            boxShadow: "0 0 6px rgba(255,255,255,0.6)",
+          }}
+        />
+      )}
     </div>
   );
 }
