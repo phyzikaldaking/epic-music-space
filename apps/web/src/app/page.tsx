@@ -92,8 +92,6 @@ const marqueeItems = [
   "Real-Time Fan Engagement",
 ];
 
-const trackArtClasses = ["vc-track-art-1", "vc-track-art-2", "vc-track-art-3"];
-
 const getHomeData = unstable_cache(
   async (): Promise<HomeData> => {
     const demoSampleSongs = mapDemoTracksToSampleSongs(await getDemoTracks());
@@ -381,304 +379,350 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <div className="vc-mobile-sticky-cta" aria-label="Quick action for artists">
+      {/* Mobile sticky CTA — walnut-bezel pill, replaces the VC version. */}
+      <div className="studio-mobile-cta" aria-label="Quick action for artists">
         <Link
           href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew"
-          className="vc-mobile-sticky-cta-btn"
+          className="studio-mobile-cta-btn"
         >
-          Start Your Artist Studio
+          ◉ Open Studio
         </Link>
       </div>
 
-      <div className="vc-marquee" aria-hidden="true">
-        <div className="vc-marquee-track">
+      {/* Patch-bay ticker. The amber LED message strip across the top
+          of every console says "this rig is live and worth listening
+          to." Same role as the old marquee, sells the studio idea. */}
+      <div className="studio-ticker" aria-hidden="true">
+        <div className="studio-ticker-track py-3">
           {marqueeItems.map((item, i) => (
             <span key={`${item}-${i}`}>
               {item}
-              <span className="dot"> ◆ </span>
+              <span className="dot">◆</span>
             </span>
           ))}
         </div>
       </div>
 
       {/* Live battles rail — renders only when there are active matches.
-         Placed directly under the marquee so the first scrollable surface
+         Placed directly under the ticker so the first scrollable surface
          on /home is real, voteable activity, not marketing copy. */}
       <HomeVersusRail />
 
-      <section id="hq" className="vc-section vc-platform-section">
-        <div className="vc-container">
-          <p className="vc-section-eyebrow">Your music social HQ</p>
-          <h2 className="vc-section-title">
-              One platform for your music community, your profile, your fanbase,
-            <br />
-              and your most engaged listeners.
-          </h2>
-          <p className="vc-section-sub">
-              Epic Music Space is where music creators build thriving communities. Create your profile, connect with listeners in real time, host live rooms, 
-              monetize directly from fans, and compete on leaderboards. Your studio, your community, your terms.
-            Virtual studios and 3D city districts are next.
-          </p>
-          <div className="vc-platform-grid">
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">01 / Profile</span>
-              <h3>Claim your studio.</h3>
-              <p>
-                  Your music profile — bio, followers, badge collection, district rank,
-                social links, payouts. The page you point fans, labels, and
-                supervisors to instead of pasting six different URLs.{" "}
-                <Link href="/auth/signup?role=ARTIST" className="vc-feat-link">
-                  Join the community →
-                </Link>
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">02 / Catalog</span>
-                <h3>Share music. Build your fanbase.</h3>
-              <p>
-                Upload tracks, set licensing terms in plain language, surface
-                older material in The Vault, and let fans become license
-                  holders who share revenue with you forever. Share your sound, grow your followers, 
-                  and monetize directly. Every license goes 100% to you — a transparent 10% platform fee is
-                  itemized on every payout.
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">03 / Services</span>
-              <h3>Sell mixing, mastering, beats.</h3>
-              <p>
-                Producers and engineers list services with clear scope,
-                delivery time, and price. Fans and other artists book and
-                  pay through EMS directly from the community. No third-party invoicing, no chasing.
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">04 / Battle</span>
-                <h3>Compete. Vote. Go viral.</h3>
-              <p>
-                Drop your track against another artist&apos;s. The whole room
-                  votes live. Winners climb the charts overnight. This is
-                  how artists go viral on EMS — democratic, real-time, no gatekeepers.{" "}
-                <Link href="/versus" className="vc-feat-link">
-                  Enter a Battle →
-                </Link>
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">05 / Collaborate</span>
-                <h3>Host. Connect. Monetize live.</h3>
-              <p>
-                Open a live audio room for your album, your unreleased track,
-                or a session with another artist. Talk between songs, pass
-                  the mic to your community, and turn listeners into license holders
-                  in real time — all in one room.
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">06 / Coming Soon</span>
-              <h3>Virtual studios + city districts.</h3>
-              <p>
-                Walk into a 3D studio room, drop into another artist&apos;s
-                booth, and watch your track climb the leaderboard inside a
-                living city. Three districts (Label Row, Downtown Prime,
-                Indie Blocks) — claim your block now and migrate your studio
-                in on launch day.
-              </p>
-            </article>
+      {/* ============================================================
+          PATCH BAY  ·  what this console does (your music social HQ)
+          ============================================================ */}
+      <section
+        id="hq"
+        className="relative z-[1] mx-auto max-w-6xl px-4 py-16 sm:py-20"
+      >
+        <header className="mb-8 flex items-end justify-between gap-4">
+          <div>
+            <p className="studio-label text-tube-300">
+              ◉ Patch Bay · Your Music Social HQ
+            </p>
+            <h2 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
+              One console for your community,
+              <br className="hidden sm:inline" /> your catalog, your fanbase.
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/60">
+              Six modular rack units. Patch in what you need: profile,
+              catalog, services, battles, live rooms, and the city districts
+              still on the bench. Every signal flows back to the master bus
+              — your audience.
+            </p>
           </div>
+          <span className="studio-label hidden text-white/35 sm:inline">
+            BUS-A · ROOM 01
+          </span>
+        </header>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            {
+              n: "01",
+              slot: "Profile",
+              h: "Claim your studio.",
+              p: (
+                <>
+                  Bio, followers, badge collection, district rank, social
+                  links, payouts. The page you point fans, labels, and
+                  supervisors to instead of pasting six different URLs.{" "}
+                  <Link
+                    href="/auth/signup?role=ARTIST"
+                    className="font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
+                  >
+                    Join the community →
+                  </Link>
+                </>
+              ),
+            },
+            {
+              n: "02",
+              slot: "Catalog",
+              h: "Share music. Build your fanbase.",
+              p: "Upload tracks, set licensing terms in plain language, surface older material in The Vault, and let fans become license-holders who share revenue with you forever. Every license is 100% yours — flat 10% platform fee, itemized on every payout.",
+            },
+            {
+              n: "03",
+              slot: "Services",
+              h: "Sell mixing, mastering, beats.",
+              p: "Producers and engineers list services with clear scope, delivery time, and price. Fans and other artists book and pay through EMS — no third-party invoicing, no chasing.",
+            },
+            {
+              n: "04",
+              slot: "Battle",
+              h: "Compete. Vote. Go viral.",
+              p: (
+                <>
+                  Drop your track against another artist&apos;s. The whole
+                  room votes live. Winners climb the charts overnight.
+                  Democratic, real-time, no gatekeepers.{" "}
+                  <Link
+                    href="/versus"
+                    className="font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
+                  >
+                    Enter a battle →
+                  </Link>
+                </>
+              ),
+            },
+            {
+              n: "05",
+              slot: "Live Rooms",
+              h: "Host. Connect. Monetize live.",
+              p: "Open a live audio room for your album, your unreleased track, or a session with another artist. Talk between songs, pass the mic, and turn listeners into license-holders in real time — all in one room.",
+            },
+            {
+              n: "06",
+              slot: "Coming Soon",
+              h: "Virtual studios + city districts.",
+              p: "Walk into a 3D studio room, drop into another artist's booth, and watch your track climb the leaderboard inside a living city. Three districts (Label Row, Downtown Prime, Indie Blocks) — claim your block now and migrate your studio in on launch day.",
+            },
+          ].map((m) => (
+            <article key={m.n} className="studio-rack-card">
+              <p className="studio-rack-slot">
+                <span className="num">{m.n}</span>
+                <span> / {m.slot}</span>
+              </p>
+              <h3 className="font-display text-2xl uppercase leading-tight tracking-wide text-white">
+                {m.h}
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-white/65">
+                {m.p}
+              </p>
+            </article>
+          ))}
         </div>
       </section>
 
-      <section id="journey" className="vc-section vc-platform-section vc-below-fold">
-        <div className="vc-container">
-          <p className="vc-section-eyebrow">Artist first journey</p>
-          <h2 className="vc-section-title">
-              From zero followers to live community — <span className="glow">one clear path.</span>
-          </h2>
-          <p className="vc-section-sub">
-              Epic Music Space keeps it simple: create your profile, release a track, 
-              go live with your community, and monetize directly. No gatekeepers. No waiting.
+      {/* ============================================================
+          SIGNAL CHAIN  ·  artist-first journey (zero followers → live)
+          ============================================================ */}
+      <section
+        id="journey"
+        className="relative z-[1] mx-auto max-w-6xl px-4 py-16 sm:py-20"
+      >
+        <header className="mb-8">
+          <p className="studio-label text-tube-300">
+            ◉ Signal Chain · Artist Path
           </p>
-          <div className="vc-platform-grid">
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">01 / Studio</span>
-                <h3>Build your profile.</h3>
-              <p>
-                  Create your profile, choose your vanity URL, and give your community
-                  one place to follow every drop. <Link href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew" className="vc-feat-link">Start as Artist →</Link>
+          <h2 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
+            Zero followers to live community —
+            <br className="hidden sm:inline" /> one clear signal path.
+          </h2>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/60">
+            Plug in at stage one, ride the chain to stage four. No
+            gatekeepers in line, no waiting for a playlist nod.
+          </p>
+        </header>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            {
+              n: "01",
+              slot: "Studio",
+              h: "Build your profile.",
+              p: (
+                <>
+                  Choose your vanity URL, give your community one place to
+                  follow every drop.{" "}
+                  <Link
+                    href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew"
+                    className="font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
+                  >
+                    Start as artist →
+                  </Link>
+                </>
+              ),
+            },
+            {
+              n: "02",
+              slot: "Upload",
+              h: "Share your sound.",
+              p: (
+                <>
+                  Audio, cover art, genre details, preview before it hits
+                  your followers.{" "}
+                  <Link
+                    href="/studio/new"
+                    className="font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
+                  >
+                    Upload track →
+                  </Link>
+                </>
+              ),
+            },
+            {
+              n: "03",
+              slot: "License",
+              h: "Monetize transparently.",
+              p: "Pick the price, supply, and revenue share — shown on the track page so fans know exactly what they're supporting.",
+            },
+            {
+              n: "04",
+              slot: "Go Live",
+              h: "Connect with your community.",
+              p: "Host the drop, talk to listeners, pass the mic. Fans become supporters while the music plays.",
+            },
+          ].map((m) => (
+            <article key={m.n} className="studio-rack-card">
+              <p className="studio-rack-slot">
+                <span className="num">{m.n}</span>
+                <span> / {m.slot}</span>
+              </p>
+              <h3 className="font-display text-xl uppercase leading-tight tracking-wide text-white">
+                {m.h}
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-white/65">
+                {m.p}
               </p>
             </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">02 / Upload</span>
-                <h3>Share your sound.</h3>
-              <p>
-                Upload audio, add cover art, set genre details, and preview the
-                  song before it hits your followers. <Link href="/studio/new" className="vc-feat-link">Upload Track →</Link>
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">03 / License</span>
-                <h3>Monetize transparently.</h3>
-              <p>
-                Pick the license price, supply, and share shown on the track
-                  page so your fans know exactly what they&apos;re supporting.
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">04 / Go Live</span>
-                <h3>Connect with your community.</h3>
-              <p>
-                  Host the drop, talk with listeners, pass the mic to your community, 
-                  and let fans become supporters while the music plays.
-              </p>
-            </article>
-          </div>
+          ))}
         </div>
       </section>
 
-      <section id="listeners" className="vc-section vc-listener-section vc-below-fold">
-        <div className="vc-container">
-          <p className="vc-section-eyebrow">Built for listeners too</p>
-          <h2 className="vc-section-title">
-            Discover artists early, shape outcomes, and support what you love.
+      {/* ============================================================
+          MASTER BUS  ·  the listener side (discover, influence, support)
+          ============================================================ */}
+      <section
+        id="listeners"
+        className="relative z-[1] mx-auto max-w-6xl px-4 py-16 sm:py-20"
+      >
+        <header className="mb-8">
+          <p className="studio-label text-tube-300">
+            ◉ Master Bus · Built For Listeners
+          </p>
+          <h2 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
+            Discover artists early. Shape outcomes.
+            <br className="hidden sm:inline" /> Support what you love.
           </h2>
-          <p className="vc-section-sub">
-            Follow creators before they break, vote in live matchups, and move
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/60">
+            Follow creators before they break, vote in live matchups, move
             from first play to direct support in seconds.
           </p>
-          <div className="vc-platform-grid">
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">01 / Discover</span>
-              <h3>Get tomorrow&apos;s tracks first.</h3>
-              <p>Live rooms and trending feeds surface rising artists before the mainstream catches up.</p>
+        </header>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[
+            {
+              n: "01",
+              slot: "Discover",
+              h: "Get tomorrow's tracks first.",
+              p: "Live rooms and trending feeds surface rising artists before the mainstream catches up.",
+            },
+            {
+              n: "02",
+              slot: "Influence",
+              h: "Your votes shape visibility.",
+              p: "Battle outcomes and room reactions feed the momentum signals that boost breakout songs.",
+            },
+            {
+              n: "03",
+              slot: "Support",
+              h: "Back artists directly.",
+              p: "Support through licenses and paid unlocks with transparent receipts and clear rights terms.",
+            },
+          ].map((m) => (
+            <article key={m.n} className="studio-rack-card">
+              <p className="studio-rack-slot">
+                <span className="num">{m.n}</span>
+                <span> / {m.slot}</span>
+              </p>
+              <h3 className="font-display text-xl uppercase leading-tight tracking-wide text-white">
+                {m.h}
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-white/65">
+                {m.p}
+              </p>
             </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">02 / Influence</span>
-              <h3>Your votes shape visibility.</h3>
-              <p>Battle outcomes and room reactions feed momentum signals that boost breakout songs.</p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">03 / Support</span>
-              <h3>Back artists directly.</h3>
-              <p>Support through licenses and paid unlocks with transparent receipts and clear rights terms.</p>
-            </article>
-          </div>
+          ))}
         </div>
       </section>
 
-      <section className="vc-section vc-platform-section vc-below-fold">
-        <div className="vc-container">
-          <p className="vc-section-eyebrow">The flagship feature</p>
-          <h2 className="vc-section-title">
-              Host. Connect. Earn. —{" "}
-            <span className="glow">turn every drop into an event.</span>
-          </h2>
-          <p className="vc-section-sub">
-              Spotify and Apple are vending machines. Epic Music Space is a live community. 
-              You host a listening room, your fans show up, the music plays together, 
-              comments flow in real-time, mics get passed, and licenses sell while the song is playing.
-          </p>
-          <div className="vc-platform-grid">
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">01 / Open Doors</span>
-              <h3>You&apos;re the host.</h3>
-              <p>
-                  Create a listening room in seconds. Share your album, unreleased track, 
-                  or any playlist. Write what you want to say. Go live with your community.
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">02 / They Show Up</span>
-              <h3>Fans from anywhere.</h3>
-              <p>
-                Your mom in Atlanta, the producer in Berlin, the fan in Tokyo —
-                they all join the same room and hear it at the same moment.
-                Live chat fires. Reactions roll across the screen. The room
-                feels the song with you.
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">03 / Take the Floor</span>
-              <h3>Pass the mic.</h3>
-              <p>
-                Listeners raise a hand. You decide who speaks. Talk through a
-                verse, take a question, react to your own track. It&apos;s a
-                concert, a Q&amp;A, and a release party — running at the same time.
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">04 / They Buy In</span>
-              <h3>Licenses sell live.</h3>
-              <p>
-                Every fan in the room is one tap from licensing the song
-                they&apos;re hearing. Tips fly in. The supply ticks down. By
-                the time the room empties, you&apos;ve been paid — and the
-                holders go push your track to everyone they know.
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">05 / Scale With Tier</span>
-              <h3>Bigger plan, bigger room.</h3>
-              <p>
-                Free studios fit your inner circle. Paid tiers unlock larger
-                rooms, longer sessions, priority queue tools, and replay drops.
-                When you&apos;re ready to fill the building, the building grows
-                with you.
-              </p>
-            </article>
-            <article className="vc-platform-card">
-              <span className="vc-platform-num">06 / Replay &amp; Resell</span>
-              <h3>The session never dies.</h3>
-              <p>
-                Every session can be saved as a replay drop — your fans who
-                missed it tune in later, licenses keep selling, and the room
-                lives on as a moment in your catalog forever.
-              </p>
-            </article>
-          </div>
-          <div className="vc-catalog-link mt-8">
-            <Link href="/rooms/new" className="vc-btn vc-btn-pink">
-              Open a Room →
+      {/* ============================================================
+          CHARTS  ·  community-powered leaderboard
+          ============================================================ */}
+      <section
+        id="charts"
+        className="relative z-[1] mx-auto max-w-6xl px-4 py-16 sm:py-20"
+      >
+        <div className="grid gap-8 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+          <div>
+            <p className="studio-label text-tube-300">
+              ◉ VU Charts · Fan-Powered
+            </p>
+            <h2 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
+              Ranked by fans, not playlists.
+              <br className="hidden sm:inline" /> Vote for who&apos;s next.
+            </h2>
+            <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/60">
+              Charts rank by battle wins, community votes, licenses sold,
+              engagement. Every listener&apos;s vote counts equally. Climb
+              the ranks without a label or a playlist deal.
+            </p>
+            <Link
+              href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew"
+              className="studio-engage-btn mt-6 inline-flex items-center gap-2 rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
+            >
+              Get on the charts →
             </Link>
           </div>
-        </div>
-      </section>
 
-      <section id="charts" className="vc-section vc-leaderboard-section vc-below-fold">
-        <div className="vc-container">
-          <div className="vc-lb-grid">
-            <div>
-                <p className="vc-section-eyebrow">Community-powered charts</p>
-              <h2 className="vc-section-title">
-                  Ranked by fans, not playlists. <span className="pink">Vote for who&apos;s next.</span>
-              </h2>
-              <p className="vc-section-sub">
-                  Charts rank by battle wins, community votes, licenses sold, and engagement —
-                  not gatekeepers or playlists. Every listener&apos;s vote counts equally.
-                  Drop a track, win battles, and climb the ranks without a label or playlist deal.
-              </p>
-              <Link href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew" className="vc-btn vc-btn-pink">
-                Get on the Charts →
-              </Link>
+          <div className="studio-faceplate relative rounded-xl p-5">
+            <span aria-hidden className="studio-screw absolute left-2 top-2" />
+            <span aria-hidden className="studio-screw absolute right-2 top-2" />
+            <span aria-hidden className="studio-screw absolute left-2 bottom-2" />
+            <span aria-hidden className="studio-screw absolute right-2 bottom-2" />
+            <div className="mb-4 flex items-center gap-2">
+              <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
+              <h3 className="studio-label-lg text-white/85">Top Tonight</h3>
+              <span className="studio-label ml-auto text-white/35">
+                CH-01 · Live
+              </span>
             </div>
-            <div className="vc-lb-table">
-              <div className="vc-lb-header">
-                <span>Rank</span>
-                <span>Track</span>
-                <span>Score</span>
-              </div>
+            <div className="space-y-2">
               {sampleSongs.map((song, i) => (
                 <Link
                   key={song.id}
                   href={`/track/${song.id}`}
-                  className={`vc-lb-row top${i + 1}`}
+                  className="flex items-center gap-3 rounded-md studio-faceplate-dark px-3 py-2.5 transition hover:translate-x-0.5"
                 >
-                  <div className="vc-lb-rank">0{i + 1}</div>
-                  <div>
-                    <div className="vc-lb-track-name">{song.title}</div>
-                    <div className="vc-lb-track-artist">{song.artist}</div>
+                  <span className="text-readout-amber w-7 text-right text-lg font-bold tabular-nums">
+                    0{i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-white">
+                      {song.title}
+                    </p>
+                    <p className="truncate text-xs text-white/50">
+                      {song.artist}
+                    </p>
                   </div>
-                  <div className="vc-lb-streams">{song.aiScore.toFixed(1)}</div>
+                  <div className="studio-screen rounded-md px-2.5 py-1.5">
+                    <p className="text-readout-cyan relative z-10 text-sm font-bold tabular-nums">
+                      {song.aiScore.toFixed(1)}
+                    </p>
+                  </div>
                 </Link>
               ))}
             </div>
@@ -686,339 +730,513 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="vc-section vc-split-section vc-below-fold">
-        <div className="vc-container">
-          <div className="vc-split-grid">
-            <div className="vc-split-card artists">
-              <div>
-                <p className="vc-section-eyebrow vc-eyebrow-pink">
-                  For Artists
-                </p>
-                <h3>
-                    Build. Connect. Grow.
-                    <br />
-                    <span className="high">Earn from your community.</span>
-                </h3>
-                <p>
-                    Host live rooms, grow your fanbase, compete on leaderboards, 
-                    and monetize directly. No middleman. No playlist gatekeepers. 
-                    Every fan connection leads to revenue, and you keep 100%.
-                </p>
-                <div className="vc-split-stats">
-                  <div className="vc-stat">
-                    <div className="num">100%*</div>
-                      <div className="label">to You (minus 10% fee)</div>
-                  </div>
-                  <div className="vc-stat">
-                    <div className="num">Live</div>
-                      <div className="label">Community Engagement</div>
-                  </div>
-                </div>
-                <p className="mt-2 text-[11px] leading-5 text-white/45">
-                  *Flat 10% platform fee per license, itemized on every payout.
-                  Full breakdown on{" "}
-                  <Link href="/pricing" className="underline decoration-dotted underline-offset-2 hover:text-white/70">
-                    /pricing
-                  </Link>
-                  .
-                </p>
+      {/* ============================================================
+          CHANNEL STRIPS  ·  side-by-side artist / listener tracks
+          ============================================================ */}
+      <section className="relative z-[1] mx-auto max-w-6xl px-4 py-16 sm:py-20">
+        <div className="grid gap-5 lg:grid-cols-2">
+          {/* Artist channel — walnut-trim hero panel */}
+          <div className="studio-faceplate relative flex flex-col rounded-xl p-6 sm:p-8">
+            <div
+              aria-hidden
+              className="studio-walnut absolute left-0 top-0 bottom-0 w-3 rounded-l-xl"
+            />
+            <div
+              aria-hidden
+              className="studio-walnut absolute right-0 top-0 bottom-0 w-3 rounded-r-xl"
+            />
+            <span aria-hidden className="studio-screw absolute left-5 top-3" />
+            <span aria-hidden className="studio-screw absolute right-5 top-3" />
+            <span aria-hidden className="studio-screw absolute left-5 bottom-3" />
+            <span aria-hidden className="studio-screw absolute right-5 bottom-3" />
+            <div className="ml-3 mr-3 flex flex-1 flex-col">
+              <div className="mb-3 flex items-center gap-2">
+                <span aria-hidden className="led-on-rec h-2 w-2 animate-pulse rounded-full" />
+                <p className="studio-label text-rec-400">For Artists · Channel A</p>
               </div>
+              <h3 className="font-display text-3xl uppercase leading-tight tracking-wide text-white sm:text-4xl">
+                Build. Connect. Grow.
+                <br />
+                <span className="text-tube-300">Earn from your community.</span>
+              </h3>
+              <p className="mt-4 text-sm leading-relaxed text-white/65">
+                Host live rooms, grow your fanbase, compete on leaderboards,
+                monetize directly. No middleman. No playlist gatekeepers.
+                Every fan connection leads to revenue, and you keep 100%.
+              </p>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="studio-screen rounded-md p-3">
+                  <p className="studio-label relative z-10 text-white/45">
+                    To You
+                  </p>
+                  <p className="text-readout-amber relative z-10 mt-1 text-2xl font-bold">
+                    100%*
+                  </p>
+                </div>
+                <div className="studio-screen rounded-md p-3">
+                  <p className="studio-label relative z-10 text-white/45">
+                    Engagement
+                  </p>
+                  <p className="text-readout-cyan relative z-10 mt-1 text-2xl font-bold">
+                    Live
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-[11px] leading-5 text-white/40">
+                *Flat 10% platform fee per license, itemized on every payout —
+                full breakdown on{" "}
+                <Link
+                  href="/pricing"
+                  className="underline decoration-dotted underline-offset-2 hover:text-white/70"
+                >
+                  /pricing
+                </Link>
+                .
+              </p>
               <Link
                 href="/auth/signup?role=ARTIST&callbackUrl=%2Fstudio%2Fsetup%3Fnext%3D%2Fstudio%2Fnew"
-                className="vc-btn vc-btn-pink vc-split-cta"
+                className="studio-engage-btn mt-6 inline-flex w-full items-center justify-center gap-2 rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
               >
-                  Join the Community →
+                Join the community →
               </Link>
             </div>
+          </div>
 
-            <div className="vc-split-card creators">
-              <div>
-                <p className="vc-section-eyebrow vc-eyebrow-cyan">
-                    For Listeners &amp; Supporters
-                </p>
-                <h3>
-                    Discover artists <span className="high">before</span>
-                  <br />
-                    they go mainstream
-                </h3>
-                <p>
-                    Watch live rooms, vote in battles, follow rising artists, and license 
-                    directly from creators. Share revenue forever and discover music 
-                    before the mainstream does — all on one platform.
-                </p>
-                <div className="vc-split-stats">
-                  {displayStats.slice(0, 2).map((stat) => (
-                    <div key={stat.label} className="vc-stat">
-                      <div className="num">{stat.num}</div>
-                      <div className="label">{stat.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <Link
-                href="/marketplace"
-                className="vc-btn vc-btn-ghost-cyan vc-split-cta"
-              >
-                Browse the Catalog
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="vc-section vc-feat-section vc-below-fold">
-        <div className="vc-container">
-          <p className="vc-section-eyebrow">How you win on EMS</p>
-          <h2 className="vc-section-title">
-            Every tool you need to <span className="glow">break out</span> —
-            in one studio
-          </h2>
-          <div className="vc-social-proof-strip" aria-label="Community activity highlights">
-            <div className="vc-social-proof-pill">
-              <span className="num">Live</span>
-              <span className="label">Rooms every day</span>
-            </div>
-            <div className="vc-social-proof-pill">
-              <span className="num">Fan</span>
-              <span className="label">Votes move charts</span>
-            </div>
-            <div className="vc-social-proof-pill">
-              <span className="num">Instant</span>
-              <span className="label">Discovery to support</span>
-            </div>
-          </div>
-          <div className="vc-feat-grid vc-feat-grid-top">
-            <div className="vc-feat-card versus">
-              <span className="vc-feat-tag">Versus Battles · Flagship</span>
-              <h3>Step in the ring tonight</h3>
-              <p>
-                The headline event on EMS. Drop your track against another
-                artist&apos;s — fans watch live, vote in real time, and the
-                winner climbs the charts overnight. Royales, Verzuz-style sets,
-                rematches with bragging rights. The fastest way to go viral on
-                EMS — no playlist gatekeepers, no cosigns required.
+          {/* Listener channel — secondary brushed panel */}
+          <div className="studio-faceplate relative flex flex-col rounded-xl p-6 sm:p-8">
+            <span aria-hidden className="studio-screw absolute left-2 top-2" />
+            <span aria-hidden className="studio-screw absolute right-2 top-2" />
+            <span aria-hidden className="studio-screw absolute left-2 bottom-2" />
+            <span aria-hidden className="studio-screw absolute right-2 bottom-2" />
+            <div className="mb-3 flex items-center gap-2">
+              <span aria-hidden className="led-on-green h-2 w-2 rounded-full" />
+              <p className="studio-label text-white/70">
+                For Listeners · Channel B
               </p>
-              <Link href="/versus" className="vc-feat-link vc-feat-link-pink">
-                Enter a Battle →
-              </Link>
             </div>
-            <div className="vc-feat-card">
-              <span className="vc-feat-tag">Live Listening Sessions</span>
-              <h3>Your community, in one room</h3>
-              <p>
-                Open a live audio room. Press play on your album, your unreleased
-                track, your back catalog. Talk between songs. Read the chat. Hand
-                the mic to fans when they raise a hand. Family across the country,
-                fans on the other side of the world — all in the same room with
-                you, hearing it together.
-              </p>
-              <Link href="/rooms/new" className="vc-feat-link">
-                Open a Room →
-              </Link>
+            <h3 className="font-display text-3xl uppercase leading-tight tracking-wide text-white sm:text-4xl">
+              Discover artists{" "}
+              <span className="text-tube-300">before</span>
+              <br />
+              they go mainstream
+            </h3>
+            <p className="mt-4 text-sm leading-relaxed text-white/65">
+              Watch live rooms, vote in battles, follow rising artists, and
+              license directly from creators. Share revenue forever, discover
+              music before the mainstream does — all on one platform.
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              {displayStats.slice(0, 2).map((stat) => (
+                <div key={stat.label} className="studio-screen rounded-md p-3">
+                  <p className="studio-label relative z-10 text-white/45">
+                    {stat.label}
+                  </p>
+                  <p className="text-readout-amber relative z-10 mt-1 text-2xl font-bold">
+                    {stat.num}
+                  </p>
+                </div>
+              ))}
             </div>
-            <div className="vc-feat-card">
-              <span className="vc-feat-tag">Real-Time Drops</span>
-              <h3>Turn moments into momentum</h3>
-              <p>
-                Every license sale fires a live notification. Your fans see
-                the supply ticking down. The closer to sold-out, the more
-                momentum. Drops feel like a moment — because they are.
-              </p>
-              <Link href="/marketplace" className="vc-feat-link">
-                See the Marketplace →
-              </Link>
-            </div>
-            <div className="vc-feat-card versus">
-              <span className="vc-feat-tag">EMS Score &amp; Studio Brand</span>
-              <h3>The profile that proves it</h3>
-              <p>
-                Every track gets a score on composition, production, and market
-                fit. Your studio profile shows the receipts — followers, sales,
-                badges, district — all in one place. Make the song, let the AI
-                be your A&amp;R, and let your page do the talking.
-              </p>
-              <Link
-                href="/leaderboard"
-                className="vc-feat-link vc-feat-link-pink"
-              >
-                See Top Scores →
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* The Vault — legacy catalog promo. Older artists with deep catalogs
-          get a dignified, on-page surface; new fans get a discovery doorway. */}
-      <section className="vc-section vc-below-fold">
-        <div className="vc-container">
-          <div className="vc-vault-shell">
-            <div className="grid items-center gap-10 lg:grid-cols-[1.4fr_1fr]">
-              <div>
-                <p className="vc-vault-eyebrow">
-                  The Vault · Legacy catalogs, new community
-                </p>
-                <h2 className="vc-vault-title">
-                  Keep your classics alive.
-                  <br />
-                  <span>Let new fans discover the history.</span>
-                </h2>
-                <p className="vc-vault-sub">
-                  Older releases. Demos that never got their moment. Records
-                  that disappeared off streaming. Tag a track as legacy and it
-                  lands in The Vault — a dedicated home for back-catalog work,
-                  where community discovery, shares, and support give timeless
-                  records a second life.
-                </p>
-                <div className="vc-vault-pills" aria-label="Vault community signals">
-                  <span>Year-tagged releases</span>
-                  <span>Catalog-first discovery</span>
-                  <span>Built for long-tail fans</span>
-                </div>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Link
-                    href="/vault"
-                    className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-3 text-sm font-bold text-amber-950 transition hover:bg-amber-300"
-                  >
-                    Open The Vault →
-                  </Link>
-                  <Link
-                    href="/vault/new"
-                    prefetch={false}
-                    className="inline-flex items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/8 px-5 py-3 text-sm font-semibold text-amber-100 hover:bg-amber-500/14"
-                  >
-                    Add your vault tracks
-                  </Link>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                {["1998", "2003", "2011", "2007", "2015", "1995"].map((year, i) => (
-                  <div
-                    key={`${year}-${i}`}
-                    className="flex aspect-square items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/8 text-2xl font-black tracking-widest text-amber-100/85"
-                    aria-hidden="true"
-                  >
-                    {year}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="drops" className="vc-section vc-tracks-section vc-below-fold">
-        <div className="vc-container">
-          <p className="vc-section-eyebrow">Tonight&apos;s Drops</p>
-          <h2 className="vc-section-title">
-            Music trending <span className="glow">in real time</span>
-          </h2>
-          <p className="vc-section-sub">
-            Trending in the community right now. Vote on battles, follow emerging artists, 
-            license directly, and be part of what&apos;s blowing up. See supply, scores,
-            and live momentum — your next favorite is here.
-          </p>
-          <div className="vc-tracks-grid">
-            {sampleSongs.map((song, i) => (
-              <article key={song.id} className="vc-track-card">
-                <Link
-                  href={`/track/${song.id}`}
-                  className="vc-track-art-link"
-                  aria-label={`Open ${song.title}`}
-                >
-                  <div
-                    className={`vc-track-art ${
-                      trackArtClasses[i] ?? "vc-track-art-default"
-                    }`}
-                  >
-                    {song.coverUrl && (
-                      <Image
-                        src={song.coverUrl}
-                        alt={song.title}
-                        fill
-                        sizes="(max-width: 768px) 100vw, 33vw"
-                        className="vc-track-cover-img object-cover"
-                        loading="lazy"
-                      />
-                    )}
-                    <div className="vc-play" aria-hidden="true">
-                      <svg
-                        width="22"
-                        height="22"
-                        viewBox="0 0 24 24"
-                        fill="white"
-                        aria-hidden="true"
-                      >
-                        <polygon points="5 3 19 12 5 21 5 3" />
-                      </svg>
-                    </div>
-                  </div>
-                </Link>
-                <div className="vc-track-meta">
-                  <span className="vc-track-genre">
-                    {song.genre ?? "Electronic"}
-                  </span>
-                  {song.bpm && (
-                    <span className="vc-track-bpm">{song.bpm} BPM</span>
-                  )}
-                </div>
-                <Link href={`/track/${song.id}`} className="vc-track-name-link">
-                  <div className="vc-track-name">{song.title}</div>
-                </Link>
-                <div className="vc-track-artist">{song.artist}</div>
-                <div className="vc-track-footer">
-                  <span className="vc-track-price">
-                    {formatPrice(song.licensePrice)}
-                  </span>
-                  <span className="vc-track-license">
-                    {song.soldLicenses}/{song.totalLicenses} claimed
-                  </span>
-                </div>
-                <div className="vc-track-player">
-                  <AudioPlayer
-                    audioUrl={song.audioUrl}
-                    title={song.title}
-                    songId={song.id}
-                  />
-                </div>
-              </article>
-            ))}
-          </div>
-          <div className="vc-catalog-link">
-            <Link href="/marketplace" className="vc-btn vc-btn-ghost">
-              See Every Track
+            <Link
+              href="/marketplace"
+              className="mt-auto inline-flex items-center justify-center gap-2 rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
+            >
+              Browse the catalog →
             </Link>
           </div>
         </div>
       </section>
 
-      <section className="vc-section vc-closing-section vc-below-fold">
-        <div className="vc-container vc-closing-inner">
-          <p className="vc-eyebrow">Your move</p>
-          <h2 className="vc-section-title vc-closing-title">
-            Claim your profile. Grow your community. Own the moment.
+      {/* ============================================================
+          FX RACK  ·  flagship features (versus + rooms + drops + score)
+          ============================================================ */}
+      <section className="relative z-[1] mx-auto max-w-6xl px-4 py-16 sm:py-20">
+        <header className="mb-8">
+          <p className="studio-label text-tube-300">
+            ◉ FX Rack · How You Win On EMS
+          </p>
+          <h2 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
+            Every tool you need to break out —
+            <br className="hidden sm:inline" /> in one studio.
           </h2>
-          <div className="vc-closing-proof" aria-label="Platform closing highlights">
-            <span>Free to start</span>
-            <span>Live fan engagement</span>
-            <span>Community-powered discovery</span>
-          </div>
-          <p className="vc-section-sub vc-closing-sub">
-            Sign-up is free. Uploads are free. Your first battles are free.
-            You only pay when you earn: every license sale goes 100% to you,
-            and a flat 10% platform fee is itemized on every payout.
-            Build your audience, host live, and turn momentum into revenue.
-          </p>
-          <HomeSplitCtas
-            placement="closing"
-            containerClassName="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center"
-            artistClassName="studio-engage-btn rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
-            listenerClassName="rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
+        </header>
+
+        <div className="mb-6 grid gap-3 sm:grid-cols-3">
+          {[
+            { n: "Live", l: "Rooms every day" },
+            { n: "Fan", l: "Votes move charts" },
+            { n: "Instant", l: "Discovery → support" },
+          ].map((p) => (
+            <div
+              key={p.l}
+              className="studio-faceplate-dark flex items-center gap-3 rounded-md px-4 py-3"
+            >
+              <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
+              <span className="text-readout-amber font-bold uppercase tracking-wide">
+                {p.n}
+              </span>
+              <span className="text-xs text-white/55">{p.l}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <article className="studio-rack-card">
+            <p className="studio-rack-slot">
+              <span className="num">FX-01</span>
+              <span> / Versus Battles · Flagship</span>
+            </p>
+            <h3 className="font-display text-2xl uppercase leading-tight tracking-wide text-white">
+              Step in the ring tonight
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-white/65">
+              The headline event on EMS. Drop your track against another
+              artist&apos;s — fans watch live, vote in real time, and the
+              winner climbs the charts overnight. Royales, Verzuz-style sets,
+              rematches with bragging rights. The fastest way to go viral on
+              EMS.
+            </p>
+            <Link
+              href="/versus"
+              className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
+            >
+              Enter a battle →
+            </Link>
+          </article>
+
+          <article className="studio-rack-card">
+            <p className="studio-rack-slot">
+              <span className="num">FX-02</span>
+              <span> / Live Listening Sessions</span>
+            </p>
+            <h3 className="font-display text-2xl uppercase leading-tight tracking-wide text-white">
+              Your community, in one room
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-white/65">
+              Open a live audio room. Press play on your album, your
+              unreleased track, your back catalog. Talk between songs. Read
+              the chat. Hand the mic to fans. Family across the country, fans
+              on the other side of the world — all in the same room with you.
+            </p>
+            <Link
+              href="/rooms/new"
+              className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
+            >
+              Open a room →
+            </Link>
+          </article>
+
+          <article className="studio-rack-card">
+            <p className="studio-rack-slot">
+              <span className="num">FX-03</span>
+              <span> / Real-Time Drops</span>
+            </p>
+            <h3 className="font-display text-2xl uppercase leading-tight tracking-wide text-white">
+              Turn moments into momentum
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-white/65">
+              Every license sale fires a live notification. Your fans see the
+              supply ticking down. The closer to sold-out, the more momentum.
+              Drops feel like a moment — because they are.
+            </p>
+            <Link
+              href="/marketplace"
+              className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
+            >
+              See the marketplace →
+            </Link>
+          </article>
+
+          <article className="studio-rack-card">
+            <p className="studio-rack-slot">
+              <span className="num">FX-04</span>
+              <span> / EMS Score & Studio Brand</span>
+            </p>
+            <h3 className="font-display text-2xl uppercase leading-tight tracking-wide text-white">
+              The profile that proves it
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-white/65">
+              Every track gets a score on composition, production, and market
+              fit. Your studio profile shows the receipts — followers, sales,
+              badges, district — all in one place. Make the song, let the AI
+              be your A&R, and let your page do the talking.
+            </p>
+            <Link
+              href="/leaderboard"
+              className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
+            >
+              See top scores →
+            </Link>
+          </article>
+        </div>
+      </section>
+
+      {/* ============================================================
+          THE VAULT  ·  legacy catalog, walnut-trim feature panel
+          ============================================================ */}
+      <section className="relative z-[1] mx-auto max-w-6xl px-4 py-16 sm:py-20">
+        <div className="studio-faceplate relative rounded-xl p-6 sm:p-10">
+          <div
+            aria-hidden
+            className="studio-walnut absolute left-0 top-0 bottom-0 w-3 rounded-l-xl"
           />
-          <p className="mt-5 studio-label text-center text-white/55">
-            Trusted payments, transparent fee disclosures, and creator-first
-            ownership terms.
-          </p>
+          <div
+            aria-hidden
+            className="studio-walnut absolute right-0 top-0 bottom-0 w-3 rounded-r-xl"
+          />
+          <span aria-hidden className="studio-screw absolute left-5 top-3" />
+          <span aria-hidden className="studio-screw absolute right-5 top-3" />
+          <span aria-hidden className="studio-screw absolute left-5 bottom-3" />
+          <span aria-hidden className="studio-screw absolute right-5 bottom-3" />
+
+          <div className="ml-3 mr-3 grid items-center gap-10 lg:grid-cols-[1.4fr_1fr]">
+            <div>
+              <p className="studio-label text-tube-300">
+                ◉ The Vault · Legacy Catalogs
+              </p>
+              <h2 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
+                Keep your classics alive.
+                <br />
+                <span className="text-tube-300">
+                  Let new fans discover the history.
+                </span>
+              </h2>
+              <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/60">
+                Older releases. Demos that never got their moment. Records
+                that disappeared off streaming. Tag a track as legacy and it
+                lands in The Vault — a dedicated home for back-catalog work,
+                where community discovery, shares, and support give timeless
+                records a second life.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {[
+                  "Year-tagged releases",
+                  "Catalog-first discovery",
+                  "Built for long-tail fans",
+                ].map((p) => (
+                  <span
+                    key={p}
+                    className="rounded-md studio-faceplate-dark px-3 py-1.5 studio-label text-white/65"
+                  >
+                    {p}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link
+                  href="/vault"
+                  className="studio-engage-btn inline-flex items-center gap-2 rounded-md px-5 py-2.5 font-display text-sm uppercase tracking-[0.18em]"
+                >
+                  Open the vault →
+                </Link>
+                <Link
+                  href="/vault/new"
+                  prefetch={false}
+                  className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-5 py-2.5 font-display text-sm uppercase tracking-[0.18em] text-white/85 hover:text-white"
+                >
+                  Add your vault tracks
+                </Link>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {["1998", "2003", "2011", "2007", "2015", "1995"].map(
+                (year, i) => (
+                  <div
+                    key={`${year}-${i}`}
+                    className="studio-screen flex aspect-square items-center justify-center rounded-md"
+                    aria-hidden="true"
+                  >
+                    <span className="text-readout-amber relative z-10 text-xl font-bold tabular-nums">
+                      {year}
+                    </span>
+                  </div>
+                ),
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================================
+          TONIGHT'S DROPS  ·  trending tracks (server-rendered sample)
+          ============================================================ */}
+      <section
+        id="drops"
+        className="relative z-[1] mx-auto max-w-6xl px-4 py-16 sm:py-20"
+      >
+        <header className="mb-8 flex items-end justify-between gap-4">
+          <div>
+            <p className="studio-label text-tube-300">
+              ◉ Tape Bay · Tonight&apos;s Drops
+            </p>
+            <h2 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
+              Music trending
+              <br className="hidden sm:inline" /> in real time.
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/60">
+              What the community is moving on right now. See supply, scores,
+              live momentum — your next favorite is here.
+            </p>
+          </div>
+          <span className="studio-label hidden text-white/35 sm:inline">
+            BUS-B · LIVE
+          </span>
+        </header>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {sampleSongs.map((song) => (
+            <article
+              key={song.id}
+              className="studio-faceplate relative flex flex-col gap-3 rounded-xl p-4"
+            >
+              <span aria-hidden className="studio-screw absolute left-2 top-2" />
+              <span aria-hidden className="studio-screw absolute right-2 top-2" />
+              <span aria-hidden className="studio-screw absolute left-2 bottom-2" />
+              <span aria-hidden className="studio-screw absolute right-2 bottom-2" />
+
+              <Link
+                href={`/track/${song.id}`}
+                aria-label={`Open ${song.title}`}
+                className="relative block aspect-square overflow-hidden rounded-md studio-faceplate-dark"
+              >
+                {song.coverUrl && (
+                  <Image
+                    src={song.coverUrl}
+                    alt={song.title}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                    className="object-cover"
+                    loading="lazy"
+                  />
+                )}
+                <div
+                  className="absolute inset-0 flex items-center justify-center bg-black/15 opacity-0 transition group-hover:opacity-100"
+                  aria-hidden="true"
+                >
+                  <span className="rounded-full bg-black/65 p-3 backdrop-blur">
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="white"
+                      aria-hidden="true"
+                    >
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                  </span>
+                </div>
+              </Link>
+
+              <div className="flex items-center justify-between">
+                <span className="rounded-md studio-faceplate-dark px-2 py-1 studio-label text-white/65">
+                  {song.genre ?? "Electronic"}
+                </span>
+                {song.bpm && (
+                  <span className="text-readout-cyan text-xs font-bold tabular-nums">
+                    {song.bpm} BPM
+                  </span>
+                )}
+              </div>
+
+              <Link
+                href={`/track/${song.id}`}
+                className="block hover:text-tube-300"
+              >
+                <p className="font-display text-xl uppercase leading-tight tracking-wide text-white">
+                  {song.title}
+                </p>
+              </Link>
+              <p className="-mt-2 text-sm text-white/55">{song.artist}</p>
+
+              <div className="mt-auto flex items-center justify-between">
+                <div className="studio-screen rounded-md px-3 py-1.5">
+                  <span className="text-readout-amber relative z-10 text-sm font-bold tabular-nums">
+                    {formatPrice(song.licensePrice)}
+                  </span>
+                </div>
+                <span className="text-[11px] text-white/45">
+                  {song.soldLicenses}/{song.totalLicenses} claimed
+                </span>
+              </div>
+
+              <div>
+                <AudioPlayer
+                  audioUrl={song.audioUrl}
+                  title={song.title}
+                  songId={song.id}
+                />
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-8 flex justify-center">
+          <Link
+            href="/marketplace"
+            className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
+          >
+            See every track →
+          </Link>
+        </div>
+      </section>
+
+      {/* ============================================================
+          MASTER FADER  ·  closing CTA with engage button
+          ============================================================ */}
+      <section className="relative z-[1] mx-auto max-w-4xl px-4 py-16 sm:py-24">
+        <div className="studio-faceplate relative rounded-xl p-8 text-center sm:p-12">
+          <div
+            aria-hidden
+            className="studio-walnut absolute left-0 top-0 bottom-0 w-3 rounded-l-xl"
+          />
+          <div
+            aria-hidden
+            className="studio-walnut absolute right-0 top-0 bottom-0 w-3 rounded-r-xl"
+          />
+          <span aria-hidden className="studio-screw absolute left-5 top-3" />
+          <span aria-hidden className="studio-screw absolute right-5 top-3" />
+          <span aria-hidden className="studio-screw absolute left-5 bottom-3" />
+          <span aria-hidden className="studio-screw absolute right-5 bottom-3" />
+
+          <div className="ml-3 mr-3">
+            <div className="mb-3 inline-flex items-center gap-2">
+              <span aria-hidden className="led-on-rec h-2 w-2 animate-pulse rounded-full" />
+              <p className="studio-label text-rec-400">Master Fader · Your Move</p>
+            </div>
+            <h2 className="font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
+              Claim your profile.
+              <br />
+              Grow your community.
+              <br />
+              <span className="text-tube-300">Own the moment.</span>
+            </h2>
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              {["Free to start", "Live fan engagement", "Community discovery"].map(
+                (p) => (
+                  <span
+                    key={p}
+                    className="rounded-md studio-faceplate-dark px-3 py-1.5 studio-label text-white/65"
+                  >
+                    {p}
+                  </span>
+                ),
+              )}
+            </div>
+            <p className="mx-auto mt-6 max-w-2xl text-sm leading-relaxed text-white/60">
+              Sign-up is free. Uploads are free. Your first battles are free.
+              You only pay when you earn — every license sale is 100% yours,
+              with a flat 10% platform fee itemized on every payout.
+            </p>
+            <HomeSplitCtas
+              placement="closing"
+              containerClassName="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center"
+              artistClassName="studio-engage-btn rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
+              listenerClassName="rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
+            />
+            <p className="mt-6 studio-label text-white/45">
+              Trusted payments · Transparent fees · Creator-first ownership
+            </p>
+          </div>
         </div>
       </section>
     </div>

@@ -23,14 +23,25 @@ export default async function StudioIndexPage() {
   }).catch(() => null);
 
   return (
-    <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
-      <div className="ems-shell-wide pb-0">
-        <header className="ems-head">
-          <p className="ems-kicker">Studio System</p>
-          <p className="ems-sub">Create, mix, publish, and run live listening sessions from one control center.</p>
-          <div className="ems-divider" />
-        </header>
-      </div>
+    <div className="relative min-h-[calc(100vh-65px)]">
+      <header className="relative z-[1] mx-auto max-w-6xl px-4 pt-10 sm:pt-14">
+        <div className="flex items-center gap-2">
+          <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
+          <p className="studio-label text-tube-300">
+            EMS Studio · Console Online
+          </p>
+          <span className="studio-label ml-auto text-white/35">
+            STU-01 · Master
+          </span>
+        </div>
+        <h1 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
+          Welcome back to the console.
+        </h1>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/60">
+          Create, mix, publish, and run live listening sessions from one
+          control surface.
+        </p>
+      </header>
       <StudioHubClient studioUsername={studio?.username ?? null} />
     </div>
   );
@@ -38,31 +49,42 @@ export default async function StudioIndexPage() {
 
 function PublicStudioLanding() {
   return (
-    <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
-      <div className="ems-shell-wide pb-[calc(env(safe-area-inset-bottom)+3rem)] sm:py-16">
-        <header className="ems-head">
-          <p className="ems-kicker">Studio System</p>
-          <p className="ems-sub">From first drum pattern to licensed release, the workflow stays in one lane.</p>
-          <div className="ems-divider" />
-        </header>
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-brand-500/10 via-accent-500/5 to-transparent p-6 sm:p-12">
-          <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-brand-500/20 blur-[120px]" />
-          <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-accent-500/15 blur-[120px]" />
+    <div className="relative min-h-[calc(100vh-65px)]">
+      {/* ============================================================
+          STUDIO HERO  ·  walnut-trim mainframe with ON-AIR LEDs
+          ============================================================ */}
+      <section className="relative z-[1] mx-auto max-w-6xl px-4 pt-10 pb-12 sm:pt-14">
+        <div className="studio-faceplate relative rounded-xl p-6 sm:p-12">
+          <div
+            aria-hidden
+            className="studio-walnut absolute left-0 top-0 bottom-0 w-3 rounded-l-xl"
+          />
+          <div
+            aria-hidden
+            className="studio-walnut absolute right-0 top-0 bottom-0 w-3 rounded-r-xl"
+          />
+          <span aria-hidden className="studio-screw absolute left-5 top-3" />
+          <span aria-hidden className="studio-screw absolute right-5 top-3" />
+          <span aria-hidden className="studio-screw absolute left-5 bottom-3" />
+          <span aria-hidden className="studio-screw absolute right-5 bottom-3" />
 
-          <div className="relative">
-            <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-brand-300/85">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-60" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-400" />
+          <div className="ml-3 mr-3">
+            <div className="flex items-center gap-2">
+              <span aria-hidden className="led-on-rec h-2 w-2 animate-pulse rounded-full" />
+              <p className="studio-label text-rec-400">
+                EMS Studio · Live In Your Browser
+              </p>
+              <span className="studio-label ml-auto text-white/35">
+                STU-01 · Public
               </span>
-              EMS Studio · Live in your browser
             </div>
-            <h1 className="mt-4 text-4xl font-extrabold leading-[1.05] sm:text-6xl">
-              <span className="text-gradient-ems">Make a track.</span>
+
+            <h1 className="mt-4 font-display text-4xl uppercase leading-[1.05] tracking-wider text-white sm:text-6xl">
+              Make a track.
               <br className="hidden sm:block" />
-              <span className="text-white"> Sell it. Keep 100%.</span>
+              <span className="text-tube-300"> Sell it. Keep 100%.</span>
             </h1>
-            <p className="mt-5 max-w-2xl text-base text-white/70 sm:text-lg">
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/65 sm:text-lg">
               Beat machine, multitrack, mixer, and master chain — all in your
               browser. Publish straight to the EMS marketplace with licensing
               built in. No installs, no plugins, no gatekeepers.
@@ -71,33 +93,30 @@ function PublicStudioLanding() {
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
                 href="/studio/try"
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 px-6 py-4 text-base font-bold text-white shadow-lg shadow-brand-500/25 transition hover:opacity-95 hover:shadow-brand-500/40 active:scale-[0.99]"
+                className="studio-engage-btn inline-flex items-center justify-center gap-2 rounded-md px-6 py-4 font-display text-base uppercase tracking-[0.18em]"
               >
                 Try it now — no signup →
               </Link>
               <Link
                 href="/auth/signin?callbackUrl=%2Fstudio"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-6 py-4 text-base font-semibold text-white/85 transition hover:bg-white/10 active:scale-[0.99]"
+                className="inline-flex items-center justify-center gap-2 rounded-md studio-faceplate-dark px-6 py-4 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
               >
                 Sign in
               </Link>
             </div>
 
-            {/* Trust strip */}
-            <div className="mt-8 grid max-w-lg grid-cols-3 gap-2 sm:gap-4">
+            {/* Trust LCD readouts */}
+            <div className="mt-8 grid max-w-lg grid-cols-3 gap-3">
               {[
-                { value: "100%", label: "of license sales to artist" },
-                { value: "$0", label: "monthly fees" },
-                { value: "90s", label: "first publish" },
+                { value: "100%", label: "Artist Take" },
+                { value: "$0", label: "Monthly Fee" },
+                { value: "90s", label: "First Publish" },
               ].map((s) => (
-                <div
-                  key={s.label}
-                  className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-center"
-                >
-                  <p className="text-2xl font-extrabold text-white sm:text-3xl">
+                <div key={s.label} className="studio-screen rounded-md p-3">
+                  <p className="text-readout-amber relative z-10 text-2xl font-bold tabular-nums sm:text-3xl">
                     {s.value}
                   </p>
-                  <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-white/45 sm:text-xs">
+                  <p className="studio-label relative z-10 mt-1 text-white/45">
                     {s.label}
                   </p>
                 </div>
@@ -105,72 +124,96 @@ function PublicStudioLanding() {
             </div>
           </div>
         </div>
+      </section>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
+      {/* ============================================================
+          MODULE BAYS  ·  beat machine + mixer + publish
+          ============================================================ */}
+      <section className="relative z-[1] mx-auto max-w-6xl px-4 pb-12">
+        <header className="mb-6">
+          <p className="studio-label text-tube-300">
+            ◉ Module Bays · What&apos;s In The Rack
+          </p>
+        </header>
+        <div className="grid gap-4 sm:grid-cols-3">
           {[
             {
-              icon: "🥁",
-              title: "Beat Machine",
-              body: "8 lanes, 7 kits (Trap, Drill, Afro, Hyperpop, Boom Bap, Lo-fi, Acoustic). Bake patterns into stems.",
+              n: "01",
+              slot: "Beat Machine",
+              h: "8 lanes. 7 kits.",
+              p: "Trap, drill, afro, hyperpop, boom bap, lo-fi, acoustic. Bake patterns into stems and pull them right into the multitrack.",
               cta: "Open the board",
               href: "/studio/try?force-desktop=1",
             },
             {
-              icon: "🎙️",
-              title: "Multitrack + Mixer",
-              body: "Per-track EQ, compression, reverb, delay, sidechain. Master chain with limiter + LUFS.",
+              n: "02",
+              slot: "Multitrack + Mixer",
+              h: "Console-grade signal path.",
+              p: "Per-track EQ, compression, reverb, delay, sidechain. Master chain with limiter + LUFS metering.",
               cta: "Open the mixer",
               href: "/studio/try?force-desktop=1",
             },
             {
-              icon: "⚡",
-              title: "90-second publish",
-              body: "Audio → name → price. Three taps to ship a track to the EMS marketplace with licensing built in.",
-              cta: "Try Quick Upload",
+              n: "03",
+              slot: "90-Second Publish",
+              h: "Three taps to release.",
+              p: "Audio → name → price. Ship a track to the EMS marketplace with licensing built in. No gatekeepers.",
+              cta: "Try quick upload",
               href: "/studio/try",
             },
-          ].map((f) => (
-            <Link
-              key={f.title}
-              href={f.href}
-              className="group rounded-2xl border border-white/10 bg-white/[0.03] p-6 transition hover:border-brand-500/40 hover:bg-white/[0.06] active:scale-[0.99]"
-            >
-              <div className="text-3xl">{f.icon}</div>
-              <p className="mt-3 text-lg font-bold text-white">{f.title}</p>
-              <p className="mt-2 text-sm text-white/60">{f.body}</p>
-              <p className="mt-4 text-xs font-bold uppercase tracking-wider text-brand-300 group-hover:text-brand-200">
-                {f.cta} →
+          ].map((m) => (
+            <Link key={m.n} href={m.href} className="studio-rack-card block">
+              <p className="studio-rack-slot">
+                <span className="num">{m.n}</span>
+                <span> / {m.slot}</span>
+              </p>
+              <h3 className="font-display text-xl uppercase leading-tight tracking-wide text-white">
+                {m.h}
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-white/65">
+                {m.p}
+              </p>
+              <p className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-tube-400 underline decoration-dotted underline-offset-4 group-hover:text-tube-300">
+                {m.cta} →
               </p>
             </Link>
           ))}
         </div>
+      </section>
 
-        <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6">
-          <p className="text-xs font-bold uppercase tracking-widest text-white/45">
-            Already have an account?
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2 sm:gap-3">
-            <Link
-              href="/studio/live"
-              className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/85 transition hover:bg-white/10 active:scale-[0.99]"
-            >
-              🎙️ Browse live sessions
-            </Link>
-            <Link
-              href="/marketplace"
-              className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/85 transition hover:bg-white/10 active:scale-[0.99]"
-            >
-              🎵 Discover tracks
-            </Link>
-            <Link
-              href="/pricing"
-              className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/85 transition hover:bg-white/10 active:scale-[0.99]"
-            >
-              💎 See pricing
-            </Link>
+      {/* ============================================================
+          QUICK PATCHES  ·  jump to live, marketplace, pricing
+          ============================================================ */}
+      <section className="relative z-[1] mx-auto max-w-6xl px-4 pb-16">
+        <div className="studio-faceplate relative rounded-xl p-5">
+          <span aria-hidden className="studio-screw absolute left-2 top-2" />
+          <span aria-hidden className="studio-screw absolute right-2 top-2" />
+          <span aria-hidden className="studio-screw absolute left-2 bottom-2" />
+          <span aria-hidden className="studio-screw absolute right-2 bottom-2" />
+          <div className="mb-4 flex items-center gap-2">
+            <span aria-hidden className="led-on-green h-2 w-2 rounded-full" />
+            <p className="studio-label text-white/70">Quick Patches</p>
+            <span className="studio-label ml-auto text-white/35">
+              Already have an account?
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: "Browse live sessions", href: "/studio/live" },
+              { label: "Discover tracks", href: "/marketplace" },
+              { label: "See pricing", href: "/pricing" },
+            ].map((p) => (
+              <Link
+                key={p.href}
+                href={p.href}
+                className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-4 py-2.5 font-display text-sm uppercase tracking-[0.18em] text-white/80 hover:text-tube-300"
+              >
+                {p.label} →
+              </Link>
+            ))}
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

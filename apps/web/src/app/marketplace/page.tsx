@@ -393,44 +393,114 @@ export default async function MarketplacePage(props: {
   const claimedLicenses = getClaimedLicenses(rankedSongs);
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#050507] text-white">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(34,211,238,0.16),transparent_34%),radial-gradient(circle_at_82%_8%,rgba(253,224,71,0.12),transparent_30%),linear-gradient(180deg,#050507_0%,#08080d_46%,#050507_100%)]" />
-      <div className="pointer-events-none fixed inset-0 opacity-[0.18] [background-image:linear-gradient(to_right,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,.06)_1px,transparent_1px)] [background-size:72px_72px]" />
-      <div className="pointer-events-none fixed inset-x-0 top-0 h-48 bg-gradient-to-b from-white/[0.06] to-transparent" />
-
+    <main className="relative min-h-screen text-white">
       <div className="relative mx-auto max-w-7xl px-4 py-10 md:px-6 lg:px-8">
-        <section className="relative overflow-hidden rounded-[2.25rem] border border-white/10 bg-white/[0.045] p-6 shadow-2xl shadow-black/60 backdrop-blur-2xl md:p-9">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_15%,rgba(34,211,238,0.26),transparent_34%),radial-gradient(circle_at_88%_10%,rgba(253,224,71,0.20),transparent_28%),linear-gradient(135deg,rgba(255,255,255,0.10),rgba(255,255,255,0.025))]" />
-          <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-300/10 blur-3xl" />
-          <div className="absolute -bottom-28 left-1/3 h-80 w-80 rounded-full bg-gold-300/10 blur-3xl" />
-          <div className="relative grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+        {/* MARKETPLACE HERO  ·  walnut-trim console with crown LCD readout */}
+        <section className="studio-faceplate relative rounded-xl p-6 sm:p-9">
+          <div
+            aria-hidden
+            className="studio-walnut absolute left-0 top-0 bottom-0 w-3 rounded-l-xl"
+          />
+          <div
+            aria-hidden
+            className="studio-walnut absolute right-0 top-0 bottom-0 w-3 rounded-r-xl"
+          />
+          <span aria-hidden className="studio-screw absolute left-5 top-3" />
+          <span aria-hidden className="studio-screw absolute right-5 top-3" />
+          <span aria-hidden className="studio-screw absolute left-5 bottom-3" />
+          <span aria-hidden className="studio-screw absolute right-5 bottom-3" />
+
+          <div className="ml-3 mr-3 grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.34em] text-cyan-200/85">Creator Marketplace</p>
-              <h1 className="mt-4 max-w-4xl break-words text-3xl font-black leading-[0.96] tracking-[-0.05em] text-white sm:text-4xl md:text-6xl lg:text-7xl">The premium exchange floor for music licensing.</h1>
-              <p className="mt-6 max-w-2xl text-base leading-8 text-white/66 md:text-lg">Discover ranked tracks, studio drops, and creator-ready music with clear licensing terms, supply visibility, and marketplace momentum built into every release.</p>
-              <p className="mt-4 inline-flex items-center gap-2 rounded-full border border-cyan-200/25 bg-cyan-200/8 px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Open ranking — every factor &amp; paid-boost cap on every track
+              <div className="flex items-center gap-2">
+                <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
+                <p className="studio-label text-tube-300">
+                  Creator Marketplace · License Floor
+                </p>
+                <span className="studio-label ml-auto hidden text-white/35 sm:inline">
+                  MKT-01 · Live
+                </span>
+              </div>
+              <h1 className="mt-4 max-w-4xl font-display text-3xl uppercase leading-[1.02] tracking-wider text-white sm:text-4xl md:text-5xl lg:text-6xl">
+                The premium exchange floor
+                <br className="hidden sm:inline" /> for music licensing.
+              </h1>
+              <p className="mt-5 max-w-2xl text-sm leading-relaxed text-white/65 md:text-base">
+                Ranked tracks, studio drops, and creator-ready music with
+                clear licensing terms, supply visibility, and marketplace
+                momentum built into every release.
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <a href="#marketplace-catalog" className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-black uppercase tracking-[0.12em] text-black shadow-2xl shadow-white/10 transition hover:-translate-y-0.5 hover:bg-cyan-200">Explore Catalog</a>
-                <Link href="/auth/signup" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/15 bg-white/[0.05] px-6 text-sm font-black uppercase tracking-[0.12em] text-white backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-gold-200/40 hover:bg-gold-200/10">Sell Your Music</Link>
+              <p className="mt-4 inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-3 py-1.5">
+                <span aria-hidden className="led-on-green h-1.5 w-1.5 rounded-full" />
+                <span className="studio-label text-white/70">
+                  Open ranking · every factor & paid-boost cap on every track
+                </span>
+              </p>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <a
+                  href="#marketplace-catalog"
+                  className="studio-engage-btn inline-flex items-center justify-center gap-2 rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
+                >
+                  Explore catalog →
+                </a>
+                <Link
+                  href="/auth/signup"
+                  className="inline-flex items-center justify-center gap-2 rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
+                >
+                  Sell your music
+                </Link>
               </div>
             </div>
-            <div className="studio-faceplate p-5">
-              <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
-                <div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/38">Crown Track</p><h2 className="mt-2 line-clamp-1 text-2xl font-black tracking-[-0.04em] text-white">{topSong?.title ?? "Catalog Loading"}</h2><p className="mt-1 line-clamp-1 text-sm text-white/50">{topSong?.artist ?? "Epic Music Space"}</p></div>
-                <div className="grid h-16 w-16 place-items-center rounded-2xl border border-gold-200/25 bg-gold-200/10 text-xs font-black uppercase tracking-[0.12em] text-gold-100 shadow-lg shadow-gold-500/10">Crown</div>
+
+            {/* Crown track LCD readout — front-panel monitor for the
+                #1 slot. Three smaller LCD readouts below for tracks,
+                claimed, boosted. */}
+            <div className="studio-faceplate-dark relative rounded-md p-5">
+              <div className="flex items-center gap-2 border-b border-white/8 pb-3">
+                <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
+                <p className="studio-label text-white/60">Crown Track</p>
+                <span className="studio-label ml-auto text-tube-300">
+                  CH-01
+                </span>
               </div>
-              <div className="mt-5 grid grid-cols-3 gap-3">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">Tracks</p><p className="mt-2 text-2xl font-black text-white">{formatCompactNumber(rankedSongs.length)}</p></div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">Claimed</p><p className="mt-2 text-2xl font-black text-white">{formatCompactNumber(claimedLicenses)}</p></div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">Boosted</p><p className="mt-2 text-2xl font-black text-white">{formatCompactNumber(boostedCount)}</p></div>
+              <div className="mt-4">
+                <h2 className="line-clamp-1 font-display text-2xl uppercase tracking-wide text-white">
+                  {topSong?.title ?? "Catalog Loading"}
+                </h2>
+                <p className="mt-1 line-clamp-1 text-sm text-white/55">
+                  {topSong?.artist ?? "Epic Music Space"}
+                </p>
               </div>
-              <div className="mt-4 rounded-2xl border border-cyan-200/10 bg-cyan-200/[0.045] p-4"><div className="flex items-center justify-between text-xs font-bold uppercase tracking-[0.18em] text-white/44"><span>License Supply</span><span>{formatCompactNumber(totalSupply)}</span></div><progress max={100} value={Math.min(100, totalSupply > 0 ? (claimedLicenses / totalSupply) * 100 : 0)} className="ems-progress ems-progress-gold mt-3 h-2 w-full" aria-label="License supply claimed" /></div>
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                {[
+                  { label: "Tracks", value: formatCompactNumber(rankedSongs.length) },
+                  { label: "Claimed", value: formatCompactNumber(claimedLicenses) },
+                  { label: "Boosted", value: formatCompactNumber(boostedCount) },
+                ].map((s) => (
+                  <div key={s.label} className="studio-screen rounded-md p-3">
+                    <p className="studio-label relative z-10 text-white/45">
+                      {s.label}
+                    </p>
+                    <p className="text-readout-amber relative z-10 mt-1 text-xl font-bold tabular-nums">
+                      {s.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 rounded-md studio-faceplate-dark p-3">
+                <div className="flex items-center justify-between studio-label text-white/50">
+                  <span>License Supply</span>
+                  <span className="text-readout-cyan tabular-nums">
+                    {formatCompactNumber(totalSupply)}
+                  </span>
+                </div>
+                <progress
+                  max={100}
+                  value={Math.min(100, totalSupply > 0 ? (claimedLicenses / totalSupply) * 100 : 0)}
+                  className="ems-progress ems-progress-gold mt-3 h-2 w-full"
+                  aria-label="License supply claimed"
+                />
+              </div>
             </div>
           </div>
         </section>

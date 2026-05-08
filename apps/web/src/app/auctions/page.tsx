@@ -86,29 +86,40 @@ export default function AuctionsPage() {
       <div className="mb-10">
         <div className="flex items-center gap-3">
           <span aria-hidden className="led-on-rec h-2.5 w-2.5 rounded-full animate-pulse" />
-          <span className="studio-label text-rec-400">On Air</span>
-          <span className="studio-label ml-auto text-white/35">BR-01</span>
+          <span className="studio-label text-rec-400">On Air · Bid Booth</span>
+          <span className="studio-label ml-auto text-white/35">BR-01 · Live</span>
         </div>
-        <h1 className="font-display mt-1 text-5xl uppercase tracking-wider text-white">
+        <h1 className="font-display mt-3 text-4xl uppercase tracking-wider text-white sm:text-5xl">
           Live Auctions
         </h1>
-        <p className="mt-2 text-white/55">
-          Bid on exclusive music licenses — winner gets the license and earns
-          revenue share on every future sale.
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/60">
+          Bid on exclusive music licenses — the winner gets the license and
+          earns revenue share on every future sale.
         </p>
       </div>
 
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="h-64 rounded-2xl bg-white/5 animate-pulse" />
+            <div
+              key={i}
+              className="h-72 animate-pulse rounded-xl studio-faceplate-dark"
+            />
           ))}
         </div>
       ) : auctions.length === 0 ? (
-        <div className="py-24 text-center text-white/30">
-          <p className="text-5xl mb-4">🎵</p>
-          <p className="text-xl font-semibold">No active auctions right now</p>
-          <p className="mt-2 text-sm">Check back soon, or list your own if you are an artist.</p>
+        <div className="studio-faceplate relative rounded-xl px-6 py-16 text-center sm:py-24">
+          <span aria-hidden className="studio-screw absolute left-3 top-3" />
+          <span aria-hidden className="studio-screw absolute right-3 top-3" />
+          <span aria-hidden className="studio-screw absolute left-3 bottom-3" />
+          <span aria-hidden className="studio-screw absolute right-3 bottom-3" />
+          <p className="studio-label text-tube-300">No Signal</p>
+          <p className="mt-3 font-display text-2xl uppercase tracking-wide text-white">
+            No active auctions right now
+          </p>
+          <p className="mt-2 text-sm text-white/55">
+            Check back soon, or list your own track if you&apos;re an artist.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -118,56 +129,68 @@ export default function AuctionsPage() {
               <Link
                 key={auction.id}
                 href={`/auctions/${auction.id}`}
-                className="group flex flex-col rounded-2xl border border-white/[0.08] bg-white/[0.03] overflow-hidden hover:border-brand-500/40 hover:bg-white/[0.06] transition-all"
+                className="studio-faceplate group relative flex flex-col overflow-hidden rounded-xl"
               >
-                <div className="relative h-44 w-full bg-white/5 overflow-hidden">
+                <span aria-hidden className="studio-screw absolute left-2 top-2 z-10" />
+                <span aria-hidden className="studio-screw absolute right-2 top-2 z-10" />
+
+                <div className="relative h-44 w-full overflow-hidden studio-faceplate-dark">
                   {auction.song.coverUrl ? (
                     <Image
                       src={auction.song.coverUrl}
                       alt={auction.song.title}
                       fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center text-5xl">🎵</div>
                   )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
                   <div className="absolute bottom-3 left-3 right-3">
-                    <p className="text-sm font-bold truncate">{auction.song.title}</p>
-                    <p className="text-xs text-white/60 truncate">{auction.song.artist}</p>
+                    <p className="font-display text-base uppercase leading-tight tracking-wide text-white">
+                      {auction.song.title}
+                    </p>
+                    <p className="mt-0.5 text-xs text-white/65">
+                      {auction.song.artist}
+                    </p>
                   </div>
                   {auction.song.genre && (
-                    <span className="absolute top-3 right-3 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white/70 backdrop-blur">
+                    <span className="absolute top-3 right-3 rounded-md studio-faceplate-dark px-2 py-1 studio-label text-white/70">
                       {auction.song.genre}
                     </span>
                   )}
                 </div>
 
-                <div className="flex flex-1 flex-col gap-3 p-4">
-                  <div className="flex items-center justify-between">
+                <div className="flex flex-1 flex-col gap-3 p-4 pt-3">
+                  <div className="flex items-end justify-between">
                     <div>
-                      <p className="text-[10px] text-white/40 uppercase tracking-wider">
-                        Current bid
-                      </p>
-                      <p className="text-xl font-extrabold text-brand-400">
-                        ${Number(currentBid).toFixed(2)}
-                      </p>
+                      <p className="studio-label text-white/45">Current Bid</p>
+                      <div className="studio-screen mt-1 inline-block rounded-md px-3 py-1.5">
+                        <span className="text-readout-amber relative z-10 text-xl font-bold tabular-nums">
+                          ${Number(currentBid).toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] text-white/40 uppercase tracking-wider">Bids</p>
-                      <p className="text-lg font-bold">{auction._count.bids}</p>
+                      <p className="studio-label text-white/45">Bids</p>
+                      <p className="text-readout-cyan mt-1 text-lg font-bold tabular-nums">
+                        {auction._count.bids}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-white/[0.06]">
-                    <p className={`text-xs font-semibold ${urgencyColor(auction.endsAt)}`}>
-                      {timeLeft(auction.endsAt)}
+                  <div className="mt-auto flex items-center justify-between border-t border-white/[0.06] pt-3">
+                    <p className={`studio-label ${urgencyColor(auction.endsAt)}`}>
+                      ◉ {timeLeft(auction.endsAt)}
                     </p>
-                    <span className="rounded-lg bg-brand-500/10 px-3 py-1 text-xs font-semibold text-brand-400 group-hover:bg-brand-500/20 transition">
+                    <span className="rounded-md studio-faceplate-dark px-3 py-1.5 studio-label text-tube-300 group-hover:text-tube-200">
                       Bid now →
                     </span>
                   </div>
                 </div>
+
+                <span aria-hidden className="studio-screw absolute left-2 bottom-2" />
+                <span aria-hidden className="studio-screw absolute right-2 bottom-2" />
               </Link>
             );
           })}
@@ -179,17 +202,17 @@ export default function AuctionsPage() {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="rounded-lg border border-white/10 px-4 py-2 text-sm disabled:opacity-30 hover:bg-white/[0.06] transition"
+            className="rounded-md studio-faceplate-dark px-4 py-2 studio-label text-white/75 transition hover:text-white disabled:opacity-30"
           >
             Previous
           </button>
-          <span className="rounded-lg border border-white/10 px-4 py-2 text-sm">
+          <span className="rounded-md studio-faceplate-dark px-4 py-2 studio-label text-tube-300">
             {page} / {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
-            className="rounded-lg border border-white/10 px-4 py-2 text-sm disabled:opacity-30 hover:bg-white/[0.06] transition"
+            className="rounded-md studio-faceplate-dark px-4 py-2 studio-label text-white/75 transition hover:text-white disabled:opacity-30"
           >
             Next
           </button>

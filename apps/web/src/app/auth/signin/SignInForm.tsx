@@ -346,11 +346,32 @@ function SignInContent({
   }
 
   return (
-    <div className="flex min-h-[80vh] items-center justify-center px-4">
+    <div className="flex min-h-[80vh] items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
-        <div className="glass rounded-3xl p-8">
-          <h1 className="mb-2 text-2xl font-extrabold">Sign in</h1>
-          <p className="mb-6 text-sm text-white/50">
+        <div className="studio-faceplate relative rounded-xl p-7 sm:p-8">
+          <div
+            aria-hidden
+            className="studio-walnut absolute left-0 top-0 bottom-0 w-3 rounded-l-xl"
+          />
+          <div
+            aria-hidden
+            className="studio-walnut absolute right-0 top-0 bottom-0 w-3 rounded-r-xl"
+          />
+          <span aria-hidden className="studio-screw absolute left-5 top-3" />
+          <span aria-hidden className="studio-screw absolute right-5 top-3" />
+          <span aria-hidden className="studio-screw absolute left-5 bottom-3" />
+          <span aria-hidden className="studio-screw absolute right-5 bottom-3" />
+
+          <div className="ml-3 mr-3">
+          <div className="mb-4 flex items-center gap-2">
+            <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
+            <span className="studio-label text-tube-300">Sign-In Console</span>
+            <span className="studio-label ml-auto text-white/35">AUTH-01</span>
+          </div>
+          <h1 className="font-display text-3xl uppercase tracking-wider text-white">
+            Sign in
+          </h1>
+          <p className="mb-6 mt-2 text-sm text-white/55">
             Welcome back to Epic Music Space
           </p>
 
@@ -626,10 +647,17 @@ function SignInContent({
             </Link>
           </div>
 
-          <div className="mt-5 grid grid-cols-1 gap-2 text-xs text-white/60 sm:grid-cols-3">
-            <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">Secure checkout</div>
-            <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">Clear licensing terms</div>
-            <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">Weekly payout schedule</div>
+          <div className="mt-5 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-3">
+            <div className="rounded-md studio-faceplate-dark px-3 py-2 studio-label text-white/60">
+              Secure checkout
+            </div>
+            <div className="rounded-md studio-faceplate-dark px-3 py-2 studio-label text-white/60">
+              Clear licensing terms
+            </div>
+            <div className="rounded-md studio-faceplate-dark px-3 py-2 studio-label text-white/60">
+              Weekly payout schedule
+            </div>
+          </div>
           </div>
         </div>
       </div>

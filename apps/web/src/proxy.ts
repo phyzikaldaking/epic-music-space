@@ -30,6 +30,7 @@ const PUBLIC_PATHS = [
   "/pro",
   "/u",
   "/marketplace",
+  "/auctions",
   "/search",
   "/versus",
   "/rooms",
