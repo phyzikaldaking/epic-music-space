@@ -3,7 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rateLimitInline";
-import { PODCAST_EPISODE_STATUSES, slugifyPodcast } from "@/lib/podcast";
+import { PODCAST_EPISODE_STATUSES, derivePodcastBlockers, derivePodcastProductionState, slugifyPodcast } from "@/lib/podcast";
 
 export const runtime = "nodejs";
 
@@ -46,7 +46,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     orderBy: [{ seasonNumber: "desc" }, { episodeNumber: "desc" }, { createdAt: "desc" }],
   });
 
-  return NextResponse.json({ episodes });
+  return NextResponse.json({
+    episodes: episodes.map((episode) => ({
+      ...episode,
+      workflow: {
+        blockers: derivePodcastBlockers(episode),
+        productionState: derivePodcastProductionState(episode),
+      },
+    })),
+  });
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -69,6 +77,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const slug = await resolveEpisodeSlug(id, parsed.data.slug || parsed.data.title);
   const shouldPublish = parsed.data.status === "PUBLISHED";
   const shouldSchedule = parsed.data.status === "SCHEDULED";
+  const blockers = derivePodcastBlockers(parsed.data);
+  if (shouldPublish && blockers.length > 0) {
+    return NextResponse.json({ error: "Episode failed publish guardrails.", blockers }, { status: 409 });
+  }
 
   const created = await prisma.podcastEpisode.create({
     data: {
@@ -95,5 +107,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     select: { id: true, slug: true },
   });
 
-  return NextResponse.json(created, { status: 201 });
+  return NextResponse.json(
+    {
+      ...created,
+      workflow: {
+        blockers,
+        productionState: derivePodcastProductionState(parsed.data),
+      },
+    },
+    { status: 201 },
+  );
 }

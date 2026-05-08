@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PODCAST_EPISODE_STATUSES, slugifyPodcast } from "@/lib/podcast";
+import { PODCAST_EPISODE_STATUSES, derivePodcastBlockers, derivePodcastProductionState, slugifyPodcast } from "@/lib/podcast";
 
 export const runtime = "nodejs";
 
@@ -48,7 +48,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (episode.status !== "PUBLISHED" && episode.show.ownerId !== session?.user?.id) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  return NextResponse.json({ episode });
+  const blockers = derivePodcastBlockers(episode);
+  const productionState = derivePodcastProductionState(episode);
+  return NextResponse.json({ episode, workflow: { blockers, productionState } });
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -58,7 +60,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const episode = await prisma.podcastEpisode.findUnique({
     where: { id },
-    select: { showId: true, show: { select: { ownerId: true } }, publishedAt: true },
+    select: {
+      showId: true,
+      show: { select: { ownerId: true } },
+      publishedAt: true,
+      status: true,
+      synopsis: true,
+      audioUrl: true,
+      muxUploadId: true,
+      muxPlaybackId: true,
+      transcript: true,
+      captionsUrl: true,
+      clipCount: true,
+      coverUrl: true,
+      scheduledFor: true,
+    },
   });
   if (!episode) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (episode.show.ownerId !== session.user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -71,6 +87,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const nextSlug = parsed.data.slug || parsed.data.title;
   const slug = nextSlug ? await resolveEpisodeSlug(episode.showId, id, nextSlug) : undefined;
   const nextStatus = parsed.data.status;
+
+  const mergedForGuardrails = {
+    status: nextStatus ?? episode.status,
+    synopsis: parsed.data.synopsis ?? episode.synopsis,
+    audioUrl: parsed.data.audioUrl ?? episode.audioUrl,
+    muxUploadId: parsed.data.muxUploadId ?? episode.muxUploadId,
+    muxPlaybackId: episode.muxPlaybackId,
+    transcript: parsed.data.transcript ?? episode.transcript,
+    captionsUrl: parsed.data.captionsUrl ?? episode.captionsUrl,
+    clipCount: parsed.data.clipCount ?? episode.clipCount,
+    coverUrl: parsed.data.coverUrl ?? episode.coverUrl,
+    scheduledFor: parsed.data.scheduledFor ?? episode.scheduledFor,
+  };
+  const blockers = derivePodcastBlockers(mergedForGuardrails);
+  if (nextStatus === "PUBLISHED" && blockers.length > 0) {
+    return NextResponse.json({ error: "Episode failed publish guardrails.", blockers }, { status: 409 });
+  }
 
   const updated = await prisma.podcastEpisode.update({
     where: { id },
@@ -100,5 +133,5 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     select: { id: true, slug: true, status: true },
   });
 
-  return NextResponse.json(updated);
+  return NextResponse.json({ ...updated, workflow: { blockers: derivePodcastBlockers({ ...mergedForGuardrails, status: updated.status }), productionState: derivePodcastProductionState({ ...mergedForGuardrails, status: updated.status }) } });
 }
