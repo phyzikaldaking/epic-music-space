@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { lenientLimiter, moderateLimiter } from "@/lib/rateLimit";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { getSiteUrl } from "@/lib/site";
@@ -16,10 +17,25 @@ const STREAM_ROYALTY_CENTS = Math.max(
   0,
   Number(process.env.STREAM_ROYALTY_CENTS_PER_PLAY ?? "1"),
 );
+const STREAM_PREVIEW_MAX_BYTES = Math.max(
+  256_000,
+  Number(process.env.STREAM_PREVIEW_MAX_BYTES ?? "1500000"),
+);
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const localPlayDedupe = new Map<string, number>();
+
+function parseByteRange(value: string | null): { start: number; end: number | null } | null {
+  if (!value) return null;
+  const m = /^bytes=(\d+)-(\d*)$/i.exec(value.trim());
+  if (!m) return null;
+  const start = Number(m[1]);
+  if (!Number.isFinite(start) || start < 0) return null;
+  const end = m[2] ? Number(m[2]) : null;
+  if (end != null && (!Number.isFinite(end) || end < start)) return null;
+  return { start, end };
+}
 
 /**
  * GET /api/songs/[id]/stream
@@ -105,14 +121,57 @@ export async function GET(
     return new NextResponse("Too many requests", { status: 429 });
   }
 
+  const ua = (req.headers.get("user-agent") ?? "").toLowerCase();
+  if (
+    ua.includes("curl") ||
+    ua.includes("wget") ||
+    ua.includes("python-requests") ||
+    ua.includes("httpie")
+  ) {
+    return new NextResponse("Forbidden", { status: 403 });
+  }
+
   // ── Resolve upstream URL (real song first, fall back to demo) ──────────
   let upstreamUrl: string | null = null;
+  let fullAccess = true;
+  let previewMode = false;
   try {
+    const session = await auth();
     const song = await prisma.song.findUnique({
       where: { id },
-      select: { audioUrl: true, isActive: true },
+      select: {
+        id: true,
+        audioUrl: true,
+        isActive: true,
+        isDraft: true,
+        artistId: true,
+        allowFreeDownload: true,
+      },
     });
-    if (song?.isActive) upstreamUrl = song.audioUrl;
+    if (song?.isActive && song.audioUrl) {
+      const viewerId = session?.user?.id ?? null;
+      const isOwner = viewerId != null && viewerId === song.artistId;
+      if (song.isDraft && !isOwner) {
+        return new NextResponse("Not found", { status: 404 });
+      }
+
+      let hasLicense = false;
+      if (!isOwner && viewerId) {
+        const activeLicense = await prisma.licenseToken.findFirst({
+          where: {
+            songId: song.id,
+            holderId: viewerId,
+            status: "ACTIVE",
+          },
+          select: { id: true },
+        });
+        hasLicense = !!activeLicense;
+      }
+
+      fullAccess = isOwner || hasLicense || song.allowFreeDownload;
+      previewMode = !fullAccess;
+      upstreamUrl = song.audioUrl;
+    }
   } catch {
     /* DB error — try demo lookup */
   }
@@ -153,8 +212,25 @@ export async function GET(
 
   // ── Forward Range header so seek works ──────────────────────────────────
   const upstreamHeaders: Record<string, string> = {};
-  const range = req.headers.get("range");
-  if (range) upstreamHeaders["Range"] = range;
+  const rangeHeader = req.headers.get("range");
+  if (previewMode) {
+    const requested = parseByteRange(rangeHeader);
+    const start = requested?.start ?? 0;
+    if (start >= STREAM_PREVIEW_MAX_BYTES) {
+      const headers = new Headers();
+      headers.set("Content-Range", `bytes */${STREAM_PREVIEW_MAX_BYTES}`);
+      headers.set("Accept-Ranges", "bytes");
+      return new NextResponse("Requested range not satisfiable", {
+        status: 416,
+        headers,
+      });
+    }
+    const requestedEnd = requested?.end ?? STREAM_PREVIEW_MAX_BYTES - 1;
+    const end = Math.min(requestedEnd, STREAM_PREVIEW_MAX_BYTES - 1);
+    upstreamHeaders["Range"] = `bytes=${start}-${end}`;
+  } else if (rangeHeader) {
+    upstreamHeaders["Range"] = rangeHeader;
+  }
 
   let upstream: Response;
   try {
@@ -185,7 +261,9 @@ export async function GET(
   // varying on Origin keeps that property tight.
   responseHeaders.set(
     "Cache-Control",
-    "private, max-age=60, s-maxage=3600, stale-while-revalidate=604800",
+    previewMode
+      ? "private, no-store"
+      : "private, max-age=60, s-maxage=3600, stale-while-revalidate=604800",
   );
   responseHeaders.set("Vary", "Origin, Range");
   responseHeaders.set("Content-Disposition", "inline");
@@ -194,6 +272,17 @@ export async function GET(
   // read or include this resource even if a public stream URL leaks.
   responseHeaders.set("Cross-Origin-Resource-Policy", "same-origin");
   responseHeaders.set("Referrer-Policy", "no-referrer");
+  responseHeaders.set("X-Robots-Tag", "noindex, noarchive, nosnippet");
+  responseHeaders.set(
+    "X-EMS-Playback-Mode",
+    previewMode ? "preview-only" : "full",
+  );
+  if (previewMode) {
+    responseHeaders.set(
+      "X-EMS-Preview-Note",
+      "Full playback requires owner access, active license, or free-download opt-in.",
+    );
+  }
 
   return new NextResponse(upstream.body, {
     status: upstream.status,

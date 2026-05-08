@@ -501,6 +501,27 @@ export default async function TrackPage({ params, searchParams }: Props) {
             />
           </div>
 
+          {!song.isDemo && (
+            <div className="rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-xs text-rose-100/90">
+              <p className="font-semibold uppercase tracking-wide text-rose-100">Content protection active</p>
+              <p className="mt-1 text-rose-100/80">
+                Streams are monitored, throttled, and fingerprinted for abuse. Unauthorized
+                copying, resale, or reposting may trigger takedown and account enforcement.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px]">
+                <Link href="/dmca" className="underline underline-offset-2 hover:text-white">
+                  Report infringement
+                </Link>
+                <Link href="/legal/terms" className="underline underline-offset-2 hover:text-white">
+                  Terms of use
+                </Link>
+                <Link href="/legal/licensing" className="underline underline-offset-2 hover:text-white">
+                  Licensing rules
+                </Link>
+              </div>
+            </div>
+          )}
+
           {/* Licensing economics */}
           <div className="glass rounded-2xl p-5">
             <div className="mb-4 flex items-center justify-between">
