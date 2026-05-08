@@ -274,6 +274,18 @@ function fmtTime(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function avgBand(spectrum: number[], start: number, end: number): number {
+  const lo = Math.max(0, Math.min(spectrum.length - 1, start));
+  const hi = Math.max(lo, Math.min(spectrum.length - 1, end));
+  let total = 0;
+  let count = 0;
+  for (let i = lo; i <= hi; i++) {
+    total += spectrum[i] ?? 0;
+    count += 1;
+  }
+  return count > 0 ? total / count : 0;
+}
+
 /** "Surprise me" generator. Picks a random kit + a finished-sounding
  *  pattern + a random BPM in the trap/drill range. Goal: a visitor who
  *  doesn't know what they want hears a pro-quality beat in one click,
@@ -2221,6 +2233,14 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         />
       )}
 
+      {!showSplash && transport && (
+        <MixIntelligencePanel
+          spectrum={transport.masterSpectrum}
+          masterLufs={transport.masterLufs}
+          masterTruePeak={transport.masterTruePeak}
+        />
+      )}
+
       {!showSplash && snapshot && showMixTools && <AuxReturnPanel aux={snapshot.aux} />}
 
       {/* ── Beat Machine ───────────────────────────────────────────────────── */}
@@ -2895,6 +2915,109 @@ function MasterLoudnessAssistant({
           Nudge master toward target
         </button>
         <p className="text-xs text-white/55">Streaming target is usually near -14 LUFS with true peak below -1 dBTP.</p>
+      </div>
+    </section>
+  );
+}
+
+function MixIntelligencePanel({
+  spectrum,
+  masterLufs,
+  masterTruePeak,
+}: {
+  spectrum: number[];
+  masterLufs: number;
+  masterTruePeak: number;
+}) {
+  const sub = avgBand(spectrum, 0, 2);
+  const lowMid = avgBand(spectrum, 3, 8);
+  const highMid = avgBand(spectrum, 14, 20);
+  const air = avgBand(spectrum, 25, 31);
+  const peakDbtp = masterTruePeak > 0 ? 20 * Math.log10(masterTruePeak) : -60;
+
+  const checks: Array<{ label: string; detail: string; tone: "ok" | "warn" | "neutral" }> = [
+    {
+      label: "Sub control",
+      detail:
+        sub > 0.74
+          ? "Sub energy is very heavy. Trim kick/808 lows or shorten 808 tails."
+          : sub < 0.16
+            ? "Sub is thin. Add weight around 45-70 Hz in kick/808 lane."
+            : "Sub balance is healthy.",
+      tone: sub > 0.74 || sub < 0.16 ? "warn" : "ok",
+    },
+    {
+      label: "Mud zone (120-350)",
+      detail:
+        lowMid > 0.66
+          ? "Low-mids are crowded. Pull 200-300 Hz on non-bass sources."
+          : "Low-mid buildup is under control.",
+      tone: lowMid > 0.66 ? "warn" : "ok",
+    },
+    {
+      label: "Harsh zone (2.5k-6k)",
+      detail:
+        highMid > 0.72
+          ? "Harshness risk. Ease hats/claps presence or tame with gentle dynamic EQ."
+          : "Upper mids are balanced.",
+      tone: highMid > 0.72 ? "warn" : "ok",
+    },
+    {
+      label: "Air and sparkle",
+      detail:
+        air < 0.14
+          ? "Top-end is dark. Lift air on hats/open hats or add subtle high shelf."
+          : "Air band has enough extension.",
+      tone: air < 0.14 ? "neutral" : "ok",
+    },
+    {
+      label: "Loudness window",
+      detail:
+        masterLufs > -9
+          ? "Very loud print. Great for clubs, but may be hot for streaming."
+          : masterLufs < -18
+            ? "Quiet print. Raise level or use nudge toward target."
+            : "Loudness is in a practical release range.",
+      tone: masterLufs > -9 || masterLufs < -18 ? "warn" : "ok",
+    },
+    {
+      label: "True peak safety",
+      detail:
+        peakDbtp > -1
+          ? "True peak above -1 dBTP. Back off limiter/master by 1-2 dB."
+          : "True peak safety margin looks good.",
+      tone: peakDbtp > -1 ? "warn" : "ok",
+    },
+  ];
+
+  return (
+    <section className="mb-6 rounded-2xl border border-white/12 bg-white/[0.03] p-4">
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100/75">Mix intelligence</p>
+          <p className="mt-1 text-sm font-semibold text-white">Realtime spectrum guardrails while you produce</p>
+        </div>
+        <span className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-cyan-100">
+          Live advisor
+        </span>
+      </header>
+
+      <div className="grid gap-2 md:grid-cols-3">
+        {checks.map((check) => (
+          <div
+            key={check.label}
+            className={`rounded-lg border px-3 py-2 ${
+              check.tone === "warn"
+                ? "border-amber-400/30 bg-amber-500/10"
+                : check.tone === "ok"
+                  ? "border-emerald-400/25 bg-emerald-500/10"
+                  : "border-white/10 bg-black/25"
+            }`}
+          >
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/55">{check.label}</p>
+            <p className="mt-1 text-xs text-white/80">{check.detail}</p>
+          </div>
+        ))}
       </div>
     </section>
   );
