@@ -15,6 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { buildContentSecurityPolicy } from "@/lib/csp";
 
 // ---------------------------------------------------------------------------
 // Cookie name matches lib/auth.ts cookie config (secure prefix in production).
@@ -108,18 +109,61 @@ const SECURITY_HEADERS: Record<string, string> = {
   "X-XSS-Protection": "0",
 };
 
+/**
+ * Decide if this path should get a Content-Security-Policy header.
+ * Skip CSP for API routes, Next internals, and pure-asset paths — the
+ * header is only meaningful for HTML responses, and attaching it
+ * everywhere just bloats response sizes for no benefit.
+ */
+function shouldAttachCsp(pathname: string): boolean {
+  if (pathname.startsWith("/api/")) return false;
+  if (pathname.startsWith("/_next/")) return false;
+  // Static metadata files. `/icon` is the Next.js convention for the
+  // app icon route that may or may not have an extension; covered here.
+  if (
+    pathname === "/favicon.ico" ||
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/opengraph-image" ||
+    pathname === "/icon" ||
+    pathname.startsWith("/icon/")
+  ) {
+    return false;
+  }
+  // Anything with a file extension (images, fonts, etc.)
+  if (pathname.includes(".")) return false;
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Middleware entry point
 // ---------------------------------------------------------------------------
 export function middleware(req: NextRequest): NextResponse {
   const { pathname } = req.nextUrl;
-
-  // ------------------------------------------------------------------
-  // 1. Auth protection
-  // ------------------------------------------------------------------
   const authed = isAuthenticated(req);
 
-  // Block unauthenticated access to protected routes
+  // ------------------------------------------------------------------
+  // 1a. Stripe Connect API: gate at the edge with a 401 instead of a
+  //     redirect. Card-on-file flows can't follow a 307 to /auth/signin
+  //     in the way HTML pages can, so the right answer for an
+  //     unauthenticated request to a sensitive API is a JSON 401.
+  //     Other /api/* paths bypass the redirect logic entirely; those
+  //     handlers do their own auth checks.
+  // ------------------------------------------------------------------
+  if (pathname.startsWith("/api/stripe-connect")) {
+    if (!authed) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
+  // ------------------------------------------------------------------
+  // 1b. Auth-gated HTML pages
+  // ------------------------------------------------------------------
   const requiresAuth = REQUIRE_AUTH.some((pattern) => pattern.test(pathname));
   if (requiresAuth && !authed) {
     const signIn = new URL(SIGN_IN_PATH, req.url);
@@ -144,11 +188,35 @@ export function middleware(req: NextRequest): NextResponse {
   }
 
   // ------------------------------------------------------------------
-  // 2. Security headers on all non-redirected responses
+  // 2. CSP nonce + content security policy.
+  //
+  // CRITICAL: the layout reads `x-nonce` from request headers via
+  // `headers().get("x-nonce")` and applies it to inline <script> tags.
+  // With CSP's 'strict-dynamic' active, those nonced scripts are what
+  // anchor the trust chain that authorizes Next.js's RSC flight scripts
+  // to load the rest of the JS chunks. Skipping the nonce header here
+  // (or removing the layout's read) breaks hydration silently — page
+  // SSRs fine, no JS executes. This regression has shipped THREE times
+  // before; if you're "cleaning up" middleware, see the synthetic-smoke
+  // cron's `synthetic:csp:scripts-not-nonced` fingerprint first.
   // ------------------------------------------------------------------
-  const res = NextResponse.next();
+  const attachCsp = shouldAttachCsp(pathname);
+  const requestHeaders = new Headers(req.headers);
+  let nonce: string | null = null;
+  if (attachCsp) {
+    nonce = crypto.randomUUID().replaceAll("-", "");
+    requestHeaders.set("x-nonce", nonce);
+  }
+
+  // ------------------------------------------------------------------
+  // 3. Security headers on all non-redirected responses
+  // ------------------------------------------------------------------
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
   for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
     res.headers.set(header, value);
+  }
+  if (attachCsp && nonce) {
+    res.headers.set("Content-Security-Policy", buildContentSecurityPolicy(nonce));
   }
   return res;
 }

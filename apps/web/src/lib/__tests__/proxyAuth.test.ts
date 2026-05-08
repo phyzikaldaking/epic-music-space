@@ -1,23 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
-import { proxy } from "@/proxy";
+import { middleware } from "@/middleware";
 
 function makeRequest(path: string) {
   return new NextRequest(`https://epicmusicspace.com${path}`);
 }
 
-describe("auth proxy", () => {
-  it("redirects anonymous protected pages to sign-in with a callback", async () => {
-    const res = await proxy(makeRequest("/dashboard"));
+describe("auth middleware", () => {
+  it("redirects anonymous protected pages to sign-in with a callback", () => {
+    const res = middleware(makeRequest("/dashboard"));
     const location = res.headers.get("location");
 
     expect(res.status).toBe(307);
     expect(location).toBeTruthy();
     expect(new URL(location!).pathname).toBe("/auth/signin");
-    expect(new URL(location!).searchParams.get("callbackUrl")).toBe("/dashboard");
+    // The middleware preserves the full incoming URL as the callback so
+    // sign-in can redirect back to exactly where the user was headed.
+    expect(new URL(location!).searchParams.get("callbackUrl")).toBe(
+      "https://epicmusicspace.com/dashboard",
+    );
   });
 
-  it("does not send metadata assets through the auth wall", async () => {
+  it("does not send metadata assets through the auth wall", () => {
     for (const path of [
       "/icon?size=192",
       "/manifest.webmanifest",
@@ -25,7 +29,7 @@ describe("auth proxy", () => {
       "/robots.txt",
       "/sitemap.xml",
     ]) {
-      const res = await proxy(makeRequest(path));
+      const res = middleware(makeRequest(path));
 
       expect(res.status).not.toBe(307);
       expect(res.headers.get("location")).toBeNull();
@@ -33,8 +37,8 @@ describe("auth proxy", () => {
     }
   });
 
-  it("keeps Stripe Connect API routes protected", async () => {
-    const res = await proxy(makeRequest("/api/stripe-connect/account"));
+  it("keeps Stripe Connect API routes protected", () => {
+    const res = middleware(makeRequest("/api/stripe-connect/account"));
 
     expect(res.status).toBe(401);
   });
