@@ -91,6 +91,7 @@ export default function QuickUploadFlow({
   // shared
   const [error, setError] = useState<string | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [needsUpgrade, setNeedsUpgrade] = useState<{ message: string; upgradeUrl: string } | null>(null);
   const [publishing, setPublishing] = useState(false);
   const startedAtRef = useRef<number>(0);
 
@@ -396,18 +397,35 @@ export default function QuickUploadFlow({
           totalLicenses: Number(totalLicenses),
         }),
       });
-      const data = (await res.json()) as { id?: string; error?: string };
+      const data = (await res.json()) as {
+        id?: string;
+        error?: string;
+        upgradeUrl?: string;
+      };
       if (!res.ok || !data.id) {
         if (res.status === 401) {
           router.push("/auth/signin?callbackUrl=/studio/new");
           return;
         }
         if (res.status === 403) {
-          // Server says this user is still LISTENER. The /studio/setup
-          // promotion (api/studio PUT) hasn't synced into their JWT yet,
-          // OR they reached this page directly with no studio at all.
-          // Surface a recovery CTA instead of the raw API error.
-          setNeedsSetup(true);
+          // Two distinct 403s ship from /api/songs/create:
+          //   1) role === "LISTENER" → user needs studio setup
+          //   2) song count >= plan max → user needs to upgrade
+          // Telling someone to "finish setup" when they actually need to
+          // upgrade their plan kicked off a real-user infinite loop —
+          // they'd save setup, retry, hit 403 again, get sent to setup
+          // again. The server already returns `upgradeUrl` for the plan
+          // case; route on its presence.
+          if (data.upgradeUrl) {
+            setNeedsUpgrade({
+              message:
+                data.error ??
+                "You've hit your plan's song limit. Upgrade to publish more.",
+              upgradeUrl: data.upgradeUrl,
+            });
+          } else {
+            setNeedsSetup(true);
+          }
           setPublishing(false);
           return;
         }
@@ -872,6 +890,19 @@ export default function QuickUploadFlow({
             </div>
           )}
 
+          {needsUpgrade && (
+            <div className="mt-4 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/10 p-4 text-sm text-fuchsia-100">
+              <p className="font-bold">Plan limit reached.</p>
+              <p className="mt-1 text-fuchsia-200/85">{needsUpgrade.message}</p>
+              <Link
+                href={needsUpgrade.upgradeUrl}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-fuchsia-400 px-4 py-2 text-sm font-bold text-fuchsia-950 transition hover:bg-fuchsia-300"
+              >
+                See plans →
+              </Link>
+            </div>
+          )}
+
           <div className="mt-6 flex gap-3">
             <button
               type="button"
@@ -884,7 +915,7 @@ export default function QuickUploadFlow({
             <button
               type="button"
               onClick={publish}
-              disabled={publishing || needsSetup}
+              disabled={publishing || needsSetup || Boolean(needsUpgrade)}
               className="flex-1 rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 py-3 text-base font-bold text-white transition hover:opacity-90 disabled:opacity-50"
             >
               {publishing ? (

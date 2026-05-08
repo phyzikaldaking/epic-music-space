@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { buildContentSecurityPolicy } from "@/lib/csp";
+import { sanitizeCallbackPath } from "@/lib/safeCallback";
 
 // ---------------------------------------------------------------------------
 // Cookie name matches lib/auth.ts cookie config (secure prefix in production).
@@ -178,11 +179,14 @@ export function middleware(req: NextRequest): NextResponse {
       pattern.test(pathname),
     );
     if (isAuthPage && authed) {
-      // Respect an explicit callbackUrl so e.g. email magic links still work
-      const callbackUrl = req.nextUrl.searchParams.get("callbackUrl");
-      const dest = callbackUrl
-        ? callbackUrl
-        : new URL(AUTHED_HOME, req.url).toString();
+      // Respect an explicit callbackUrl so e.g. email magic links still work,
+      // but always resolve to an absolute URL — NextResponse.redirect calls
+      // `new URL(dest)` internally, and a bare path like "/ai" throws "URL
+      // is malformed" → 500. sanitizeCallbackPath also blocks open-redirects
+      // by requiring same-origin paths.
+      const rawCallback = req.nextUrl.searchParams.get("callbackUrl");
+      const safePath = sanitizeCallbackPath(rawCallback, AUTHED_HOME);
+      const dest = new URL(safePath, req.url).toString();
       return NextResponse.redirect(dest, { status: 307 });
     }
   }
