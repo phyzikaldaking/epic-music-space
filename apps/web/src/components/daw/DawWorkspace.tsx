@@ -440,6 +440,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [loudnessTarget, setLoudnessTarget] = useState<LoudnessTarget>(-14);
   const [exportLoudnessPreset, setExportLoudnessPreset] = useState<ExportLoudnessPreset>("streaming");
   const [exportTruePeakTarget, setExportTruePeakTarget] = useState<ExportTruePeakTarget>(-1);
+  const [recentlyAppliedLanes, setRecentlyAppliedLanes] = useState<Set<DrumKind>>(new Set());
+  const [recommendationConfidenceThreshold, setRecommendationConfidenceThreshold] = useState(0.4);
   const sessionStartedAt = useRef<number>(Date.now());
   const wasRecordingRef = useRef(false);
   const clientPresenceId = useMemo(() => {
@@ -736,13 +738,18 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     const top: Partial<Record<DrumKind, LaneEqRecommendation>> = {};
     for (const rec of laneEqRecommendations) {
       if (rec.type === "retune") continue;
+      if (rec.confidence < recommendationConfidenceThreshold) continue;
       const current = top[rec.lane];
       if (!current || rec.confidence > current.confidence) {
         top[rec.lane] = rec;
       }
     }
     return top;
-  }, [laneEqRecommendations]);
+  }, [laneEqRecommendations, recommendationConfidenceThreshold]);
+
+  const filteredLaneEqRecommendations = useMemo(() => {
+    return laneEqRecommendations.filter((rec) => rec.confidence >= recommendationConfidenceThreshold);
+  }, [laneEqRecommendations, recommendationConfidenceThreshold]);
   const showSplash = !snapshot;
   const hasRecordedAudio = tracks.some((track) => track.hasAudio);
   const hasBeatPattern = Boolean(
@@ -1004,6 +1011,21 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     }
     if (rec.type === "hp") engine.setBeatLaneEq(rec.lane, { hpHz: rec.valueHz });
     if (rec.type === "lp") engine.setBeatLaneEq(rec.lane, { lpHz: rec.valueHz });
+
+    // Visual feedback: flash the lane
+    setRecentlyAppliedLanes((prev) => {
+      const next = new Set(prev);
+      next.add(rec.lane);
+      return next;
+    });
+    setTimeout(() => {
+      setRecentlyAppliedLanes((prev) => {
+        const next = new Set(prev);
+        next.delete(rec.lane);
+        return next;
+      });
+    }, 600);
+
     setNotice({
       tone: "success",
       message: `Applied ${rec.type.toUpperCase()} ${Math.round(rec.valueHz)} Hz on ${rec.lane.toUpperCase()}.`,
@@ -1235,8 +1257,27 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     function key(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const engine = engineRef.current;
+
+      // Cmd+Y: Apply top recommendation (requires meta/ctrl)
+      if ((e.metaKey || e.ctrlKey) && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        const topRecs = Object.values(laneTopRecommendations).filter(Boolean);
+        if (topRecs.length > 0) {
+          const topRec = topRecs.sort((a, b) => (b?.confidence ?? 0) - (a?.confidence ?? 0))[0];
+          if (topRec) applyLaneEqRecommendation(topRec);
+        }
+        return;
+      }
+
+      // Cmd+Shift+R: Apply all recommendations (requires meta/ctrl)
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "r" || e.key === "R")) {
+        e.preventDefault();
+        applyAllLaneEqRecommendations();
+        return;
+      }
+
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       switch (e.key) {
         case " ":
           e.preventDefault();
@@ -1277,7 +1318,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transport?.isPlaying, transport?.isRecording, transport?.loopEnabled, transport?.metronomeOn, snapshot]);
+  }, [
+    transport?.isPlaying,
+    transport?.isRecording,
+    transport?.loopEnabled,
+    transport?.metronomeOn,
+    snapshot,
+    laneTopRecommendations,
+    applyLaneEqRecommendation,
+    applyAllLaneEqRecommendations,
+  ]);
 
   // ── Beat machine helpers ────────────────────────────────────────────────
   async function renderBeatToTrack() {
@@ -2452,6 +2502,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             laneSampleNames={beat.laneSampleNames}
             laneFrequencyProfiles={beat.laneFrequencyProfiles}
             laneRecommendations={laneTopRecommendations}
+            recentlyAppliedLanes={recentlyAppliedLanes}
             onApplyLaneRecommendation={applyLaneEqRecommendation}
             onToggleStep={(lane, step) => {
               const cur = beat.pattern[lane][step];
