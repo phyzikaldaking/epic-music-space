@@ -465,31 +465,120 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
+      const provider = account?.provider;
+      const isOAuth = Boolean(provider && provider !== "credentials" && provider !== "email-link" && provider !== "phone-otp");
+
+      // For credentials sign-in we already returned a Prisma user.id from
+      // authorize(), so a `user.id` lookup is meaningful. For OAuth (Google,
+      // Apple) signIn fires BEFORE the PrismaAdapter creates/links the User
+      // — at this point `user.id` is the *provider's* sub, not a DB row.
+      // Looking it up returns null and the flow gets killed before the
+      // adapter can create the User row. That bug locked every Google
+      // sign-in attempt on the platform; the real DB write was being
+      // aborted by our own gate.
+      //
+      // Fix: for OAuth, look up by email (Google + Apple always provide a
+      // verified email). If no row exists, let the flow continue —
+      // PrismaAdapter will createUser + linkAccount after we return true.
+      if (isOAuth) {
+        const oauthEmail =
+          (typeof profile?.email === "string" && profile.email) ||
+          (typeof user?.email === "string" && user.email) ||
+          null;
+
+        if (!oauthEmail) {
+          await emitAuthEvent("oauth_signin_failure", {
+            provider,
+            reason: "missing_email",
+          });
+          return false;
+        }
+
+        const normalized = normalizeEmail(oauthEmail);
+        const dbUser = await prisma.user.findFirst({
+          where: { email: { equals: normalized, mode: "insensitive" } },
+          select: {
+            id: true,
+            email: true,
+            isSuspended: true,
+            emailVerified: true,
+            passwordHash: true,
+          },
+        });
+
+        // No existing user → fully new OAuth signup. Let PrismaAdapter
+        // create the User + Account; the rest of our checks happen on
+        // subsequent visits when the row exists.
+        if (!dbUser) {
+          await emitAuthEvent("oauth_signin_success", {
+            email: normalized,
+            provider,
+            reason: "first_time_oauth",
+          });
+          return true;
+        }
+
+        if (dbUser.isSuspended) {
+          await emitAuthEvent("signin_suspended", {
+            userId: dbUser.id,
+            email: dbUser.email ?? undefined,
+            provider,
+          });
+          return "/auth/signin?error=account_suspended";
+        }
+
+        // Auto-verify the email only on OAuth-ONLY accounts (no
+        // passwordHash). If a credentials account exists and the user
+        // never finished verification, we MUST NOT let an attacker
+        // side-channel-verify it via Google — defeats the email
+        // verification gate. The credentials user has to verify the
+        // original way.
+        if (!dbUser.emailVerified && !dbUser.passwordHash) {
+          await prisma.user.update({
+            where: { id: dbUser.id },
+            data: { emailVerified: new Date() },
+          });
+        }
+
+        // Clear the per-email lockout counter so a user who got locked
+        // out by wrong passwords isn't still blocked after a successful
+        // Google/Apple sign-in.
+        if (dbUser.email) {
+          await clearSignInFailures(normalizeEmail(dbUser.email), "oauth").catch(
+            () => null,
+          );
+        }
+
+        await emitAuthEvent("oauth_signin_success", {
+          userId: dbUser.id,
+          email: dbUser.email ?? undefined,
+          provider,
+        });
+
+        return true;
+      }
+
+      // Credentials path: user.id is a real DB cuid we returned from
+      // authorize(). Verify it still exists and isn't suspended.
       if (!user?.id) {
         await emitAuthEvent("oauth_signin_failure", {
           reason: "missing_user",
-          provider: account?.provider,
+          provider,
         });
         return false;
       }
 
       const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
-        select: {
-          id: true,
-          email: true,
-          isSuspended: true,
-          emailVerified: true,
-          passwordHash: true,
-        },
+        select: { id: true, email: true, isSuspended: true },
       });
 
       if (!dbUser) {
         await emitAuthEvent("oauth_signin_failure", {
           userId: user.id,
           reason: "missing_db_user",
-          provider: account?.provider,
+          provider,
         });
         return false;
       }
@@ -498,40 +587,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         await emitAuthEvent("signin_suspended", {
           userId: dbUser.id,
           email: dbUser.email ?? undefined,
-          provider: account?.provider,
+          provider,
         });
         return "/auth/signin?error=account_suspended";
-      }
-
-      if (account?.provider && account.provider !== "credentials") {
-        // Only auto-verify the email when the account is OAuth-ONLY
-        // (no passwordHash). If a credentials account exists for this
-        // email and the user never finished verification, we must NOT
-        // let an attacker side-channel-verify it via Google/Apple — that
-        // would defeat the entire email-verification gate. The credentials
-        // user has to verify the original way (the email we sent them).
-        if (!dbUser.emailVerified && !dbUser.passwordHash) {
-          await prisma.user.update({
-            where: { id: dbUser.id },
-            data: { emailVerified: new Date() },
-          });
-        }
-
-        // Clear the per-email failed-sign-in counter so a user who got
-        // locked out by wrong passwords isn't still locked out after
-        // they sign in successfully via Google / Apple. Audit nit #23.
-        if (dbUser.email) {
-          const ip = "oauth";
-          await clearSignInFailures(normalizeEmail(dbUser.email), ip).catch(
-            () => null,
-          );
-        }
-
-        await emitAuthEvent("oauth_signin_success", {
-          userId: dbUser.id,
-          email: dbUser.email ?? undefined,
-          provider: account.provider,
-        });
       }
 
       return true;
