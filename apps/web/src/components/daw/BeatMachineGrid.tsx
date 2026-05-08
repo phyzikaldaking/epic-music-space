@@ -13,6 +13,7 @@ interface Props {
   laneSampleNames: Record<DrumKind, string | null>;
   laneFrequencyProfiles: Record<DrumKind, LaneFrequencyProfile>;
   laneRecommendations: Partial<Record<DrumKind, LaneEqRecommendation>>;
+  onApplyLaneRecommendation: (rec: LaneEqRecommendation) => void;
   onToggleStep: (lane: DrumKind, step: number) => void;
   onToggleEnabled: () => void;
   onClear: () => void;
@@ -83,6 +84,7 @@ export default function BeatMachineGrid({
   laneSampleNames,
   laneFrequencyProfiles,
   laneRecommendations,
+  onApplyLaneRecommendation,
   onToggleStep,
   onToggleEnabled,
   onClear,
@@ -358,12 +360,17 @@ export default function BeatMachineGrid({
                 {Math.round(laneFrequencyProfiles[lane].dominantHz)} Hz center · low {Math.round(laneFrequencyProfiles[lane].lowBandRatio * 100)}%
               </p>
               {laneRecommendations[lane] && (
-                <p
-                  className="mt-0.5 truncate rounded bg-cyan-500/10 px-1 py-[1px] text-[9px] text-cyan-100"
-                  title={laneRecommendations[lane]?.reason}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rec = laneRecommendations[lane];
+                    if (rec) onApplyLaneRecommendation(rec);
+                  }}
+                  className="mt-0.5 w-full truncate rounded border border-cyan-300/30 bg-cyan-500/10 px-1 py-[1px] text-left text-[9px] text-cyan-100 transition hover:bg-cyan-500/20"
+                  title={`${laneRecommendations[lane]?.reason} Click to apply.`}
                 >
-                  Rec: {laneRecommendations[lane]?.type.toUpperCase()} {Math.round(laneRecommendations[lane]?.valueHz ?? 0)} Hz
-                </p>
+                  Rec: {laneRecommendations[lane]?.type.toUpperCase()} {Math.round(laneRecommendations[lane]?.valueHz ?? 0)} Hz • tap apply
+                </button>
               )}
               <div className="mt-1 flex items-center gap-1">
                 <button

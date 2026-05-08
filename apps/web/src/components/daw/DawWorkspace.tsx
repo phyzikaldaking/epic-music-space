@@ -2452,6 +2452,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             laneSampleNames={beat.laneSampleNames}
             laneFrequencyProfiles={beat.laneFrequencyProfiles}
             laneRecommendations={laneTopRecommendations}
+            onApplyLaneRecommendation={applyLaneEqRecommendation}
             onToggleStep={(lane, step) => {
               const cur = beat.pattern[lane][step];
               engineRef.current?.setBeatStep(lane, step, !cur);
