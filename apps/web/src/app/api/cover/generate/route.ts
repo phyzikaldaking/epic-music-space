@@ -29,7 +29,11 @@ export async function POST(req: NextRequest) {
   }
   if (!openai) {
     return NextResponse.json(
-      { error: "Cover generation is not configured." },
+      {
+        error:
+          "AI cover generation isn't configured on the server right now. We're working on it — for now, upload your own image and you'll be able to publish.",
+        configMissing: true,
+      },
       { status: 503 },
     );
   }
@@ -77,6 +81,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ imageBase64: b64, prompt });
   } catch (err) {
     console.error("[cover-generate] failed", err);
+    // Distinguish auth/key issues (which are server-side config problems)
+    // from transient upstream issues so users get a useful message and
+    // we get a useful log line when triaging.
+    const message = err instanceof Error ? err.message : "";
+    const status =
+      typeof (err as { status?: number })?.status === "number"
+        ? (err as { status: number }).status
+        : 0;
+    if (status === 401 || /api key|incorrect_api_key|invalid_api_key/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            "AI cover generation is temporarily unavailable. Upload your own image to keep going.",
+          configMissing: true,
+        },
+        { status: 503 },
+      );
+    }
+    if (status === 429 || /rate.?limit/i.test(message)) {
+      return NextResponse.json(
+        { error: "We're hitting OpenAI's rate limit. Try again in a minute." },
+        { status: 429 },
+      );
+    }
+    if (status === 400 || /content.?policy|safety/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            "OpenAI's content policy rejected this prompt. Try a different title, genre, or mood.",
+        },
+        { status: 400 },
+      );
+    }
     return NextResponse.json(
       { error: "Cover generation failed. Please try again." },
       { status: 502 },

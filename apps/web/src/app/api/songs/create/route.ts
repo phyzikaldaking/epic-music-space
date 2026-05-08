@@ -21,6 +21,8 @@ const createSongSchema = z.object({
   stemUrl: z.string().url("stemUrl must be a valid URL").optional(),
   hasStems: z.boolean().default(false),
   allowFreeDownload: z.boolean().default(false),
+  // Pay-what-you-want: producer opts in; licensePrice becomes the floor.
+  payWhatYouWant: z.boolean().default(false),
   isLegacy: z.boolean().default(false),
   originalReleaseYear: z.coerce
     .number()

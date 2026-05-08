@@ -54,6 +54,10 @@ export interface TrackFormState {
   revenueSharePct: string;
   totalLicenses: string;
   allowFreeDownload: boolean;
+  /** Producer opted into pay-what-you-want pricing. licensePrice is then
+   *  treated as the minimum floor at checkout; fans pick the actual
+   *  amount. */
+  payWhatYouWant?: boolean;
   isLegacy: boolean;
   originalReleaseYear: string;
   // Draft / scheduling. saveAsDraft=true overrides any scheduledAt — it's
@@ -76,6 +80,7 @@ export interface TrackPublishPayload {
   stemUrl?: string;
   hasStems: boolean;
   allowFreeDownload: boolean;
+  payWhatYouWant?: boolean;
   isLegacy: boolean;
   originalReleaseYear?: number;
   bpm?: number;
@@ -249,6 +254,7 @@ export function validateTrackSubmission(state: TrackFormState): TrackPublishChec
       stemUrl: stem || undefined,
       hasStems: Boolean(stem),
       allowFreeDownload: state.allowFreeDownload,
+      payWhatYouWant: state.payWhatYouWant ? true : undefined,
       isLegacy: state.isLegacy,
       originalReleaseYear,
       bpm,

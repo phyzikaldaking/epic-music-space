@@ -56,6 +56,7 @@ type TrackDetail = {
   isActive: boolean;
   hasStems: boolean;
   allowFreeDownload: boolean;
+  payWhatYouWant?: boolean;
   artist_: { id: string; name: string | null; image: string | null } | null;
   _count: { licenses: number };
   isDemo: boolean;
@@ -552,6 +553,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
                 <LicenseButton
                   songId={song.id}
                   licensePrice={song.licensePrice.toString()}
+                  payWhatYouWant={song.payWhatYouWant ?? false}
                 />
               )
             ) : (

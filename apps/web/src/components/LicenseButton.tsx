@@ -8,23 +8,51 @@ import { formatPrice } from "@ems/utils";
 
 interface LicenseButtonProps {
   songId: string;
+  /** Always the price floor when payWhatYouWant is true; the fixed price
+   *  otherwise. Stringly typed because the source is Decimal serialized
+   *  from Prisma. */
   licensePrice: string;
+  /** True when the producer opted into pay-what-you-want pricing. The
+   *  button swaps in a custom-amount input + a "minimum: $X" hint. */
+  payWhatYouWant?: boolean;
 }
 
-export default function LicenseButton({ songId, licensePrice }: LicenseButtonProps) {
+export default function LicenseButton({
+  songId,
+  licensePrice,
+  payWhatYouWant = false,
+}: LicenseButtonProps) {
   const [loading, setLoading] = useState(false);
   const [agreementOpen, setAgreementOpen] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  // PWYW state: pre-fill with the floor so a fan who doesn't want to type
+  // anything just clicks through. They can bump it up; the server enforces
+  // the floor regardless of what's posted.
+  const floor = Number(licensePrice) || 0.5;
+  const [customAmount, setCustomAmount] = useState<string>(floor.toFixed(2));
   const router = useRouter();
   const { error } = useToast();
 
   async function startCheckout() {
     setLoading(true);
     try {
+      const body: { songId: string; eulaAccepted: boolean; customAmount?: number } = {
+        songId,
+        eulaAccepted: true,
+      };
+      if (payWhatYouWant) {
+        const parsed = Number.parseFloat(customAmount);
+        if (!Number.isFinite(parsed) || parsed < floor) {
+          error(`Minimum is ${formatPrice(licensePrice)}.`);
+          setLoading(false);
+          return;
+        }
+        body.customAmount = parsed;
+      }
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ songId, eulaAccepted: true }),
+        body: JSON.stringify(body),
       });
 
       if (res.status === 401) {
@@ -60,6 +88,61 @@ export default function LicenseButton({ songId, licensePrice }: LicenseButtonPro
   }
 
   if (!agreementOpen) {
+    if (payWhatYouWant) {
+      // Pay-what-you-want: amount input + buy button. The fan picks any
+      // amount ≥ floor. We render quick-pick chips so common contributions
+      // (1×, 2×, 5× the floor) are one tap away — that's where most fans
+      // land in tip-jar UIs.
+      const quickPicks = [floor, floor * 2, floor * 5].map((n) => Number(n.toFixed(2)));
+      return (
+        <div className="space-y-3 rounded-xl border border-tube-300/30 bg-tube-300/[0.06] p-4">
+          <div className="flex items-baseline justify-between">
+            <p className="text-xs font-bold uppercase tracking-widest text-tube-300">
+              Pay what you want
+            </p>
+            <p className="text-[11px] text-white/55">
+              Minimum {formatPrice(licensePrice)}
+            </p>
+          </div>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-base">$</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={floor}
+              step="0.01"
+              value={customAmount}
+              onChange={(e) => setCustomAmount(e.target.value)}
+              aria-label="Amount in USD"
+              className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pl-7 pr-3 text-2xl font-bold text-white focus:border-tube-300/60 focus:outline-none"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {quickPicks.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setCustomAmount(n.toFixed(2))}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                  Number.parseFloat(customAmount) === n
+                    ? "border-tube-300 bg-tube-300/15 text-tube-100"
+                    : "border-white/12 text-white/65 hover:bg-white/10"
+                }`}
+              >
+                ${n.toFixed(2)}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setAgreementOpen(true)}
+            className="w-full rounded-xl bg-tube-300 py-3.5 text-base font-bold text-black shadow-lg shadow-tube-300/20 transition hover:bg-tube-200"
+          >
+            License for ${(Number.parseFloat(customAmount) || floor).toFixed(2)}
+          </button>
+        </div>
+      );
+    }
     return (
       <button
         type="button"
@@ -119,7 +202,13 @@ export default function LicenseButton({ songId, licensePrice }: LicenseButtonPro
           disabled={!agreed || loading}
           className="flex-1 rounded-xl bg-brand-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-600 disabled:opacity-50"
         >
-          {loading ? "Redirecting…" : `Agree & continue → ${formatPrice(licensePrice)}`}
+          {loading
+            ? "Redirecting…"
+            : `Agree & continue → ${
+                payWhatYouWant
+                  ? `$${(Number.parseFloat(customAmount) || floor).toFixed(2)}`
+                  : formatPrice(licensePrice)
+              }`}
         </button>
       </div>
     </div>

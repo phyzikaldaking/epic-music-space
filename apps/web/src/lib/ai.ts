@@ -1,12 +1,35 @@
 import OpenAI from "openai";
 
-if (!process.env.OPENAI_API_KEY) {
-  // Warn at startup — AI features degrade gracefully when key is absent
-  console.warn("[ai] OPENAI_API_KEY is not set — AI features will be disabled");
+// A real OpenAI key starts with "sk-" and is at least 24 chars. Treat
+// placeholder strings ("sk-...", "sk-PLACEHOLDER", "sk-xxx", etc.) as
+// effectively unset — running them through the SDK at call time produces
+// an opaque "Incorrect API key" 401 that the cover-generate route rethrew
+// as a generic 502 to users. The user sees "Cover generation failed" with
+// no hint that it's a config issue. Catching it at module init gives
+// every AI route a single consistent path to "AI is not configured."
+function isUsableOpenAiKey(key: string | undefined): key is string {
+  if (!key || !key.startsWith("sk-")) return false;
+  // The shortest legitimate key we see is ~32 chars; placeholders are
+  // typically ≤ 20. 24 is a safe gate that admits real keys and rejects
+  // every placeholder pattern we've seen in this codebase.
+  if (key.length < 24) return false;
+  if (/^sk-(\.\.\.|x+|placeholder|todo|set-?me|fixme)$/i.test(key)) return false;
+  return true;
 }
 
-export const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+const rawKey = process.env.OPENAI_API_KEY;
+export const openaiConfigured = isUsableOpenAiKey(rawKey);
+
+if (!rawKey) {
+  console.warn("[ai] OPENAI_API_KEY is not set — AI features will be disabled");
+} else if (!openaiConfigured) {
+  console.warn(
+    "[ai] OPENAI_API_KEY is set to a placeholder value — AI features will be disabled until a real key is provided",
+  );
+}
+
+export const openai = openaiConfigured
+  ? new OpenAI({ apiKey: rawKey })
   : null;
 
 // ─────────────────────────────────────────────────────────

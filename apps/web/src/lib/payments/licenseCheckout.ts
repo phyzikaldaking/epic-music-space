@@ -34,6 +34,12 @@ type CreateLicenseCheckoutInput = {
   // priceUsd overrides the base licensePrice on the Stripe line item and
   // the tier's totalLicenses cap (if set) is enforced separately.
   licenseTierId?: string;
+  // Pay-what-you-want amount in USD. Honored only when the song has
+  // payWhatYouWant=true; if set on a fixed-price song, we ignore it and
+  // use the listed price (silent ignore beats a confusing 4xx for the
+  // legitimate case where the client is older than the schema). Floor
+  // check happens against song.licensePrice.
+  customAmount?: number;
 };
 
 type LicenseVariantShape = {
@@ -92,12 +98,41 @@ export async function createLicenseCheckoutSession(
   if (input.licenseTierId && !selectedTier) {
     throw new LicenseCheckoutError("License tier not available", 404);
   }
-  const unitPriceUsd = selectedTier
-    ? Number(selectedTier.priceUsd)
-    : Number(song.licensePrice);
+  // Resolve the unit price. Order of precedence:
+  //   1. Selected tier (the buyer clicked a specific tier button)
+  //   2. Pay-what-you-want amount (only when song.payWhatYouWant=true)
+  //   3. Base song.licensePrice
+  //
+  // PWYW + a tier id is not allowed by the UI, but if it ever happens we
+  // honor the tier (explicit click wins). The floor check uses the song's
+  // base licensePrice as the minimum a fan can contribute.
+  const songFloorUsd = Number(song.licensePrice);
+  let unitPriceUsd: number;
+  let pricingMode: "tier" | "pwyw" | "fixed";
+  if (selectedTier) {
+    unitPriceUsd = Number(selectedTier.priceUsd);
+    pricingMode = "tier";
+  } else if (song.payWhatYouWant && typeof input.customAmount === "number") {
+    if (!Number.isFinite(input.customAmount) || input.customAmount < songFloorUsd) {
+      throw new LicenseCheckoutError(
+        `Minimum contribution is $${songFloorUsd.toFixed(2)}.`,
+        400,
+      );
+    }
+    // Cap at $50,000 per transaction as a defense-in-depth limit. The
+    // route-level zod also enforces this; duplicating here protects any
+    // future caller that doesn't go through /api/checkout.
+    unitPriceUsd = Math.min(input.customAmount, 50_000);
+    pricingMode = "pwyw";
+  } else {
+    unitPriceUsd = songFloorUsd;
+    pricingMode = "fixed";
+  }
   const productName = selectedTier
     ? `License (${selectedTier.name}): ${song.title} by ${song.artist}`
-    : `License: ${song.title} by ${song.artist}`;
+    : pricingMode === "pwyw"
+      ? `License (Fan-set price): ${song.title} by ${song.artist}`
+      : `License: ${song.title} by ${song.artist}`;
 
   const checkoutAmountUsd = unitPriceUsd * input.quantity;
   const risk = await computeRiskScore(input.userId, {

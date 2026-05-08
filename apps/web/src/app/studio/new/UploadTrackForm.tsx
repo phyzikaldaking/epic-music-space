@@ -74,7 +74,15 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
   const [artistName, setArtistName] = useState("");
   const [genre, setGenre] = useState("");
   const [description, setDescription] = useState("");
-  const [licensePrice, setLicensePrice] = useState("9.99");
+  // Empty default — producers set the price they want. The UI shows a
+  // dimmed "Suggested $9.99" helper they can tap if they want a starting
+  // point, but nothing is auto-filled. Same approach for revenue share
+  // and total licenses below: numbers are recommendations, not defaults.
+  const [licensePrice, setLicensePrice] = useState("");
+  // PWYW (pay-what-you-want): when on, fans pay any amount ≥ the price
+  // floor. Useful for tip-jar style releases or albums where the artist
+  // wants the audience to choose a contribution.
+  const [payWhatYouWant, setPayWhatYouWant] = useState(false);
   const [allowFreeDownload, setAllowFreeDownload] = useState(false);
   const [isLegacy, setIsLegacy] = useState(legacyParam);
   const [originalReleaseYear, setOriginalReleaseYear] = useState("");
@@ -419,6 +427,7 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
       revenueSharePct,
       totalLicenses,
       allowFreeDownload,
+      payWhatYouWant,
       isLegacy,
       originalReleaseYear,
       saveAsDraft,
@@ -1064,8 +1073,21 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs text-white/50">
-                License Price (USD) <span className="text-red-400">*</span>
+              <label className="mb-1 flex items-center justify-between text-xs text-white/50">
+                <span>
+                  {payWhatYouWant ? "Minimum (USD)" : "License Price (USD)"}{" "}
+                  <span className="text-red-400">*</span>
+                </span>
+                {!licensePrice && (
+                  <button
+                    type="button"
+                    onClick={() => setLicensePrice("9.99")}
+                    className="text-[10px] font-semibold uppercase tracking-wider text-tube-300 hover:text-tube-200"
+                    title="Use the platform's suggested starting price"
+                  >
+                    Use $9.99
+                  </button>
+                )}
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm">$</span>
@@ -1077,11 +1099,16 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
                   step="0.01"
                   value={licensePrice}
                   onChange={(e) => setLicensePrice(e.target.value)}
-                  aria-label="License price in USD"
-                  placeholder="9.99"
-                  className="w-full rounded-lg bg-white/5 pl-7 pr-3 py-2 text-sm text-white placeholder-white/20 border border-white/10 focus:outline-none focus:border-brand-500/60"
+                  aria-label={payWhatYouWant ? "Minimum price in USD (fans pay any amount above this)" : "License price in USD"}
+                  placeholder={payWhatYouWant ? "1.00" : "Set your price"}
+                  className="w-full rounded-lg bg-white/5 pl-7 pr-3 py-2 text-sm text-white placeholder-white/30 border border-white/10 focus:outline-none focus:border-brand-500/60"
                 />
               </div>
+              {payWhatYouWant && (
+                <p className="mt-1 text-[10px] text-tube-300/70">
+                  Fans pick any amount at or above this floor.
+                </p>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs text-white/50">
@@ -1146,6 +1173,26 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
                 cannot download the audio file. Buying a license unlocks the
                 download regardless of this toggle. Turn ON only if you want
                 this track freely downloadable for promotion.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-tube-300/30 bg-gradient-to-br from-tube-300/8 via-tube-300/4 to-transparent p-4">
+            <input
+              type="checkbox"
+              checked={payWhatYouWant}
+              onChange={(e) => setPayWhatYouWant(e.target.checked)}
+              className="mt-1 h-4 w-4 cursor-pointer accent-tube-300"
+            />
+            <span className="flex-1">
+              <span className="block text-sm font-semibold text-tube-200">
+                Pay-what-you-want (fan-set price)
+              </span>
+              <span className="mt-1 block text-xs text-white/55">
+                When ON, the price field above becomes a minimum floor. Fans
+                pick any amount at or above it — $1, $50, $5,000 — and you
+                keep 100% of every dollar (less the flat platform fee).
+                Built for tip-jar releases and superfans.
               </span>
             </span>
           </label>

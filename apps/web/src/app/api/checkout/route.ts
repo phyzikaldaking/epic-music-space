@@ -13,6 +13,10 @@ const checkoutSchema = z.object({
   // Optional license tier id. When omitted, the buyer gets the base
   // licensePrice (Basic tier) — preserves the legacy single-tier flow.
   licenseTierId: z.string().min(1).max(40).optional(),
+  // Pay-what-you-want amount. Only honored when the song has
+  // payWhatYouWant=true; otherwise ignored. The server clamps it to
+  // [floor, $50,000] to defend against fat-finger and abuse.
+  customAmount: z.number().positive().max(50_000).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -64,11 +68,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid songId" }, { status: 400 });
   }
 
-  const { songId, licenseTierId } = parsed.data;
+  const { songId, licenseTierId, customAmount } = parsed.data;
   const idempotencyKey = buildIdempotencyKey(req, "checkout", [
     session.user.id,
     songId,
     licenseTierId ?? "base",
+    // Include the rounded cents amount in the idempotency key so two
+    // clearly different PWYW contributions ($5 vs $25) don't collapse
+    // into a single Stripe session.
+    customAmount ? `pwyw:${Math.round(customAmount * 100)}` : "fixed",
   ]);
 
   // Enforce subscription tier license cap
@@ -112,6 +120,7 @@ export async function POST(req: NextRequest) {
         userId: session.user.id,
         userEmail: session.user.email,
         licenseTierId,
+        customAmount,
       }),
     );
     if (!checkoutResult.ok) return checkoutResult.response;

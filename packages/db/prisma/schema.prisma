@@ -319,6 +319,13 @@ model Song {
   // through the proxy but cannot download the underlying file. License
   // purchase or artist opt-in (true) is required for download.
   allowFreeDownload Boolean @default(false)
+  // Pay-what-you-want pricing. When ON, licensePrice is treated as the
+  // minimum floor and fans pick any amount ≥ floor at checkout. The track
+  // page renders an amount input instead of a fixed buy button. Off by
+  // default; producers explicitly opt in when they want the tip-jar /
+  // superfan model. Stripe checkout receives the chosen amount as a
+  // dynamic price_data line item rather than a fixed product price.
+  payWhatYouWant Boolean @default(false)
   // Legacy / vault tracks: older catalog material (e.g. "back when I used to
   // rap"). Rendered in a separate Legacy section on /studio/[username] and
   // excluded from /trending + /marketplace defaults so the new-releases
