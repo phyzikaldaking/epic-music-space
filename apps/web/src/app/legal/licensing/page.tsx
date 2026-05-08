@@ -184,7 +184,7 @@ export default function LicensingPage() {
             <li><strong>Permitted:</strong> Distributing, selling, streaming, or licensing the resulting original musical works that incorporate the sounds.</li>
             <li><strong>Prohibited:</strong> Re-selling, redistributing, or sublicensing the raw Sound Kit files themselves (the original audio files as delivered), including uploading them to any sample marketplace, cloud storage accessible by the public, or competing platform.</li>
             <li><strong>Prohibited:</strong> Clearing or claiming ownership of the underlying samples — all original intellectual property in the Sound Kit remains with the creator/seller.</li>
-            <li><strong>Prohibited:</strong> Using sounds in productions for third parties without confirming your license covers such use (a single-purchase license covers one artist's productions; team or unlimited licenses may be available separately from the seller).</li>
+            <li><strong>Prohibited:</strong> Using sounds in productions for third parties without confirming your license covers such use (a single-purchase license covers one artist&apos;s productions; team or unlimited licenses may be available separately from the seller).</li>
           </ul>
           <p className="mt-3 text-sm">
             This license grants you no right to the creator&apos;s name, likeness, or trademarks.
