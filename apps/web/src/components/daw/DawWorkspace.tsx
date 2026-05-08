@@ -732,6 +732,17 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     if (!engine || !beat) return [];
     return engine.analyzeBeatPatternConflicts();
   }, [beat]);
+  const laneTopRecommendations = useMemo(() => {
+    const top: Partial<Record<DrumKind, LaneEqRecommendation>> = {};
+    for (const rec of laneEqRecommendations) {
+      if (rec.type === "retune") continue;
+      const current = top[rec.lane];
+      if (!current || rec.confidence > current.confidence) {
+        top[rec.lane] = rec;
+      }
+    }
+    return top;
+  }, [laneEqRecommendations]);
   const showSplash = !snapshot;
   const hasRecordedAudio = tracks.some((track) => track.hasAudio);
   const hasBeatPattern = Boolean(
@@ -2440,6 +2451,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             kit={beat.kit}
             laneSampleNames={beat.laneSampleNames}
             laneFrequencyProfiles={beat.laneFrequencyProfiles}
+            laneRecommendations={laneTopRecommendations}
             onToggleStep={(lane, step) => {
               const cur = beat.pattern[lane][step];
               engineRef.current?.setBeatStep(lane, step, !cur);

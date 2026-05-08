@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { DRUM_LANES, STEPS, type BeatPattern, type DrumKind, type DrumKitId } from "./beatMachine";
-import type { LaneFrequencyProfile, PatternBank } from "./dawEngine";
+import type { LaneEqRecommendation, LaneFrequencyProfile, PatternBank } from "./dawEngine";
 
 interface Props {
   pattern: BeatPattern;
@@ -12,6 +12,7 @@ interface Props {
   kit: DrumKitId;
   laneSampleNames: Record<DrumKind, string | null>;
   laneFrequencyProfiles: Record<DrumKind, LaneFrequencyProfile>;
+  laneRecommendations: Partial<Record<DrumKind, LaneEqRecommendation>>;
   onToggleStep: (lane: DrumKind, step: number) => void;
   onToggleEnabled: () => void;
   onClear: () => void;
@@ -81,6 +82,7 @@ export default function BeatMachineGrid({
   kit,
   laneSampleNames,
   laneFrequencyProfiles,
+  laneRecommendations,
   onToggleStep,
   onToggleEnabled,
   onClear,
@@ -355,6 +357,14 @@ export default function BeatMachineGrid({
               >
                 {Math.round(laneFrequencyProfiles[lane].dominantHz)} Hz center · low {Math.round(laneFrequencyProfiles[lane].lowBandRatio * 100)}%
               </p>
+              {laneRecommendations[lane] && (
+                <p
+                  className="mt-0.5 truncate rounded bg-cyan-500/10 px-1 py-[1px] text-[9px] text-cyan-100"
+                  title={laneRecommendations[lane]?.reason}
+                >
+                  Rec: {laneRecommendations[lane]?.type.toUpperCase()} {Math.round(laneRecommendations[lane]?.valueHz ?? 0)} Hz
+                </p>
+              )}
               <div className="mt-1 flex items-center gap-1">
                 <button
                   type="button"
