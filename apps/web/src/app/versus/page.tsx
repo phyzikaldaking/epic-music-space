@@ -24,6 +24,11 @@ export const metadata = {
 
 const PAST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 days of recent results
 
+function percentWidthClass(value: number) {
+  const snapped = Math.max(0, Math.min(100, Math.round(value / 5) * 5));
+  return `u-pct-${snapped}`;
+}
+
 const getBattles = unstable_cache(
   async () => {
     const songSelect = {
@@ -648,8 +653,8 @@ export default async function VersusPage({
                   <span className="text-accent-300">{pctB}%</span>
                 </div>
                 <div className="flex h-2 overflow-hidden rounded-full">
-                  <div className="bg-brand-500 transition-all" style={{ width: `${pctA}%` }} />
-                  <div className="bg-accent-500 transition-all" style={{ width: `${pctB}%` }} />
+                  <div className={`bg-brand-500 transition-all ${percentWidthClass(pctA)}`} />
+                  <div className={`bg-accent-500 transition-all ${percentWidthClass(pctB)}`} />
                 </div>
               </div>
               <p className="mt-4 text-center text-[11px] font-black uppercase tracking-widest text-white/40 transition group-hover:text-white/75">

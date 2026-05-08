@@ -34,6 +34,11 @@ const STEM_ACCEPT =
 // reliably. Don't change this back to `hidden`.
 const HIDDEN_INPUT_CLASS = "sr-only";
 
+function percentWidthClass(value: number) {
+  const snapped = Math.max(0, Math.min(100, Math.round(value / 5) * 5));
+  return `u-pct-${snapped}`;
+}
+
 
 function buzz(ms = 30) {
   try {
@@ -684,8 +689,7 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
                 <div className="mt-2">
                   <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                     <div
-                      className="h-2 rounded-full bg-gradient-to-r from-brand-400 to-accent-400 transition-all duration-300"
-                      style={{ width: `${coverProgress}%` }}
+                      className={`h-2 rounded-full bg-gradient-to-r from-brand-400 to-accent-400 transition-all duration-300 ${percentWidthClass(coverProgress)}`}
                     />
                   </div>
                 </div>
@@ -812,8 +816,7 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
               <div className="mb-3">
                 <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                   <div
-                    className="h-2 rounded-full bg-gradient-to-r from-brand-400 to-accent-400 transition-all duration-300"
-                    style={{ width: `${audioProgress}%` }}
+                    className={`h-2 rounded-full bg-gradient-to-r from-brand-400 to-accent-400 transition-all duration-300 ${percentWidthClass(audioProgress)}`}
                   />
                 </div>
                 <p className="mt-1 text-xs text-brand-400 font-medium">Uploading… {audioProgress}%</p>
@@ -979,8 +982,7 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
             <div className="mt-2">
               <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                 <div
-                  className="h-2 rounded-full bg-gradient-to-r from-brand-400 to-accent-400 transition-all duration-300"
-                  style={{ width: `${stemProgress}%` }}
+                  className={`h-2 rounded-full bg-gradient-to-r from-brand-400 to-accent-400 transition-all duration-300 ${percentWidthClass(stemProgress)}`}
                 />
               </div>
               <p className="mt-1 text-xs text-brand-400 font-medium">Uploading… {stemProgress}%</p>

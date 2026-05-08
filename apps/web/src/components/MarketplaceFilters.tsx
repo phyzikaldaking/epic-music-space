@@ -108,6 +108,8 @@ export default function MarketplaceFilters({ totalCount }: Props) {
 
         {/* Sort dropdown */}
         <select
+          aria-label="Sort marketplace tracks"
+          title="Sort marketplace tracks"
           value={sort}
           onChange={(e) => update("sort", e.target.value)}
           className="h-11 rounded-md border border-white/10 bg-[#0a0b10] px-4 py-2.5 text-sm text-white/70 transition focus:border-accent-400/60 focus:outline-none sm:w-56"

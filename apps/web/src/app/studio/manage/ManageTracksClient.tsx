@@ -384,6 +384,8 @@ export default function ManageTracksClient({
                           <div className="min-w-0">
                             {isEditing ? (
                               <input
+                                aria-label="Track title"
+                                title="Track title"
                                 value={(draft.title as string | undefined) ?? ""}
                                 onChange={(e) =>
                                   setDraft((d) => ({ ...d, title: e.target.value }))
@@ -411,6 +413,8 @@ export default function ManageTracksClient({
                         {isEditing ? (
                           <input
                             type="number"
+                            aria-label="License price"
+                            title="License price"
                             min="0.5"
                             step="0.5"
                             value={draft.licensePrice ?? 0}
@@ -432,6 +436,8 @@ export default function ManageTracksClient({
                         {isEditing ? (
                           <input
                             type="number"
+                            aria-label="Revenue share percentage"
+                            title="Revenue share percentage"
                             min="0"
                             max="100"
                             step="0.5"

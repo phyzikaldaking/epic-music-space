@@ -39,6 +39,11 @@ function leadPercent(votesA: number, votesB: number): { a: number; b: number } {
   return { a: Math.round((votesA / total) * 100), b: Math.round((votesB / total) * 100) };
 }
 
+function percentWidthClass(value: number) {
+  const snapped = Math.max(0, Math.min(100, Math.round(value / 5) * 5));
+  return `u-pct-${snapped}`;
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
     promise,
@@ -134,14 +139,11 @@ export default async function HomeVersusRail() {
                   <div
                     className="relative mt-2 h-2 overflow-hidden rounded-full bg-white/10"
                     role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={lead.a}
                     aria-label={`${m.songA.title} leads ${lead.a}% versus ${m.songB.title} ${lead.b}%`}
+                    aria-valuetext={`${lead.a}% to ${lead.b}%`}
                   >
                     <div
-                      className="h-full bg-gradient-to-r from-cyan-300 via-white/80 to-gold-300"
-                      style={{ width: `${Math.max(2, Math.min(98, lead.a))}%` }}
+                      className={`h-full bg-gradient-to-r from-cyan-300 via-white/80 to-gold-300 ${percentWidthClass(Math.max(2, Math.min(98, lead.a)))}`}
                     />
                   </div>
                 </div>

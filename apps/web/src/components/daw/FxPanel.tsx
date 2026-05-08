@@ -217,6 +217,8 @@ export default function FxPanel({
             subtitle={sidechainFromId ? "ducking" : "off"}
             toggle={
               <select
+                aria-label="Choose sidechain source"
+                title="Choose sidechain source"
                 value={sidechainFromId ?? ""}
                 onChange={(e) => onSetSidechain(e.target.value || null)}
                 className="rounded-md border border-white/15 bg-black/40 px-1.5 py-0.5 text-[10px] font-bold text-white"

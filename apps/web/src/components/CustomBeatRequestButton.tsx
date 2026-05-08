@@ -172,6 +172,8 @@ export default function CustomBeatRequestButton({ peerId, peerName }: Props) {
                     Mood
                   </label>
                   <select
+                    aria-label="Mood"
+                    title="Mood"
                     value={mood}
                     onChange={(e) => setMood(e.target.value)}
                     className="w-full rounded-lg border border-white/10 bg-[#0a0b10] px-3 py-2 text-sm"
@@ -204,6 +206,8 @@ export default function CustomBeatRequestButton({ peerId, peerName }: Props) {
                   </label>
                   <input
                     type="date"
+                    aria-label="Deadline"
+                    title="Deadline"
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
                     className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm"
@@ -216,6 +220,8 @@ export default function CustomBeatRequestButton({ peerId, peerName }: Props) {
                   References
                 </label>
                 <input
+                  aria-label="References"
+                  title="References"
                   placeholder="Spotify / YouTube / track names"
                   value={references}
                   onChange={(e) => setReferences(e.target.value)}

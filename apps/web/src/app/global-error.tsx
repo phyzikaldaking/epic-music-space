@@ -32,18 +32,21 @@ export default function GlobalError({
 
   return (
     <html>
-      <body style={{ margin: 0, padding: 0, background: '#0a0a0a', color: '#fff', fontFamily: 'system-ui', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ maxWidth: 480, padding: 32, textAlign: 'center' }}>
-          <h1 style={{ fontSize: 28, margin: '0 0 12px' }}>Something went wrong</h1>
-          <p style={{ color: 'rgba(255,255,255,0.6)', margin: '0 0 24px' }}>
+      <body className="m-0 flex min-h-screen items-center justify-center bg-[#0a0a0a] p-0 font-sans text-white">
+        <div className="max-w-[480px] p-8 text-center">
+          <h1 className="mb-3 text-[28px]">Something went wrong</h1>
+          <p className="mb-6 text-white/60">
             We're looking into it. Try again or reach out to support@epicmusicspace.com.
           </p>
-          {error.digest && <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', margin: '0 0 24px' }}>ref: {error.digest}</p>}
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button onClick={reset} style={{ background: '#8b5cf6', color: '#fff', border: 0, padding: '12px 24px', borderRadius: 12, fontWeight: 700, cursor: 'pointer' }}>
+          {error.digest && <p className="mb-6 text-xs text-white/30">ref: {error.digest}</p>}
+          <div className="flex flex-wrap justify-center gap-3">
+            <button onClick={reset} className="cursor-pointer rounded-xl bg-violet-500 px-6 py-3 font-bold text-white">
               Try again
             </button>
-            <a href="/" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.15)', padding: '12px 24px', borderRadius: 12, fontWeight: 600, textDecoration: 'none', display: 'inline-block' }}>
+            <a
+              href="/"
+              className="inline-block rounded-xl border border-white/15 bg-white/[0.05] px-6 py-3 font-semibold text-white/70 no-underline"
+            >
               Go home
             </a>
           </div>

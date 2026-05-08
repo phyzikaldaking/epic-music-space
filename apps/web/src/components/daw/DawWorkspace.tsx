@@ -1613,7 +1613,6 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               : "border border-red-500/55 bg-red-500/10 text-red-200 hover:bg-red-500/20"
           }`}
           aria-label={transport?.isRecording ? "Stop recording" : "Record"}
-          aria-pressed={transport?.isRecording ? "true" : "false"}
         >
           <span
             aria-hidden

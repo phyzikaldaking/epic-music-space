@@ -19,6 +19,11 @@ interface Props {
   className?: string;
 }
 
+function leftPercentClass(value: number) {
+  const snapped = Math.max(0, Math.min(100, Math.round(value / 5) * 5));
+  return `u-left-pct-${snapped}`;
+}
+
 /**
  * Lightweight waveform renderer. Canvas (not SVG) so 200+ bars don't
  * make the React tree heavy, and so we can repaint cheaply when only
@@ -132,11 +137,7 @@ export default function WaveformView({
       {scrubbable && (
         <span
           aria-hidden
-          className="pointer-events-none absolute top-0 bottom-0 w-px bg-white/85"
-          style={{
-            left: `${Math.max(0, Math.min(100, progress * 100))}%`,
-            boxShadow: "0 0 6px rgba(255,255,255,0.6)",
-          }}
+          className={`pointer-events-none absolute bottom-0 top-0 w-px bg-white/85 shadow-[0_0_6px_rgba(255,255,255,0.6)] ${leftPercentClass(progress * 100)}`}
         />
       )}
     </div>

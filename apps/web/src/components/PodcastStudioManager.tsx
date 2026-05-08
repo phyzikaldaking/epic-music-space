@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   DEFAULT_PODCAST_TEMPLATES,
@@ -257,6 +257,17 @@ export default function PodcastStudioManager({ initialShows }: Props) {
     [selectedShow, collabEpisodeId],
   );
 
+  const refreshShows = useCallback(async () => {
+    const res = await fetch("/api/podcast/shows?mine=1", { cache: "no-store" });
+    const data = (await res.json().catch(() => ({ shows: [] }))) as { shows?: ShowSummary[] };
+    if (res.ok && data.shows) {
+      setShows(data.shows);
+      if (!episodeForm.showId && data.shows[0]?.id) {
+        setEpisodeForm((current) => ({ ...current, showId: data.shows?.[0]?.id ?? current.showId }));
+      }
+    }
+  }, [episodeForm.showId]);
+
   const phaseIndex = PHASE_STEPS.findIndex((step) => step.id === phase);
 
   const studioStats = useMemo(() => {
@@ -376,13 +387,6 @@ export default function PodcastStudioManager({ initialShows }: Props) {
   }, [isLive]);
 
   useEffect(() => {
-    if (!selectedShow?.episodes.length) return;
-    if (!collabEpisodeId) {
-      setCollabEpisodeId(selectedShow.episodes[0]?.id ?? "");
-    }
-  }, [selectedShow?.id, selectedShow?.episodes.length]);
-
-  useEffect(() => {
     if (!selectedShow?.id) return;
     let cancelled = false;
 
@@ -491,18 +495,7 @@ export default function PodcastStudioManager({ initialShows }: Props) {
       cancelled = true;
       clearInterval(pollId);
     };
-  }, [selectedShow?.id]);
-
-  async function refreshShows() {
-    const res = await fetch("/api/podcast/shows?mine=1", { cache: "no-store" });
-    const data = (await res.json().catch(() => ({ shows: [] }))) as { shows?: ShowSummary[] };
-    if (res.ok && data.shows) {
-      setShows(data.shows);
-      if (!episodeForm.showId && data.shows[0]?.id) {
-        setEpisodeForm((current) => ({ ...current, showId: data.shows?.[0]?.id ?? current.showId }));
-      }
-    }
-  }
+  }, [selectedShow?.id, refreshShows]);
 
   async function runEpisodeAction(episodeId: string, action: "retry_ingest" | "mark_transcript_ready" | "generate_clips" | "publish_now") {
     setOpBusy(true);

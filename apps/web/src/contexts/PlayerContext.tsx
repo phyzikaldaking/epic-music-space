@@ -152,7 +152,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const stateRef = useRef(state);
-  stateRef.current = state;
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Init audio element once
   useEffect(() => {
@@ -281,7 +284,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         u.includes("open.spotify.com");
       if (isEmbed) {
         if (typeof window !== "undefined") {
-          window.location.href = `/track/${song.id}`;
+          window.location.assign(`/track/${song.id}`);
         }
         return;
       }

@@ -124,15 +124,7 @@ export default function LicenseTierPicker({ songId, basePrice, variants }: Props
         type="button"
         onClick={buy}
         disabled={loading}
-        className="mt-4 w-full rounded-md py-3 font-display text-base uppercase tracking-[0.18em] transition disabled:opacity-60"
-        style={{
-          background:
-            "linear-gradient(180deg, #2a1d14 0%, #1a110b 50%, #140d08 100%)",
-          color: "#ffd28a",
-          boxShadow:
-            "inset 0 1px 0 rgba(255,210,138,0.25), inset 0 -2px 4px rgba(0,0,0,0.7), 0 2px 6px rgba(0,0,0,0.5), 0 0 14px rgba(255,138,30,0.18)",
-          textShadow: "0 0 6px rgba(255,176,74,0.55)",
-        }}
+        className="mt-4 w-full rounded-md bg-[linear-gradient(180deg,_#2a1d14_0%,_#1a110b_50%,_#140d08_100%)] px-4 py-3 font-display text-base uppercase tracking-[0.18em] text-[#ffd28a] shadow-[inset_0_1px_0_rgba(255,210,138,0.25),inset_0_-2px_4px_rgba(0,0,0,0.7),0_2px_6px_rgba(0,0,0,0.5),0_0_14px_rgba(255,138,30,0.18)] transition [text-shadow:0_0_6px_rgba(255,176,74,0.55)] disabled:opacity-60"
       >
         {loading ? "Starting…" : "Engage License"}
       </button>
