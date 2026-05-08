@@ -127,6 +127,12 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
   const [stemUploadState, setStemUploadState] = useState<UploadState>("idle");
   const [submitState, setSubmitState] = useState<UploadState>("idle");
   const [error, setError] = useState<string | null>(null);
+  // When the cover-generate route reports configMissing=true (server has no
+  // OpenAI key), hide the Generate-with-AI button for the rest of this
+  // session. The user can still upload an image manually; we don't want to
+  // keep advertising a feature that's currently disabled at the platform
+  // level.
+  const [aiCoverDisabled, setAiCoverDisabled] = useState(false);
 
   // XHR references for cancel support
   const audioXhrRef = useRef<XMLHttpRequest | null>(null);
@@ -627,48 +633,67 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
             <div className="flex-1 min-w-0">
               <p className="text-xs text-white/40">JPG, PNG, WebP, HEIC — max 10 MB. Square 1:1 recommended.</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!title.trim()) {
-                      setError("Add a track title first — the AI uses it to compose the cover.");
-                      return;
-                    }
-                    setCoverUploadState("uploading");
-                    setCoverProgress(0);
-                    try {
-                      const res = await fetch("/api/cover/generate", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ title: title.trim(), genre: genre.trim() || undefined }),
-                      });
-                      const data = (await res.json()) as { imageBase64?: string; error?: string };
-                      if (!res.ok || !data.imageBase64) {
-                        throw new Error(data.error ?? "Cover generation failed.");
+                {!aiCoverDisabled && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!title.trim()) {
+                        setError("Add a track title first — the AI uses it to compose the cover.");
+                        return;
                       }
-                      const bin = atob(data.imageBase64);
-                      const buf = new Uint8Array(bin.length);
-                      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-                      const file = new File([buf], `cover-${Date.now()}.png`, { type: "image/png" });
-                      setCoverFile(file);
-                      setCoverPreview((prev) => {
-                        if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
-                        return URL.createObjectURL(file);
-                      });
-                      const { signedUrl, publicUrl } = await getSignedUrl("cover", file);
-                      await uploadDirect(signedUrl, file, setCoverProgress);
-                      setCoverUrl(publicUrl);
-                      setCoverUploadState("done");
-                    } catch (err) {
-                      setCoverUploadState("error");
-                      setError(err instanceof Error ? err.message : "Cover generation failed.");
-                    }
-                  }}
-                  disabled={coverUploadState === "uploading"}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-brand-500/35 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-50"
-                >
-                  ✨ Generate with AI
-                </button>
+                      setCoverUploadState("uploading");
+                      setCoverProgress(0);
+                      try {
+                        const res = await fetch("/api/cover/generate", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ title: title.trim(), genre: genre.trim() || undefined }),
+                        });
+                        const data = (await res.json()) as {
+                          imageBase64?: string;
+                          error?: string;
+                          configMissing?: boolean;
+                        };
+                        if (data.configMissing) {
+                          // Hide the button for the rest of the session so the
+                          // user doesn't keep tapping a feature that's
+                          // currently turned off at the platform level. They
+                          // can still upload their own image right next door.
+                          setAiCoverDisabled(true);
+                          setCoverUploadState("idle");
+                          setError(
+                            data.error ??
+                              "AI cover generation isn't available right now — upload your own image to keep going.",
+                          );
+                          return;
+                        }
+                        if (!res.ok || !data.imageBase64) {
+                          throw new Error(data.error ?? "Cover generation failed.");
+                        }
+                        const bin = atob(data.imageBase64);
+                        const buf = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+                        const file = new File([buf], `cover-${Date.now()}.png`, { type: "image/png" });
+                        setCoverFile(file);
+                        setCoverPreview((prev) => {
+                          if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+                          return URL.createObjectURL(file);
+                        });
+                        const { signedUrl, publicUrl } = await getSignedUrl("cover", file);
+                        await uploadDirect(signedUrl, file, setCoverProgress);
+                        setCoverUrl(publicUrl);
+                        setCoverUploadState("done");
+                      } catch (err) {
+                        setCoverUploadState("error");
+                        setError(err instanceof Error ? err.message : "Cover generation failed.");
+                      }
+                    }}
+                    disabled={coverUploadState === "uploading"}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-500/35 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-300 transition hover:bg-brand-500/20 disabled:opacity-50"
+                  >
+                    ✨ Generate with AI
+                  </button>
+                )}
                 {coverUploadState === "done" && (
                   <button
                     type="button"

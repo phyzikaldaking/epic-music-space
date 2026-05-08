@@ -378,7 +378,11 @@ export default function PodcastStudioManager({ initialShows }: Props) {
       actions.push({ id: "health", title: "Resolve pipeline failures", detail: "Fix failed ingest jobs before next release.", phase: "RECORDING" });
     }
     return actions.slice(0, 4);
-  }, [distributionPacks, health?.summary.failures, onboarding]);
+    // React Compiler infers `health` (the whole object) as the actual
+    // dependency; we previously listed `health?.summary.failures` which
+    // is narrower than what the body uses. Widen to the whole object so
+    // the compiler can preserve memoization.
+  }, [distributionPacks, health, onboarding]);
 
   useEffect(() => {
     if (!isLive) return;

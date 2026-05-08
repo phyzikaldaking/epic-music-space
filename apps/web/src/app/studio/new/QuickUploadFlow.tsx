@@ -73,6 +73,11 @@ export default function QuickUploadFlow({
   const [artist, setArtist] = useState(defaultArtistName);
   const [coverUrl, setCoverUrl] = useState("");
   const [coverGenerating, setCoverGenerating] = useState(false);
+  // When the cover-generate route reports configMissing=true, hide the
+  // generate button. The user can still proceed without a cover (it's
+  // optional in the QuickUpload flow); we just stop advertising a
+  // disabled feature.
+  const [aiCoverDisabled, setAiCoverDisabled] = useState(false);
 
   // Step 3
   const [licensePrice, setLicensePrice] = useState("9.99");
@@ -294,7 +299,19 @@ export default function QuickUploadFlow({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: t }),
       });
-      const data = (await res.json()) as { imageBase64?: string; error?: string };
+      const data = (await res.json()) as {
+        imageBase64?: string;
+        error?: string;
+        configMissing?: boolean;
+      };
+      if (data.configMissing) {
+        setAiCoverDisabled(true);
+        setError(
+          data.error ??
+            "AI cover generation isn't available right now — this step is optional, you can keep going.",
+        );
+        return;
+      }
       if (!res.ok || !data.imageBase64) {
         throw new Error(data.error ?? "Cover generation failed.");
       }
@@ -607,23 +624,31 @@ export default function QuickUploadFlow({
                   Cover art is optional — the AI can compose one based on your title.
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={generateCover}
-                disabled={coverGenerating || !title.trim()}
-                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-brand-500/30 bg-brand-500/10 px-4 py-2.5 text-sm font-bold text-brand-200 transition hover:bg-brand-500/20 disabled:opacity-40"
-              >
-                {coverGenerating ? (
-                  <>
-                    <span className="h-4 w-4 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
-                    Generating…
-                  </>
-                ) : coverUrl ? (
-                  "✨ Generate another"
-                ) : (
-                  "✨ Generate cover with AI"
-                )}
-              </button>
+              {!aiCoverDisabled && (
+                <button
+                  type="button"
+                  onClick={generateCover}
+                  disabled={coverGenerating || !title.trim()}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-brand-500/30 bg-brand-500/10 px-4 py-2.5 text-sm font-bold text-brand-200 transition hover:bg-brand-500/20 disabled:opacity-40"
+                >
+                  {coverGenerating ? (
+                    <>
+                      <span className="h-4 w-4 rounded-full border-2 border-brand-400 border-t-transparent animate-spin" />
+                      Generating…
+                    </>
+                  ) : coverUrl ? (
+                    "✨ Generate another"
+                  ) : (
+                    "✨ Generate cover with AI"
+                  )}
+                </button>
+              )}
+              {aiCoverDisabled && (
+                <p className="mt-3 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-white/55">
+                  AI cover generation is temporarily unavailable. This step
+                  is optional — you can publish without a cover.
+                </p>
+              )}
             </div>
           </div>
 

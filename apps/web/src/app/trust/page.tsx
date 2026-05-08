@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -48,7 +49,13 @@ export const metadata = {
 
 export default async function TrustCenterPage() {
   const session = await auth();
-  if (!session?.user?.id) redirect("/auth/signin?callbackUrl=/trust");
+  // Public Trust Center for anonymous visitors. Platform protections are
+  // universally true and shouldn't be hidden behind a sign-in wall — that
+  // makes the page feel like a personalized dashboard, not the "this is
+  // how we protect you" surface that prospective users come to evaluate.
+  if (!session?.user?.id) {
+    return <PublicTrustCenter />;
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -288,6 +295,156 @@ export default async function TrustCenterPage() {
               createdAt: report.createdAt.toISOString(),
             }))}
           />
+        </div>
+      </div>
+
+      <p className="mt-10 text-center text-xs text-white/25">
+        Epic Music Space · Trust &amp; Safety · support@epicmusicspace.com
+      </p>
+    </main>
+  );
+}
+
+/**
+ * Public-facing Trust Center for signed-out visitors. Renders the same
+ * platform-wide protections + payout / email / moderation explanations
+ * that the personalized version surfaces, but without the user-specific
+ * security score, KYC status, or report history. Includes a clear sign-in
+ * CTA so logged-in users can see their personalized panel.
+ */
+function PublicTrustCenter() {
+  return (
+    <main className="mx-auto max-w-3xl px-4 py-12">
+      <div className="mb-10">
+        <h1 className="break-words text-2xl font-extrabold sm:text-3xl md:text-4xl">
+          <span className="text-gradient-ems">Trust Center</span>
+        </h1>
+        <p className="mt-2 text-white/55">
+          How Epic Music Space protects artists, listeners, and payouts —
+          and what we do when something goes wrong.
+        </p>
+        <Link
+          href="/auth/signin?callbackUrl=/trust"
+          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-400 transition"
+        >
+          Sign in to see your personalized status →
+        </Link>
+      </div>
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        {/* Account Security — generic */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <ShieldIcon className="h-6 w-6 text-brand-400" />
+            <span className="font-semibold text-white">Account Security</span>
+          </div>
+          <p className="text-sm text-white/65">
+            Every account gets a live security score that tracks email
+            verification, deliverability, identity (KYC) status, and risk
+            flags. Sign in to see yours; we tell you exactly what to do to
+            raise it.
+          </p>
+          <ul className="mt-4 space-y-2 text-sm text-white/55">
+            <li>○ Email verification</li>
+            <li>○ Deliverability monitoring (bounce suppression)</li>
+            <li>○ Optional KYC via Stripe Identity</li>
+            <li>○ Per-user risk-flag tracking</li>
+          </ul>
+        </div>
+
+        {/* Payout Status — generic */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <DollarIcon className="h-6 w-6 text-brand-400" />
+            <span className="font-semibold text-white">Payouts</span>
+          </div>
+          <p className="text-sm text-white/65">
+            Stripe Connect powers payouts directly to artists. Charges and
+            payouts both gate on tax-form completion. Status is visible
+            from your dashboard; we don&apos;t hold funds without telling
+            you why.
+          </p>
+          <ul className="mt-4 space-y-2 text-sm text-white/55">
+            <li>○ Stripe Connect for direct payouts</li>
+            <li>○ Tax form (W-9 / W-8BEN) collected up front</li>
+            <li>○ Itemized 10% platform fee on every payout</li>
+          </ul>
+        </div>
+
+        {/* Platform Protections — same content as authed view, the list is universal */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <BoltIcon className="h-6 w-6 text-brand-400" />
+            <span className="font-semibold text-white">Platform Protections</span>
+          </div>
+          <ul className="space-y-2 text-sm text-white/60">
+            <li className="text-green-400">✓ Adult-content promotion blocked at API layer</li>
+            <li className="text-green-400">✓ Spam link flooding detection</li>
+            <li className="text-green-400">✓ URL shortener cloaking blocked</li>
+            <li className="text-green-400">✓ Rate limiting on all submission endpoints</li>
+            <li className="text-green-400">✓ Bot fingerprint detection on posts &amp; comments</li>
+            <li className="text-green-400">✓ Report queue with {`<`}4h SLA for NSFW</li>
+            <li className="text-green-400">✓ Bounce suppression on email delivery</li>
+            <li className="text-green-400">✓ Transaction velocity monitoring</li>
+          </ul>
+        </div>
+
+        {/* Email & notifications — generic */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <EnvelopeIcon className="h-6 w-6 text-brand-400" />
+            <span className="font-semibold text-white">Email &amp; Notifications</span>
+          </div>
+          <ul className="space-y-2 text-sm text-white/60">
+            <li className="text-green-400">✓ Guaranteed delivery via outbox</li>
+            <li className="text-green-400">✓ Bounce-handling auto-suppression</li>
+            <li className="text-green-400">✓ Per-channel opt-out controls</li>
+            <li>
+              <Link
+                href="/auth/signin?callbackUrl=/settings/notifications"
+                className="text-brand-400 underline hover:text-brand-300"
+              >
+                Manage your preferences →
+              </Link>
+            </li>
+          </ul>
+        </div>
+
+        {/* Moderation timeline — explanation, not personal data */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 sm:col-span-2">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white">Moderation Timeline</p>
+              <p className="text-xs text-white/55">
+                Soft-hold first on borderline cases, then human review
+                before any harsh penalty. Every flagged user gets the
+                chance to appeal before a permanent action.
+              </p>
+            </div>
+          </div>
+          <ol className="grid gap-3 sm:grid-cols-3">
+            <li className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/70">
+              <p className="font-semibold text-white/90">1 · Soft hold</p>
+              <p className="mt-1 text-white/55">
+                Borderline content is throttled (not deleted) while reviewers
+                look at it. The author keeps full editing rights.
+              </p>
+            </li>
+            <li className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/70">
+              <p className="font-semibold text-white/90">2 · Human review</p>
+              <p className="mt-1 text-white/55">
+                A real reviewer reads the report and decides — never an
+                auto-ban from a single signal.
+              </p>
+            </li>
+            <li className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/70">
+              <p className="font-semibold text-white/90">3 · Appeal window</p>
+              <p className="mt-1 text-white/55">
+                Any actioned report can be appealed in the personalized
+                Trust Center; appeals are read by a different reviewer.
+              </p>
+            </li>
+          </ol>
         </div>
       </div>
 
