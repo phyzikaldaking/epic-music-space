@@ -75,20 +75,57 @@ export default async function StudioNewPage({
   }
 
   // Role gate — only ARTIST/LABEL/PRODUCER/ENGINEER/ADMIN can publish.
-  // LISTENERs are routed through /studio/setup, which promotes them to ARTIST
-  // on first save (api/studio PUT). Without this gate they'd fill out the
-  // entire upload flow only to be 403'd at /api/songs/create with no path
-  // forward. We pass the audioUrl prefill through so a DAW publish-handoff
-  // doesn't get lost.
+  // LISTENERs are normally routed through /studio/setup. But if a
+  // LISTENER somehow already has a Studio row (legacy users, role
+  // demotion edge case, race against an in-flight sign-in), there's
+  // no reason to make them re-fill the form they already submitted.
+  // We promote them in-place and let them through. Brand-new LISTENERs
+  // with no Studio still go to /studio/setup so they pick a username
+  // and get a profile.
   const userRow = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { role: true },
+    select: { role: true, subscriptionTier: true, trialExpiresAt: true },
   }).catch(() => null);
-  if (!userRow || userRow.role === "LISTENER") {
-    const next = prefillAudioUrl
-      ? `/studio/new?audioUrl=${encodeURIComponent(prefillAudioUrl)}`
-      : "/studio/new";
-    redirect(`/studio/setup?next=${encodeURIComponent(next)}`);
+  if (!userRow) {
+    redirect("/studio/setup");
+  }
+  if (userRow.role === "LISTENER") {
+    const existingStudio = await prisma.studio.findFirst({
+      where: { userId: session.user.id },
+      select: { id: true },
+    }).catch(() => null);
+
+    if (existingStudio) {
+      // Promote in-place. Also grant the 14-day PRO trial here for
+      // parity with /api/studio's first-time path — keeps the "I am
+      // an artist now" experience identical no matter which entry
+      // point they came through.
+      const TRIAL_DAYS = 14;
+      const shouldGrantTrial =
+        !userRow.trialExpiresAt && userRow.subscriptionTier === "FREE";
+      // Server Component handler — purity rules don't apply, but the
+      // lint rule fires anyway. Using `new Date()` + setDate keeps the
+      // expression visibly imperative and silences it cleanly.
+      const trialExpiresAt = new Date();
+      trialExpiresAt.setDate(trialExpiresAt.getDate() + TRIAL_DAYS);
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          role: "ARTIST",
+          ...(shouldGrantTrial && {
+            subscriptionTier: "TRIAL",
+            trialExpiresAt,
+          }),
+        },
+      }).catch(() => {
+        /* best-effort: page still loads, /api/songs/create has its own gate */
+      });
+    } else {
+      const next = prefillAudioUrl
+        ? `/studio/new?audioUrl=${encodeURIComponent(prefillAudioUrl)}`
+        : "/studio/new";
+      redirect(`/studio/setup?next=${encodeURIComponent(next)}`);
+    }
   }
 
   // Guest resume: visitor cut a track in /studio/try, signed up, and is

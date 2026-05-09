@@ -6,6 +6,7 @@ import Link from "next/link";
 import { validateUpload } from "@/lib/uploadValidation";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
+import { parseFilename, detectAudioFeatures } from "@/lib/audioMetadata";
 
 // "First track in 90 seconds" — three taps, three screens, ship a song.
 // The full form at /studio/new?expert=1 still exists for power users.
@@ -79,6 +80,17 @@ export default function QuickUploadFlow({
   // disabled feature.
   const [aiCoverDisabled, setAiCoverDisabled] = useState(false);
 
+  // Auto-detected from the uploaded audio. Both fields stay editable —
+  // we surface them as "smart defaults" so a wrong guess never gets in
+  // the artist's way. Detection runs in parallel with upload.
+  const [bpm, setBpm] = useState<string>("");
+  const [musicalKey, setMusicalKey] = useState<string>("");
+  const [autoDetecting, setAutoDetecting] = useState(false);
+  // Tracks which fields we filled automatically vs. the user did, so
+  // we can show a subtle "auto-detected" pill but stop overriding once
+  // the user types.
+  const autoFilledRef = useRef<Set<"title" | "artist" | "bpm" | "key">>(new Set());
+
   // Step 3
   const [licensePrice, setLicensePrice] = useState("9.99");
   const [totalLicenses, setTotalLicenses] = useState("100");
@@ -114,6 +126,8 @@ export default function QuickUploadFlow({
         audioUrl?: string;
         audioName?: string;
         audioSize?: number;
+        bpm?: string;
+        musicalKey?: string;
       };
       if (parsed.step) setStep(parsed.step);
       if (parsed.title) setTitle(parsed.title);
@@ -122,6 +136,8 @@ export default function QuickUploadFlow({
       if (parsed.licensePrice) setLicensePrice(parsed.licensePrice);
       if (parsed.totalLicenses) setTotalLicenses(parsed.totalLicenses);
       if (parsed.revenueSharePct) setRevenueSharePct(parsed.revenueSharePct);
+      if (parsed.bpm) setBpm(parsed.bpm);
+      if (parsed.musicalKey) setMusicalKey(parsed.musicalKey);
       if (parsed.audioUrl) {
         setAudioUrl(parsed.audioUrl);
         setAudioState("done");
@@ -150,6 +166,8 @@ export default function QuickUploadFlow({
           audioUrl,
           audioName: audioFile?.name ?? audioMeta?.name,
           audioSize: audioFile?.size ?? audioMeta?.size,
+          bpm,
+          musicalKey,
         }),
       );
     } catch {
@@ -166,6 +184,8 @@ export default function QuickUploadFlow({
     audioUrl,
     audioFile,
     audioMeta,
+    bpm,
+    musicalKey,
   ]);
 
   useEffect(() => {
@@ -203,6 +223,11 @@ export default function QuickUploadFlow({
     });
   }, []);
 
+  // Auto-cover ref declared up here so the effect below (post-generateCover
+  // declaration) can reference it. The effect itself fires after the
+  // generateCover useCallback is initialized.
+  const autoCoverTriedRef = useRef(false);
+
   // ── Step 1: audio upload ────────────────────────────────────────────────
   async function startAudioUpload(file: File) {
     const check = validateUpload("audio", file);
@@ -218,6 +243,34 @@ export default function QuickUploadFlow({
     setAudioState("uploading");
     setAudioProgress(0);
     const startedAt = performance.now();
+
+    // ── Auto-fill from the file before the artist sees step 2 ─────────
+    // Filename parse is synchronous and almost always right when the
+    // file is named "Artist - Title.mp3"; runs immediately. Audio
+    // analysis (BPM/key) runs in the background and fills when ready.
+    // Both bail silently on failure — the user can still type values.
+    const parsed = parseFilename(file.name);
+    if (!title.trim() && parsed.title) {
+      setTitle(parsed.title);
+      autoFilledRef.current.add("title");
+    }
+    if (!artist.trim() && parsed.artist) {
+      setArtist(parsed.artist);
+      autoFilledRef.current.add("artist");
+    }
+    setAutoDetecting(true);
+    void detectAudioFeatures(file)
+      .then((features) => {
+        if (features.bpm && !bpm.trim()) {
+          setBpm(String(features.bpm));
+          autoFilledRef.current.add("bpm");
+        }
+        if (features.key && !musicalKey.trim()) {
+          setMusicalKey(features.key);
+          autoFilledRef.current.add("key");
+        }
+      })
+      .finally(() => setAutoDetecting(false));
     void postFunnelEvent({
       event: FUNNEL_EVENTS.artistUploadAudioSelected,
       source: "studio_new_quick",
@@ -350,6 +403,20 @@ export default function QuickUploadFlow({
     }
   }, [title]);
 
+  // Auto-fire generateCover once when arriving at step 2 with a title
+  // and no cover. Saves a tap. Only fires once per session — guarded
+  // by autoCoverTriedRef so a regeneration the user kicked off doesn't
+  // re-trigger this branch.
+  useEffect(() => {
+    if (autoCoverTriedRef.current) return;
+    if (step !== 2) return;
+    if (coverUrl) return;
+    if (!title.trim()) return;
+    if (aiCoverDisabled || coverGenerating) return;
+    autoCoverTriedRef.current = true;
+    void generateCover();
+  }, [step, coverUrl, title, aiCoverDisabled, coverGenerating, generateCover]);
+
   // ── Step 3: publish ─────────────────────────────────────────────────────
   async function publish() {
     if (publishing) return;
@@ -383,6 +450,8 @@ export default function QuickUploadFlow({
     });
 
     try {
+      const trimmedBpm = bpm.trim();
+      const parsedBpm = trimmedBpm ? Number(trimmedBpm) : undefined;
       const res = await fetch("/api/songs/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -395,6 +464,11 @@ export default function QuickUploadFlow({
           licensePrice: Number(licensePrice),
           revenueSharePct: Number(revenueSharePct),
           totalLicenses: Number(totalLicenses),
+          // Auto-detected metadata — server schema treats both as
+          // optional, so it's safe to send when blank. Only include
+          // BPM if it parsed cleanly to avoid a schema 400.
+          ...(parsedBpm && Number.isFinite(parsedBpm) ? { bpm: parsedBpm } : {}),
+          ...(musicalKey.trim() ? { key: musicalKey.trim() } : {}),
         }),
       });
       const data = (await res.json()) as {
@@ -598,12 +672,20 @@ export default function QuickUploadFlow({
 
           <div className="mt-6 space-y-4">
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-white/55">
+              <span className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/55">
                 Title
+                {autoFilledRef.current.has("title") && title.trim() && (
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+                    Auto-filled
+                  </span>
+                )}
               </span>
               <input
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  autoFilledRef.current.delete("title");
+                }}
                 name="title"
                 placeholder="Track title"
                 autoFocus
@@ -612,17 +694,75 @@ export default function QuickUploadFlow({
             </label>
 
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-white/55">
+              <span className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/55">
                 Artist
+                {autoFilledRef.current.has("artist") && artist.trim() && (
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+                    Auto-filled
+                  </span>
+                )}
               </span>
               <input
                 value={artist}
-                onChange={(e) => setArtist(e.target.value)}
+                onChange={(e) => {
+                  setArtist(e.target.value);
+                  autoFilledRef.current.delete("artist");
+                }}
                 name="artist"
                 placeholder="Your artist name"
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder-white/25 focus:border-brand-500/60 focus:outline-none"
               />
             </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/55">
+                  BPM
+                  {autoDetecting && !bpm.trim() && (
+                    <span className="text-[10px] text-white/40">analyzing…</span>
+                  )}
+                  {autoFilledRef.current.has("bpm") && bpm.trim() && (
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+                      Auto
+                    </span>
+                  )}
+                </span>
+                <input
+                  value={bpm}
+                  onChange={(e) => {
+                    setBpm(e.target.value.replace(/[^\d]/g, ""));
+                    autoFilledRef.current.delete("bpm");
+                  }}
+                  inputMode="numeric"
+                  placeholder="—"
+                  maxLength={3}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder-white/25 focus:border-brand-500/60 focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/55">
+                  Key
+                  {autoDetecting && !musicalKey.trim() && (
+                    <span className="text-[10px] text-white/40">analyzing…</span>
+                  )}
+                  {autoFilledRef.current.has("key") && musicalKey.trim() && (
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+                      Auto
+                    </span>
+                  )}
+                </span>
+                <input
+                  value={musicalKey}
+                  onChange={(e) => {
+                    setMusicalKey(e.target.value);
+                    autoFilledRef.current.delete("key");
+                  }}
+                  placeholder="—"
+                  maxLength={10}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder-white/25 focus:border-brand-500/60 focus:outline-none"
+                />
+              </label>
+            </div>
 
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
               <div className="flex items-center gap-3">
