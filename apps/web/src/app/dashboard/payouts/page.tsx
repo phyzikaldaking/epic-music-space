@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import PayoutActions from "./PayoutActions";
+import PayoutMethodPicker from "./PayoutMethodPicker";
 import IdentityVerifyButton from "@/components/IdentityVerifyButton";
 
 export const dynamic = "force-dynamic";
@@ -201,6 +202,9 @@ export default async function PayoutsPage(props: {
           🎉 Stripe Connect is set up! You&apos;ll receive automatic payouts when licenses sell.
         </div>
       )}
+
+      {/* ── Payout method picker (Stripe vs PayPal) ─────────────────────── */}
+      <PayoutMethodPicker />
 
       {/* ── KYC / Connect status card ───────────────────────────────────── */}
       <KycStatusCard status={connectStatus} />

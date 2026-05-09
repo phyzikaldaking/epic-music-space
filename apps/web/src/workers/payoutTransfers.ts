@@ -13,6 +13,7 @@ import { Worker } from "bullmq";
 import { getRedis } from "../lib/redis";
 import { prisma } from "../lib/prisma";
 import { stripe } from "../lib/stripe";
+import { sendPayPalPayout } from "../lib/paypal";
 import { QUEUE_NAMES } from "../lib/queueNames";
 import type { PayoutTransferJobData } from "../lib/queues";
 import { enqueueNotification, payoutDeadLetterQueue } from "../lib/queues";
@@ -80,41 +81,85 @@ const worker = new Worker<PayoutTransferJobData>(
 
     const artist = await prisma.user.findUnique({
       where: { id: artistId },
-      select: { stripeConnectId: true, connectPayoutsEnabled: true, email: true, name: true },
+      select: {
+        stripeConnectId: true,
+        connectPayoutsEnabled: true,
+        email: true,
+        name: true,
+        payoutMethod: true,
+        paypalPayoutEmail: true,
+      },
     });
-    if (!artist?.stripeConnectId) {
-      // Artist disconnected Stripe between the original attempt and this
-      // retry. Mark the payout failed so the operator can chase it via
-      // the dashboard rather than retrying forever.
+    if (!artist) {
+      const msg = `Artist ${artistId} not found — cannot transfer`;
       await prisma.payout.update({
         where: { id: payout.id },
         data: { status: "FAILED" },
       });
-      const msg = `Artist ${artistId} has no stripeConnectId — cannot transfer`;
       log("error", msg, { payoutId, artistId });
       throw new Error(msg);
     }
 
-    const transfer = await stripe.transfers.create(
-      {
-        amount: amountCents,
-        currency: "usd",
-        destination: artist.stripeConnectId,
-        metadata: {
-          songId: job.data.songId ?? "",
-          licenseId: job.data.licenseTokenId ?? "",
-          transactionId,
-          retried: "true",
-          payoutId,
+    // Route the payout via the rail the artist picked. The two branches
+    // share the same outer "set Payout to PAID" gate — Stripe writes
+    // stripeTransferId, PayPal stores the batch id in the same field
+    // prefixed with `paypal:` so observability surfaces don't have to
+    // care which rail produced it.
+    let externalRef: string;
+
+    if (artist.payoutMethod === "PAYPAL") {
+      if (!artist.paypalPayoutEmail) {
+        await prisma.payout.update({
+          where: { id: payout.id },
+          data: { status: "FAILED" },
+        });
+        const msg = `Artist ${artistId} selected PAYPAL but has no paypalPayoutEmail`;
+        log("error", msg, { payoutId, artistId });
+        throw new Error(msg);
+      }
+
+      const payout$ = await sendPayPalPayout({
+        // PayPal idempotency uses sender_batch_id; reuse our worker's
+        // idempotencyKey so retries collapse to the same batch.
+        senderBatchId: idempotencyKey,
+        recipientEmail: artist.paypalPayoutEmail,
+        amountUsd: amountCents / 100,
+        note: `EMS payout · txn ${transactionId}${job.data.songId ? ` · song ${job.data.songId}` : ""}`,
+      });
+      externalRef = `paypal:${payout$.payoutBatchId}`;
+    } else {
+      // STRIPE rail — original behavior.
+      if (!artist.stripeConnectId) {
+        await prisma.payout.update({
+          where: { id: payout.id },
+          data: { status: "FAILED" },
+        });
+        const msg = `Artist ${artistId} has no stripeConnectId — cannot transfer`;
+        log("error", msg, { payoutId, artistId });
+        throw new Error(msg);
+      }
+      const transfer = await stripe.transfers.create(
+        {
+          amount: amountCents,
+          currency: "usd",
+          destination: artist.stripeConnectId,
+          metadata: {
+            songId: job.data.songId ?? "",
+            licenseId: job.data.licenseTokenId ?? "",
+            transactionId,
+            retried: "true",
+            payoutId,
+          },
         },
-      },
-      { idempotencyKey },
-    );
+        { idempotencyKey },
+      );
+      externalRef = transfer.id;
+    }
 
     await prisma.$transaction([
       prisma.payout.update({
         where: { id: payout.id },
-        data: { status: "PAID", paidAt: new Date(), stripeTransferId: transfer.id },
+        data: { status: "PAID", paidAt: new Date(), stripeTransferId: externalRef },
       }),
       prisma.payoutFailure.updateMany({
         where: { payoutId: payout.id, retried: false },
@@ -123,19 +168,24 @@ const worker = new Worker<PayoutTransferJobData>(
     ]);
 
     // Tell the artist the retry succeeded so a "your payout failed" alert
-    // (if they got one) is visibly resolved.
+    // (if they got one) is visibly resolved. The destination text differs
+    // by rail since "Stripe Connect balance" is wrong for a PayPal payee.
+    const destination =
+      artist.payoutMethod === "PAYPAL"
+        ? `your PayPal account (${artist.paypalPayoutEmail ?? "on file"})`
+        : "your Stripe Connect balance";
     await enqueueNotification({
       userId: artistId,
       type: "PAYOUT_RETRY_SUCCESS",
       title: "Payout retried — funds on the way",
-      body: `An earlier transfer of $${(amountCents / 100).toFixed(2)} was retried successfully and is now in your Stripe Connect balance.`,
-      metadata: { payoutId: payout.id, transactionId, transferId: transfer.id },
+      body: `An earlier transfer of $${(amountCents / 100).toFixed(2)} was retried successfully and is now in ${destination}.`,
+      metadata: { payoutId: payout.id, transactionId, transferId: externalRef },
     });
 
     log(
       "info",
       "Payout settled on retry",
-      { payoutId, transferId: transfer.id, artistId, amountCents },
+      { payoutId, transferId: externalRef, artistId, amountCents, rail: artist.payoutMethod },
     );
   },
   {

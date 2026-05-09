@@ -153,6 +153,85 @@ export async function createPayPalServiceOrderCheckout(params: {
   return { paypalOrderId: order.id, approvalUrl: approve.href, status: order.status };
 }
 
+// ─────────────────────────────────────────
+// PAYOUTS — platform → artist
+// Different surface from the checkout APIs above. Uses /v1/payments/payouts
+// to send funds from the platform's PayPal balance to a recipient email.
+// Idempotent via `sender_batch_id`: re-submitting the same batch id is a
+// no-op on PayPal's side, so retries are safe.
+// ─────────────────────────────────────────
+
+export interface PayPalPayoutResult {
+  payoutBatchId: string;
+  status: string;
+}
+
+interface PayPalPayoutResponse {
+  batch_header?: {
+    payout_batch_id?: string;
+    batch_status?: string;
+  };
+}
+
+/**
+ * Send a single PayPal payout to a recipient email. The platform must hold
+ * enough USD balance in PayPal for the transfer to clear; otherwise PayPal
+ * returns a structured error which we let bubble up.
+ *
+ *   senderBatchId — must be unique per real payout intent. Reusing the same
+ *                    id silently returns the prior batch (idempotency).
+ *   recipientEmail — verified PayPal email of the artist.
+ *   amountUsd      — payout amount in USD; ≥ 0.01.
+ *   note           — short user-facing note that lands in the artist's
+ *                    PayPal activity feed (e.g. "EMS songId=X license payout").
+ */
+export async function sendPayPalPayout(params: {
+  senderBatchId: string;
+  recipientEmail: string;
+  amountUsd: number;
+  note?: string;
+}): Promise<PayPalPayoutResult> {
+  if (params.amountUsd <= 0) {
+    throw new Error("PayPal payout amount must be > 0");
+  }
+
+  const payload = {
+    sender_batch_header: {
+      sender_batch_id: params.senderBatchId,
+      email_subject: "You got paid by Epic Music Space",
+      email_message:
+        params.note?.slice(0, 1000) ??
+        "Your latest license earnings on Epic Music Space.",
+    },
+    items: [
+      {
+        recipient_type: "EMAIL",
+        amount: {
+          value: params.amountUsd.toFixed(2),
+          currency: "USD",
+        },
+        receiver: params.recipientEmail,
+        sender_item_id: params.senderBatchId,
+        note: params.note?.slice(0, 4000) ?? "Earnings payout",
+      },
+    ],
+  };
+
+  const res = await paypalRequest<PayPalPayoutResponse>("/v1/payments/payouts", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    requestId: params.senderBatchId,
+  });
+
+  const payoutBatchId = res.batch_header?.payout_batch_id;
+  const status = res.batch_header?.batch_status ?? "UNKNOWN";
+  if (!payoutBatchId) {
+    throw new Error("PayPal payout succeeded without a batch id (treat as failed).");
+  }
+
+  return { payoutBatchId, status };
+}
+
 export async function capturePayPalOrder(paypalOrderId: string, idempotencyKey: string) {
   const capture = await paypalRequest<PayPalCaptureResponse>(
     `/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}/capture`,

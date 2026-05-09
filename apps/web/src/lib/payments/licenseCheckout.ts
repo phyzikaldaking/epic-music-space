@@ -175,7 +175,11 @@ export async function createLicenseCheckoutSession(
               stripe.checkout.sessions.create(
                 {
                   mode: "payment",
-                  payment_method_types: ["card"],
+                  // Cash App Pay is a Stripe-supported method for USD
+                  // checkouts and lets fans pay from their Cash App
+                  // balance / linked bank. Card stays the default; the
+                  // hosted checkout shows both wallets side-by-side.
+                  payment_method_types: ["card", "cashapp"],
                   line_items: [
                     {
                       price_data: {

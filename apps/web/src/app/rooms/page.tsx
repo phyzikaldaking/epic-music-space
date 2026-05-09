@@ -1,7 +1,5 @@
 import Link from "next/link";
 import Image from "next/image";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isRoomExpired } from "@/lib/roomTier";
 
@@ -13,8 +11,9 @@ export const metadata = {
 };
 
 export default async function RoomsIndexPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/auth/signin?callbackUrl=/rooms");
+  // Anonymous visitors can browse who's live — that's the whole point
+  // of "drop in to watch." The room detail page handles the sign-in
+  // CTA for actually joining the LiveKit audio call.
 
   const roomRows = await prisma.room.findMany({
     where: { status: "LIVE" },

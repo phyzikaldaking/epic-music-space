@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
 import { strictLimiter } from "@/lib/rateLimit";
+import { classifyStripeError } from "@/lib/stripeError";
 
 const APP_URL = getSiteUrl();
 
@@ -55,13 +56,36 @@ export async function GET(req: NextRequest) {
   // orphaned Stripe account before continuing.
   let connectId = user.stripeConnectId;
   if (!connectId) {
-    const account = await stripe.accounts.create({
-      type: "express",
-      email: user.email ?? undefined,
-      capabilities: { transfers: { requested: true } },
-      business_type: "individual",
-      metadata: { emsUserId: user.id },
-    });
+    let account: Awaited<ReturnType<typeof stripe.accounts.create>>;
+    try {
+      account = await stripe.accounts.create({
+        type: "express",
+        email: user.email ?? undefined,
+        capabilities: { transfers: { requested: true } },
+        business_type: "individual",
+        metadata: { emsUserId: user.id },
+      });
+    } catch (err) {
+      const classified = classifyStripeError(err);
+      // Structured log so we can grep `stripe-connect.account-create` in
+      // Vercel runtime logs and pull the requestId straight into the
+      // Stripe dashboard for inspection.
+      console.error("[stripe-connect.account-create]", {
+        userId: user.id,
+        platformConfigError: classified.isPlatformConfigError,
+        ...classified.log,
+      });
+      return NextResponse.json(
+        {
+          error: classified.clientMessage,
+          // Surface a non-leaky correlation id so support can match a
+          // user report ("hit retry at 14:23, got error") to a log line.
+          requestId: classified.log.requestId,
+          platformConfigError: classified.isPlatformConfigError,
+        },
+        { status: classified.isPlatformConfigError ? 503 : 502 },
+      );
+    }
 
     const updated = await prisma.user.updateMany({
       where: { id: user.id, stripeConnectId: null },
@@ -93,12 +117,29 @@ export async function GET(req: NextRequest) {
   }
 
   // Generate onboarding link
-  const accountLink = await stripe.accountLinks.create({
-    account: connectId,
-    refresh_url: `${APP_URL}/dashboard?connect=refresh`,
-    return_url:  `${APP_URL}/dashboard?connect=success`,
-    type: "account_onboarding",
-  });
-
-  return NextResponse.json({ url: accountLink.url });
+  try {
+    const accountLink = await stripe.accountLinks.create({
+      account: connectId,
+      refresh_url: `${APP_URL}/dashboard?connect=refresh`,
+      return_url: `${APP_URL}/dashboard?connect=success`,
+      type: "account_onboarding",
+    });
+    return NextResponse.json({ url: accountLink.url });
+  } catch (err) {
+    const classified = classifyStripeError(err);
+    console.error("[stripe-connect.account-link]", {
+      userId: user.id,
+      connectId,
+      platformConfigError: classified.isPlatformConfigError,
+      ...classified.log,
+    });
+    return NextResponse.json(
+      {
+        error: classified.clientMessage,
+        requestId: classified.log.requestId,
+        platformConfigError: classified.isPlatformConfigError,
+      },
+      { status: classified.isPlatformConfigError ? 503 : 502 },
+    );
+  }
 }

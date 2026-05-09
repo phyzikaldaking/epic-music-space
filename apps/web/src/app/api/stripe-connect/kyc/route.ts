@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
+import { classifyStripeError } from "@/lib/stripeError";
 
 const APP_URL = getSiteUrl();
 
@@ -72,8 +73,22 @@ export async function GET() {
   let stripeAccount: Awaited<ReturnType<typeof stripe.accounts.retrieve>>;
   try {
     stripeAccount = await stripe.accounts.retrieve(user.stripeConnectId);
-  } catch {
-    return NextResponse.json({ error: "Failed to retrieve account from Stripe." }, { status: 502 });
+  } catch (err) {
+    const classified = classifyStripeError(err);
+    console.error("[stripe-connect.kyc-retrieve]", {
+      userId: user.id,
+      connectId: user.stripeConnectId,
+      platformConfigError: classified.isPlatformConfigError,
+      ...classified.log,
+    });
+    return NextResponse.json(
+      {
+        error: classified.clientMessage,
+        requestId: classified.log.requestId,
+        platformConfigError: classified.isPlatformConfigError,
+      },
+      { status: classified.isPlatformConfigError ? 503 : 502 },
+    );
   }
 
   const req = stripeAccount.requirements;

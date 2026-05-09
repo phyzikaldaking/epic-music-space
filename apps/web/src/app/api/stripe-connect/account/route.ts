@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { classifyStripeError } from "@/lib/stripeError";
 
 /**
  * POST /api/stripe-connect/account
@@ -39,15 +40,33 @@ export async function POST() {
     return NextResponse.json({ accountId: user.stripeConnectId });
   }
 
-  const account = await stripe.accounts.create({
-    type: "express",
-    email: user.email ?? undefined,
-    capabilities: {
-      transfers: { requested: true },
-    },
-    business_type: "individual",
-    metadata: { emsUserId: user.id },
-  });
+  let account: Awaited<ReturnType<typeof stripe.accounts.create>>;
+  try {
+    account = await stripe.accounts.create({
+      type: "express",
+      email: user.email ?? undefined,
+      capabilities: {
+        transfers: { requested: true },
+      },
+      business_type: "individual",
+      metadata: { emsUserId: user.id },
+    });
+  } catch (err) {
+    const classified = classifyStripeError(err);
+    console.error("[stripe-connect.account-create]", {
+      userId: user.id,
+      platformConfigError: classified.isPlatformConfigError,
+      ...classified.log,
+    });
+    return NextResponse.json(
+      {
+        error: classified.clientMessage,
+        requestId: classified.log.requestId,
+        platformConfigError: classified.isPlatformConfigError,
+      },
+      { status: classified.isPlatformConfigError ? 503 : 502 },
+    );
+  }
 
   await prisma.user.update({
     where: { id: user.id },

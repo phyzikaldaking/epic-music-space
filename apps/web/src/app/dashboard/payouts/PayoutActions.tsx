@@ -23,8 +23,19 @@ export default function PayoutActions({ action, label, songId }: Props) {
     try {
       if (action === "onboard") {
         const res = await fetch("/api/stripe-connect/onboarding");
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Failed to start onboarding.");
+        const data = (await res.json()) as {
+          url?: string;
+          error?: string;
+          requestId?: string;
+          platformConfigError?: boolean;
+        };
+        if (!res.ok || !data.url) {
+          // Friendly message comes back from the server. We append the
+          // requestId quietly when present so a user can paste it into a
+          // support ticket and we can find the log line in seconds.
+          const suffix = data.requestId ? ` (ref: ${data.requestId})` : "";
+          throw new Error(`${data.error ?? "Failed to start onboarding."}${suffix}`);
+        }
         window.location.href = data.url;
       } else {
         const res = await fetch("/api/stripe-connect/payout", {
@@ -51,6 +62,7 @@ export default function PayoutActions({ action, label, songId }: Props) {
   return (
     <div className="flex flex-col items-end gap-1">
       <button
+        type="button"
         onClick={handleClick}
         disabled={loading}
         className={`rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed ${

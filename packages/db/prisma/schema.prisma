@@ -43,6 +43,16 @@ model User {
   freeBoostCredits       Int @default(0)  // 1 free Boost per credit
   freeLicenseFeeWaivers  Int @default(0)  // 1 fee-free license sale per
 
+  // ── Payout method preference ───────────────────────────────
+  // Artists pick STRIPE (default) or PAYPAL when they hit the dashboard
+  // Stripe Connect does most of the heavy lifting; PayPal is a fallback
+  // for countries Stripe Connect won't service. Only one is "active" at
+  // a time — the one we route earned funds through. paypalPayoutEmail
+  // is the email PayPal credits the payout to (verified via webhook
+  // before any real payout fires).
+  payoutMethod      PayoutMethod @default(STRIPE)
+  paypalPayoutEmail String?
+
   // ── Activity ───────────────────────────────────────────────
   // Bumped whenever the user opens the dashboard. Powers the "since you
   // last visited" summary that's shown on next dashboard load.
@@ -203,6 +213,11 @@ enum TaxFormStatus {
   PENDING
   COLLECTED
   EXEMPT
+}
+
+enum PayoutMethod {
+  STRIPE
+  PAYPAL
 }
 
 enum SubscriptionTier {
