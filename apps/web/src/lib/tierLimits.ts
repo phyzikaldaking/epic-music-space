@@ -15,7 +15,10 @@ const UNLIMITED = 999_999;
 export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
   FREE: {
     maxLicenses: 1,
-    maxSongs: 1,
+    // 5-song ceiling lets a new artist publish a mixtape without paying.
+    // Anything above this falls into the upgrade path; redeem codes can
+    // bump the effective limit further (see getActiveLimits → bonusSongSlots).
+    maxSongs: 5,
     canCreateVersus: false,
     canCreateLabel: false,
     canBoost: false,
@@ -102,6 +105,13 @@ export function getActiveTier(user: {
 export function getActiveLimits(user: {
   subscriptionTier: SubscriptionTier;
   trialExpiresAt?: Date | null;
+  bonusSongSlots?: number | null;
 }): TierLimits {
-  return TIER_LIMITS[getActiveTier(user)];
+  const base = TIER_LIMITS[getActiveTier(user)];
+  // Bonus slots from /redeem stack on top of the tier ceiling — but
+  // never above the UNLIMITED sentinel, so we don't accidentally drop
+  // a PRIME user's count down by adding to it.
+  const bonus = Math.max(0, user.bonusSongSlots ?? 0);
+  if (bonus === 0 || base.maxSongs >= UNLIMITED) return base;
+  return { ...base, maxSongs: base.maxSongs + bonus };
 }

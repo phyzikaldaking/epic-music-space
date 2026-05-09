@@ -33,6 +33,16 @@ model User {
   trialExpiresAt   DateTime?
   stripeConnectId  String?          @unique
 
+  // ── Redeem-code grants ─────────────────────────────────────
+  // Stackable rewards from /redeem. Kept on the user (vs. a separate
+  // entitlements table) because they're per-account counters that
+  // never expire on their own — the consume sites decrement them.
+  // Reset to 0 only on hard suspend; subscription downgrades don't
+  // clear granted slots (we promised them, we keep them).
+  bonusSongSlots         Int @default(0)  // adds to maxSongs
+  freeBoostCredits       Int @default(0)  // 1 free Boost per credit
+  freeLicenseFeeWaivers  Int @default(0)  // 1 fee-free license sale per
+
   // ── Activity ───────────────────────────────────────────────
   // Bumped whenever the user opens the dashboard. Powers the "since you
   // last visited" summary that's shown on next dashboard load.
@@ -2225,4 +2235,59 @@ model PlaylistTrack {
   @@unique([playlistId, songId])
   @@index([playlistId, position])
   @@index([songId])
+}
+
+// ─────────────────────────────────────────
+// REDEEM CODES
+// Admin-mintable codes that grant bonus song slots, PRO trial time,
+// boost credits, or license-fee waivers. The reward shape is JSON
+// so we can ship new reward types without a migration; the consume
+// site validates the shape at runtime.
+// ─────────────────────────────────────────
+
+model RedeemCode {
+  id          String   @id @default(cuid())
+  // Human-typeable code (e.g. EMS-WELCOME-5K). Uppercased server-side
+  // before lookup so case never matters. Unique so two batches never
+  // collide.
+  code        String   @unique
+  // Reward payload validated at consume time. Shape:
+  // { bonusSongSlots?: number, trialDays?: number,
+  //   freeBoostCredits?: number, freeLicenseFeeWaivers?: number, note?: string }
+  reward      Json
+  // Optional cap on how many users can redeem. Null = unlimited (but
+  // single-user codes still enforced by the unique on RedeemRedemption).
+  maxUses     Int?
+  uses        Int      @default(0)
+  // Optional expiry. Past expiresAt, the code is dead even if it has
+  // uses remaining.
+  expiresAt   DateTime?
+  // Free-form description for the admin dashboard ("Open mic giveaway",
+  // "Reddit launch bundle"). Never shown to redeemers.
+  description String?  @db.Text
+  // Admin who minted this batch — useful when investigating abuse.
+  createdById String
+  createdAt   DateTime @default(now())
+  // Soft-disable without deleting the row. Frozen codes return a
+  // generic "this code is no longer active" error.
+  frozenAt    DateTime?
+
+  @@index([expiresAt])
+  @@index([createdById, createdAt])
+}
+
+model RedeemRedemption {
+  id        String   @id @default(cuid())
+  codeId    String
+  userId    String
+  // Snapshot of the reward as granted, so downstream audits don't have
+  // to re-resolve the parent RedeemCode (which an admin may have
+  // edited or frozen since).
+  reward    Json
+  createdAt DateTime @default(now())
+
+  // Each user can redeem a given code at most once. Stops re-runs from
+  // double-granting when a network blip causes the client to retry.
+  @@unique([codeId, userId])
+  @@index([userId, createdAt])
 }

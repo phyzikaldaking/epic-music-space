@@ -8,10 +8,12 @@ export default function StreamGuardControls({
   initialMode,
   initialReason,
   initialTtlSeconds,
+  songOptions,
 }: {
   initialMode: Mode;
   initialReason: string | null;
   initialTtlSeconds: number | null;
+  songOptions: Array<{ id: string; title: string; artist: string }>;
 }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [reason, setReason] = useState(initialReason ?? "");
@@ -25,6 +27,47 @@ export default function StreamGuardControls({
   const [songReason, setSongReason] = useState("");
   const [songPending, setSongPending] = useState(false);
   const [songMsg, setSongMsg] = useState<string | null>(null);
+
+  async function loadSongGuardState() {
+    const trimmed = songId.trim();
+    if (!trimmed) {
+      setSongMsg("Enter a song ID first.");
+      return;
+    }
+    setSongPending(true);
+    setSongMsg(null);
+    try {
+      const res = await fetch(`/api/admin/risk/stream-guard?songId=${encodeURIComponent(trimmed)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        throw new Error("Failed to load song guard status");
+      }
+      const body = (await res.json()) as {
+        mode?: Mode;
+        reason?: string | null;
+        ttlSeconds?: number | null;
+        songId?: string | null;
+      };
+      const nextMode = body.mode ?? "normal";
+      setSongMode(nextMode);
+      setSongReason(body.reason ?? "");
+      const targetSong = body.songId ?? trimmed;
+      if (nextMode === "normal") {
+        setSongMsg(`No active guard for ${targetSong}.`);
+      } else {
+        const ttl = body.ttlSeconds ?? null;
+        setSongMsg(
+          `Current guard for ${targetSong}: ${nextMode.replace("_", " ")}${ttl ? ` (${Math.max(1, Math.floor(ttl / 60))}m ttl)` : ""}.`,
+        );
+      }
+    } catch (error) {
+      setSongMsg(error instanceof Error ? error.message : "Failed to load song guard status.");
+    } finally {
+      setSongPending(false);
+    }
+  }
 
   async function apply(nextMode: Mode) {
     setPending(true);
@@ -203,9 +246,18 @@ export default function StreamGuardControls({
               value={songId}
               onChange={(e) => setSongId(e.target.value)}
               placeholder="cm123..."
+              list="stream-guard-song-options"
               className="mt-1 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-xs text-white outline-none focus:border-brand-400/50"
               disabled={songPending}
             />
+            <datalist id="stream-guard-song-options">
+              {songOptions.map((song) => (
+                <option key={song.id} value={song.id}>
+                  {song.title} - {song.artist}
+                </option>
+              ))}
+            </datalist>
+            <p className="mt-1 text-[10px] text-white/45">Autocomplete includes recent active songs. Select one to target quickly.</p>
           </label>
           <label className="text-xs text-white/60">
             Song reason
@@ -220,6 +272,14 @@ export default function StreamGuardControls({
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={`${baseBtn} border-white/20 bg-white/5 text-white/80 hover:bg-white/10`}
+            onClick={loadSongGuardState}
+            disabled={songPending}
+          >
+            Load Song Guard
+          </button>
           <button
             type="button"
             className={`${baseBtn} border-emerald-400/35 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20`}

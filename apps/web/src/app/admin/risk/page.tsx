@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { getRiskEventSummary } from "@/lib/riskEvents";
 import { getRedis } from "@/lib/redis";
 import RiskActions from "./RiskActions";
@@ -40,6 +41,16 @@ export default async function AdminRiskPage() {
   if (session.user.role !== "ADMIN") redirect("/dashboard");
 
   const summary = await getRiskEventSummary();
+  const recentSongs = await prisma.song.findMany({
+    where: { isActive: true, isDraft: false },
+    orderBy: { createdAt: "desc" },
+    take: 80,
+    select: {
+      id: true,
+      title: true,
+      artist: true,
+    },
+  });
   const total24h = summary.byType24h.reduce((sum, row) => sum + row._count._all, 0);
   const high24h =
     summary.bySeverity24h.find((row) => row.severity === "HIGH")?._count._all ?? 0;
@@ -218,6 +229,7 @@ export default async function AdminRiskPage() {
           initialMode={streamGuardMode}
           initialReason={streamGuardReason}
           initialTtlSeconds={streamGuardTtl}
+          songOptions={recentSongs}
         />
       </section>
 
