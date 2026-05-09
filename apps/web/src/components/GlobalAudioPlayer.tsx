@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState, useCallback, useMemo } from "react";
 import { usePlayer } from "@/contexts/PlayerContext";
+import NowPlayingFullscreen from "./NowPlayingFullscreen";
 
 function fmt(s: number) {
   if (!Number.isFinite(s) || s < 0) return "0:00";
@@ -45,6 +46,7 @@ export default function GlobalAudioPlayer() {
   const [showQueue, setShowQueue] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
   const [seekHover, setSeekHover] = useState<number | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const seekRef = useRef<HTMLDivElement>(null);
 
   const safeProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0;
@@ -316,9 +318,24 @@ export default function GlobalAudioPlayer() {
                 </span>
               )}
             </button>
+
+            {/* Expand to fullscreen Now Playing */}
+            <button
+              type="button"
+              onClick={() => setFullscreen(true)}
+              className="p-1.5 text-white/40 transition hover:text-white"
+              aria-label="Open full player"
+              title="Expand"
+            >
+              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
+
+      {fullscreen && <NowPlayingFullscreen onClose={() => setFullscreen(false)} />}
 
       <style>{`
         @keyframes equalize {
