@@ -13,6 +13,7 @@ const STREAM_TOKEN_TTL_SECONDS = Math.max(
   Number(process.env.STREAM_TOKEN_TTL_SECONDS ?? "300"),
 );
 const STREAM_GUARD_KEY = "ems:stream:guard:global";
+const STREAM_SONG_GUARD_KEY_PREFIX = "ems:stream:guard:song:";
 
 export async function GET(
   req: NextRequest,
@@ -38,9 +39,13 @@ export async function GET(
   const redis = getRedis();
   if (redis) {
     try {
-      const guardRaw = await redis.get(STREAM_GUARD_KEY);
-      if (guardRaw) {
-        const guard = JSON.parse(guardRaw) as { mode?: "blocked" | "preview_only"; reason?: string | null };
+      const [globalGuardRaw, songGuardRaw] = await Promise.all([
+        redis.get(STREAM_GUARD_KEY),
+        redis.get(`${STREAM_SONG_GUARD_KEY_PREFIX}${id}`),
+      ]);
+      const activeGuards = [globalGuardRaw, songGuardRaw].filter(Boolean) as string[];
+      for (const raw of activeGuards) {
+        const guard = JSON.parse(raw) as { mode?: "blocked" | "preview_only"; reason?: string | null };
         if (guard.mode === "blocked") {
           return NextResponse.json(
             { error: "stream_guard_blocked", message: guard.reason ?? "Streaming is temporarily disabled." },

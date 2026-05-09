@@ -28,6 +28,7 @@ const STREAM_ABUSE_BAN_SECONDS = Math.max(
   Number(process.env.STREAM_ABUSE_BAN_SECONDS ?? "3600"),
 );
 const STREAM_GUARD_KEY = "ems:stream:guard:global";
+const STREAM_SONG_GUARD_KEY_PREFIX = "ems:stream:guard:song:";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -147,10 +148,14 @@ export async function GET(
   const redis = getRedis();
   if (redis) {
     try {
-      const guardRaw = await redis.get(STREAM_GUARD_KEY);
-      if (guardRaw) {
+      const [globalGuardRaw, songGuardRaw] = await Promise.all([
+        redis.get(STREAM_GUARD_KEY),
+        redis.get(`${STREAM_SONG_GUARD_KEY_PREFIX}${id}`),
+      ]);
+      const activeGuards = [globalGuardRaw, songGuardRaw].filter(Boolean) as string[];
+      for (const raw of activeGuards) {
         try {
-          const guard = JSON.parse(guardRaw) as { mode?: "preview_only" | "blocked"; reason?: string | null };
+          const guard = JSON.parse(raw) as { mode?: "preview_only" | "blocked"; reason?: string | null };
           if (guard.mode === "blocked") {
             return NextResponse.json(
               {

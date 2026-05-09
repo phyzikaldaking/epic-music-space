@@ -50,9 +50,11 @@ export default async function AdminRiskPage() {
 
   const redis = getRedis();
   let activeStreamBans: Array<{ ip: string; ttl: number; reason: string }> = [];
+  let activeSongGuards: Array<{ songId: string; mode: "preview_only" | "blocked"; ttl: number; reason: string | null }> = [];
   if (redis) {
     try {
       const keys = await redis.keys("ems:stream:ban:*");
+      const songGuardKeys = await redis.keys("ems:stream:guard:song:*");
       const rows = await Promise.all(
         keys.slice(0, 100).map(async (k) => {
           const [ttl, value] = await Promise.all([redis.ttl(k), redis.get(k)]);
@@ -73,8 +75,35 @@ export default async function AdminRiskPage() {
         .filter((r) => r.ttl > 0)
         .sort((a, b) => b.ttl - a.ttl)
         .slice(0, 30);
+
+      const guardRows = await Promise.all(
+        songGuardKeys.slice(0, 100).map(async (k) => {
+          const [ttl, value] = await Promise.all([redis.ttl(k), redis.get(k)]);
+          const songId = k.replace("ems:stream:guard:song:", "");
+          if (!value) return null;
+          try {
+            const parsed = JSON.parse(value) as { mode?: "preview_only" | "blocked"; reason?: string | null };
+            if ((parsed.mode === "preview_only" || parsed.mode === "blocked") && ttl > 0) {
+              return {
+                songId,
+                mode: parsed.mode,
+                ttl,
+                reason: parsed.reason ?? null,
+              };
+            }
+          } catch {
+            return null;
+          }
+          return null;
+        }),
+      );
+      activeSongGuards = guardRows
+        .filter((r): r is { songId: string; mode: "preview_only" | "blocked"; ttl: number; reason: string | null } => Boolean(r))
+        .sort((a, b) => b.ttl - a.ttl)
+        .slice(0, 30);
     } catch {
       activeStreamBans = [];
+      activeSongGuards = [];
     }
   }
 
@@ -162,6 +191,28 @@ export default async function AdminRiskPage() {
         </dl>
       </section>
 
+      <section className="mb-8 grid gap-8 lg:grid-cols-3">
+        <dl>
+          <Stat label="Active song guards" value={activeSongGuards.length} />
+        </dl>
+        <dl>
+          <Stat
+            label="Top song guard"
+            value={activeSongGuards[0] ? activeSongGuards[0].mode.replace("_", " ") : "none"}
+          />
+        </dl>
+        <dl>
+          <Stat
+            label="Top song guard TTL"
+            value={
+              activeSongGuards[0]
+                ? `${Math.floor(activeSongGuards[0].ttl / 60)}m left`
+                : "none"
+            }
+          />
+        </dl>
+      </section>
+
       <section className="mb-8">
         <StreamGuardControls
           initialMode={streamGuardMode}
@@ -195,6 +246,41 @@ export default async function AdminRiskPage() {
                 <tr>
                   <td colSpan={3} className="px-4 py-6 text-center text-white/40">
                     No active stream abuse bans.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="mb-3 text-sm font-bold uppercase tracking-widest text-white/50">
+          Active song guards
+        </h2>
+        <div className="overflow-hidden rounded-lg border border-white/10">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-white/[0.04] text-xs uppercase tracking-widest text-white/40">
+              <tr>
+                <th className="px-4 py-3">Song ID</th>
+                <th>Mode</th>
+                <th>Reason</th>
+                <th>TTL</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/8">
+              {activeSongGuards.map((guard) => (
+                <tr key={`${guard.songId}-${guard.mode}`}>
+                  <td className="px-4 py-3 font-mono text-xs text-white/60">{guard.songId}</td>
+                  <td className="text-white/75">{guard.mode.replace("_", " ")}</td>
+                  <td className="text-white/65">{guard.reason ?? "—"}</td>
+                  <td className="font-mono text-xs text-white/55">{Math.floor(guard.ttl / 60)}m {guard.ttl % 60}s</td>
+                </tr>
+              ))}
+              {activeSongGuards.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-white/40">
+                    No active song stream guards.
                   </td>
                 </tr>
               )}
