@@ -894,12 +894,20 @@ export default function QuickUploadFlow({
             <div className="mt-4 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/10 p-4 text-sm text-fuchsia-100">
               <p className="font-bold">Plan limit reached.</p>
               <p className="mt-1 text-fuchsia-200/85">{needsUpgrade.message}</p>
-              <Link
-                href={needsUpgrade.upgradeUrl}
-                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-fuchsia-400 px-4 py-2 text-sm font-bold text-fuchsia-950 transition hover:bg-fuchsia-300"
-              >
-                See plans →
-              </Link>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href={needsUpgrade.upgradeUrl}
+                  className="inline-flex items-center gap-2 rounded-lg bg-fuchsia-400 px-4 py-2 text-sm font-bold text-fuchsia-950 transition hover:bg-fuchsia-300"
+                >
+                  See plans →
+                </Link>
+                <Link
+                  href="/redeem"
+                  className="inline-flex items-center gap-2 rounded-lg border border-fuchsia-300/40 px-4 py-2 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/10"
+                >
+                  I have a code
+                </Link>
+              </div>
             </div>
           )}
 

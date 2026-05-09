@@ -100,6 +100,31 @@ export async function PUT(req: NextRequest) {
   // upload attempt (the role check). PRODUCER / ENGINEER / LABEL / ADMIN
   // / ARTIST roles are left untouched — they all already grant upload
   // intent and we don't want to overwrite a more-specific role.
+  //
+  // Also grant a 14-day PRO trial on first promotion so a brand-new
+  // artist gets analytics, boost, and the full song quota out of the
+  // gate. We only set trialExpiresAt when there isn't one already, so
+  // a returning artist whose trial expired doesn't get a free renewal
+  // by clicking through setup a second time. Trial flips them to TRIAL
+  // tier, which expires back to FREE via getActiveTier on its own.
+  const TRIAL_DAYS = 14;
+  const trialExpiresAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+  await prisma.user.updateMany({
+    where: {
+      id: session.user.id,
+      role: "LISTENER",
+      trialExpiresAt: null,
+      subscriptionTier: "FREE",
+    },
+    data: {
+      role: "ARTIST",
+      subscriptionTier: "TRIAL",
+      trialExpiresAt,
+    },
+  });
+  // Fallback: if the row didn't match the trial preconditions (e.g. a
+  // returning user whose trial already expired), still flip the role
+  // so they can publish.
   await prisma.user.updateMany({
     where: { id: session.user.id, role: "LISTENER" },
     data: { role: "ARTIST" },
