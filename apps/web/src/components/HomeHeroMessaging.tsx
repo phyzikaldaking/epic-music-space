@@ -5,23 +5,23 @@ import Link from "next/link";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
-type HeroVariant = "community" | "outcome";
+type HeroVariant = "artist_os" | "licensing";
 
-const STORAGE_KEY = "ems_home_hero_variant_v1";
+const STORAGE_KEY = "ems_home_hero_variant_v2";
 
 export default function HomeHeroMessaging() {
-  const [variant, setVariant] = useState<HeroVariant>("community");
+  const [variant, setVariant] = useState<HeroVariant>("artist_os");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const stored = window.localStorage.getItem(STORAGE_KEY);
     const selected: HeroVariant =
-      stored === "community" || stored === "outcome"
+      stored === "artist_os" || stored === "licensing"
         ? stored
         : Math.random() < 0.5
-          ? "community"
-          : "outcome";
+          ? "artist_os"
+          : "licensing";
 
     window.localStorage.setItem(STORAGE_KEY, selected);
     setVariant(selected);
@@ -33,31 +33,31 @@ export default function HomeHeroMessaging() {
     });
   }, []);
 
-  if (variant === "outcome") {
+  if (variant === "licensing") {
     return (
       <>
         <p className="studio-label text-tube-300">
-          ◉ Where the next generation of music gets made
+          ◉ Clear rights. Real artists. Instant momentum.
         </p>
         <h1 className="mt-4 font-display text-5xl uppercase leading-[1.02] tracking-wider text-white sm:text-6xl lg:text-7xl">
-          Make a record.
+          License music fast.
           <br />
-          <span className="text-tube-300">Sell it tonight.</span>
+          <span className="text-tube-300">Back artists early.</span>
           <br />
-          Keep 100%.
+          Know the terms.
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-white/65 sm:text-lg">
-          Cut tracks in the browser, drop them in front of fans live, and get
-          paid the second someone wants in. No labels, no gatekeepers, no
-          monthly subscription to record.
+          Browse tracks by genre, BPM, key, score, price, and license supply.
+          Preview before checkout, see the rights in plain English, and support
+          creators without hidden terms.
         </p>
         <p className="mx-auto mt-3 max-w-2xl text-sm text-white/55">
-          Flat 10% platform fee, itemized on every payout —{" "}
+          Digital music licenses are not equity or securities —{" "}
           <Link
-            href="/pricing"
+            href="/legal/licensing"
             className="font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
           >
-            see the breakdown
+            review the agreement
           </Link>
           .
         </p>
@@ -68,29 +68,22 @@ export default function HomeHeroMessaging() {
   return (
     <>
       <p className="studio-label text-tube-300">
-        ◉ Where the next generation of music gets made
+        ◉ The artist operating system for releases, fans, and revenue
       </p>
       <h1 className="mt-4 font-display text-5xl uppercase leading-[1.02] tracking-wider text-white sm:text-6xl lg:text-7xl">
-        Record. Release.
+        Launch your music.
         <br />
-        <span className="text-tube-300">Get paid live.</span>
+        <span className="text-tube-300">Build your fanbase.</span>
         <br />
-        Built for artists.
+        Sell licenses.
       </h1>
       <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-white/65 sm:text-lg">
-        Cut a track in the in-browser studio, drop it into a live listening
-        room, battle it head-to-head on{" "}
-        <Link
-          href="/versus"
-          className="font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
-        >
-          Versus
-        </Link>
-        , and get paid the second a fan wants in. Every license is 100%
-        yours.
+        Record in the browser, publish from your studio, host live listening
+        rooms, battle for chart momentum, and turn attention into clear digital
+        licensing revenue from one command center.
       </p>
       <p className="mx-auto mt-3 max-w-2xl text-sm text-white/55">
-        Flat 10% platform fee, itemized on every payout —{" "}
+        You own your master. EMS takes a flat 10% platform fee, itemized on every payout —{" "}
         <Link
           href="/pricing"
           className="font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
