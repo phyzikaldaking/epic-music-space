@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { getRiskEventSummary } from "@/lib/riskEvents";
 import { getRedis } from "@/lib/redis";
 import RiskActions from "./RiskActions";
+import StreamGuardControls from "./StreamGuardControls";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,6 +78,33 @@ export default async function AdminRiskPage() {
     }
   }
 
+  let streamGuardMode: "normal" | "preview_only" | "blocked" = "normal";
+  let streamGuardReason: string | null = null;
+  let streamGuardTtl: number | null = null;
+  if (redis) {
+    try {
+      const [guardRaw, guardTtl] = await Promise.all([
+        redis.get("ems:stream:guard:global"),
+        redis.ttl("ems:stream:guard:global"),
+      ]);
+      if (guardRaw) {
+        const parsed = JSON.parse(guardRaw) as {
+          mode?: "normal" | "preview_only" | "blocked";
+          reason?: string | null;
+        };
+        if (parsed.mode === "preview_only" || parsed.mode === "blocked") {
+          streamGuardMode = parsed.mode;
+        }
+        streamGuardReason = parsed.reason ?? null;
+      }
+      if (guardTtl > 0) streamGuardTtl = guardTtl;
+    } catch {
+      streamGuardMode = "normal";
+      streamGuardReason = null;
+      streamGuardTtl = null;
+    }
+  }
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 text-white">
       <header className="mb-8 flex flex-col gap-4 border-b border-white/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
@@ -132,6 +160,14 @@ export default async function AdminRiskPage() {
             }
           />
         </dl>
+      </section>
+
+      <section className="mb-8">
+        <StreamGuardControls
+          initialMode={streamGuardMode}
+          initialReason={streamGuardReason}
+          initialTtlSeconds={streamGuardTtl}
+        />
       </section>
 
       <section className="mb-8">

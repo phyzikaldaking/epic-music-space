@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { lenientLimiter } from "@/lib/rateLimit";
 import { issueStreamToken } from "@/lib/streamToken";
+import { getRedis } from "@/lib/redis";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ const STREAM_TOKEN_TTL_SECONDS = Math.max(
   60,
   Number(process.env.STREAM_TOKEN_TTL_SECONDS ?? "300"),
 );
+const STREAM_GUARD_KEY = "ems:stream:guard:global";
 
 export async function GET(
   req: NextRequest,
@@ -32,6 +34,24 @@ export async function GET(
 
   const session = await auth();
   const viewerId = session?.user?.id ?? null;
+
+  const redis = getRedis();
+  if (redis) {
+    try {
+      const guardRaw = await redis.get(STREAM_GUARD_KEY);
+      if (guardRaw) {
+        const guard = JSON.parse(guardRaw) as { mode?: "blocked" | "preview_only"; reason?: string | null };
+        if (guard.mode === "blocked") {
+          return NextResponse.json(
+            { error: "stream_guard_blocked", message: guard.reason ?? "Streaming is temporarily disabled." },
+            { status: 503 },
+          );
+        }
+      }
+    } catch {
+      // Degrade gracefully if guard lookup fails.
+    }
+  }
 
   let allowFull = false;
   try {

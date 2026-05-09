@@ -27,6 +27,7 @@ const STREAM_ABUSE_BAN_SECONDS = Math.max(
   300,
   Number(process.env.STREAM_ABUSE_BAN_SECONDS ?? "3600"),
 );
+const STREAM_GUARD_KEY = "ems:stream:guard:global";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -142,9 +143,31 @@ export async function GET(
   } catch {
     return new NextResponse("Too many requests", { status: 429 });
   }
+  let forcedPreviewMode = false;
   const redis = getRedis();
   if (redis) {
     try {
+      const guardRaw = await redis.get(STREAM_GUARD_KEY);
+      if (guardRaw) {
+        try {
+          const guard = JSON.parse(guardRaw) as { mode?: "preview_only" | "blocked"; reason?: string | null };
+          if (guard.mode === "blocked") {
+            return NextResponse.json(
+              {
+                error: "stream_guard_blocked",
+                message: guard.reason ?? "Streaming is temporarily disabled.",
+              },
+              { status: 503 },
+            );
+          }
+          if (guard.mode === "preview_only") {
+            forcedPreviewMode = true;
+          }
+        } catch {
+          /* ignore malformed guard state */
+        }
+      }
+
       const ban = await redis.get(`ems:stream:ban:${ip}`);
       if (ban) return new NextResponse("Blocked", { status: 403 });
     } catch {
@@ -165,7 +188,7 @@ export async function GET(
   // ── Resolve upstream URL (real song first, fall back to demo) ──────────
   let upstreamUrl: string | null = null;
   let fullAccess = true;
-  let previewMode = false;
+  let previewMode = forcedPreviewMode;
   let viewerId: string | null = null;
   let songIdForFingerprint: string | null = null;
   try {
@@ -237,7 +260,7 @@ export async function GET(
       // Token-gate full streams: if a listener is entitled but missing/invalid
       // token, we fall back to preview mode instead of hard-failing playback.
       fullAccess = fullAccess && signedTokenOk;
-      previewMode = !fullAccess;
+      previewMode = previewMode || !fullAccess;
       upstreamUrl = song.audioUrl;
     }
   } catch {
