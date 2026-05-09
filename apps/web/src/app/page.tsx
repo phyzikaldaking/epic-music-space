@@ -320,6 +320,13 @@ export default async function HomePage() {
             >
               Try the studio with no signup →
             </Link>
+            <span className="mx-2 text-white/25">·</span>
+            <Link
+              href="/how-licenses-work"
+              className="font-semibold text-tube-400 underline decoration-dotted underline-offset-4 hover:text-tube-300"
+            >
+              How licenses work →
+            </Link>
           </p>
 
           {sampleSongs[0] && (

@@ -12,6 +12,8 @@ import { computeRankingTransparency } from "@/lib/rankingTransparency";
 import SectionErrorBoundary from "@/components/SectionErrorBoundary";
 import MadeForYouRail from "@/components/MadeForYouRail";
 import type { RailCandidate } from "@/lib/personalizedRail";
+import FunnelViewBeacon from "@/components/FunnelViewBeacon";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 export const revalidate = 30;
 
@@ -394,6 +396,11 @@ export default async function MarketplacePage(props: {
 
   return (
     <main className="relative min-h-screen text-white">
+      <FunnelViewBeacon
+        event={FUNNEL_EVENTS.licenseMarketplaceView}
+        source="marketplace_page"
+        properties={{ resultCount: rankedSongs.length }}
+      />
       <div className="relative mx-auto max-w-7xl px-4 py-10 md:px-6 lg:px-8">
         {/* MARKETPLACE HERO  ·  walnut-trim console with crown LCD readout */}
         <section className="studio-faceplate relative rounded-xl p-6 sm:p-9">

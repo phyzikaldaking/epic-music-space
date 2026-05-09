@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/contexts/ToastContext";
 import { formatPrice } from "@ems/utils";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 interface LicenseButtonProps {
   songId: string;
@@ -49,6 +51,15 @@ export default function LicenseButton({
         }
         body.customAmount = parsed;
       }
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.licenseCheckoutClicked,
+        source: "license_button",
+        properties: {
+          songId,
+          pricingMode: payWhatYouWant ? "pwyw" : "fixed",
+          amountUsd: payWhatYouWant ? Number.parseFloat(customAmount) : Number(licensePrice),
+        },
+      });
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

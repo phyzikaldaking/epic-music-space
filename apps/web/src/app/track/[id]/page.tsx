@@ -28,6 +28,8 @@ import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import { issueStreamToken } from "@/lib/streamToken";
+import FunnelViewBeacon from "@/components/FunnelViewBeacon";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -314,6 +316,18 @@ export default async function TrackPage({ params, searchParams }: Props) {
 
   return (
     <div className="studio-room relative min-h-screen">
+      <FunnelViewBeacon
+        event={FUNNEL_EVENTS.licenseTrackView}
+        source="track_page"
+        properties={{
+          songId: song.id,
+          isDemo: song.isDemo,
+          isSoldOut: remaining <= 0,
+          licensePrice: Number(song.licensePrice.toString()),
+          isOwner,
+          alreadyLicensed: !!userLicense,
+        }}
+      />
       <div className="relative z-[1] mx-auto max-w-5xl px-4 py-12">
       {!song.isDemo && (
         <StickyLicenseBar
@@ -620,16 +634,27 @@ export default async function TrackPage({ params, searchParams }: Props) {
           </div>
 
           {!song.isDemo && (
-            <p className="text-xs text-white/30">
-              Purchasing a license entitles you to {song.revenueSharePct.toString()}%
-              ÷ {song.totalLicenses} licenses of this song&apos;s streaming
-              revenue, paid quarterly. This is a digital content license, not a
-              security. See our{" "}
-              <Link href="/legal/licensing" className="underline hover:text-white/60">
-                Licensing Agreement
-              </Link>
-              .
-            </p>
+            <>
+              <p className="text-xs text-white/55">
+                First time licensing a song?{" "}
+                <Link
+                  href="/how-licenses-work"
+                  className="font-semibold text-tube-400 underline decoration-dotted underline-offset-2 hover:text-tube-300"
+                >
+                  How licenses work — plain English →
+                </Link>
+              </p>
+              <p className="text-xs text-white/30">
+                Purchasing a license entitles you to {song.revenueSharePct.toString()}%
+                ÷ {song.totalLicenses} licenses of this song&apos;s streaming
+                revenue, paid quarterly. This is a digital content license, not a
+                security. See our{" "}
+                <Link href="/legal/licensing" className="underline hover:text-white/60">
+                  Licensing Agreement
+                </Link>
+                .
+              </p>
+            </>
           )}
         </div>
       </div>

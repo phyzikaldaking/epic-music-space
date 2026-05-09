@@ -25,6 +25,16 @@ export const FUNNEL_EVENTS = {
   guestLinkClicked: "funnel_guest_link_clicked",
   guestPublishCompleted: "funnel_guest_publish_completed",
   guestShareLinkCreated: "funnel_guest_share_link_created",
+  // Listener / buy-a-license funnel. The artist-side path was instrumented
+  // first, but conversion lives on the buy side: visitor → marketplace →
+  // track page → checkout click → Stripe session → purchase. Without
+  // these we can't tell where buyers drop, and every change to the track
+  // page is a guess.
+  licenseMarketplaceView: "funnel_license_marketplace_view",
+  licenseTrackView: "funnel_license_track_view",
+  licenseCheckoutClicked: "funnel_license_checkout_clicked",
+  licenseCheckoutSessionCreated: "funnel_license_checkout_session_created",
+  licensePurchaseCompleted: "funnel_license_purchase_completed",
 } as const;
 
 export type FunnelEventName = (typeof FUNNEL_EVENTS)[keyof typeof FUNNEL_EVENTS];

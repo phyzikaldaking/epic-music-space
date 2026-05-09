@@ -6,6 +6,7 @@ import { enqueueAnalytics } from "@/lib/queues";
 import { track } from "@/lib/analytics";
 import { fireAndForget, retry, withCircuitBreaker, withTimeout } from "@/lib/resilience";
 import { computeRiskScore } from "@/lib/riskScore";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 export class LicenseCheckoutError extends Error {
   constructor(
@@ -267,6 +268,26 @@ export async function createLicenseCheckoutSession(
       timestamp: new Date().toISOString(),
     }),
     `enqueueAnalytics ${input.analytics.event}`,
+  );
+
+  fireAndForget(
+    Promise.resolve(
+      track({
+        event: FUNNEL_EVENTS.licenseCheckoutSessionCreated,
+        userId: input.userId,
+        properties: {
+          songId: input.songId,
+          quantity: input.quantity,
+          unitPriceUsd,
+          totalUsd: checkoutAmountUsd,
+          pricingMode,
+          licenseTierId: selectedTier?.id,
+          licenseTierName: selectedTier?.name,
+          requestSource: input.requestSource,
+        },
+      }),
+    ),
+    `track ${FUNNEL_EVENTS.licenseCheckoutSessionCreated}`,
   );
 
   if (activeLicensesCount === 0 && input.analytics.firstPurchaseFunnelEvent) {

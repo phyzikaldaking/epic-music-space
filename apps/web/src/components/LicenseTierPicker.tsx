@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/contexts/ToastContext";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 export type LicenseTierOption = {
   id: string;
@@ -40,6 +42,18 @@ export default function LicenseTierPicker({ songId, basePrice, variants }: Props
   async function buy() {
     setLoading(true);
     try {
+      const tier = allTiers.find((t) => t.id === selected);
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.licenseCheckoutClicked,
+        source: "license_tier_picker",
+        properties: {
+          songId,
+          pricingMode: "tier",
+          tierId: selected,
+          tierName: tier?.name,
+          amountUsd: tier?.priceUsd,
+        },
+      });
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

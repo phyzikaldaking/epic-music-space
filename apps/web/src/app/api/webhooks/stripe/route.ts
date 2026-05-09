@@ -11,6 +11,7 @@ function isUniqueConstraintError(err: unknown): boolean {
 }
 import { createServerSupabaseClient, CHANNELS } from "@/lib/supabase";
 import { track } from "@/lib/analytics";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import { recordLicenseSale, recordTip, recordAdPurchase, recordRefund, recordAuctionWin, recordBoost, recordSubscription, recordServiceSale } from "@/lib/revenueShare";
 import { sendArtistMilestoneEmail } from "@/lib/email";
@@ -491,6 +492,15 @@ async function handleLicenseCheckoutCompleted(session: Stripe.Checkout.Session) 
   }
 
   track({ event: "license_purchased", userId, properties: { songId, licenseId: license.id, amount: Number(existing.amount) } });
+  // Funnel-namespaced mirror so the buy-a-license funnel in PostHog can
+  // chain off licenseCheckoutClicked → licenseCheckoutSessionCreated →
+  // licensePurchaseCompleted with consistent naming. The legacy
+  // "license_purchased" event stays for any dashboards keyed off it.
+  track({
+    event: FUNNEL_EVENTS.licensePurchaseCompleted,
+    userId,
+    properties: { songId, licenseId: license.id, amount: Number(existing.amount) },
+  });
   console.log(`[stripe-webhook] License fulfilled: song=${songId} user=${userId} license=${license.id}`);
 }
 
