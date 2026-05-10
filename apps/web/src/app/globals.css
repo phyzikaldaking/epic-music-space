@@ -1049,6 +1049,20 @@
   .vc-btn-pink {
     animation: none;
   }
+  /* App-wide reduced-motion: kill decorative animations (pulse/spin/
+     bounce) and shorten transitions. The studio sprinkles animate-pulse
+     on REC dots, presence chips, etc. — none of which carry meaning
+     beyond "this is live." Spinners stay visible (no animation) so
+     loading state is still detectable from the text label.
+     Vestibular-sensitive users opt in via the system setting. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 body {

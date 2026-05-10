@@ -50,6 +50,21 @@ export default function VersionHistoryModal({
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Escape dismisses the modal. Without this keyboard users had to
+  // tab to the Close button to exit — every other modal in the app
+  // is Esc-dismissable so this brings parity.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -183,9 +198,12 @@ export default function VersionHistoryModal({
                   type="button"
                   onClick={() => void handleRestore(v.id)}
                   disabled={restoringId !== null}
-                  className="rounded-md border border-violet-300/45 bg-violet-500/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-violet-100 hover:bg-violet-500/25 disabled:opacity-50 transition"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-violet-300/45 bg-violet-500/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-violet-100 hover:bg-violet-500/25 disabled:opacity-50 transition"
                 >
-                  {restoringId === v.id ? "Restoring…" : "Restore"}
+                  {restoringId === v.id && (
+                    <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border-2 border-violet-200/40 border-t-violet-100" aria-hidden />
+                  )}
+                  {restoringId === v.id ? "Restoring" : "Restore"}
                 </button>
               </div>
             );

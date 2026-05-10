@@ -356,7 +356,7 @@ export default function BeatMachineGrid({
                   }
                   onSelectBank(b);
                 }}
-                className={`min-w-7 rounded-md px-2 py-1 text-[11px] font-black uppercase tracking-widest transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
+                className={`min-w-8 rounded-md px-2 py-1.5 text-[11px] font-black uppercase tracking-widest transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
                   b === activeBank
                     ? "bg-accent-500 text-black"
                     : "text-white/55 hover:bg-white/10"
@@ -798,7 +798,7 @@ export default function BeatMachineGrid({
                       openProbMenu(lane, step, e);
                     }}
                     aria-label={`${LANE_LABELS[lane]} step ${step + 1}: ${on ? "on" : "off"}${velocity !== 1 ? ` · vel ${Math.round(velocity * 100)}` : ""}${probability < 1 ? ` · ${Math.round(probability * 100)}%` : ""}`}
-                    className={`relative h-7 flex-1 overflow-hidden rounded-md border transition ${
+                    className={`relative h-8 sm:h-7 flex-1 overflow-hidden rounded-md border transition ${
                       on
                         ? `border-transparent shadow-[0_0_18px_rgba(255,255,255,0.08)] bg-white/[0.04]`
                         : isDownbeat

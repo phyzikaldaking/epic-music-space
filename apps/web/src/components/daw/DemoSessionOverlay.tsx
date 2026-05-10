@@ -51,6 +51,20 @@ export default function DemoSessionOverlay({ visible: visibleProp }: { visible?:
 
   const focusTrapRef = useFocusTrap<HTMLDivElement>(visible);
 
+  // Escape dismisses the overlay (treated as "I want to start blank").
+  // Doesn't load a demo — just gets the user out of the way.
+  useEffect(() => {
+    if (!visible) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        dismiss();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visible]);
+
   if (!visible) return null;
 
   return (

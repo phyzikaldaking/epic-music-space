@@ -41,6 +41,20 @@ export default function TemplatePicker({
     if (!open) setBusyId(null);
   }, [open]);
 
+  // Escape dismisses the picker. Keyboard-only users were stuck
+  // clicking Close before — every other modal does this so we match.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   async function pickBuiltin(t: StudioTemplate) {
@@ -99,28 +113,34 @@ export default function TemplatePicker({
           Built-in
         </p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {STUDIO_TEMPLATES.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => void pickBuiltin(t)}
-              disabled={busyId !== null}
-              className="flex flex-col items-start gap-1 rounded-xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-transparent p-3 text-left transition hover:border-cyan-300/45 hover:bg-cyan-400/[0.06] disabled:opacity-50"
-            >
-              <span className="text-2xl" aria-hidden>
-                {t.badge}
-              </span>
-              <span className="text-sm font-black uppercase tracking-wide text-white">
-                {t.label}
-              </span>
-              <span className="text-[11px] leading-snug text-white/55">
-                {t.description}
-              </span>
-              <span className="mt-1 rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/70">
-                {t.bpm} BPM · {t.kit}
-              </span>
-            </button>
-          ))}
+          {STUDIO_TEMPLATES.map((t) => {
+            const loading = busyId === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => void pickBuiltin(t)}
+                disabled={busyId !== null}
+                className="relative flex flex-col items-start gap-1 rounded-xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-transparent p-3 text-left transition hover:border-cyan-300/45 hover:bg-cyan-400/[0.06] disabled:opacity-50"
+              >
+                <span className="text-2xl" aria-hidden>
+                  {t.badge}
+                </span>
+                <span className="text-sm font-black uppercase tracking-wide text-white">
+                  {t.label}
+                </span>
+                <span className="text-[11px] leading-snug text-white/55">
+                  {t.description}
+                </span>
+                <span className="mt-1 rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/70">
+                  {t.bpm} BPM · {t.kit}
+                </span>
+                {loading && (
+                  <span className="absolute right-2 top-2 inline-block h-3 w-3 animate-spin rounded-full border-2 border-cyan-300/40 border-t-cyan-300" aria-label="Loading" />
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <p className="mt-6 mb-2 text-[10px] font-black uppercase tracking-[0.28em] text-white/55">
@@ -151,9 +171,12 @@ export default function TemplatePicker({
                   type="button"
                   onClick={() => void pickUser(t.id)}
                   disabled={busyId !== null}
-                  className="rounded-md border border-amber-300/45 bg-amber-400/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-100 hover:bg-amber-400/25 disabled:opacity-50 transition"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-amber-300/45 bg-amber-400/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-100 hover:bg-amber-400/25 disabled:opacity-50 transition"
                 >
-                  {busyId === t.id ? "Loading…" : "Use"}
+                  {busyId === t.id && (
+                    <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border-2 border-amber-200/40 border-t-amber-100" aria-hidden />
+                  )}
+                  {busyId === t.id ? "Loading" : "Use"}
                 </button>
               </li>
             ))}

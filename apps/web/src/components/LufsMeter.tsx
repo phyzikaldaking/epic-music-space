@@ -36,7 +36,10 @@ export function LufsMeter({ lufs, label }: { lufs: number; label?: string }) {
           return (
             <div
               key={t.label}
-              className="absolute top-0 bottom-0 opacity-30"
+              // Bumped from opacity-30 → 60 so the reference bands are
+              // legible at a glance. Earlier they read as a near-flat
+              // strip with the playhead floating above invisible cues.
+              className="absolute top-0 bottom-0 opacity-60"
               style={{
                 left: `${left}%`,
                 width: `${width}%`,
@@ -57,7 +60,7 @@ export function LufsMeter({ lufs, label }: { lufs: number; label?: string }) {
           aria-label="Streaming target -14 LUFS"
         />
       </div>
-      <div className="mt-1 flex justify-between font-mono text-[8px] text-white/35">
+      <div className="mt-1 flex justify-between font-mono text-[8px] text-white/65">
         <span>-30</span>
         <span>-20</span>
         <span className="text-emerald-300">-14</span>

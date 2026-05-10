@@ -66,6 +66,21 @@ export default function PromoKitButton({ songs }: Props) {
     }
   }, [open]);
 
+  // Escape closes the kit. Wired here rather than via useFocusTrap so
+  // any in-flight generation request still gets cancelled cleanly by
+  // the open→false useEffect above.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
   async function generate() {
     const song = eligible.find((s) => s.id === selectedId);
     if (!song || !song.audioUrl) {
