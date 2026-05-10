@@ -53,8 +53,9 @@ const REQUIRE_AUTH: RegExp[] = [
   /^\/creator(\/|$)/,
   // AI features
   /^\/ai(\/|$)/,
-  // Studio — but NOT /studio/try (guest-accessible DAW demo)
-  /^\/studio\/(?!try)(.*)/,
+  // Studio — keep DAW demo + public upgrade hub guest-visible.
+  // Protected examples: /studio/live, /studio/manage, /studio/board
+  /^\/studio\/(?!try(?:\/|$)|ultra(?:\/|$))(.*)/,
   // Social / account pages
   /^\/profile(\/|$)/,
   /^\/profile\/edit(\/|$)/,
