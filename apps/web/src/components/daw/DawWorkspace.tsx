@@ -1978,6 +1978,23 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     }
   }
 
+  // Pro Tools-style transport feel for the main play control:
+  // pressing Stop returns the cursor to bar 1 so the next Play starts clean.
+  function handlePlayStopTransport() {
+    if (!ensureInit()) return;
+    const engine = engineRef.current;
+    if (!engine) return;
+    if (transport?.isRecording) {
+      void toggleRecording();
+      return;
+    }
+    if (transport?.isPlaying) {
+      engine.rewind();
+      return;
+    }
+    void engine.play();
+  }
+
   // Keyboard shortcuts. Only fire when the focus isn't inside an input
   // — otherwise typing a track name would hit the Play hotkey.
   useEffect(() => {
@@ -2037,9 +2054,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       switch (e.key) {
         case " ":
           e.preventDefault();
-          if (!ensureInit()) return;
-          if (transport?.isPlaying) engine?.stop();
-          else void engine?.play();
+          handlePlayStopTransport();
           break;
         case "r":
         case "R":
@@ -2856,10 +2871,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         <button
           type="button"
           onClick={() => {
-            if (!ensureInit()) return;
-            const engine = engineRef.current!;
-            if (transport?.isPlaying) engine.stop();
-            else void engine.play();
+            handlePlayStopTransport();
           }}
           className={`flex h-11 w-11 items-center justify-center rounded-full text-lg font-bold transition ${
             transport?.isPlaying
@@ -4132,7 +4144,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               </button>
             </div>
             <div className="grid gap-2 text-sm sm:grid-cols-2">
-              <ShortcutRow combo="Space" action="Play / Stop" />
+              <ShortcutRow combo="Space" action="Play / Stop (return to start)" />
               <ShortcutRow combo="R" action="Record / Stop record" />
               <ShortcutRow combo="L" action="Toggle loop mode" />
               <ShortcutRow combo="M" action="Toggle metronome" />
@@ -4167,11 +4179,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           isRecording={Boolean(transport?.isRecording)}
           metronomeOn={Boolean(transport?.metronomeOn)}
           onTogglePlay={() => {
-            if (!ensureInit()) return;
-            const engine = engineRef.current;
-            if (!engine) return;
-            if (transport?.isPlaying) engine.stop();
-            else void engine.play();
+            handlePlayStopTransport();
           }}
           onToggleRecord={() => {
             if (!ensureInit()) return;

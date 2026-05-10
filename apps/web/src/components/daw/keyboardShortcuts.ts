@@ -9,7 +9,7 @@ export interface ShortcutEntry {
 
 export const KEYBOARD_SHORTCUTS: ShortcutEntry[] = [
   // Transport
-  { keys: ["Space"], description: "Play / Stop", group: "Transport" },
+  { keys: ["Space"], description: "Play / Stop (return to start)", group: "Transport" },
   { keys: ["Home"], description: "Rewind to start", group: "Transport" },
   { keys: ["L"], description: "Toggle loop region", group: "Transport" },
   { keys: ["M"], description: "Toggle metronome", group: "Transport" },
