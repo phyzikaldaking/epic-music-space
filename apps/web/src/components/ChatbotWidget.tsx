@@ -325,33 +325,24 @@ export default function ChatbotWidget() {
     } catch {
       description = `Run ${tool.name}`;
     }
+    const newMsg = {
+      role: "assistant" as const,
+      content: "",
+      toolCall: { ...tool, description, status: "pending" as const },
+    };
     setMessages((prev) => {
-      if (prev.length === 0) {
-        return [
-          {
-            role: "assistant",
-            content: "",
-            toolCall: { ...tool, description, status: "pending" },
-          },
-        ];
-      }
+      if (prev.length === 0) return [newMsg];
       const last = prev[prev.length - 1];
-      if (last.role !== "assistant") {
-        return [
-          ...prev,
-          {
-            role: "assistant",
-            content: "",
-            toolCall: { ...tool, description, status: "pending" },
-          },
-        ];
+      // If the last assistant bubble already has a tool call OR has any
+      // user-visible text, preserve it and start a new bubble for this
+      // tool. Without this guard a second tool call (#3) would silently
+      // overwrite the first — the user only ever sees the last tool.
+      if (last.role !== "assistant" || last.toolCall || last.content) {
+        return [...prev, newMsg];
       }
       return [
         ...prev.slice(0, -1),
-        {
-          ...last,
-          toolCall: { ...tool, description, status: "pending" },
-        },
+        { ...last, toolCall: newMsg.toolCall },
       ];
     });
   }

@@ -1,12 +1,40 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { lenientLimiter } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 interface RouteProps {
   params: Promise<{ id: string }>;
+}
+
+// Per-IP rate limit on the listen page itself (#8). The /api endpoint
+// has its own limiter; this gate covers direct page hits which are the
+// dominant traffic for a "share to a friend" flow. Same fail-open
+// pattern: a Redis blip is better than a black-out for shared links.
+async function consumeListenBudget(): Promise<{ ok: boolean; retryAfter?: number }> {
+  const hdrs = await headers();
+  const ip =
+    hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    hdrs.get("x-real-ip") ??
+    "unknown";
+  try {
+    await lenientLimiter.consume(`studio:listen-page:${ip}`);
+    return { ok: true };
+  } catch (err) {
+    if (err && typeof err === "object" && "msBeforeNext" in err) {
+      return {
+        ok: false,
+        retryAfter: Math.ceil(
+          Number((err as { msBeforeNext: number }).msBeforeNext) / 1000,
+        ),
+      };
+    }
+    return { ok: true };
+  }
 }
 
 export async function generateMetadata({ params }: RouteProps): Promise<Metadata> {
@@ -23,6 +51,23 @@ export async function generateMetadata({ params }: RouteProps): Promise<Metadata
 }
 
 export default async function ListenPage({ params }: RouteProps) {
+  const budget = await consumeListenBudget();
+  if (!budget.ok) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-16 text-center">
+        <p className="text-[10px] font-black uppercase tracking-[0.32em] text-tube-300">
+          Slow down
+        </p>
+        <h1 className="mt-2 font-display text-2xl uppercase tracking-wide text-white">
+          Too many listens too fast
+        </h1>
+        <p className="mt-3 text-sm text-white/65">
+          We&apos;re rate-limiting this page to keep shared sessions fair.
+          Try again in about {budget.retryAfter ?? 60} seconds.
+        </p>
+      </div>
+    );
+  }
   const { id } = await params;
   const project = await prisma.studioProject.findFirst({
     where: { id, isPublic: true },

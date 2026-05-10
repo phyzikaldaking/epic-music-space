@@ -263,6 +263,10 @@ export async function* streamChatWithAssistant(
         { role: "system", content: systemContent },
         ...messages.slice(-10),
       ],
+      // Hard cap on a runaway generation. 500 tokens ≈ 4 short paragraphs
+      // — plenty for a coach reply or a structured tool call. Without this
+      // cap a hallucinating model could burn ~$0.10/turn at 10K tokens
+      // and clog the SSE pipe. Tighten this knob, don't raise it.
       max_tokens: 500,
       temperature: 0.7,
       stream: true,

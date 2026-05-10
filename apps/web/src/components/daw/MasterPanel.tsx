@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   MASTERING_PRESET_ORDER,
   getMasteringPreset,
+  type EqBand,
   type MasteringPresetId,
 } from "./dawEngine";
 import { LufsMeter } from "../LufsMeter";
@@ -18,7 +19,7 @@ interface Props {
   eqLowDb: number;
   eqMidDb: number;
   eqHighDb: number;
-  onSetEq: (band: "low" | "mid" | "high", db: number) => void;
+  onSetEq: (band: EqBand, db: number) => void;
   /** Apply a one-click mastering chain preset (EQ + limiter + gain). */
   onApplyMasteringPreset: (preset: MasteringPresetId) => void;
 }
@@ -246,7 +247,7 @@ function EqKnob({
 function MatchReferenceRow({
   onSetEq,
 }: {
-  onSetEq: (band: "low" | "mid" | "high", db: number) => void;
+  onSetEq: (band: EqBand, db: number) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
@@ -267,8 +268,11 @@ function MatchReferenceRow({
         return;
       }
       const ctx = new Ctor();
-      const { analyseReference } = await import("@/lib/matchering");
-      const result = await analyseReference(ctx, file);
+      // Run analysis off the main thread so the UI stays responsive
+      // while the 16K FFT crunches (#14). Falls back to sync analysis
+      // in SSR/no-Worker environments.
+      const { analyseReferenceAsync } = await import("@/lib/matchering");
+      const result = await analyseReferenceAsync(ctx, file);
       void ctx.close();
       if (!result) {
         setMessage("Couldn't decode the reference. Try a WAV or MP3.");

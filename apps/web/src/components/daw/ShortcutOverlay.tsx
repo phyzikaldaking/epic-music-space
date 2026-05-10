@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import { KEYBOARD_SHORTCUTS, type ShortcutEntry } from "./keyboardShortcuts";
 
 const GROUP_ORDER: ShortcutEntry["group"][] = [
@@ -34,6 +35,8 @@ export default function ShortcutOverlay() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
+  const focusTrapRef = useFocusTrap<HTMLDivElement>(open);
+
   if (!open) return null;
 
   return (
@@ -41,6 +44,7 @@ export default function ShortcutOverlay() {
       role="dialog"
       aria-modal="true"
       aria-label="Keyboard shortcuts"
+      ref={focusTrapRef}
       className="fixed inset-0 z-[180] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
       onClick={() => setOpen(false)}
     >

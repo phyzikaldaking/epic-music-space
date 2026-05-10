@@ -38,6 +38,13 @@ import { audioBufferToWav } from "./wavEncoder";
 
 export type TrackId = string;
 
+/** Three-band EQ identifier — single source of truth used by engine,
+ *  AI tool schemas, and UI props. Matches the engine's internal biquad
+ *  layout (low shelf @ 200 Hz, mid bell @ 1 kHz, high shelf @ 5 kHz).
+ *  All EQ-touching code paths import this type rather than re-declaring
+ *  the literal union, so changes here propagate everywhere (#20). */
+export type EqBand = "low" | "mid" | "high";
+
 export interface TrackFx {
   /** EQ — three biquads acting as low shelf / mid bell / high shelf. */
   eqLowDb: number; // -12..+12 @ 200 Hz
@@ -1545,7 +1552,7 @@ export class DawEngine {
 
   // ── FX setters ────────────────────────────────────────────────────────
 
-  setTrackEq(id: TrackId, band: "low" | "mid" | "high", db: number) {
+  setTrackEq(id: TrackId, band: EqBand, db: number) {
     const t = this.tracks.get(id);
     if (!t) return;
     const clamped = Math.max(-12, Math.min(12, db));
@@ -2544,7 +2551,7 @@ export class DawEngine {
   }
 
   /** Set one band of the master EQ in dB. Same shape as track EQ. */
-  setMasterEq(band: "low" | "mid" | "high", db: number) {
+  setMasterEq(band: EqBand, db: number) {
     const clamped = Math.max(-12, Math.min(12, db));
     if (band === "low") {
       this.transport.masterEqLowDb = clamped;
@@ -2986,11 +2993,13 @@ export class DawEngine {
    *  a MIDI clip and write it to the engine. Used by the Voice → MIDI
    *  button (#4) so users can hum melodies into the synth track without
    *  having to play piano. */
-  async convertBufferToMidi(buffer: AudioBuffer): Promise<MidiClip | null> {
+  async convertBufferToMidi(
+    buffer: AudioBuffer,
+  ): Promise<{ clip: MidiClip; confidence: number } | null> {
     const { audioToMidiNotes } = await import("./voiceToMidi");
     const { mixToMono } = await import("./chordDetect");
     const mono = mixToMono(buffer);
-    const { notes, lengthBeats } = audioToMidiNotes(
+    const { notes, lengthBeats, confidence } = audioToMidiNotes(
       mono,
       buffer.sampleRate,
       this.transport.bpm,
@@ -3008,7 +3017,7 @@ export class DawEngine {
     this.midi = { ...this.midi, clip };
     if (this.transport.isPlaying) this.scheduleMidiClipTicks();
     this.notify();
-    return clip;
+    return { clip, confidence };
   }
 
   /** Convert a track's audio (typically a vocal take) into a MIDI clip

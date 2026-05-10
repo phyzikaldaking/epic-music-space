@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useState, useRef } from "react";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 export interface SpotlightStep {
   /** data-tour attribute on the target element. */
@@ -93,6 +94,11 @@ export default function SpotlightTour({ steps, open, onClose }: SpotlightTourPro
     };
   }, [open, index, steps]);
 
+  // Hooks must run on every render, before any conditional return. The
+  // trap is no-op when `open` is false so calling it unconditionally is
+  // safe.
+  const focusTrapRef = useFocusTrap<HTMLDivElement>(open);
+
   if (!open) return null;
   const step = steps[index];
   if (!step) return null;
@@ -106,6 +112,7 @@ export default function SpotlightTour({ steps, open, onClose }: SpotlightTourPro
       role="dialog"
       aria-modal="true"
       aria-label={step.title}
+      ref={focusTrapRef}
       className="fixed inset-0 z-[180] pointer-events-none"
     >
       {/* Dark overlay with cut-out for the target. SVG mask gives a clean

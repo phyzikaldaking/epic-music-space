@@ -74,21 +74,24 @@ export function detectPitchHz(
   return sampleRate / bestLag;
 }
 
-/** Closest semitone in the given key/scale (major triad mapping). */
+/** Closest semitone in the given key/scale (major triad mapping).
+ *  When two candidates are equidistant from the input midi (e.g. a
+ *  perfectly between-two-notes pitch), prefer the *lower* candidate so
+ *  the snap is deterministic and never drifts upward on neutral input
+ *  (#18). Iterating from low offset to high also resolves ties at the
+ *  outermost ±6 toward the lower note. */
 function snapToScale(midi: number, key: ScaleKey): number {
   const root = KEY_TO_PC[key];
-  // For each semitone within ±6, check if it lies in the major scale.
   let best = midi;
   let bestDist = Infinity;
   for (let offset = -6; offset <= 6; offset++) {
     const candidate = Math.round(midi + offset);
     const interval = ((candidate - root) % 12 + 12) % 12;
-    if (MAJOR_SCALE_INTERVALS.includes(interval)) {
-      const dist = Math.abs(candidate - midi);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = candidate;
-      }
+    if (!MAJOR_SCALE_INTERVALS.includes(interval)) continue;
+    const dist = Math.abs(candidate - midi);
+    if (dist < bestDist || (dist === bestDist && candidate < best)) {
+      bestDist = dist;
+      best = candidate;
     }
   }
   return best;
@@ -133,8 +136,15 @@ export function applyPitchCorrection(
   // Sliding-frame analysis. For each frame: detect pitch, compute target
   // ratio, write the shifted frame into the output. Adjacent frames are
   // crossfaded over HOP samples to hide seams.
+  //
+  // Constant-overlap-add (COLA) bookkeeping (#6). With per-frame Hann
+  // windowing AND a final OLA divisor we were applying the window twice
+  // and amplifying the output by ~1.5–2×. Instead we accumulate the
+  // window envelope alongside the audio and divide the final sample by
+  // its actual envelope at that index — no guess factor, no double gain.
   const window = makeHannWindow(FRAME_SIZE);
   const frame = new Float32Array(FRAME_SIZE);
+  const envelope = new Float32Array(length);
 
   for (let start = 0; start + FRAME_SIZE < length; start += HOP) {
     for (let i = 0; i < FRAME_SIZE; i++) frame[i] = mono[start + i];
@@ -154,10 +164,6 @@ export function applyPitchCorrection(
     for (let c = 0; c < channels; c++) {
       const input = inChannels[c];
       const output = outChannels[c];
-      // Resample the frame around `start` by linear interpolation. Read
-      // in stretched/compressed steps and write into the output frame
-      // window. Mix with original by (1 - amount) to support partial
-      // correction.
       for (let i = 0; i < FRAME_SIZE; i++) {
         const srcOffset = i / ratio;
         const srcIndex = start + srcOffset;
@@ -169,17 +175,25 @@ export function applyPitchCorrection(
           (i1 >= 0 && i1 < length ? input[i1] : 0) * t;
         const dry = input[start + i] ?? 0;
         const wet = corrected;
-        output[start + i] += (dry * (1 - amount) + wet * amount) * window[i];
+        const w = window[i];
+        output[start + i] += (dry * (1 - amount) + wet * amount) * w;
+        // Track envelope only on the first channel pass; it's the same
+        // for every channel because we use the same window.
+        if (c === 0) envelope[start + i] += w;
       }
     }
   }
 
-  // Normalize windowed overlap-add. With HOP = FRAME/4 and a Hann
-  // window, overlap-add gain ≈ 1.5; divide it out so output isn't loud.
-  const overlapGain = (FRAME_SIZE / HOP) * 0.5;
+  // Divide each output sample by its actual accumulated envelope. Where
+  // the envelope is ~0 (the very first/last samples that no frame
+  // covered) we leave the output untouched — that region is silence
+  // by construction, so 0/0 = 0 is the right answer.
   for (let c = 0; c < channels; c++) {
     const ch = outChannels[c];
-    for (let i = 0; i < length; i++) ch[i] /= overlapGain;
+    for (let i = 0; i < length; i++) {
+      const env = envelope[i];
+      if (env > 1e-6) ch[i] /= env;
+    }
   }
 
   return out;

@@ -16,12 +16,30 @@ export async function POST(req: NextRequest) {
     return jsonWithRequestId(requestId, { error: "Unauthorized" }, { status: 401 });
   }
 
+  // Two-tier upload limit (#16). Per-user keeps a single producer from
+  // burning their own quota; the shared "studio:upload:global" key
+  // caps the whole platform's Vercel Blob throughput so a coordinated
+  // burst from many tabs can't blow the egress budget. strictLimiter
+  // is 10 req/min — at ~60 MB max per upload that's a 600 MB/min
+  // ceiling per user and a 600 MB/min platform ceiling overall.
   try {
     await strictLimiter.consume(`studio:upload:${session.user.id}`);
   } catch {
     return jsonWithRequestId(
       requestId,
       { error: "Too many uploads — slow down." },
+      { status: 429, headers: { "Retry-After": "30" } },
+    );
+  }
+  try {
+    await strictLimiter.consume("studio:upload:global");
+  } catch {
+    return jsonWithRequestId(
+      requestId,
+      {
+        error:
+          "Studio uploads are saturated platform-wide. Try again shortly.",
+      },
       { status: 429, headers: { "Retry-After": "30" } },
     );
   }

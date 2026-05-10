@@ -56,13 +56,22 @@ export async function readJsonBodyLimited<T>(
 export async function withRouteTimeout<T>(
   label: string,
   timeoutMs: number,
-  operation: () => Promise<T>,
+  operation: (signal: AbortSignal) => Promise<T>,
 ): Promise<
   | { ok: true; value: T }
   | { ok: false; response: NextResponse }
 > {
+  // Tie an AbortController to the timeout so upstream fetches receive a
+  // real cancel signal when we give up. Callers that don't care can
+  // ignore the parameter — back-compatible with `() => Promise<T>`.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const value = await withTimeout(operation, timeoutMs, label);
+    const value = await withTimeout(
+      () => operation(controller.signal),
+      timeoutMs,
+      label,
+    );
     return { ok: true, value };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -83,5 +92,7 @@ export async function withRouteTimeout<T>(
         { status: 500 },
       ),
     };
+  } finally {
+    clearTimeout(timer);
   }
 }

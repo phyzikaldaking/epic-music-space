@@ -70,19 +70,19 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  // Ownership check before update so we don't leak existence of others' rows.
-  const exists = await prisma.studioProject.findFirst({
+  // Atomic ownership-scoped update. updateMany with userId in the where
+  // clause means a foreign id never gets touched even if the row is
+  // mutated between the check and the write (TOCTOU). Returns count = 0
+  // when the project doesn't exist or isn't owned — same 404 either way
+  // so we don't leak existence of others' rows.
+  const result = await prisma.studioProject.updateMany({
     where: { id, userId: session.user.id },
-    select: { id: true },
-  });
-  if (!exists) {
-    return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
-  }
-
-  const updated = await prisma.studioProject.update({
-    where: { id },
     data: parsed.data,
   });
+  if (result.count === 0) {
+    return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
+  }
+  const updated = await prisma.studioProject.findUnique({ where: { id } });
   return jsonWithRequestId(requestId, { project: updated });
 }
 
@@ -97,18 +97,15 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const exists = await prisma.studioProject.findFirst({
+  // Atomic ownership-scoped delete — same TOCTOU concern as PATCH above.
+  // deleteMany returns count=0 when nothing matched; cascades clear
+  // StudioTrack rows automatically. Vercel Blob cleanup is the separate
+  // cleanup_studio_blobs sweeper.
+  const result = await prisma.studioProject.deleteMany({
     where: { id, userId: session.user.id },
-    select: { id: true },
   });
-  if (!exists) {
+  if (result.count === 0) {
     return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
   }
-
-  await prisma.studioProject.delete({ where: { id } });
-  // Note: blob deletion is best-effort and lives in a separate background
-  // worker; we don't block the response on it. Prisma cascade clears
-  // StudioTrack rows but Vercel Blob entries linger until the sweeper
-  // runs. Tracked separately as cleanup_studio_blobs.
   return jsonWithRequestId(requestId, { ok: true });
 }

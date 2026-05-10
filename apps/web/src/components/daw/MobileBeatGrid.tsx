@@ -21,12 +21,27 @@ interface Lane {
   color: string;
 }
 
-const LANES: Lane[] = [
+// Lane catalog ordered by priority. We slice this based on the viewport
+// width (#26): tiny phones get the 4 essentials, comfortable phones get
+// 6, and tablets get the full 8-lane kit. Order is preserved so users
+// who grow into the bigger grid don't have their existing pattern
+// reshuffled when the count expands.
+const ALL_LANES: Lane[] = [
   { kind: "kick", label: "Kick", color: "bg-rose-500/70" },
   { kind: "snare", label: "Snare", color: "bg-amber-400/70" },
   { kind: "hat", label: "Hat", color: "bg-cyan-400/70" },
   { kind: "bass808", label: "808", color: "bg-fuchsia-500/70" },
+  { kind: "clap", label: "Clap", color: "bg-violet-400/70" },
+  { kind: "openHat", label: "OHat", color: "bg-sky-400/70" },
+  { kind: "perc", label: "Perc", color: "bg-emerald-400/70" },
+  { kind: "crash", label: "Crash", color: "bg-yellow-300/70" },
 ];
+
+function lanesForViewport(width: number): Lane[] {
+  if (width < 500) return ALL_LANES.slice(0, 4);
+  if (width < 800) return ALL_LANES.slice(0, 6);
+  return ALL_LANES;
+}
 
 const STEPS = 8;
 
@@ -51,11 +66,31 @@ export default function MobileBeatGrid({ getCtx, bpm, kit = "trap" }: Props) {
   const [pattern, setPattern] = useState<Pattern>(() => emptyPattern());
   const [playing, setPlaying] = useState(false);
   const [activeStep, setActiveStep] = useState(-1);
+  // Viewport-driven lane count (#26). On window resize / orientation
+  // flip we recompute the visible set so a user rotating their phone
+  // to landscape sees the extra lanes immediately.
+  const [lanes, setLanes] = useState<Lane[]>(() =>
+    typeof window === "undefined"
+      ? ALL_LANES.slice(0, 4)
+      : lanesForViewport(window.innerWidth),
+  );
+  useEffect(() => {
+    function onResize() {
+      setLanes(lanesForViewport(window.innerWidth));
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const stepIntervalRef = useRef<number | null>(null);
   // Use a ref for pattern so the interval callback always reads the latest
   // toggles without re-creating the interval each render.
   const patternRef = useRef(pattern);
   patternRef.current = pattern;
+  // Lanes ref so the playback interval reads the current viewport-driven
+  // lane set without having to restart the timer when the user rotates
+  // mid-loop (#26).
+  const lanesRef = useRef(lanes);
+  lanesRef.current = lanes;
   const stepRef = useRef(0);
 
   function toggleStep(lane: DrumKind, step: number) {
@@ -79,7 +114,7 @@ export default function MobileBeatGrid({ getCtx, bpm, kit = "trap" }: Props) {
       const step = stepRef.current;
       const live = patternRef.current;
       const dest = ctx.destination;
-      for (const lane of LANES) {
+      for (const lane of lanesRef.current) {
         if (live[lane.kind][step]) {
           scheduleDrumHit(ctx, dest, lane.kind, {
             when: ctx.currentTime + 0.005,
@@ -143,7 +178,7 @@ export default function MobileBeatGrid({ getCtx, bpm, kit = "trap" }: Props) {
       </div>
 
       <div className="space-y-1">
-        {LANES.map((lane) => (
+        {lanes.map((lane) => (
           <div key={lane.kind} className="flex items-center gap-1.5">
             <span className="w-12 shrink-0 text-[10px] font-black uppercase tracking-widest text-white/55">
               {lane.label}

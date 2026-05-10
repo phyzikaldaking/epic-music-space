@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { EqBand } from "@/components/daw/dawEngine";
 
 /** Tool schemas published to the AI Coach. The model receives these in
  *  the OpenAI tool-call protocol; on the client side, we use them to
@@ -169,15 +170,33 @@ export const openAiTools: OpenAiToolDescriptor[] = [
   },
 ];
 
+/** Strip C0/C1 controls, zero-width and bidi-override characters,
+ *  and clamp length on any user-string argument that flows into
+ *  the confirm-card description. React already escapes interpolated
+ *  JSX text, but stripping these visual-trick code points (RLO
+ *  U+202E, zero-width joiners, BOM) makes the displayed string match
+ *  what the user thinks they're approving (#10). */
+function safeArgText(value: unknown): string {
+  if (typeof value !== "string") return String(value ?? "");
+  const cleaned = value.replace(
+    // C0 (00–20), DEL+C1 (7F–9F), zero-width (200B–200F),
+    // bidi embeds (202A–202E), bidi isolates (2066–2069), BOM (FEFF).
+    // eslint-disable-next-line no-control-regex
+    /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g,
+    "",
+  );
+  return cleaned.slice(0, 80);
+}
+
 /** Human-readable summary used in the confirm card before applying. */
 export function describeToolCall(name: AiToolName, args: unknown): string {
   switch (name) {
     case "setBpm":
       return `Set BPM to ${(args as { bpm: number }).bpm}`;
     case "setTrackEq": {
-      const a = args as { trackName: string; band: string; db: number };
+      const a = args as { trackName: string; band: EqBand; db: number };
       const sign = a.db >= 0 ? "+" : "";
-      return `${a.band} EQ on "${a.trackName}" → ${sign}${a.db.toFixed(1)} dB`;
+      return `${a.band} EQ on "${safeArgText(a.trackName)}" → ${sign}${a.db.toFixed(1)} dB`;
     }
     case "applyMasteringPreset": {
       const labels: Record<string, string> = {
@@ -188,17 +207,18 @@ export function describeToolCall(name: AiToolName, args: unknown): string {
         flat: "flat (off)",
       };
       const preset = (args as { preset: string }).preset;
-      return `Apply ${labels[preset] ?? preset} mastering preset`;
+      return `Apply ${labels[preset] ?? safeArgText(preset)} mastering preset`;
     }
     case "loadDemo":
-      return `Load ${(args as { kind: string }).kind} demo session`;
+      return `Load ${safeArgText((args as { kind: string }).kind)} demo session`;
     case "setBeatKit":
-      return `Switch drum kit to ${(args as { kit: string }).kit}`;
+      return `Switch drum kit to ${safeArgText((args as { kit: string }).kit)}`;
     case "armTrack": {
       const a = args as { trackName: string; armed?: boolean };
+      const safeName = safeArgText(a.trackName);
       return a.armed === false
-        ? `Disarm "${a.trackName}"`
-        : `Arm "${a.trackName}" for recording`;
+        ? `Disarm "${safeName}"`
+        : `Arm "${safeName}" for recording`;
     }
   }
 }

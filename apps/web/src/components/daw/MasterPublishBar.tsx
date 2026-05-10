@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 interface Props {
   limiterOn: boolean;
@@ -413,72 +414,25 @@ export default function MasterPublishBar({
       )}
 
       {pendingPublish && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Render preview"
-          className="fixed inset-0 z-[170] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
-        >
-          <div className="w-[min(560px,100%)] rounded-2xl border border-emerald-400/35 bg-[#0a0a10]/95 p-6 shadow-2xl shadow-black/50">
-            <p className="text-[10px] font-black uppercase tracking-[0.32em] text-emerald-300/85">
-              Last check
-            </p>
-            <h2 className="mt-1 font-display text-xl uppercase tracking-wide text-white">
-              Preview before publishing
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/70">
-              Listen back to the rendered mix. Catch dead air at the start,
-              clipping, or accidentally muted tracks before this goes public.
-            </p>
-
-            <audio
-              src={pendingPublish.url}
-              controls
-              autoPlay
-              className="mt-4 w-full"
-            >
-              <track kind="captions" />
-            </audio>
-
-            <CoverArtPicker
-              busy={coverArtBusy}
-              error={coverArtError}
-              options={coverArtOptions}
-              pick={coverArtPick}
-              onPick={setCoverArtPick}
-              onGenerate={() => generateCoverArt("New track")}
-            />
-
-            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={cancelPreview}
-                className="rounded-md border border-white/15 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/65 hover:bg-white/10 transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  cancelPreview();
-                  void renderAndPublish();
-                }}
-                className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-amber-200 hover:bg-amber-400/20 transition"
-              >
-                Re-render
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void confirmPublish();
-                }}
-                className="rounded-md bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-black transition hover:bg-emerald-400"
-              >
-                Sounds good — Publish
-              </button>
-            </div>
-          </div>
-        </div>
+        <RenderPreviewModal
+          url={pendingPublish.url}
+          coverArt={{
+            busy: coverArtBusy,
+            error: coverArtError,
+            options: coverArtOptions,
+            pick: coverArtPick,
+            onPick: setCoverArtPick,
+            onGenerate: () => generateCoverArt("New track"),
+          }}
+          onCancel={cancelPreview}
+          onRerender={() => {
+            cancelPreview();
+            void renderAndPublish();
+          }}
+          onConfirm={() => {
+            void confirmPublish();
+          }}
+        />
       )}
     </section>
   );
@@ -664,8 +618,105 @@ function ShareLinkRow({
           >
             {copied ? "✓ Copied" : "Copy"}
           </button>
+          {/* "View as visitor" — opens the read-only listen page in a
+              new tab so the producer can hear what fans will hear
+              before sending the URL. Closes the integration gap from
+              #21 (the link existed but had no visible entry point). */}
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-tube-300/35 bg-tube-300/10 px-2 py-1 text-[11px] font-bold text-tube-100 hover:bg-tube-300/20 transition"
+          >
+            View ↗
+          </a>
         </>
       )}
+    </div>
+  );
+}
+
+/** Render-preview modal extracted from MasterPublishBar so it can own a
+ *  focus trap independent of the rest of the bar (#25). The trap auto-
+ *  focuses the Cancel button on open and restores focus on close. */
+function RenderPreviewModal({
+  url,
+  coverArt,
+  onCancel,
+  onRerender,
+  onConfirm,
+}: {
+  url: string;
+  coverArt: {
+    busy: boolean;
+    error: string | null;
+    options: string[] | null;
+    pick: number | null;
+    onPick: (idx: number | null) => void;
+    onGenerate: () => void;
+  };
+  onCancel: () => void;
+  onRerender: () => void;
+  onConfirm: () => void;
+}) {
+  const focusTrapRef = useFocusTrap<HTMLDivElement>(true);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Render preview"
+      ref={focusTrapRef}
+      className="fixed inset-0 z-[170] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
+    >
+      <div className="w-[min(560px,100%)] rounded-2xl border border-emerald-400/35 bg-[#0a0a10]/95 p-6 shadow-2xl shadow-black/50">
+        <p className="text-[10px] font-black uppercase tracking-[0.32em] text-emerald-300/85">
+          Last check
+        </p>
+        <h2 className="mt-1 font-display text-xl uppercase tracking-wide text-white">
+          Preview before publishing
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-white/70">
+          Listen back to the rendered mix. Catch dead air at the start,
+          clipping, or accidentally muted tracks before this goes public.
+        </p>
+
+        <audio src={url} controls autoPlay className="mt-4 w-full">
+          <track kind="captions" />
+        </audio>
+
+        <CoverArtPicker
+          busy={coverArt.busy}
+          error={coverArt.error}
+          options={coverArt.options}
+          pick={coverArt.pick}
+          onPick={coverArt.onPick}
+          onGenerate={coverArt.onGenerate}
+        />
+
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border border-white/15 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/65 hover:bg-white/10 transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onRerender}
+            className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-amber-200 hover:bg-amber-400/20 transition"
+          >
+            Re-render
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-md bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-black transition hover:bg-emerald-400"
+          >
+            Sounds good — Publish
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

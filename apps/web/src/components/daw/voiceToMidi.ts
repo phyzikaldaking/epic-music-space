@@ -84,16 +84,40 @@ function estimatePitchYin(
   // Absolute-threshold step. Pick the first tau below threshold.
   const threshold = 0.15;
   let chosenTau = -1;
+  let chosenValue = 1;
   for (let tau = minTau; tau <= maxTau; tau++) {
     const v = yin[tau] ?? 1;
     if (v < threshold) {
       // Walk forward while the function still descends.
       while (tau + 1 <= maxTau && (yin[tau + 1] ?? 1) < v) tau++;
       chosenTau = tau;
+      chosenValue = yin[tau] ?? 1;
       break;
     }
   }
   if (chosenTau < 0) return null;
+
+  // Octave-reinforcement check (#5). YIN's first-below-threshold rule
+  // can lock onto a subharmonic — i.e. tau is 2× or 3× the true period.
+  // For a clean voice the YIN value at tau/2 (one octave higher) is also
+  // low. If tau/2 is meaningfully better than chosenTau, the higher
+  // candidate is the true fundamental and we just rejected an octave
+  // drop. We use a stricter sub-threshold (chosenValue * 1.2) so harmless
+  // local minima don't cause spurious octave-up jumps.
+  for (const divisor of [2, 3]) {
+    const candidate = Math.round(chosenTau / divisor);
+    if (candidate < minTau) continue;
+    const candidateValue = yin[candidate] ?? 1;
+    if (candidateValue < threshold && candidateValue < chosenValue * 1.2) {
+      chosenTau = candidate;
+      chosenValue = candidateValue;
+    }
+  }
+
+  // Confidence gate. If even the best YIN value is borderline (>0.12),
+  // the frame is more noise than pitch; reject it so framesToMidi
+  // doesn't emit a spurious note from a noisy boundary frame.
+  if (chosenValue > 0.12) return null;
 
   // Parabolic interpolation around the chosen tau for sub-sample precision.
   const x0 = chosenTau - 1 >= minTau ? chosenTau - 1 : chosenTau;
@@ -203,18 +227,24 @@ export function framesToMidi(
   return notes;
 }
 
-/** Convenience: full pipeline. */
+/** Convenience: full pipeline. Returns the converted notes plus a
+ *  confidence score (#22) — the fraction of voiced frames vs total —
+ *  so the UI can warn the user when the input was too quiet or noisy
+ *  to detect pitch reliably. */
 export function audioToMidiNotes(
   monoSamples: Float32Array,
   sampleRate: number,
   bpm: number,
-): { notes: MidiNoteOut[]; lengthBeats: number } {
+): { notes: MidiNoteOut[]; lengthBeats: number; confidence: number } {
   const frames = trackPitches(monoSamples, sampleRate);
   const notes = framesToMidi(frames, bpm);
   const beatPerSec = bpm / 60;
   const totalSec = monoSamples.length / sampleRate;
+  const voiced = frames.reduce((acc, f) => acc + (f.freq ? 1 : 0), 0);
+  const confidence = frames.length > 0 ? voiced / frames.length : 0;
   return {
     notes,
     lengthBeats: Math.max(4, Math.ceil(totalSec * beatPerSec)),
+    confidence,
   };
 }

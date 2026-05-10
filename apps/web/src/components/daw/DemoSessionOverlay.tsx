@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 const STORAGE_KEY = "ems.studio.demo-overlay.dismissed.v1";
 
@@ -48,6 +49,8 @@ export default function DemoSessionOverlay({ visible: visibleProp }: { visible?:
     dismiss();
   }
 
+  const focusTrapRef = useFocusTrap<HTMLDivElement>(visible);
+
   if (!visible) return null;
 
   return (
@@ -55,6 +58,7 @@ export default function DemoSessionOverlay({ visible: visibleProp }: { visible?:
       role="dialog"
       aria-modal="true"
       aria-label="Choose a demo session"
+      ref={focusTrapRef}
       className="fixed inset-0 z-[170] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
     >
       <div className="w-[min(680px,100%)] rounded-2xl border border-tube-300/35 bg-[#0a0a10]/95 p-6 shadow-2xl shadow-black/50">

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { Prisma } from "@ems/db";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { strictLimiter } from "@/lib/rateLimit";
@@ -89,6 +90,41 @@ export async function POST(req: NextRequest) {
 
   const data = parsed.data;
   const trackCount = data.tracks.length;
+  const userId = session.user!.id!;
+
+  // Prisma's nullable Json columns require explicit Prisma.JsonNull when
+  // the caller wants to write a SQL NULL. Without this, `null` in TS
+  // becomes a type error and `as never` was the previous (silent) hack.
+  // Wrapping once at the boundary keeps the call sites clean (#17).
+  const patternJsonValue =
+    data.patternJson === undefined || data.patternJson === null
+      ? Prisma.JsonNull
+      : (data.patternJson as Prisma.InputJsonValue);
+  const thumbnailPeaksValue =
+    data.thumbnailPeaks === undefined || data.thumbnailPeaks === null
+      ? Prisma.JsonNull
+      : (data.thumbnailPeaks as Prisma.InputJsonValue);
+
+  // If the client supplied an id, verify ownership BEFORE entering the
+  // transaction. Without this, a user posting another user's project id
+  // would silently fall into the create branch (because findFirst with
+  // userId filter returns null) and a brand-new project gets created
+  // with a server-generated id — looks like success but loses their work.
+  // Worse: with naïve upsert semantics elsewhere, it could update someone
+  // else's row. Refuse with 403 so the client can surface the issue.
+  if (data.id) {
+    const owner = await prisma.studioProject.findUnique({
+      where: { id: data.id },
+      select: { userId: true },
+    });
+    if (owner && owner.userId !== userId) {
+      return jsonWithRequestId(
+        requestId,
+        { error: "Forbidden" },
+        { status: 403 },
+      );
+    }
+  }
 
   // Upsert project + replace tracks atomically. Tracks are owned by the
   // project row — on save we wipe and re-insert because the client treats
@@ -97,7 +133,7 @@ export async function POST(req: NextRequest) {
     const where = data.id ? { id: data.id } : undefined;
     const existing = where
       ? await tx.studioProject.findFirst({
-          where: { ...where, userId: session.user!.id! },
+          where: { ...where, userId },
         })
       : null;
 
@@ -109,8 +145,8 @@ export async function POST(req: NextRequest) {
           name: data.name,
           bpm: data.bpm,
           trackCount,
-          patternJson: (data.patternJson ?? null) as never,
-          thumbnailPeaks: (data.thumbnailPeaks ?? null) as never,
+          patternJson: patternJsonValue,
+          thumbnailPeaks: thumbnailPeaksValue,
         },
       });
       projectId = updated.id;
@@ -121,9 +157,9 @@ export async function POST(req: NextRequest) {
           name: data.name,
           bpm: data.bpm,
           trackCount,
-          patternJson: (data.patternJson ?? null) as never,
-          thumbnailPeaks: (data.thumbnailPeaks ?? null) as never,
-          user: { connect: { id: session.user!.id! } },
+          patternJson: patternJsonValue,
+          thumbnailPeaks: thumbnailPeaksValue,
+          user: { connect: { id: userId } },
         },
       });
       projectId = created.id;

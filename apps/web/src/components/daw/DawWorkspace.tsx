@@ -9,6 +9,7 @@ import {
   type BeatMachineState,
   DawEngine,
   type EngineSnapshot,
+  type EqBand,
   type LaneEqRecommendation,
   type MidiSynthState,
   type TrackState,
@@ -67,6 +68,7 @@ import {
   setSharedField,
   setSharedBeatStep,
   getSharedProject,
+  observeBeatSteps,
 } from "@/lib/yjsBridge";
 
 const MasterPanel = dynamic(() => import("./MasterPanel"), { ssr: false });
@@ -169,6 +171,15 @@ type StudioComment = {
   message: string;
   createdAt: string;
   timelineSec: number | null;
+};
+
+type StopBehavior = "return-to-zero" | "pause";
+
+type TransportMarker = {
+  slot: number;
+  label: string;
+  timeSec: number;
+  createdAt: string;
 };
 
 function CommentPinsStrip(props: {
@@ -282,6 +293,8 @@ const METER_WIDTH_CLASSES = [
 const STUDIO_COMMENTS_KEY = "ems-studio-comments-v1";
 const STUDIO_COMPACT_STRIPS_KEY = "ems-studio-compact-strips-v1";
 const STUDIO_RECORD_WIZARD_KEY = "ems-studio-record-wizard-v1";
+const STUDIO_STOP_BEHAVIOR_KEY = "ems-studio-stop-behavior-v1";
+const STUDIO_TRANSPORT_MARKERS_PREFIX = "ems-studio-transport-markers-v1";
 
 function trackTextClass(color: string): string {
   switch (color.toLowerCase()) {
@@ -387,6 +400,37 @@ function safeLocalStorageSet(key: string, value: string): void {
   }
 }
 
+function transportMarkersStorageKey(projectId: string | null): string {
+  return `${STUDIO_TRANSPORT_MARKERS_PREFIX}:${projectId ?? "scratch"}`;
+}
+
+function parseTransportMarkers(raw: string | null): TransportMarker[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const candidate = entry as Partial<TransportMarker>;
+        if (typeof candidate.slot !== "number" || candidate.slot < 1 || candidate.slot > 8) return null;
+        if (typeof candidate.timeSec !== "number" || !Number.isFinite(candidate.timeSec)) return null;
+        if (typeof candidate.label !== "string" || !candidate.label.trim()) return null;
+        if (typeof candidate.createdAt !== "string" || Number.isNaN(Date.parse(candidate.createdAt))) return null;
+        return {
+          slot: Math.round(candidate.slot),
+          label: candidate.label.trim().slice(0, 24),
+          timeSec: Math.max(0, candidate.timeSec),
+          createdAt: candidate.createdAt,
+        } satisfies TransportMarker;
+      })
+      .filter((entry): entry is TransportMarker => entry !== null)
+      .sort((a, b) => a.slot - b.slot);
+  } catch {
+    return [];
+  }
+}
+
 function isFocusMode(value: unknown): value is FocusMode {
   return value === "all" || value === "record" || value === "arrange" || value === "mix" || value === "publish";
 }
@@ -489,6 +533,10 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const touchDirty = useCallback(() => {
     if (!dirtyRef.current) setDirty(true);
   }, []);
+  // Suppress dirty-marking immediately after a load/hydrate so the first
+  // snapshot push doesn't flag the freshly-restored project as edited.
+  // The save and load handlers set this; a single render pass clears it.
+  const suppressNextDirtyRef = useRef(true);
   const [tapFlash, setTapFlash] = useState<number | null>(null);
   const [manualBpmInput, setManualBpmInput] = useState("90");
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -521,6 +569,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [compactStrips, setCompactStrips] = useState(false);
   const [showRecordWizard, setShowRecordWizard] = useState(true);
   const [heavyUiReady, setHeavyUiReady] = useState(false);
+  const [stopBehavior, setStopBehavior] = useState<StopBehavior>("return-to-zero");
+  const [transportMarkers, setTransportMarkers] = useState<TransportMarker[]>([]);
   const [loudnessTarget, setLoudnessTarget] = useState<LoudnessTarget>(-14);
   const [exportLoudnessPreset, setExportLoudnessPreset] = useState<ExportLoudnessPreset>("streaming");
   const [exportTruePeakTarget, setExportTruePeakTarget] = useState<ExportTruePeakTarget>(-1);
@@ -754,6 +804,29 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     if (saved === "dismissed") setShowRecordWizard(false);
   }, []);
 
+  useEffect(() => {
+    const saved = safeLocalStorageGet(STUDIO_STOP_BEHAVIOR_KEY);
+    if (saved === "pause" || saved === "return-to-zero") {
+      setStopBehavior(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    safeLocalStorageSet(STUDIO_STOP_BEHAVIOR_KEY, stopBehavior);
+  }, [stopBehavior]);
+
+  useEffect(() => {
+    const saved = safeLocalStorageGet(transportMarkersStorageKey(projectId));
+    setTransportMarkers(parseTransportMarkers(saved));
+  }, [projectId]);
+
+  useEffect(() => {
+    safeLocalStorageSet(
+      transportMarkersStorageKey(projectId),
+      JSON.stringify(transportMarkers),
+    );
+  }, [projectId, transportMarkers]);
+
   const ensureInit = useCallback((): boolean => {
     const engine = engineRef.current;
     if (!engine) return false;
@@ -864,6 +937,72 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
   const tracks = useMemo(() => snapshot?.tracks ?? [], [snapshot]);
   const beat = snapshot?.beat;
+  const timelineDurationSec = useMemo(
+    () =>
+      Math.max(
+        ...tracks.map((t) => t.durationSec),
+        ...comments.map((c) => c.timelineSec ?? 0),
+        ...transportMarkers.map((m) => m.timeSec),
+        transport?.loopEndSec ?? 0,
+        (transport?.positionSec ?? 0) + 1,
+        8,
+      ),
+    [comments, tracks, transport?.loopEndSec, transport?.positionSec, transportMarkers],
+  );
+  const markerBySlot = useMemo(() => {
+    const next = new Map<number, TransportMarker>();
+    for (const marker of transportMarkers) next.set(marker.slot, marker);
+    return next;
+  }, [transportMarkers]);
+
+  // Structural fingerprint of the engine's user-meaningful state (#28).
+  // Excludes transient fields the engine pushes every animation frame —
+  // input meters (`level`), play position, recording flag, spectrum
+  // samples, etc. — so dirty-marking only fires on edits the user would
+  // expect to autosave. Stringified and memoized so React's shallow
+  // dependency check does the right thing.
+  const dirtyFingerprint = useMemo(() => {
+    if (!snapshot) return null;
+    return JSON.stringify({
+      bpm: snapshot.transport.bpm,
+      kit: snapshot.beat?.kit,
+      enabled: snapshot.beat?.enabled,
+      pattern: snapshot.beat?.pattern,
+      tracks: snapshot.tracks.map((t) => ({
+        id: t.id,
+        name: t.name,
+        color: t.color,
+        gainDb: t.gainDb,
+        pan: t.pan,
+        muted: t.muted,
+        solo: t.solo,
+        armed: t.armed,
+        hasAudio: t.hasAudio,
+        durationSec: t.durationSec,
+        fx: t.fx,
+      })),
+      master: {
+        eqLowDb: snapshot.transport.masterEqLowDb,
+        eqMidDb: snapshot.transport.masterEqMidDb,
+        eqHighDb: snapshot.transport.masterEqHighDb,
+        masterDb: snapshot.transport.masterDb,
+        limiterOn: snapshot.transport.masterLimiterOn,
+      },
+    });
+  }, [snapshot]);
+
+  useEffect(() => {
+    if (dirtyFingerprint === null) return;
+    if (suppressNextDirtyRef.current) {
+      suppressNextDirtyRef.current = false;
+      return;
+    }
+    touchDirty();
+    // dirtyFingerprint already collapses every meaningful change into a
+    // single string; touchDirty is stable. Listing the ref isn't useful.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirtyFingerprint]);
+
   const laneEqRecommendations = useMemo(() => {
     const engine = engineRef.current;
     if (!engine || !beat) return [];
@@ -950,6 +1089,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           const file = await engine.serializeProject();
           await saveProject(projectId, projectName, file);
           setDirty(false);
+          suppressNextDirtyRef.current = true;
           if (session?.user?.id) {
             void syncProjectToServer(projectId, projectName, file, null);
           }
@@ -995,24 +1135,26 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       ) {
         engine.setBeatEnabled(remoteEnabled);
       }
-      const remoteSteps = map.get("beatSteps") as
-        | Record<string, boolean>
-        | undefined;
-      if (remoteSteps) {
-        for (const [key, on] of Object.entries(remoteSteps)) {
-          const [lane, stepStr] = key.split(":");
-          const step = Number(stepStr);
-          if (!lane || Number.isNaN(step)) continue;
-          engine.setBeatStep(
-            lane as Parameters<typeof engine.setBeatStep>[0],
-            step,
-            on,
-          );
-        }
-      }
+      // Per-step changes are handled by the dedicated beatSteps observer
+      // below — only Y.Map deltas, not full-pattern broadcasts (#13).
     }
 
     map.observe(onRemoteChange);
+    const unobserveSteps = observeBeatSteps(handle.doc, (changes) => {
+      if (suppressLocalEcho) return;
+      const engine = engineRef.current;
+      if (!engine) return;
+      for (const { key, on } of changes) {
+        const [lane, stepStr] = key.split(":");
+        const step = Number(stepStr);
+        if (!lane || Number.isNaN(step)) continue;
+        engine.setBeatStep(
+          lane as Parameters<typeof engine.setBeatStep>[0],
+          step,
+          on,
+        );
+      }
+    });
 
     // Bridge local toggles → Y. We listen to the same custom event the
     // beat grid already dispatches… actually the beat grid calls
@@ -1048,6 +1190,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       window.removeEventListener("studio:share-step", onShareStep);
       window.removeEventListener("studio:share-field", onShareField);
       map.unobserve(onRemoteChange);
+      unobserveSteps();
       handle.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1078,10 +1221,37 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       if (!dirtyRef.current) return;
       setNotice({
         tone: "warning",
-        message: "Another tab saved this project. You have unsaved edits here.",
+        message:
+          "Another tab saved this project. Your unsaved edits will be stashed before loading the newer version.",
         action: {
-          label: "Discard mine, load theirs",
-          onAction: () => void handleLoad(projectId),
+          label: "Stash mine, load theirs",
+          onAction: () => {
+            // Stash the unsaved local state as a side copy before
+            // discarding (#27). The user can find it in the project
+            // list under a "_stash_<timestamp>" suffix and load it
+            // back if the other tab's save turns out to be wrong.
+            void (async () => {
+              const engine = engineRef.current;
+              if (!engine) {
+                void handleLoad(projectId);
+                return;
+              }
+              try {
+                const file = await engine.serializeProject();
+                const stashId = `${projectId}__stash_${Date.now()}`;
+                const stashName = `${projectName} (stash before reload)`;
+                await saveProject(stashId, stashName, file);
+                setNotice({
+                  tone: "info",
+                  message: `Stashed your unsaved edits as "${stashName}". Loading the newer version…`,
+                });
+              } catch (err) {
+                console.warn("[DawWorkspace] conflict stash failed", err);
+              } finally {
+                void handleLoad(projectId);
+              }
+            })();
+          },
         },
       });
     }
@@ -1188,7 +1358,17 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         return;
       }
       const engine = engineRef.current;
-      if (!engine) return;
+      if (!engine) {
+        // The Coach proposed an action but the engine hasn't been
+        // initialized (no user gesture yet). Surfacing this beats a
+        // silent no-op where the user thinks the action took (#4).
+        setNotice({
+          tone: "warning",
+          message:
+            "Studio engine isn't ready yet — press Play once to wake it, then ask the Coach again.",
+        });
+        return;
+      }
       try {
         switch (name) {
           case "setBpm": {
@@ -1202,7 +1382,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           case "setTrackEq": {
             const args = parsed.data as {
               trackName: string;
-              band: "low" | "mid" | "high";
+              band: EqBand;
               db: number;
             };
             const target = tracks.find(
@@ -1283,13 +1463,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tracks]);
 
-  // Per-track pitch correction (#13). Applied non-destructively: we
-  // read the buffer, run the soft PSOLA-lite, and write it back via
-  // setTrackBuffer. The effect is irreversible-on-the-track (no undo
-  // here yet), so we surface a clear notice with the option to retake.
+  // Per-track pitch correction. Applied non-destructively: we read the
+  // buffer, run the soft PSOLA-lite, and write it back. Now accepts an
+  // optional key in the event detail; falls back to the persisted last
+  // choice (or C major) so the existing one-tap flow keeps working (#23).
   useEffect(() => {
     function onTuneTrack(event: Event) {
-      const detail = (event as CustomEvent<{ trackId?: string }>).detail;
+      const detail = (event as CustomEvent<{
+        trackId?: string;
+        key?: string;
+      }>).detail;
       if (!detail?.trackId) return;
       const engine = engineRef.current;
       const ctx = engine?.audioContext;
@@ -1303,19 +1486,42 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         });
         return;
       }
-      setNotice({ tone: "info", message: `Tuning "${track.name}"…` });
+      // Resolve the scale key. Validated against the engine's supported
+      // set; anything outside falls back to C so we never feed an
+      // invalid key into applyPitchCorrection.
+      const SUPPORTED_KEYS = new Set([
+        "C", "G", "D", "A", "E", "B", "F#", "F", "Bb", "Eb", "Ab", "Db",
+      ]);
+      let key: string = "C";
+      const requested = detail.key;
+      if (requested && SUPPORTED_KEYS.has(requested)) {
+        key = requested;
+      } else {
+        try {
+          const stored = window.localStorage.getItem("ems.studio.tune.key.v1");
+          if (stored && SUPPORTED_KEYS.has(stored)) key = stored;
+        } catch {
+          // localStorage unavailable — use default.
+        }
+      }
+      try {
+        window.localStorage.setItem("ems.studio.tune.key.v1", key);
+      } catch {
+        /* ignore */
+      }
+      setNotice({ tone: "info", message: `Tuning "${track.name}" to ${key} major…` });
       void (async () => {
         try {
           const { applyPitchCorrection } = await import("@/lib/pitchCorrect");
           const corrected = applyPitchCorrection(buffer, ctx, {
-            key: "C",
+            key: key as Parameters<typeof applyPitchCorrection>[2]["key"],
             amount: 0.6,
           });
           engine.setTrackBuffer(detail.trackId!, corrected);
           touchDirty();
           setNotice({
             tone: "success",
-            message: `Tuned "${track.name}" to C major. Re-record if it sounds off.`,
+            message: `Tuned "${track.name}" to ${key} major. Re-record if it sounds off.`,
           });
         } catch (err) {
           console.warn("[pitchCorrect] failed", err);
@@ -1736,6 +1942,10 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       pushAuditEvent("save", `Saved "${name}"`);
       setNotice({ tone: "success", message: `Saved "${name}".` });
       setDirty(false);
+      // The engine snapshot pushed during save would otherwise re-mark
+      // the project dirty on the next animation frame. Suppress one tick
+      // so the save flow lands cleanly.
+      suppressNextDirtyRef.current = true;
 
       // Write-through to the server so the project resumes on a fresh
       // device / browser. Best-effort — guests stay local-only, signed-in
@@ -1789,6 +1999,10 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       setFocusedId(snap.tracks[0]?.id ?? null);
       pushAuditEvent("load", `Loaded project ${id.slice(0, 8)}`);
       setNotice({ tone: "success", message: "Project loaded." });
+      // Hydrating pushes a fresh snapshot which would otherwise mark
+      // the just-loaded project as dirty. Suppress one tick.
+      setDirty(false);
+      suppressNextDirtyRef.current = true;
     } catch (err) {
       console.warn("[DawWorkspace] load failed", err);
       setNotice({ tone: "error", message: "Load failed. The project file may be corrupted." });
@@ -1819,6 +2033,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     window.location.reload();
   }
 
+  // Stable fallback id for autosaves before the user has explicitly
+  // saved-as. Without this, every autosave tick would call newProjectId()
+  // and mint a different cuid, scattering phantom IDB rows whenever the
+  // first save flush hadn't completed before the next tick fired (#2).
+  const pendingProjectIdRef = useRef<string | null>(null);
+
   const createAutosaveVersion = useCallback(async () => {
     if (!autosaveOn) return;
     const engine = engineRef.current;
@@ -1826,7 +2046,13 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     setIsAutosaving(true);
     try {
       const file = await engine.serializeProject();
-      const id = projectId ?? newProjectId();
+      let id = projectId;
+      if (!id) {
+        if (!pendingProjectIdRef.current) {
+          pendingProjectIdRef.current = newProjectId();
+        }
+        id = pendingProjectIdRef.current;
+      }
       const name = projectName.trim() || "Untitled session";
       await saveProject(id, name, file);
       const versionId = `${id}__v_${Date.now()}`;
@@ -1978,9 +2204,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     }
   }
 
-  // Pro Tools-style transport feel for the main play control:
-  // pressing Stop returns the cursor to bar 1 so the next Play starts clean.
-  function handlePlayStopTransport() {
+  function handleStopTransport() {
     if (!ensureInit()) return;
     const engine = engineRef.current;
     if (!engine) return;
@@ -1988,8 +2212,61 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       void toggleRecording();
       return;
     }
+    if (stopBehavior === "return-to-zero") engine.rewind();
+    else engine.stop();
+  }
+
+  function handleReturnToZero() {
+    if (!ensureInit()) return;
+    engineRef.current?.rewind();
+  }
+
+  function nudgeTransport(deltaSec: number) {
+    if (!ensureInit()) return;
+    const engine = engineRef.current;
+    if (!engine) return;
+    const next = Math.max(0, (transport?.positionSec ?? 0) + deltaSec);
+    engine.seek(next);
+  }
+
+  function setMarkerAtSlot(slot: number) {
+    const current = Math.max(0, transport?.positionSec ?? 0);
+    setTransportMarkers((prev) => {
+      const next = prev.filter((m) => m.slot !== slot);
+      next.push({
+        slot,
+        label: `M${slot}`,
+        timeSec: current,
+        createdAt: new Date().toISOString(),
+      });
+      return next.sort((a, b) => a.slot - b.slot);
+    });
+    setNotice({ tone: "success", message: `Saved marker ${slot} at ${fmtTime(current)}.` });
+  }
+
+  function jumpToMarkerSlot(slot: number) {
+    if (!ensureInit()) return;
+    const marker = markerBySlot.get(slot);
+    if (!marker) {
+      setNotice({ tone: "info", message: `Marker ${slot} is empty. Shift+${slot} to save one.` });
+      return;
+    }
+    engineRef.current?.seek(marker.timeSec);
+  }
+
+  function clearMarkerSlot(slot: number) {
+    const marker = markerBySlot.get(slot);
+    if (!marker) return;
+    setTransportMarkers((prev) => prev.filter((m) => m.slot !== slot));
+    setNotice({ tone: "info", message: `Cleared marker ${slot}.` });
+  }
+
+  function handlePlayStopTransport() {
+    if (!ensureInit()) return;
+    const engine = engineRef.current;
+    if (!engine) return;
     if (transport?.isPlaying) {
-      engine.rewind();
+      handleStopTransport();
       return;
     }
     void engine.play();
@@ -2078,8 +2355,38 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           break;
         case "Home":
           e.preventDefault();
-          engine?.rewind();
+          handleReturnToZero();
           break;
+        case "ArrowLeft":
+          if (e.shiftKey) {
+            e.preventDefault();
+            nudgeTransport(-5);
+          }
+          break;
+        case "ArrowRight":
+          if (e.shiftKey) {
+            e.preventDefault();
+            nudgeTransport(5);
+          }
+          break;
+        case "1":
+        case "2":
+        case "3":
+        case "4":
+        case "5":
+        case "6":
+        case "7":
+        case "8": {
+          const slot = Number(e.key);
+          if (e.shiftKey) {
+            e.preventDefault();
+            setMarkerAtSlot(slot);
+          } else {
+            e.preventDefault();
+            jumpToMarkerSlot(slot);
+          }
+          break;
+        }
         case "?":
           e.preventDefault();
           setShowShortcuts((v) => !v);
@@ -2100,7 +2407,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     applyLaneEqRecommendation,
     buildBestActionableLaneEqRecommendations,
     applyAllLaneEqRecommendations,
+    markerBySlot,
     previewRecommendation,
+    stopBehavior,
     togglePreviewRecommendation,
   ]);
 
@@ -2864,26 +3173,94 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           )}
         </div>
 
-        <StudioTooltip
-          label={transport?.isPlaying ? tooltips.transportStop : tooltips.transportPlay}
-          shortcut="Space"
-        >
-        <button
-          type="button"
-          onClick={() => {
-            handlePlayStopTransport();
-          }}
-          className={`flex h-11 w-11 items-center justify-center rounded-full text-lg font-bold transition ${
-            transport?.isPlaying
-              ? "bg-white text-black hover:bg-white/90"
-              : "bg-brand-500 text-white hover:bg-brand-600"
-          }`}
-          aria-label={transport?.isPlaying ? "Stop" : "Play"}
-          data-tour="play-button"
-        >
-          {transport?.isPlaying ? "■" : "▶"}
-        </button>
-        </StudioTooltip>
+        <div className="w-full rounded-xl border border-white/10 bg-black/25 p-2">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/55">
+              Marker Lane · Instant Jump
+            </p>
+            <p className="text-[10px] text-white/40">
+              Press `1–8` to jump · `Shift+1–8` to store
+            </p>
+          </div>
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+            {Array.from({ length: 8 }, (_, idx) => idx + 1).map((slot) => {
+              const marker = markerBySlot.get(slot);
+              return (
+                <button
+                  key={slot}
+                  type="button"
+                  onClick={() => jumpToMarkerSlot(slot)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    clearMarkerSlot(slot);
+                  }}
+                  onDoubleClick={() => setMarkerAtSlot(slot)}
+                  className={`rounded-lg border px-2 py-2 text-left transition ${
+                    marker
+                      ? "border-cyan-300/40 bg-cyan-400/10 hover:bg-cyan-400/20"
+                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08]"
+                  }`}
+                  title={
+                    marker
+                      ? `Marker ${slot} at ${fmtTime(marker.timeSec)}. Double-click to overwrite. Right-click to clear.`
+                      : `Marker ${slot} empty. Double-click to store current position.`
+                  }
+                >
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/55">M{slot}</p>
+                  <p className="font-mono text-sm font-bold text-white">{marker ? fmtTime(marker.timeSec) : "--:--"}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 rounded-xl border border-white/12 bg-black/25 p-2">
+          <button
+            type="button"
+            onClick={() => nudgeTransport(-5)}
+            className="rounded-md border border-white/20 bg-white/[0.03] px-3 py-2 text-xs font-black tracking-wider text-white/90 transition hover:bg-white/[0.1]"
+            title="Rewind 5 seconds"
+          >
+            REW
+          </button>
+          <button
+            type="button"
+            onClick={handleReturnToZero}
+            className="rounded-md border border-white/20 bg-white/[0.03] px-3 py-2 text-xs font-black tracking-wider text-white/90 transition hover:bg-white/[0.1]"
+            title="Return to start"
+          >
+            RTZ
+          </button>
+          <StudioTooltip label={tooltips.transportPlay} shortcut="Space">
+            <button
+              type="button"
+              onClick={handlePlayStopTransport}
+              className="rounded-md bg-emerald-500 px-4 py-2 text-xs font-black tracking-[0.14em] text-black transition hover:bg-emerald-400"
+              aria-label="Play"
+              data-tour="play-button"
+            >
+              PLAY
+            </button>
+          </StudioTooltip>
+          <StudioTooltip label={stopBehavior === "return-to-zero" ? "Stop and return to start." : "Stop and hold current cursor position."}>
+            <button
+              type="button"
+              onClick={handleStopTransport}
+              className="rounded-md border border-white/20 bg-white/[0.03] px-4 py-2 text-xs font-black tracking-[0.14em] text-white transition hover:bg-white/[0.1]"
+              aria-label="Stop"
+            >
+              STOP
+            </button>
+          </StudioTooltip>
+          <button
+            type="button"
+            onClick={() => nudgeTransport(5)}
+            className="rounded-md border border-white/20 bg-white/[0.03] px-3 py-2 text-xs font-black tracking-wider text-white/90 transition hover:bg-white/[0.1]"
+            title="Fast-forward 5 seconds"
+          >
+            FF
+          </button>
+        </div>
 
         <StudioTooltip label={tooltips.transportSurprise}>
         <button
@@ -2937,17 +3314,6 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           {transport?.isRecording ? "● Recording" : "Record"}
         </button>
         </StudioTooltip>
-
-        <button
-          type="button"
-          onClick={() => {
-            if (!ensureInit()) return;
-            engineRef.current?.rewind();
-          }}
-          className="flex h-11 items-center gap-2 rounded-full border border-white/15 px-4 text-sm font-semibold text-white/85 hover:bg-white/10 transition"
-        >
-          ⏮ Rewind
-        </button>
 
         <div className="ml-2 font-mono text-2xl font-extrabold tabular-nums">
           {fmtTime(transport?.positionSec ?? 0)}
@@ -3139,21 +3505,71 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           </span>
         )}
 
-        <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
-          Latency
-          <select
-            value={transport?.latencyMode ?? "recording"}
-            onChange={(e) => {
-              if (!ensureInit()) return;
-              engineRef.current?.setLatencyMode(e.target.value as "recording" | "mixing");
-            }}
-            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-sm font-semibold"
-            title="Recording favors low monitoring latency; mixing favors smoother playback."
-          >
-            <option value="recording">Record</option>
-            <option value="mixing">Mix</option>
-          </select>
-        </label>
+        <div className="rounded-xl border border-white/12 bg-black/30 px-2 py-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/55">Stop Mode</p>
+          <div className="mt-1 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setStopBehavior("return-to-zero")}
+              className={`rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wide transition ${
+                stopBehavior === "return-to-zero"
+                  ? "bg-cyan-400 text-black"
+                  : "border border-white/15 text-white/70 hover:bg-white/10"
+              }`}
+              title="Matches classic DAW stop behavior: press stop and return to bar 1."
+            >
+              RTZ
+            </button>
+            <button
+              type="button"
+              onClick={() => setStopBehavior("pause")}
+              className={`rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wide transition ${
+                stopBehavior === "pause"
+                  ? "bg-cyan-400 text-black"
+                  : "border border-white/15 text-white/70 hover:bg-white/10"
+              }`}
+              title="Stop and hold cursor so next Play resumes from the same spot."
+            >
+              Pause
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/12 bg-black/30 px-2 py-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/55">Latency Manager</p>
+          <div className="mt-1 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (!ensureInit()) return;
+                engineRef.current?.setLatencyMode("recording");
+              }}
+              className={`rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wide transition ${
+                (transport?.latencyMode ?? "recording") === "recording"
+                  ? "bg-emerald-400 text-black"
+                  : "border border-white/15 text-white/70 hover:bg-white/10"
+              }`}
+              title="Tracking Mode: lowest practical monitor latency for recording."
+            >
+              Tracking
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!ensureInit()) return;
+                engineRef.current?.setLatencyMode("mixing");
+              }}
+              className={`rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wide transition ${
+                transport?.latencyMode === "mixing"
+                  ? "bg-emerald-400 text-black"
+                  : "border border-white/15 text-white/70 hover:bg-white/10"
+              }`}
+              title="Mix Mode: prioritizes stability and smooth playback while mixing."
+            >
+              Mix
+            </button>
+          </div>
+        </div>
 
         <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
           Input Monitor
@@ -3482,13 +3898,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             <CommentPinsStrip
               comments={comments}
               positionSec={transport?.positionSec ?? 0}
-              durationSec={Math.max(
-                ...tracks.map((t) => t.durationSec),
-                ...comments.map((c) => c.timelineSec ?? 0),
-                transport?.loopEndSec ?? 0,
-                (transport?.positionSec ?? 0) + 1,
-                8,
-              )}
+              durationSec={timelineDurationSec}
               onSeek={(sec: number) => {
                 if (!ensureInit()) return;
                 engineRef.current?.seek(Math.max(0, sec));
@@ -3907,8 +4317,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               onCaptured={async (buffer) => {
                 const engine = engineRef.current;
                 if (!engine) return;
-                const clip = await engine.convertBufferToMidi(buffer);
-                if (!clip) {
+                const result = await engine.convertBufferToMidi(buffer);
+                if (!result) {
                   setNotice({
                     tone: "warning",
                     message:
@@ -3916,14 +4326,25 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                   });
                   return;
                 }
+                const { clip, confidence } = result;
+                const confPct = Math.round(confidence * 100);
                 pushAuditEvent(
                   "import",
-                  `Voice → MIDI: ${clip.notes.length} notes`,
+                  `Voice → MIDI: ${clip.notes.length} notes (${confPct}% confidence)`,
                 );
-                setNotice({
-                  tone: "success",
-                  message: `Captured ${clip.notes.length} notes. Edit them on the piano roll.`,
-                });
+                // Surface a warning when confidence is low (#22) so the
+                // user knows the take was borderline and can re-record.
+                if (confidence < 0.4) {
+                  setNotice({
+                    tone: "warning",
+                    message: `Captured ${clip.notes.length} notes at ${confPct}% confidence — low signal. Re-record louder for better results.`,
+                  });
+                } else {
+                  setNotice({
+                    tone: "success",
+                    message: `Captured ${clip.notes.length} notes at ${confPct}% confidence. Edit them on the piano roll.`,
+                  });
+                }
                 touchDirty();
               }}
             />
@@ -4150,6 +4571,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               <ShortcutRow combo="M" action="Toggle metronome" />
               <ShortcutRow combo="T" action="Tap tempo" />
               <ShortcutRow combo="Home" action="Rewind to start" />
+              <ShortcutRow combo="Shift + ← / →" action="Nudge transport ±5s (REW/FF)" />
+              <ShortcutRow combo="1–8" action="Jump to marker slot" />
+              <ShortcutRow combo="Shift + 1–8" action="Set marker at playhead" />
               <ShortcutRow combo="Cmd/Ctrl + Y" action="Apply top lane EQ recommendation" />
               <ShortcutRow combo="Cmd/Ctrl + Shift + R" action="Apply all lane EQ recommendations" />
               <ShortcutRow combo="Cmd/Ctrl + ← / →" action="Cycle and preview lane EQ recommendations" />
@@ -6019,7 +6443,7 @@ function TrackStrip({
   onGain: (db: number) => void;
   onPan: (pan: number) => void;
   onRename: (name: string) => void;
-  onSetEq: (band: "low" | "mid" | "high", db: number) => void;
+  onSetEq: (band: EqBand, db: number) => void;
   onSetComp: (params: { threshDb?: number; ratio?: number; enabled?: boolean }) => void;
   onSetVocalBus: (params: {
     enabled?: boolean;
@@ -6181,25 +6605,7 @@ function TrackStrip({
                 </button>
               </StudioTooltip>
               {track.hasAudio ? (
-                <StudioTooltip label="Soft pitch-correct this take to a major scale. Subtle by design.">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (typeof window !== "undefined") {
-                        window.dispatchEvent(
-                          new CustomEvent("studio:tune-track", {
-                            detail: { trackId: track.id },
-                          }),
-                        );
-                      }
-                    }}
-                    className="shrink-0 rounded-md border border-white/10 px-1.5 py-0.5 text-[10px] font-bold text-white/55 transition hover:border-cyan-300/45 hover:bg-cyan-300/10 hover:text-cyan-200"
-                    aria-label={`Apply pitch correction to ${track.name}`}
-                  >
-                    ♪
-                  </button>
-                </StudioTooltip>
+                <PitchCorrectControl trackId={track.id} trackName={track.name} />
               ) : null}
             </div>
             <p className="text-[10px] text-white/40">
@@ -6600,6 +7006,92 @@ function TrackStrip({
       )}
     </div>
     </RackPanel>
+  );
+}
+
+/** Two-piece pitch-correct control: a key dropdown + an apply button.
+ *  Persists the picked key in localStorage so the user's last choice
+ *  sticks across reloads (#23). The button dispatches studio:tune-track
+ *  with the chosen key in event.detail. */
+function PitchCorrectControl({
+  trackId,
+  trackName,
+}: {
+  trackId: string;
+  trackName: string;
+}) {
+  const PITCH_KEYS = [
+    "C",
+    "G",
+    "D",
+    "A",
+    "E",
+    "B",
+    "F#",
+    "F",
+    "Bb",
+    "Eb",
+    "Ab",
+    "Db",
+  ] as const;
+  const [key, setKey] = useState<(typeof PITCH_KEYS)[number]>("C");
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("ems.studio.tune.key.v1");
+      if (stored && (PITCH_KEYS as readonly string[]).includes(stored)) {
+        setKey(stored as (typeof PITCH_KEYS)[number]);
+      }
+    } catch {
+      /* ignore */
+    }
+    // PITCH_KEYS is a stable const literal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <span className="flex shrink-0 items-center gap-0.5">
+      <StudioTooltip label="Scale to snap to during pitch correction.">
+        <select
+          value={key}
+          onChange={(e) => {
+            const next = e.target.value as (typeof PITCH_KEYS)[number];
+            setKey(next);
+            try {
+              window.localStorage.setItem("ems.studio.tune.key.v1", next);
+            } catch {
+              /* ignore */
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Pitch correction key for ${trackName}`}
+          className="rounded-md border border-white/10 bg-black/30 px-1 py-0.5 text-[10px] font-bold text-white/70 transition hover:border-cyan-300/45 hover:text-cyan-200"
+        >
+          {PITCH_KEYS.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+      </StudioTooltip>
+      <StudioTooltip label={`Soft pitch-correct this take to ${key} major.`}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(
+                new CustomEvent("studio:tune-track", {
+                  detail: { trackId, key },
+                }),
+              );
+            }
+          }}
+          className="rounded-md border border-white/10 px-1.5 py-0.5 text-[10px] font-bold text-white/55 transition hover:border-cyan-300/45 hover:bg-cyan-300/10 hover:text-cyan-200"
+          aria-label={`Apply pitch correction to ${trackName}`}
+        >
+          ♪
+        </button>
+      </StudioTooltip>
+    </span>
   );
 }
 

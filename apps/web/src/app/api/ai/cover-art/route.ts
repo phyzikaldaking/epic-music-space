@@ -26,12 +26,31 @@ export async function POST(req: NextRequest) {
     return jsonWithRequestId(requestId, { error: "Unauthorized" }, { status: 401 });
   }
 
+  // Two-tier rate limit (#9): per-user (10/min via strictLimiter) AND a
+  // shared global key so a swarm of distinct users still can't blow past
+  // a sane cost ceiling. Each generate call burns ~$0.04 × 3 images, so
+  // at strictLimiter's 10/min the per-user worst case is $1.20/min/user
+  // and 100 simultaneous users would cost $120/min without the global
+  // backstop. The shared key uses the same limiter (10 req/min on the
+  // shared bucket → $1.20/min platform-wide ceiling on cover art).
   try {
     await strictLimiter.consume(`ai:cover:${session.user.id}`);
   } catch {
     return jsonWithRequestId(
       requestId,
       { error: "Slow down — try again in a minute." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
+  try {
+    await strictLimiter.consume("ai:cover:global");
+  } catch {
+    return jsonWithRequestId(
+      requestId,
+      {
+        error:
+          "Cover art is busy across the platform right now. Try again shortly.",
+      },
       { status: 429, headers: { "Retry-After": "60" } },
     );
   }
@@ -70,17 +89,48 @@ export async function POST(req: NextRequest) {
     .filter(Boolean)
     .join(" ");
 
-  const result = await withRouteTimeout("ai-cover-art", 45_000, async () => {
-    const response = await client.images.generate({
-      model: "gpt-image-1",
-      prompt,
-      n: count,
-      size: "1024x1024",
-    });
-    const images = (response.data ?? [])
-      .map((img) => img.b64_json)
-      .filter((b64): b64 is string => Boolean(b64));
-    return images;
+  // Retry budget (#30): the OpenAI image endpoint occasionally 5xxs or
+  // returns empty data arrays. A transparent retry with light backoff
+  // recovers the request without burning a fresh $0.04 × N on every
+  // user retry. Cap at 3 attempts so a permanently-broken upstream
+  // doesn't quintuple latency. The shared timeout (#15) caps the total
+  // wall clock so the user never waits more than ~45s.
+  //
+  // Each attempt passes an AbortSignal derived from the outer timeout
+  // so the OpenAI fetch is actually cancelled when withRouteTimeout
+  // fires — without this the underlying request keeps running and the
+  // server holds a connection open even though we already returned 504.
+  const result = await withRouteTimeout("ai-cover-art", 45_000, async (signal) => {
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await client.images.generate(
+          {
+            model: "gpt-image-1",
+            prompt,
+            n: count,
+            size: "1024x1024",
+          },
+          { signal },
+        );
+        const images = (response.data ?? [])
+          .map((img) => img.b64_json)
+          .filter((b64): b64 is string => Boolean(b64));
+        if (images.length > 0) return images;
+        // Empty array — treat as a retryable failure.
+        lastErr = new Error("empty image set");
+      } catch (err) {
+        // Abort signals must propagate immediately; retrying would
+        // dangle the timeout response.
+        if (signal?.aborted) throw err;
+        lastErr = err;
+      }
+      // Exponential backoff: 500ms, 1500ms.
+      await new Promise((r) => setTimeout(r, 500 * (1 << attempt)));
+    }
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error("cover art generation failed");
   });
   if (!result.ok) {
     console.warn("[ai-cover-art] generation failed", { requestId });
