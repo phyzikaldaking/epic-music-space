@@ -1193,6 +1193,27 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   // do?" with the user's current BPM, kit, and selected track in mind.
   useEffect(() => {
     const lastAction = auditEvents[0]?.detail ?? null;
+    // Pick a project key from the most populous chord across detected
+    // tracks. Producers often hum or play a melody on one track and
+    // expect the sample library to highlight loops in the same key —
+    // this gives us a working answer until manual key entry lands.
+    const allChords = Object.values(trackChords)
+      .flat()
+      .filter((c): c is string => typeof c === "string" && c.length > 0);
+    const inferredKey = (() => {
+      if (allChords.length === 0) return null;
+      const counts: Record<string, number> = {};
+      for (const c of allChords) counts[c] = (counts[c] ?? 0) + 1;
+      let best: string | null = null;
+      let bestCount = 0;
+      for (const [k, v] of Object.entries(counts)) {
+        if (v > bestCount) {
+          best = k;
+          bestCount = v;
+        }
+      }
+      return best;
+    })();
     setStudioContext({
       route: typeof window !== "undefined" ? window.location.pathname : "",
       bpm: transport?.bpm ?? null,
@@ -1204,6 +1225,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       selectedTrackName: focusedTrack?.name ?? null,
       lastAction,
       guestMode: isGuest,
+      projectKey: inferredKey,
     });
     return () => {
       // Only clear when this component unmounts — leaves the snapshot in
@@ -1218,6 +1240,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     snapshot?.beat?.enabled,
     focusedTrack?.name,
     auditEvents,
+    trackChords,
     isGuest,
   ]);
 
@@ -3113,7 +3136,20 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         ? engineRef.current.getSnapshot().transport.masterLufs
         : Number.NaN;
       const lufsParam = Number.isFinite(lufs) ? `&masterLufs=${encodeURIComponent(lufs.toFixed(2))}` : "";
-      const target = `/studio/new?audioUrl=${encodeURIComponent(audioUrl)}&from=board${lufsParam}`;
+      // Auto-credit hints — pass the kit + BPM + project name so the
+      // publish form can pre-fill the "Credits" field with the kit
+      // creator and the template author. The server validates these
+      // are real, owned attribution targets before persisting them on
+      // the new Song row.
+      const snap = engineRef.current?.getSnapshot();
+      const bpm = snap?.transport.bpm;
+      const beatKit = snap?.beat.kit ?? "";
+      const beatKitParam = beatKit ? `&beatKit=${encodeURIComponent(beatKit)}` : "";
+      const bpmParam = bpm ? `&bpm=${encodeURIComponent(Math.round(bpm))}` : "";
+      const titleParam = projectName
+        ? `&title=${encodeURIComponent(projectName)}`
+        : "";
+      const target = `/studio/new?audioUrl=${encodeURIComponent(audioUrl)}&from=board${lufsParam}${beatKitParam}${bpmParam}${titleParam}`;
       setStats((s) => ({ ...s, publishes: s.publishes + 1 }));
       pushAuditEvent("publish", "Uploaded mix and moved to publish flow");
       router.push(target);
@@ -4532,6 +4568,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             }}
             onSetLaneLayerKit={(lane, layerKit) => {
               engineRef.current?.setBeatLayerKit(lane, layerKit);
+              touchDirty();
+            }}
+            laneSemis={beat.laneSemis ?? {}}
+            onSetLaneSemis={(lane, semis) => {
+              engineRef.current?.setBeatLaneSemis(lane, semis);
+              touchDirty();
+            }}
+            laneReversed={beat.laneReversed ?? {}}
+            onSetLaneReversed={(lane, reversed) => {
+              engineRef.current?.setBeatLaneReversed(lane, reversed);
               touchDirty();
             }}
             onSetSwing={(v) => {

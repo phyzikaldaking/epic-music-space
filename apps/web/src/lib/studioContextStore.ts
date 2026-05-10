@@ -18,6 +18,11 @@ export interface StudioContext {
   selectedTrackName: string | null;
   lastAction: string | null;
   guestMode: boolean;
+  /** Detected or user-set project key (e.g. "C", "F#m"). Null until
+   *  the user picks one or the engine's chord detector commits one
+   *  with confidence. Sample library reads this to highlight matching
+   *  loops. */
+  projectKey: string | null;
 }
 
 const initialContext: StudioContext = {
@@ -31,6 +36,7 @@ const initialContext: StudioContext = {
   selectedTrackName: null,
   lastAction: null,
   guestMode: false,
+  projectKey: null,
 };
 
 let current: StudioContext = initialContext;

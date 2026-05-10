@@ -58,12 +58,17 @@ export interface TrackFx {
   compEnabled: boolean;
   compThreshDb: number; // -60..0
   compRatio: number; // 1..20
-  /** EMS vocal bus — console-style drive/tone/parallel crush. */
+  /** EMS vocal bus — console-style drive/tone/parallel crush + de-esser. */
   vocalBusEnabled: boolean;
   vocalBusDriveDb: number; // 0..18
   vocalBusPresenceDb: number; // -6..+6 @ 3.2 kHz
   vocalBusAirDb: number; // -6..+8 @ 10.5 kHz
   vocalBusCrush: number; // 0..1 parallel compression blend
+  /** De-esser cut depth in dB (0..-12). A frequency-selective notch at
+   *  ~6.5 kHz tames sibilance + harsh consonants on vocal takes. 0 =
+   *  bypassed; negative values dip the band. Pairs with the existing
+   *  presence + air shelves to finish a vocal chain in one strip. */
+  vocalBusDeEssDb: number; // -12..0 (always cut, never boost)
   /** Reverb send into the shared hall/plate return. */
   reverbWet: number; // 0..1
   reverbDecaySec: number; // 0.2..6, shared return follows the most recent edit
@@ -158,6 +163,9 @@ interface TrackInternal {
   vocalBusSaturator: WaveShaperNode;
   vocalBusPresence: BiquadFilterNode;
   vocalBusAir: BiquadFilterNode;
+  /** De-esser — peaking notch at ~6.5 kHz that dips the sibilance band
+   *  when vocalBusDeEssDb is negative. Bypassed (gain 0) by default. */
+  vocalBusDeEss: BiquadFilterNode;
   vocalBusDryGain: GainNode;
   vocalBusCrush: DynamicsCompressorNode;
   vocalBusCrushGain: GainNode;
@@ -343,6 +351,14 @@ export interface BeatMachineState {
   layerKitB: Partial<Record<DrumKind, DrumKitId>>;
   /** Optional file name per lane when a custom one-shot sample is assigned. */
   laneSampleNames: Record<DrumKind, string | null>;
+  /** Per-lane pitch in semitones (-12..+12). Applied to both the synth
+   *  kit and the loaded sample at scheduling time. Tuning 808 kicks to
+   *  the song key is the single most-requested move that wasn't here. */
+  laneSemis: Partial<Record<DrumKind, number>>;
+  /** Per-lane "play sample reversed" toggle. When true, the lane plays
+   *  its primary sample (or current round-robin variant) backwards.
+   *  Synth-only lanes ignore this — there's no buffer to reverse. */
+  laneReversed: Partial<Record<DrumKind, boolean>>;
   /** Round-robin variant file names per lane. The primary sample stays
    *  in laneSampleNames; up to 3 additional samples are listed here and
    *  the scheduler cycles through them on consecutive hits for realism. */
@@ -423,6 +439,15 @@ export interface MidiSynthState {
   releaseSec: number;
   /** Lowpass filter cutoff in Hz. */
   filterHz: number;
+  /** Portamento / glide time in seconds (0..1). When >0, a new note
+   *  pitch-ramps from the previous note's pitch instead of snapping.
+   *  0 = legato off (default). Producers use this for 808 melody slides
+   *  and vocal-style lead synths. */
+  glideSec: number;
+  /** MPE-style velocity-to-filter modulation. 0 = filter is fixed at
+   *  `filterHz`; positive values open the filter further when velocity
+   *  is high (softer notes stay darker). Range 0..6000 Hz. */
+  filterVelocityModHz: number;
   /** Currently-held MIDI notes, for the on-screen keyboard highlight. */
   activeNotes: number[];
   /** True while we're capturing a MIDI clip into the synth track. */
@@ -618,6 +643,7 @@ const DEFAULT_TRACK_FX: TrackFx = {
   vocalBusPresenceDb: 0,
   vocalBusAirDb: 0,
   vocalBusCrush: 0,
+  vocalBusDeEssDb: 0,
   reverbWet: 0,
   reverbDecaySec: 2.5,
   delayWet: 0,
@@ -875,6 +901,8 @@ export class DawEngine {
     },
     kit: "acoustic",
     layerKitB: {},
+    laneSemis: {},
+    laneReversed: {},
     laneSampleNames: emptyBeatLaneSampleNames(),
     laneVariantNames: DRUM_LANES.reduce((acc, lane) => {
       acc[lane] = [];
@@ -906,6 +934,11 @@ export class DawEngine {
     acc[lane] = 0;
     return acc;
   }, {} as Record<DrumKind, number>);
+  /** Cache of reversed AudioBuffers, keyed by the source buffer. Built
+   *  lazily on the first hit that needs a reverse, then re-used until
+   *  the lane sample changes. WeakMap so swapping the primary sample
+   *  releases the old reversed copy without us tracking lifecycles. */
+  private reversedBufferCache: WeakMap<AudioBuffer, AudioBuffer> = new WeakMap();
   /** Beat track ID that drum hits route into. Created in init() so the
    *  user sees it as a real strip in the mixer. */
   private beatTrackId: TrackId | null = null;
@@ -922,10 +955,17 @@ export class DawEngine {
     attackSec: 0.01,
     releaseSec: 0.25,
     filterHz: 4000,
+    glideSec: 0,
+    filterVelocityModHz: 0,
     activeNotes: [],
     recordingClip: false,
     clip: null,
   };
+  /** Frequency of the most recently triggered synth note. Used as the
+   *  start frequency when glideSec > 0 so each new note slides from the
+   *  previous pitch. null = no prior note (first note ever, or after a
+   *  global stop). */
+  private lastSynthFreq: number | null = null;
   /** Currently-recording MIDI events: { note, downBeat, upBeat | null, velocity } */
   private midiRecordEvents: Array<{
     note: number;
@@ -1508,6 +1548,16 @@ export class DawEngine {
     const vocalBusAir = ctx.createBiquadFilter();
     vocalBusAir.type = "highshelf";
     vocalBusAir.frequency.value = 10500;
+    // De-esser — a peaking notch at 6.5 kHz with Q=4 (~1/3 octave wide).
+    // Starts at 0 dB (bypassed); when the user pulls it down (e.g., -6),
+    // it dips the sibilance band on every "s/sh/ch" without dulling the
+    // rest of the vocal. Lives after the air shelf so air can still
+    // brighten high frequencies above 10 kHz independently.
+    const vocalBusDeEss = ctx.createBiquadFilter();
+    vocalBusDeEss.type = "peaking";
+    vocalBusDeEss.frequency.value = 6500;
+    vocalBusDeEss.Q.value = 4;
+    vocalBusDeEss.gain.value = 0;
     const vocalBusDryGain = ctx.createGain();
     vocalBusDryGain.gain.value = 1;
     const vocalBusCrush = ctx.createDynamicsCompressor();
@@ -1547,8 +1597,9 @@ export class DawEngine {
     vocalBusDrive.connect(vocalBusSaturator);
     vocalBusSaturator.connect(vocalBusPresence);
     vocalBusPresence.connect(vocalBusAir);
-    vocalBusAir.connect(vocalBusDryGain);
-    vocalBusAir.connect(vocalBusCrush);
+    vocalBusAir.connect(vocalBusDeEss);
+    vocalBusDeEss.connect(vocalBusDryGain);
+    vocalBusDeEss.connect(vocalBusCrush);
     vocalBusDryGain.connect(vocalBusSum);
     vocalBusCrush.connect(vocalBusCrushGain);
     vocalBusCrushGain.connect(vocalBusSum);
@@ -1611,6 +1662,7 @@ export class DawEngine {
       vocalBusSaturator,
       vocalBusPresence,
       vocalBusAir,
+      vocalBusDeEss,
       vocalBusDryGain,
       vocalBusCrush,
       vocalBusCrushGain,
@@ -1732,6 +1784,7 @@ export class DawEngine {
       presenceDb?: number;
       airDb?: number;
       crush?: number;
+      deEssDb?: number;
     },
   ) {
     const t = this.tracks.get(id);
@@ -1748,6 +1801,11 @@ export class DawEngine {
     }
     if (params.crush !== undefined) {
       t.state.fx.vocalBusCrush = Math.max(0, Math.min(1, params.crush));
+    }
+    if (params.deEssDb !== undefined) {
+      // Clamp to -12..0 — the de-esser is cut-only by design; a "boost"
+      // here would just be a presence shelf, which already exists.
+      t.state.fx.vocalBusDeEssDb = Math.max(-12, Math.min(0, params.deEssDb));
     }
     this.applyVocalBusState(t);
     this.notify();
@@ -1774,6 +1832,13 @@ export class DawEngine {
     t.vocalBusAir.gain.cancelScheduledValues(now);
     t.vocalBusAir.gain.setValueAtTime(t.vocalBusAir.gain.value, now);
     t.vocalBusAir.gain.linearRampToValueAtTime(enabled ? fx.vocalBusAirDb : 0, now + 0.02);
+    // De-esser is cut-only — clamp at <=0 dB regardless of input. When
+    // the vocal bus is bypassed we ramp to 0 so the chain becomes a
+    // straight passthrough.
+    const deEssDb = enabled ? Math.min(0, fx.vocalBusDeEssDb ?? 0) : 0;
+    t.vocalBusDeEss.gain.cancelScheduledValues(now);
+    t.vocalBusDeEss.gain.setValueAtTime(t.vocalBusDeEss.gain.value, now);
+    t.vocalBusDeEss.gain.linearRampToValueAtTime(deEssDb, now + 0.02);
     t.vocalBusDryGain.gain.cancelScheduledValues(now);
     t.vocalBusDryGain.gain.setValueAtTime(t.vocalBusDryGain.gain.value, now);
     t.vocalBusDryGain.gain.linearRampToValueAtTime(enabled ? 0.96 - crush * 0.14 : 1, now + 0.02);
@@ -3027,6 +3092,9 @@ export class DawEngine {
     this.stopBeatScheduler();
     this.stopMidiClipScheduler();
     this.beatMachine.activeStep = -1;
+    // Reset the glide source so the first note after a stop starts on
+    // its actual pitch instead of sliding from wherever we left off.
+    this.lastSynthFreq = null;
     this.notify();
   }
 
@@ -3957,6 +4025,53 @@ export class DawEngine {
     this.notify();
   }
 
+  /** Per-lane pitch offset (-12..+12 semitones). 0 clears. Affects both
+   *  the kit synth detune and the loaded sample's playbackRate. */
+  setBeatLaneSemis(lane: DrumKind, semis: number) {
+    const clamped = Math.max(-12, Math.min(12, semis));
+    if (clamped === 0) {
+      delete this.beatMachine.laneSemis[lane];
+    } else {
+      this.beatMachine.laneSemis[lane] = clamped;
+    }
+    this.notify();
+  }
+
+  /** Per-lane sample reverse toggle. Synth-only lanes ignore it
+   *  silently. The reversed AudioBuffer is built lazily and cached. */
+  setBeatLaneReversed(lane: DrumKind, reversed: boolean) {
+    if (reversed) {
+      this.beatMachine.laneReversed[lane] = true;
+    } else {
+      delete this.beatMachine.laneReversed[lane];
+    }
+    this.notify();
+  }
+
+  /** Lazy-build and cache a reversed copy of an AudioBuffer. The cache
+   *  is a WeakMap keyed by source buffer, so swapping a lane's primary
+   *  sample drops the reversed copy automatically (no manual cleanup). */
+  private getOrBuildReversedBuffer(src: AudioBuffer): AudioBuffer {
+    const cached = this.reversedBufferCache.get(src);
+    if (cached) return cached;
+    if (!this.ctx) return src;
+    const out = this.ctx.createBuffer(
+      src.numberOfChannels,
+      src.length,
+      src.sampleRate,
+    );
+    for (let ch = 0; ch < src.numberOfChannels; ch++) {
+      const inData = src.getChannelData(ch);
+      const outData = out.getChannelData(ch);
+      const len = inData.length;
+      for (let i = 0; i < len; i++) {
+        outData[i] = inData[len - 1 - i] ?? 0;
+      }
+    }
+    this.reversedBufferCache.set(src, out);
+    return out;
+  }
+
   /** Set a per-step modifier (velocity, probability, microShift, repeats).
    *  Pass `null` for the options to clear the step's overrides entirely. */
   setStepOptions(lane: DrumKind, step: number, opts: BeatStepOptions | null) {
@@ -4499,6 +4614,18 @@ export class DawEngine {
         sampleBuffer = pick === 0 ? this.beatLaneSamples[lane] : (variants[pick - 1] ?? sampleBuffer);
         this.beatLaneVariantCursor[lane] = cursor + 1;
       }
+      // Reverse the chosen buffer if the lane has that flag. We cache
+      // the reversed copy per source AudioBuffer so we don't allocate
+      // on every hit. Synth-only lanes (no sample) ignore the flag.
+      if (sampleBuffer && this.beatMachine.laneReversed[lane]) {
+        sampleBuffer = this.getOrBuildReversedBuffer(sampleBuffer);
+      }
+      // Per-lane pitch offset in semitones — passed straight to
+      // scheduleDrumHit so the kit synth detunes and the sample's
+      // playbackRate adjusts to match. Step-level pitch in
+      // BeatStepOptions could compose on top later if we want microtonal
+      // accents; for now lane-level is the producer-visible knob.
+      const laneSemis = this.beatMachine.laneSemis[lane] ?? 0;
       const laneEq = this.beatMachine.laneEqSettings[lane];
       // Repeats — fire the hit once, then again 1..3 additional times
       // squeezed into half the next step's duration. Halves velocity on
@@ -4513,6 +4640,7 @@ export class DawEngine {
           when: repeatWhen,
           velocity: repeatVel,
           kit: this.beatMachine.kit,
+          pitchSemis: laneSemis,
           sampleBuffer,
           laneEq,
         });
@@ -4524,6 +4652,7 @@ export class DawEngine {
             when: repeatWhen,
             velocity: repeatVel * 0.85,
             kit: layerKit,
+            pitchSemis: laneSemis,
             sampleBuffer: null,
             laneEq,
           });
@@ -4712,6 +4841,14 @@ export class DawEngine {
     vocalBusAir.type = "highshelf";
     vocalBusAir.frequency.value = 10500;
     vocalBusAir.gain.value = fx.vocalBusEnabled ? fx.vocalBusAirDb : 0;
+    // Offline de-esser mirrors the live chain so renders match monitor.
+    const vocalBusDeEss = offline.createBiquadFilter();
+    vocalBusDeEss.type = "peaking";
+    vocalBusDeEss.frequency.value = 6500;
+    vocalBusDeEss.Q.value = 4;
+    vocalBusDeEss.gain.value = fx.vocalBusEnabled
+      ? Math.min(0, fx.vocalBusDeEssDb ?? 0)
+      : 0;
     const vocalBusDryGain = offline.createGain();
     vocalBusDryGain.gain.value = fx.vocalBusEnabled ? 0.96 - fx.vocalBusCrush * 0.14 : 1;
     const vocalBusCrush = offline.createDynamicsCompressor();
@@ -4741,8 +4878,9 @@ export class DawEngine {
     vocalBusDrive.connect(vocalBusSaturator);
     vocalBusSaturator.connect(vocalBusPresence);
     vocalBusPresence.connect(vocalBusAir);
-    vocalBusAir.connect(vocalBusDryGain);
-    vocalBusAir.connect(vocalBusCrush);
+    vocalBusAir.connect(vocalBusDeEss);
+    vocalBusDeEss.connect(vocalBusDryGain);
+    vocalBusDeEss.connect(vocalBusCrush);
     vocalBusDryGain.connect(vocalBusSum);
     vocalBusCrush.connect(vocalBusCrushGain);
     vocalBusCrushGain.connect(vocalBusSum);
@@ -4965,6 +5103,7 @@ export class DawEngine {
         presenceDb: fx.vocalBusPresenceDb,
         airDb: fx.vocalBusAirDb,
         crush: fx.vocalBusCrush,
+        deEssDb: fx.vocalBusDeEssDb,
       });
       this.setTrackReverb(id, { wet: fx.reverbWet, decaySec: fx.reverbDecaySec });
       this.setTrackDelay(id, {
@@ -5054,7 +5193,9 @@ export class DawEngine {
       key === "wave" ||
       key === "attackSec" ||
       key === "releaseSec" ||
-      key === "filterHz"
+      key === "filterHz" ||
+      key === "glideSec" ||
+      key === "filterVelocityModHz"
     ) {
       this.midi = { ...this.midi, [key]: value };
       this.notify();
@@ -5156,16 +5297,39 @@ export class DawEngine {
     const freq = 440 * Math.pow(2, (note - 69) / 12);
     const osc = ctx.createOscillator();
     osc.type = this.midi.wave;
-    osc.frequency.value = freq;
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.value = this.midi.filterHz;
+    // MPE-style velocity-to-filter: harder notes open the cutoff
+    // further. When `filterVelocityModHz` is 0 the filter sits at the
+    // user-set base value (legacy behavior). Otherwise we add
+    // velocity * modRange so soft notes are darker, hard notes brighter.
+    const baseFilterHz = this.midi.filterHz;
+    const velMod = Math.max(0, this.midi.filterVelocityModHz);
+    const filterFreq = Math.max(
+      80,
+      Math.min(20000, baseFilterHz + velocity * velMod),
+    );
+    filter.frequency.value = filterFreq;
     filter.Q.value = 0.7;
     const amp = ctx.createGain();
     amp.gain.value = 0;
     osc.connect(filter).connect(amp).connect(target.fxIn);
 
     const now = ctx.currentTime;
+    // Glide / portamento — when glideSec > 0 the new note pitch-ramps
+    // from the previous note's frequency. lastSynthFreq is null on the
+    // very first note (or after the user has globally stopped), so the
+    // first note still starts on-pitch. Glide is exponential because
+    // pitch perception is logarithmic — linearRampToValueAtTime would
+    // feel slow at the top and snappy at the bottom.
+    const glide = Math.max(0, this.midi.glideSec);
+    if (glide > 0 && this.lastSynthFreq && this.lastSynthFreq > 0) {
+      osc.frequency.setValueAtTime(this.lastSynthFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq, now + glide);
+    } else {
+      osc.frequency.value = freq;
+    }
+    this.lastSynthFreq = freq;
     const peak = 0.4 * Math.max(0.05, Math.min(1, velocity));
     amp.gain.setValueAtTime(0, now);
     amp.gain.linearRampToValueAtTime(peak, now + Math.max(0.001, this.midi.attackSec));
@@ -5388,6 +5552,8 @@ export class DawEngine {
         },
         kit: this.beatMachine.kit,
         layerKitB: { ...this.beatMachine.layerKitB },
+        laneSemis: { ...this.beatMachine.laneSemis },
+        laneReversed: { ...this.beatMachine.laneReversed },
         laneSampleNames: { ...this.beatMachine.laneSampleNames },
         laneVariantNames: DRUM_LANES.reduce((acc, lane) => {
           acc[lane] = [...this.beatMachine.laneVariantNames[lane]];

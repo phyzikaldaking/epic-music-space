@@ -78,6 +78,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
   const [previewing, setPreviewing] = useState<string | null>(null);
   const studioContext = useStudioContext();
   const projectBpm = studioContext.bpm;
+  const projectKey = studioContext.projectKey;
   const visible = useMemo(
     () => (filter === "all" ? SAMPLES : SAMPLES.filter((s) => s.category === filter)),
     [filter],
@@ -217,9 +218,10 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
         ))}
       </div>
 
-      {projectBpm != null && (
+      {(projectBpm != null || projectKey) && (
         <p className="mt-2 text-[10px] uppercase tracking-widest text-white/40">
-          Project at {projectBpm} BPM — matches highlighted in green.
+          Project at {projectBpm ?? "?"} BPM
+          {projectKey ? ` · key ${projectKey}` : ""} — matches highlighted in green.
         </p>
       )}
       <div className="mt-3 grid max-h-[320px] gap-1.5 overflow-y-auto pr-1">
@@ -227,12 +229,21 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
           const isRecent = recentLoad === s.id;
           const isPreviewing = previewing === s.id;
           // BPM matching (#14). One-shots (s.bpm === 0) are tempo-agnostic.
-          const matches =
+          const bpmMatch =
             projectBpm != null &&
             s.bpm > 0 &&
             Math.abs(s.bpm - projectBpm) / projectBpm <= BPM_MATCH_TOLERANCE;
+          // Key matching (#24). True when the sample's key is the same
+          // letter+accidental as the project key, ignoring the m/maj
+          // suffix (a C-minor loop is musically compatible with a C
+          // major track on most beats, and producers treat them as a
+          // match for sampling purposes).
+          const keyMatch = projectKey != null && s.key
+            ? sameKeyRoot(projectKey, s.key)
+            : false;
+          const matches = bpmMatch || keyMatch;
           const offTempo =
-            projectBpm != null && s.bpm > 0 && !matches;
+            projectBpm != null && s.bpm > 0 && !bpmMatch && !keyMatch;
           return (
             <button
               key={s.id}
@@ -259,9 +270,14 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
             >
               <span className="truncate">{s.name}</span>
               <span className="ml-3 flex flex-shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-wider">
-                {matches && (
+                {bpmMatch && (
                   <span className="rounded bg-emerald-500/30 px-1 py-0.5 font-bold text-emerald-100">
-                    ✓ match
+                    ✓ bpm
+                  </span>
+                )}
+                {keyMatch && (
+                  <span className="rounded bg-cyan-500/30 px-1 py-0.5 font-bold text-cyan-100">
+                    ♪ key
                   </span>
                 )}
                 <span className={matches ? "text-emerald-200/85" : "text-white/40"}>
@@ -278,4 +294,39 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
       </div>
     </div>
   );
+}
+
+// Strip the `m` / `maj` / minor-7 suffix from a key string and normalize
+// flats to sharps so "Bb" and "A#" both reduce to "A#". Returns just the
+// root pitch class. Comparison is letter-for-letter — sharp/flat
+// equivalents collapse via normalization.
+function rootPitchClass(key: string): string {
+  const trimmed = key.trim();
+  if (!trimmed) return "";
+  // Pick off the first 1-2 chars that are a letter + optional sharp/flat.
+  const m = trimmed.match(/^([A-Ga-g])([#b♯♭]?)/);
+  if (!m) return "";
+  const letter = (m[1] ?? "").toUpperCase();
+  const accidental = m[2] ?? "";
+  if (!accidental) return letter;
+  // Convert flat → equivalent sharp so "Bb" matches "A#".
+  if (accidental === "b" || accidental === "♭") {
+    const flatToSharp: Record<string, string> = {
+      A: "G#",
+      B: "A#",
+      C: "B",
+      D: "C#",
+      E: "D#",
+      F: "E",
+      G: "F#",
+    };
+    return flatToSharp[letter] ?? `${letter}b`;
+  }
+  return `${letter}#`;
+}
+
+function sameKeyRoot(a: string, b: string): boolean {
+  const ra = rootPitchClass(a);
+  const rb = rootPitchClass(b);
+  return ra !== "" && ra === rb;
 }

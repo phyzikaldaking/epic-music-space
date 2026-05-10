@@ -27,6 +27,7 @@ interface Props {
     presenceDb?: number;
     airDb?: number;
     crush?: number;
+    deEssDb?: number;
   }) => void;
   onSetReverb: (params: { wet?: number; decaySec?: number }) => void;
   onSetDelay: (params: { wet?: number; beats?: number; feedback?: number }) => void;
@@ -101,6 +102,11 @@ export default function FxPanel({
           <FxBlock
             title="Compressor"
             subtitle={fx.compEnabled ? "engaged" : "bypassed"}
+            disabledHint={
+              fx.compEnabled
+                ? undefined
+                : "Compressor is bypassed — turn it on to hear threshold + ratio."
+            }
             toggle={
               <button
                 type="button"
@@ -139,6 +145,11 @@ export default function FxPanel({
           <FxBlock
             title="Vocal bus"
             subtitle={fx.vocalBusEnabled ? "frontline" : "bypassed"}
+            disabledHint={
+              fx.vocalBusEnabled
+                ? undefined
+                : "Vocal bus is bypassed — flip On to use drive, presence, air, crush, de-ess."
+            }
             toggle={
               <button
                 type="button"
@@ -191,6 +202,16 @@ export default function FxPanel({
               value={fx.vocalBusCrush}
               suffix=""
               onChange={(v) => onSetVocalBus({ crush: v })}
+              accent="amber"
+            />
+            <Slider
+              label="De-ess"
+              min={-12}
+              max={0}
+              step={0.5}
+              value={fx.vocalBusDeEssDb ?? 0}
+              suffix="dB"
+              onChange={(v) => onSetVocalBus({ deEssDb: v })}
               accent="amber"
             />
           </FxBlock>
@@ -372,13 +393,21 @@ function FxBlock({
   title,
   subtitle,
   toggle,
+  disabledHint,
   children,
 }: {
   title: string;
   subtitle?: string;
   toggle?: React.ReactNode;
+  /** When set, dims the block's body, blocks pointer interactions on
+   *  the contained sliders, and prints a one-line hint explaining why
+   *  the controls don't currently respond. Use for "Enable Compressor
+   *  to adjust threshold" — saves users a debug spiral when they're
+   *  dragging a slider that has no audible effect. */
+  disabledHint?: string;
   children: React.ReactNode;
 }) {
+  const disabled = Boolean(disabledHint);
   return (
     <div className="rounded-lg border border-white/10 bg-black/30 p-2.5">
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -387,7 +416,21 @@ function FxBlock({
         </p>
         {toggle}
       </div>
-      <div className="space-y-1.5">{children}</div>
+      {disabled ? (
+        <div
+          className="space-y-1.5 pointer-events-none opacity-45"
+          aria-disabled="true"
+        >
+          {children}
+        </div>
+      ) : (
+        <div className="space-y-1.5">{children}</div>
+      )}
+      {disabled && (
+        <p className="mt-2 text-[10px] italic text-amber-200/80">
+          ↑ {disabledHint}
+        </p>
+      )}
     </div>
   );
 }

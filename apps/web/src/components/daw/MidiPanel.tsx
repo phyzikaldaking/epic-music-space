@@ -208,6 +208,24 @@ export default function MidiPanel({
           suffix=" Hz"
           onChange={(v) => onSetParam("filterHz", v)}
         />
+        <SynthSlider
+          label="Glide"
+          min={0}
+          max={1}
+          step={0.01}
+          value={state.glideSec ?? 0}
+          suffix=" s"
+          onChange={(v) => onSetParam("glideSec", v)}
+        />
+        <SynthSlider
+          label="Vel→Filt"
+          min={0}
+          max={6000}
+          step={50}
+          value={state.filterVelocityModHz ?? 0}
+          suffix=" Hz"
+          onChange={(v) => onSetParam("filterVelocityModHz", v)}
+        />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-1.5">

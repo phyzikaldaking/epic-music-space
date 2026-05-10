@@ -366,6 +366,13 @@ model Song {
   // surface stays current.
   isLegacy            Boolean @default(false)
   originalReleaseYear Int?    // optional context for legacy tracks (e.g. 2003)
+  // Auto-credit metadata captured from the studio at publish time (#30).
+  // Shape: { beatKit?: string, beatKitLabel?: string,
+  //          templateId?: string, templateName?: string,
+  //          contributors?: Array<{ userId?: string, role: string, label: string }> }.
+  // Track pages render this as a "Credits" panel so kit / template authors
+  // get visible attribution and ecosystem participants are surfaced.
+  credits             Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   artistId String

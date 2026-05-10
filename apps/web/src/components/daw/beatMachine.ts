@@ -598,6 +598,13 @@ export function scheduleDrumHit(
     const laneTone = LANE_SAMPLE_TONE[kind];
     const amp = ctx.createGain();
     source.buffer = sampleBuffer;
+    // Per-lane pitch via playbackRate. Each semitone is the 12th root
+    // of 2 (≈1.0594 per +1). The synth path uses pitchSemis to detune
+    // its oscillators; here we use the same value to repitch the sample
+    // so the lane reads "in tune" whether it's synth or sample.
+    if (pitchSemis !== 0) {
+      source.playbackRate.value = Math.pow(2, pitchSemis / 12);
+    }
     const outGain = Math.max(0, Math.min(1.2, velocity * laneTone.gain));
     amp.gain.setValueAtTime(outGain, when);
     let chain: AudioNode = source;

@@ -17,7 +17,18 @@ export const metadata = {
 export default async function StudioNewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ expert?: string; audioUrl?: string; from?: string }>;
+  searchParams: Promise<{
+    expert?: string;
+    audioUrl?: string;
+    from?: string;
+    /** Beat-machine kit ID at publish time, e.g. "trap". Used to seed
+     *  the auto-credit field on the new Song row (#30). */
+    beatKit?: string;
+    /** Project BPM at publish time. */
+    bpm?: string;
+    /** Project name to suggest as the song title. */
+    title?: string;
+  }>;
 }) {
   const session = await auth();
   const params = await searchParams;
@@ -27,6 +38,20 @@ export default async function StudioNewPage({
     typeof params.audioUrl === "string" && /^https?:\/\//.test(params.audioUrl)
       ? params.audioUrl
       : "";
+  const prefillBeatKit =
+    typeof params.beatKit === "string" && /^[a-zA-Z]+$/.test(params.beatKit)
+      ? params.beatKit
+      : undefined;
+  const prefillBpm = (() => {
+    if (typeof params.bpm !== "string") return undefined;
+    const n = Number(params.bpm);
+    if (!Number.isFinite(n) || n < 20 || n > 240) return undefined;
+    return Math.round(n);
+  })();
+  const prefillTitle =
+    typeof params.title === "string" && params.title.length > 0 && params.title.length <= 200
+      ? params.title
+      : undefined;
 
   if (!session?.user?.id) {
     return (
@@ -145,6 +170,9 @@ export default async function StudioNewPage({
         <QuickUploadFlow
           defaultArtistName={defaultArtistName}
           prefillAudioUrl={prefillAudioUrl}
+          prefillBeatKit={prefillBeatKit}
+          prefillBpm={prefillBpm}
+          prefillTitle={prefillTitle}
         />
       )}
     </Suspense>

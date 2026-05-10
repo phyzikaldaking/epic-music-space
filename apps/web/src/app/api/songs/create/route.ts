@@ -75,6 +75,29 @@ const createSongSchema = z.object({
     )
     .max(6)
     .optional(),
+  // Auto-credit metadata (#30). Optional. The studio prefills this with
+  // the kit / template / contributors that contributed to the mix. We
+  // validate shape but don't enforce that contributors are real user IDs
+  // here — track-page rendering soft-validates and shows "@unknown" for
+  // missing accounts rather than rejecting the publish.
+  credits: z
+    .object({
+      beatKit: z.string().max(40).optional(),
+      beatKitLabel: z.string().max(80).optional(),
+      templateId: z.string().max(40).optional(),
+      templateName: z.string().max(120).optional(),
+      contributors: z
+        .array(
+          z.object({
+            userId: z.string().max(40).optional(),
+            role: z.string().min(1).max(40),
+            label: z.string().min(1).max(120),
+          }),
+        )
+        .max(12)
+        .optional(),
+    })
+    .optional(),
 });
 
 /**
@@ -163,7 +186,7 @@ export async function POST(req: NextRequest) {
 
   // Pull scheduledAt out of parsed.data so we can convert string -> Date
   // before handing it to Prisma (the field is DateTime in the schema).
-  const { scheduledAt, licenseVariants, ...restCreate } = parsed.data;
+  const { scheduledAt, licenseVariants, credits, ...restCreate } = parsed.data;
 
   const song = await prisma.song.create({
     data: {
@@ -173,6 +196,9 @@ export async function POST(req: NextRequest) {
       // licenseVariants is JSON in the DB. Prisma's typed input expects
       // the JSON shape, but our zod schema has already validated structure.
       licenseVariants: licenseVariants ?? undefined,
+      // Auto-credit JSON — already shape-validated by the zod schema
+      // above. Renders on the track page as a "Credits" panel.
+      credits: credits ?? undefined,
     },
   });
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent a
 import {
   DRUM_LANES,
   STEPS,
+  scheduleDrumHit,
   type BeatPattern,
   type BeatStepOptions,
   type BeatFillPreset,
@@ -56,6 +57,14 @@ interface Props {
   onSelectBank: (bank: PatternBank) => void;
   onSelectKit: (kit: DrumKitId) => void;
   onSetLaneLayerKit: (lane: DrumKind, kit: DrumKitId | null) => void;
+  /** Per-lane pitch (-12..+12 semitones). 0 = unity. Affects the synth
+   *  kit and any loaded sample. The single most-requested move for
+   *  tuning 808 kicks to song key. */
+  laneSemis: Partial<Record<DrumKind, number>>;
+  onSetLaneSemis: (lane: DrumKind, semis: number) => void;
+  /** Per-lane reverse-sample toggle. Synth-only lanes ignore it. */
+  laneReversed: Partial<Record<DrumKind, boolean>>;
+  onSetLaneReversed: (lane: DrumKind, reversed: boolean) => void;
   onSetSwing: (swing: number) => void;
   onSetHumanize: (humanizeMs: number) => void;
   onSetFillsEnabled: (on: boolean) => void;
@@ -151,6 +160,10 @@ export default function BeatMachineGrid({
   onSelectBank,
   onSelectKit,
   onSetLaneLayerKit,
+  laneSemis,
+  onSetLaneSemis,
+  laneReversed,
+  onSetLaneReversed,
   onSetSwing,
   onSetHumanize,
   onSetFillsEnabled,
@@ -334,20 +347,7 @@ export default function BeatMachineGrid({
             ))}
           </div>
 
-          <StudioTooltip label={tooltips.beatKit}>
-          <select
-            value={kit}
-            onChange={(e) => onSelectKit(e.target.value as DrumKitId)}
-            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-xs font-mono text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
-            aria-label="Drum kit preset"
-          >
-            {KITS.map((k) => (
-              <option key={k.id} value={k.id}>
-                {k.label}
-              </option>
-            ))}
-          </select>
-          </StudioTooltip>
+          <KitPickerStrip kit={kit} onSelect={onSelectKit} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StudioTooltip label={tooltips.beatOnOff}>
@@ -682,6 +682,46 @@ export default function BeatMachineGrid({
                   ))}
                 </select>
               </div>
+              <div className="mt-0.5 flex items-center gap-1">
+                <span
+                  className="text-[8px] font-bold uppercase tracking-widest text-white/40"
+                  title="Tune the lane in semitones — works for both the kit synth and any loaded sample"
+                >
+                  Tune
+                </span>
+                <input
+                  type="range"
+                  min={-12}
+                  max={12}
+                  step={1}
+                  value={laneSemis[lane] ?? 0}
+                  onChange={(e) => onSetLaneSemis(lane, Number(e.target.value))}
+                  aria-label={`${LANE_LABELS[lane]} pitch in semitones`}
+                  className="flex-1 accent-accent-500"
+                  title={`${LANE_LABELS[lane]} pitch (${(laneSemis[lane] ?? 0) > 0 ? "+" : ""}${laneSemis[lane] ?? 0} st)`}
+                />
+                <span className="w-7 text-right font-mono text-[8px] tabular-nums text-white/70">
+                  {(laneSemis[lane] ?? 0) > 0 ? "+" : ""}{laneSemis[lane] ?? 0}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onSetLaneReversed(lane, !laneReversed[lane])}
+                  className={`rounded border px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider transition ${
+                    laneReversed[lane]
+                      ? "border-amber-300/55 bg-amber-400/15 text-amber-100"
+                      : "border-white/10 text-white/45 hover:bg-white/10"
+                  }`}
+                  title={
+                    laneReversed[lane]
+                      ? "Playing this lane's sample reversed — click to disable"
+                      : "Reverse this lane's sample (no effect on synth-only lanes)"
+                  }
+                  aria-pressed={laneReversed[lane] ? "true" : "false"}
+                  aria-label={`Reverse ${LANE_LABELS[lane]} sample`}
+                >
+                  ⏪
+                </button>
+              </div>
             </div>
             <div className="flex flex-1 gap-[3px]">
               {stepIndices.map((step) => {
@@ -881,5 +921,113 @@ function ProbabilityMenu({
         </button>
       </div>
     </>
+  );
+}
+
+// Inline kit picker that auditions a one-bar kick/snare/hat preview on
+// hover using the hovered kit's synth, without committing the project's
+// kit selection. Click commits like the old dropdown. Uses a shared,
+// lazily-constructed AudioContext that lives in a ref so we don't open
+// a new context per hover (Safari caps active contexts at 6).
+function KitPickerStrip({
+  kit,
+  onSelect,
+}: {
+  kit: DrumKitId;
+  onSelect: (kit: DrumKitId) => void;
+}) {
+  const auditionCtxRef = useRef<AudioContext | null>(null);
+  const auditionTimerRef = useRef<number | null>(null);
+
+  function ensureAuditionCtx(): AudioContext | null {
+    if (typeof window === "undefined") return null;
+    if (auditionCtxRef.current) return auditionCtxRef.current;
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctor) return null;
+    auditionCtxRef.current = new Ctor();
+    return auditionCtxRef.current;
+  }
+
+  function audition(kitId: DrumKitId) {
+    const ctx = ensureAuditionCtx();
+    if (!ctx) return;
+    if (ctx.state === "suspended") void ctx.resume();
+    // Fire kick / hat / snare / hat at 120 BPM — gives the user a
+    // 0.5-second taste of the kit's character without pretending to
+    // play their actual pattern.
+    const now = ctx.currentTime + 0.02;
+    const stepSec = 0.13;
+    const dest = ctx.destination;
+    scheduleDrumHit(ctx, dest, "kick", { when: now, kit: kitId, velocity: 0.9 });
+    scheduleDrumHit(ctx, dest, "hat", { when: now + stepSec, kit: kitId, velocity: 0.7 });
+    scheduleDrumHit(ctx, dest, "snare", { when: now + stepSec * 2, kit: kitId, velocity: 0.95 });
+    scheduleDrumHit(ctx, dest, "hat", { when: now + stepSec * 3, kit: kitId, velocity: 0.6 });
+  }
+
+  function scheduleAudition(kitId: DrumKitId) {
+    if (auditionTimerRef.current !== null) {
+      clearTimeout(auditionTimerRef.current);
+    }
+    // 180ms hover-debounce so a sweep across the strip doesn't fire
+    // every kit. Long enough to feel intentional, short enough to
+    // still feel like hover.
+    auditionTimerRef.current = window.setTimeout(() => {
+      audition(kitId);
+      auditionTimerRef.current = null;
+    }, 180);
+  }
+
+  function cancelPending() {
+    if (auditionTimerRef.current !== null) {
+      clearTimeout(auditionTimerRef.current);
+      auditionTimerRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      cancelPending();
+      const ctx = auditionCtxRef.current;
+      if (ctx && ctx.state !== "closed") {
+        void ctx.close();
+      }
+    };
+  }, []);
+
+  return (
+    <StudioTooltip label="Hover a kit to audition · click to apply">
+      <div className="flex items-center gap-1 rounded-lg border border-white/15 bg-black/40 p-1">
+        {KITS.map((k) => {
+          const active = k.id === kit;
+          return (
+            <button
+              key={k.id}
+              type="button"
+              onClick={() => {
+                cancelPending();
+                onSelect(k.id);
+              }}
+              onMouseEnter={() => scheduleAudition(k.id)}
+              onMouseLeave={cancelPending}
+              onFocus={() => scheduleAudition(k.id)}
+              onBlur={cancelPending}
+              className={`rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-widest transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
+                active
+                  ? "bg-accent-500 text-black"
+                  : "text-white/65 hover:bg-white/10"
+              }`}
+              title={`${k.label} — hover to audition`}
+              aria-pressed={active ? "true" : "false"}
+              aria-label={`${k.label} kit${active ? " (active)" : ""}`}
+            >
+              {k.label}
+            </button>
+          );
+        })}
+      </div>
+    </StudioTooltip>
   );
 }

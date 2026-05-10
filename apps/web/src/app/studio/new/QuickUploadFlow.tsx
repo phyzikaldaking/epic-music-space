@@ -45,11 +45,21 @@ interface Props {
    * step 2 with the audio already marked done.
    */
   prefillAudioUrl?: string;
+  /** Beat-machine kit ID at publish time. Used to auto-fill the
+   *  Credits field on the resulting Song (#30). */
+  prefillBeatKit?: string;
+  /** Project BPM at publish time — pre-fills the BPM input. */
+  prefillBpm?: number;
+  /** Project name to suggest as the title input. */
+  prefillTitle?: string;
 }
 
 export default function QuickUploadFlow({
   defaultArtistName,
   prefillAudioUrl = "",
+  prefillBeatKit,
+  prefillBpm,
+  prefillTitle,
 }: Props) {
   const router = useRouter();
 
@@ -70,7 +80,7 @@ export default function QuickUploadFlow({
   const audioInputRef = useRef<HTMLInputElement>(null);
 
   // Step 2
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(prefillTitle ?? "");
   const [artist, setArtist] = useState(defaultArtistName);
   const [coverUrl, setCoverUrl] = useState("");
   const [coverGenerating, setCoverGenerating] = useState(false);
@@ -83,7 +93,9 @@ export default function QuickUploadFlow({
   // Auto-detected from the uploaded audio. Both fields stay editable —
   // we surface them as "smart defaults" so a wrong guess never gets in
   // the artist's way. Detection runs in parallel with upload.
-  const [bpm, setBpm] = useState<string>("");
+  const [bpm, setBpm] = useState<string>(
+    prefillBpm ? String(prefillBpm) : "",
+  );
   const [musicalKey, setMusicalKey] = useState<string>("");
   const [autoDetecting, setAutoDetecting] = useState(false);
   // Tracks which fields we filled automatically vs. the user did, so
@@ -452,6 +464,18 @@ export default function QuickUploadFlow({
     try {
       const trimmedBpm = bpm.trim();
       const parsedBpm = trimmedBpm ? Number(trimmedBpm) : undefined;
+      // Auto-credit: if the producer published from the DAW, attribute
+      // the kit they used. Future hook: pull templateId + collaborator
+      // user IDs from the project once those flow through. For now the
+      // single field that's worth surfacing is the kit, which already
+      // round-trips via URL params.
+      const credits = prefillBeatKit
+        ? {
+            beatKit: prefillBeatKit,
+            beatKitLabel:
+              prefillBeatKit.charAt(0).toUpperCase() + prefillBeatKit.slice(1),
+          }
+        : undefined;
       const res = await fetch("/api/songs/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -469,6 +493,7 @@ export default function QuickUploadFlow({
           // BPM if it parsed cleanly to avoid a schema 400.
           ...(parsedBpm && Number.isFinite(parsedBpm) ? { bpm: parsedBpm } : {}),
           ...(musicalKey.trim() ? { key: musicalKey.trim() } : {}),
+          ...(credits ? { credits } : {}),
         }),
       });
       const data = (await res.json()) as {
