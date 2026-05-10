@@ -1,9 +1,48 @@
 "use client";
 
-import type { EngineSnapshot, TrackId, TrackState } from "./dawEngine";
+type TrackId = string;
+
+type ProMixTrackState = {
+  id: TrackId;
+  name: string;
+  color: string;
+  level: number;
+  gainDb: number;
+  pan: number;
+  muted: boolean;
+  solo: boolean;
+  armed: boolean;
+  fx: {
+    eqLowDb?: number;
+    eqMidDb?: number;
+    eqHighDb?: number;
+    compEnabled?: boolean;
+    vocalBusEnabled?: boolean;
+    reverbWet: number;
+    delayWet: number;
+  };
+};
+
+type ProMixSnapshot = {
+  tracks: ProMixTrackState[];
+  transport: {
+    bpm: number;
+    isPlaying: boolean;
+    masterDb: number;
+    masterLevel: number;
+    masterLufs: number;
+    masterTruePeak: number;
+    masterPhaseCorrelation: number;
+    masterLimiterOn: boolean;
+  };
+  aux: {
+    reverbReturn: { enabled: boolean; level: number };
+    delayReturn: { enabled: boolean; level: number };
+  };
+};
 
 type ProMixWindowProps = {
-  snapshot: EngineSnapshot;
+  snapshot: ProMixSnapshot;
   focusedId: TrackId | null;
   onFocusTrack: (trackId: TrackId) => void;
   onSetTrackGain?: (trackId: TrackId, gainDb: number) => void;
@@ -36,7 +75,7 @@ function formatDb(value: number): string {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)} dB`;
 }
 
-function mixDoctor(snapshot: EngineSnapshot): string[] {
+function mixDoctor(snapshot: ProMixSnapshot): string[] {
   const tips: string[] = [];
   const { transport, tracks } = snapshot;
   const loudness = Number.isFinite(transport.masterLufs) ? transport.masterLufs : -Infinity;
@@ -58,7 +97,7 @@ function mixDoctor(snapshot: EngineSnapshot): string[] {
 }
 
 function ChannelStrip(props: {
-  track: TrackState;
+  track: ProMixTrackState;
   selected: boolean;
   onFocus: () => void;
   onSetGain?: (gainDb: number) => void;
