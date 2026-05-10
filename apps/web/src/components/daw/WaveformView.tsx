@@ -16,6 +16,13 @@ interface Props {
    *  Receives a position in seconds. Caller wires this to engine.seek().
    *  Omit to keep the waveform display-only. */
   onScrub?: (positionSec: number) => void;
+  /** Snap-to-grid divisor for the scrub position. When set with `bpm`,
+   *  the click position rounds to the nearest division of a beat:
+   *  1 = nearest beat, 2 = 8th, 4 = 16th, 0.25 = bar (1/4 of a beat).
+   *  null/undefined = free scrubbing. */
+  snapDivisor?: number | null;
+  /** Project BPM, required when snapDivisor is set. */
+  bpm?: number;
   className?: string;
 }
 
@@ -40,6 +47,8 @@ export default function WaveformView({
   progress = 0,
   durationSec,
   onScrub,
+  snapDivisor = null,
+  bpm,
   className = "",
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -53,7 +62,16 @@ export default function WaveformView({
     const rect = wrap.getBoundingClientRect();
     if (rect.width <= 0) return null;
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    return ratio * durationSec;
+    const raw = ratio * durationSec;
+    // Snap to musical grid when configured. Producers want the playhead
+    // to land on a beat boundary so loop punches are tight; without this
+    // every click is a half-pixel offset and the loop falls off.
+    if (snapDivisor && snapDivisor > 0 && bpm && bpm > 0) {
+      const secPerBeat = 60 / bpm;
+      const stepSec = secPerBeat / snapDivisor;
+      return Math.round(raw / stepSec) * stepSec;
+    }
+    return raw;
   };
 
   // Static canvas paint — only re-runs when the waveform geometry

@@ -13,6 +13,9 @@ const patchSchema = z.object({
   masterBlobUrl: z.string().url().nullable().optional(),
   isTemplate: z.boolean().optional(),
   templateGenre: z.string().max(40).nullable().optional(),
+  // Template price in USD (#28). null = not for sale; 0 = free; >0 paid.
+  // Cap at 999.99 to keep accidental zero-padding out of the marketplace.
+  templatePriceUsd: z.number().min(0).max(999.99).nullable().optional(),
 });
 
 export async function GET(

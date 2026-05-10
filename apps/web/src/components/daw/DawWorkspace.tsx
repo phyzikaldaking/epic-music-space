@@ -600,6 +600,15 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [comments, setComments] = useState<StudioComment[]>([]);
   const [recordReview, setRecordReview] = useState<RecordReviewState | null>(null);
   const [compactStrips, setCompactStrips] = useState(false);
+  /** Waveform scrub-snap toggle (#3). On = clicks land on the nearest
+   *  16th note; off = free scrubbing. Persisted to localStorage so the
+   *  user's preference survives reloads. */
+  const [scrubSnapEnabled, setScrubSnapEnabled] = useState(false);
+  /** Bump after storing/recalling a master A/B slot so the MasterStrip
+   *  re-reads hasMasterAbSlot. The engine's slot map isn't in
+   *  EngineSnapshot (intentionally — A/B is session-local) so we ping
+   *  this counter to trigger a single re-render. */
+  const [masterAbVersion, setMasterAbVersion] = useState(0);
   const [showRecordWizard, setShowRecordWizard] = useState(true);
   const [heavyUiReady, setHeavyUiReady] = useState(false);
   const [stopBehavior, setStopBehavior] = useState<StopBehavior>("return-to-zero");
@@ -4104,6 +4113,28 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             if (!ensureInit()) return;
             engineRef.current?.setMasterDb(db);
           }}
+          onStoreAb={(slot) => {
+            engineRef.current?.storeMasterAbSlot(slot);
+            setMasterAbVersion((v) => v + 1);
+            setNotice({
+              tone: "success",
+              message: `Master snapshot stored in slot ${slot}.`,
+            });
+          }}
+          onRecallAb={(slot) => {
+            if (engineRef.current?.recallMasterAbSlot(slot)) {
+              setNotice({
+                tone: "success",
+                message: `Recalled master snapshot ${slot}.`,
+              });
+            }
+          }}
+          hasAbSlotA={Boolean(
+            engineRef.current?.hasMasterAbSlot("A") && masterAbVersion >= 0,
+          )}
+          hasAbSlotB={Boolean(
+            engineRef.current?.hasMasterAbSlot("B") && masterAbVersion >= 0,
+          )}
         />
       </div>
       </div>
@@ -4441,6 +4472,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                 onClearAutomation={(lane) => engineRef.current?.clearTrackAutomation(track.id, lane)}
                 isRecording={transport?.isRecording ?? false}
                 compact={compactStrips}
+                trackBpm={transport?.bpm}
+                snapToGrid={scrubSnapEnabled}
               />
               </div>
             ))}
@@ -4580,6 +4613,11 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               engineRef.current?.setBeatLaneReversed(lane, reversed);
               touchDirty();
             }}
+            laneNames={beat.laneNames ?? {}}
+            onSetLaneName={(lane, name) => {
+              engineRef.current?.setBeatLaneName(lane, name);
+              touchDirty();
+            }}
             onSetSwing={(v) => {
               engineRef.current?.setBeatSwing(v);
               touchDirty();
@@ -4652,6 +4690,14 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             }}
             onRenderToTrack={renderBeatToTrack}
             onSelectBank={(bank) => engineRef.current?.setActivePatternBank(bank)}
+            onCopyPatternToBank={(target) => {
+              engineRef.current?.copyActivePatternToBank(target);
+              touchDirty();
+              setNotice({
+                tone: "success",
+                message: `Pattern copied to bank ${target}.`,
+              });
+            }}
             onSelectKit={(kit) => engineRef.current?.setBeatKit(kit)}
             onAssignLaneSample={assignBeatLaneSample}
             onClearLaneSample={clearBeatLaneSample}
@@ -4862,6 +4908,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               pushAuditEvent("export", `Applied "${cfg.label}" mastering preset`);
               setNotice({ tone: "success", message: `${cfg.label} chain applied — tweak the EQ to taste.` });
             }}
+            tapeDrive={transport.masterTapeDrive ?? 0}
+            onSetTapeDrive={(drive) => engineRef.current?.setMasterTapeDrive(drive)}
           />
         </div>
       )}
@@ -6878,6 +6926,10 @@ function MasterStrip({
   limiterOn,
   limiterReductionDb,
   onChange,
+  onStoreAb,
+  onRecallAb,
+  hasAbSlotA,
+  hasAbSlotB,
 }: {
   db: number;
   level: number;
@@ -6891,6 +6943,12 @@ function MasterStrip({
    *  pulling 3 dB. Drives the inverted red GR bar. */
   limiterReductionDb: number;
   onChange: (db: number) => void;
+  /** Snapshot master EQ + gain into slot A or B for A/B mix testing (#4). */
+  onStoreAb: (slot: "A" | "B") => void;
+  /** Recall a snapshot. No-op if the slot is empty. */
+  onRecallAb: (slot: "A" | "B") => void;
+  hasAbSlotA: boolean;
+  hasAbSlotB: boolean;
 }) {
   const truePeakDbtp = truePeak > 0 ? 20 * Math.log10(truePeak) : -Infinity;
   return (
@@ -6908,6 +6966,40 @@ function MasterStrip({
       <span className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-white/70" title="True peak level">
         {Number.isFinite(truePeakDbtp) ? `${truePeakDbtp.toFixed(1)} dBTP` : "-inf dBTP"}
       </span>
+      <div className="flex items-center gap-0.5" role="group" aria-label="Master A/B compare">
+        {(["A", "B"] as const).map((slot) => {
+          const filled = slot === "A" ? hasAbSlotA : hasAbSlotB;
+          return (
+            <button
+              key={slot}
+              type="button"
+              onClick={(e) => {
+                // Shift-click stores; plain click recalls. If the slot
+                // is empty, plain click stores too — so the user can
+                // load A, tweak, then click B to capture the new state.
+                if (e.shiftKey || !filled) {
+                  onStoreAb(slot);
+                } else {
+                  onRecallAb(slot);
+                }
+              }}
+              className={`rounded border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest transition ${
+                filled
+                  ? "border-cyan-300/55 bg-cyan-500/15 text-cyan-100"
+                  : "border-white/15 text-white/45 hover:bg-white/10"
+              }`}
+              title={
+                filled
+                  ? `Recall master EQ + gain snapshot ${slot} (shift+click to overwrite)`
+                  : `Click to store the current master EQ + gain into slot ${slot}`
+              }
+              aria-label={filled ? `Recall snapshot ${slot}` : `Store snapshot ${slot}`}
+            >
+              {slot}
+            </button>
+          );
+        })}
+      </div>
       <input
         type="range"
         min={-60}
@@ -7077,6 +7169,8 @@ function TrackStrip({
   onClearAutomation,
   isRecording,
   compact,
+  trackBpm,
+  snapToGrid,
 }: {
   track: EngineSnapshot["tracks"][number];
   focused: boolean;
@@ -7147,6 +7241,11 @@ function TrackStrip({
    *  track.armed to draw the red ring on the track being captured. */
   isRecording: boolean;
   compact: boolean;
+  /** Project BPM. Threaded to WaveformView so scrub-snap can quantize
+   *  to musical grid boundaries (#3). */
+  trackBpm?: number;
+  /** When true, waveform scrubbing snaps to the nearest 16th note. */
+  snapToGrid?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
   const [compBrushLaneId, setCompBrushLaneId] = useState<string | null>(null);
@@ -7665,6 +7764,8 @@ function TrackStrip({
             progress={progress}
             durationSec={track.durationSec}
             onScrub={onSeek}
+            bpm={trackBpm}
+            snapDivisor={snapToGrid ? 4 : null}
           />
         </div>
       )}

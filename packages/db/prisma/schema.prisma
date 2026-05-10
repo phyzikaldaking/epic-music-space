@@ -644,6 +644,12 @@ model StudioProject {
   isTemplate     Boolean       @default(false)
   // Optional genre tag for templates so the picker can group them.
   templateGenre  String?
+  // Price in USD to license this template to another producer (#28).
+  // null = not for sale (default). 0 = free download. >0 = paid.
+  // The marketplace listing is implied by isTemplate=true AND
+  // templatePriceUsd != null; isPublic stays orthogonal so a producer
+  // can publish a template without marketing it on their feed.
+  templatePriceUsd Decimal?    @db.Decimal(10, 2)
   tracks         StudioTrack[]
   versions       StudioProjectVersion[] @relation("ProjectVersions")
   createdAt      DateTime      @default(now())

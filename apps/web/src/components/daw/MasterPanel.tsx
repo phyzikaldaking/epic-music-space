@@ -22,6 +22,9 @@ interface Props {
   onSetEq: (band: EqBand, db: number) => void;
   /** Apply a one-click mastering chain preset (EQ + limiter + gain). */
   onApplyMasteringPreset: (preset: MasteringPresetId) => void;
+  /** Master tape saturation drive 0..1 (#15). */
+  tapeDrive?: number;
+  onSetTapeDrive?: (drive: number) => void;
 }
 
 /**
@@ -48,6 +51,8 @@ export default function MasterPanel({
   eqHighDb,
   onSetEq,
   onApplyMasteringPreset,
+  tapeDrive,
+  onSetTapeDrive,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Throttle spectrum repaints to ~15Hz. The engine updates the
@@ -188,6 +193,31 @@ export default function MasterPanel({
           <EqKnob label="Mid" db={eqMidDb} onChange={(v) => onSetEq("mid", v)} />
           <EqKnob label="High" db={eqHighDb} onChange={(v) => onSetEq("high", v)} />
         </div>
+
+        {/* Master tape saturation (#15) — sits between EQ and limiter.
+            Subtle 0..0.3 = mix glue; 0.3..0.7 = analog warmth; >0.7 =
+            obvious color. Bit-perfect bypass at 0. */}
+        {onSetTapeDrive && (
+          <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-black/30 p-3 sm:w-[120px]">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/55">
+              Tape
+            </p>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={tapeDrive ?? 0}
+              onChange={(e) => onSetTapeDrive(Number(e.target.value))}
+              aria-label="Master tape saturation drive"
+              title={`Tape drive — 0 is bypass, >0.7 is obvious color (currently ${Math.round((tapeDrive ?? 0) * 100)}%)`}
+              className="accent-amber-400"
+            />
+            <p className="text-center font-mono text-[10px] tabular-nums text-white/70">
+              {Math.round((tapeDrive ?? 0) * 100)}%
+            </p>
+          </div>
+        )}
       </div>
 
       <MixDiagnosticsCallout spectrum={spectrum} lufs={lufs} truePeak={truePeak} />

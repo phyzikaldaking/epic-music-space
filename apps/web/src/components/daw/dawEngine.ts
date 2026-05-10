@@ -269,6 +269,12 @@ export interface TransportState {
   masterLufs: number;
   /** Linear true-peak amplitude 0..1 of the most recent frame. */
   masterTruePeak: number;
+  /** Tape saturation drive on the master bus (0..1). 0 = bypassed, 1 =
+   *  aggressive analog console color. Sits before the limiter so the
+   *  user can hit the limiter with a saturated signal. Subtly compresses
+   *  transients and adds even harmonics that fatten without obvious
+   *  distortion until ~0.5+. */
+  masterTapeDrive: number;
   /** Gain reduction from the master limiter, in dB. 0 means no clamping;
    *  -3 means the limiter is pulling 3 dB out of the signal. Sourced from
    *  DynamicsCompressorNode.reduction each frame. UI inverts this into a
@@ -359,6 +365,11 @@ export interface BeatMachineState {
    *  its primary sample (or current round-robin variant) backwards.
    *  Synth-only lanes ignore this — there's no buffer to reverse. */
   laneReversed: Partial<Record<DrumKind, boolean>>;
+  /** Per-lane custom display name override. Falls back to the canonical
+   *  LANE_LABELS in the UI when unset. Producers loading a percussion-
+   *  only kit can rename "kick → shaker" without losing the lane's
+   *  underlying DrumKind routing. */
+  laneNames: Partial<Record<DrumKind, string>>;
   /** Round-robin variant file names per lane. The primary sample stays
    *  in laneSampleNames; up to 3 additional samples are listed here and
    *  the scheduler cycles through them on consecutive hits for realism. */
@@ -854,6 +865,7 @@ export class DawEngine {
   private masterEqMid: BiquadFilterNode | null = null;
   private masterEqHigh: BiquadFilterNode | null = null;
   private masterLimiter: DynamicsCompressorNode | null = null;
+  private masterTape: WaveShaperNode | null = null;
   private masterAnalyser: AnalyserNode | null = null;
   private aflBusAnalyser: AnalyserNode | null = null;
   private aflBusBuf: Uint8Array | null = null;
@@ -903,6 +915,7 @@ export class DawEngine {
     layerKitB: {},
     laneSemis: {},
     laneReversed: {},
+    laneNames: {},
     laneSampleNames: emptyBeatLaneSampleNames(),
     laneVariantNames: DRUM_LANES.reduce((acc, lane) => {
       acc[lane] = [];
@@ -1023,6 +1036,7 @@ export class DawEngine {
     masterSpectrum: new Array(32).fill(0),
     masterLufs: -Infinity,
     masterTruePeak: 0,
+    masterTapeDrive: 0,
     masterLimiterReduction: 0,
     masterPhaseCorrelation: 1,
     soloMode: "sip",
@@ -1114,6 +1128,17 @@ export class DawEngine {
       this.masterLimiter.ratio.value = 20;
       this.masterLimiter.attack.value = 0.002;
       this.masterLimiter.release.value = 0.05;
+      // Master tape saturator (#15) — a WaveShaperNode sitting between
+      // the master EQ and the limiter. Curve starts as a passthrough
+      // (identity) so the chain is bit-perfect when drive is 0. Drive
+      // > 0 swaps in a tanh-based curve scaled by drive amount; even
+      // harmonics fatten the mix without ringing. 4x oversampling
+      // matches the vocal bus to avoid aliasing on a busy master.
+      this.masterTape = this.ctx.createWaveShaper();
+      // Drive 0 → identity curve (buildConsoleSaturationCurve special-cases
+      // it for bit-perfect bypass). Live drive lands via setMasterTapeDrive.
+      this.masterTape.curve = buildConsoleSaturationCurve(0);
+      this.masterTape.oversample = "4x";
       this.masterAnalyser = this.ctx.createAnalyser();
       this.masterAnalyser.fftSize = 512;
       this.masterMeterBuf = new Uint8Array(this.masterAnalyser.fftSize);
@@ -1156,11 +1181,16 @@ export class DawEngine {
       this.lufsAnalyser = this.ctx.createAnalyser();
       this.lufsAnalyser.fftSize = 2048;
       this.lufsBuf = new Float32Array(this.lufsAnalyser.fftSize);
-      // Wire master chain.
+      // Wire master chain. Tape saturator sits between the EQ tap and
+      // the limiter so the user can hit the limiter with a saturated
+      // mix (a key "glue" trick). EQ analysers tap the EQ output —
+      // before tape — so the spectrum + LUFS readings stay tonally
+      // accurate regardless of saturation drive.
       this.master
         .connect(this.masterEqLow)
         .connect(this.masterEqMid)
         .connect(this.masterEqHigh)
+        .connect(this.masterTape)
         .connect(this.masterLimiter)
         .connect(this.masterAnalyser);
       this.masterAnalyser.connect(this.monitorOutGain).connect(this.ctx.destination);
@@ -2686,6 +2716,18 @@ export class DawEngine {
     this.notify();
   }
 
+  /** Master tape saturation drive 0..1 (#15). 0 swaps in the identity
+   *  curve for a bit-perfect bypass; >0 swaps in the console-style
+   *  curve scaled by drive amount. */
+  setMasterTapeDrive(drive: number) {
+    const clamped = Math.max(0, Math.min(1, drive));
+    this.transport.masterTapeDrive = clamped;
+    if (this.masterTape) {
+      this.masterTape.curve = buildConsoleSaturationCurve(clamped);
+    }
+    this.notify();
+  }
+
   async setReferenceTrack(file: Blob): Promise<boolean> {
     if (!this.ctx) return false;
     try {
@@ -2783,6 +2825,39 @@ export class DawEngine {
       if (this.masterEqHigh) this.masterEqHigh.gain.value = clamped;
     }
     this.notify();
+  }
+
+  /** Master EQ + gain A/B snapshots (#4). Producers store a "before"
+   *  state in A, tweak, store the "after" in B, then toggle to hear the
+   *  difference. Two slots is enough for most A/B work; more would
+   *  start to feel like preset management. */
+  private masterAbSlots: {
+    A: { lowDb: number; midDb: number; highDb: number; masterDb: number } | null;
+    B: { lowDb: number; midDb: number; highDb: number; masterDb: number } | null;
+  } = { A: null, B: null };
+
+  storeMasterAbSlot(slot: "A" | "B") {
+    this.masterAbSlots[slot] = {
+      lowDb: this.transport.masterEqLowDb,
+      midDb: this.transport.masterEqMidDb,
+      highDb: this.transport.masterEqHighDb,
+      masterDb: this.transport.masterDb,
+    };
+    this.notify();
+  }
+
+  recallMasterAbSlot(slot: "A" | "B"): boolean {
+    const snap = this.masterAbSlots[slot];
+    if (!snap) return false;
+    this.setMasterEq("low", snap.lowDb);
+    this.setMasterEq("mid", snap.midDb);
+    this.setMasterEq("high", snap.highDb);
+    this.setMasterDb(snap.masterDb);
+    return true;
+  }
+
+  hasMasterAbSlot(slot: "A" | "B"): boolean {
+    return this.masterAbSlots[slot] !== null;
   }
 
   /** Apply a named mastering chain preset. Each preset is a frozen
@@ -3999,6 +4074,25 @@ export class DawEngine {
     this.notify();
   }
 
+  /** Deep-clone the current active pattern (and its step options) into
+   *  another bank slot. Producers nail a verse beat in A and want it as
+   *  a starting point for the chorus in B without rebuilding from
+   *  scratch. The destination overwrites without confirmation — the
+   *  undo stack covers accidental copies. */
+  copyActivePatternToBank(target: PatternBank) {
+    if (target === this.beatMachine.activeBank) return;
+    const src = this.beatMachine.pattern;
+    const dest = emptyPattern();
+    for (const lane of DRUM_LANES) dest[lane] = [...src[lane]];
+    this.beatMachine.bankPatterns[target] = dest;
+    // Also clone step options so velocity/probability/repeats carry
+    // over — the user's nuance shouldn't reset on copy.
+    this.beatMachine.bankStepOptions[target] = cloneStepOptions(
+      this.beatMachine.stepOptions,
+    );
+    this.notify();
+  }
+
   /** Queue a bank switch for the next loop boundary instead of jumping
    *  mid-bar. When fillsEnabled is true, the scheduler also paints the
    *  configured fillPreset over the last bar before the switch. */
@@ -4044,6 +4138,18 @@ export class DawEngine {
       this.beatMachine.laneReversed[lane] = true;
     } else {
       delete this.beatMachine.laneReversed[lane];
+    }
+    this.notify();
+  }
+
+  /** Per-lane display name override. Empty string clears the override
+   *  and the lane falls back to the canonical label. */
+  setBeatLaneName(lane: DrumKind, name: string) {
+    const trimmed = name.trim().slice(0, 12);
+    if (trimmed === "") {
+      delete this.beatMachine.laneNames[lane];
+    } else {
+      this.beatMachine.laneNames[lane] = trimmed;
     }
     this.notify();
   }
@@ -5554,6 +5660,7 @@ export class DawEngine {
         layerKitB: { ...this.beatMachine.layerKitB },
         laneSemis: { ...this.beatMachine.laneSemis },
         laneReversed: { ...this.beatMachine.laneReversed },
+        laneNames: { ...this.beatMachine.laneNames },
         laneSampleNames: { ...this.beatMachine.laneSampleNames },
         laneVariantNames: DRUM_LANES.reduce((acc, lane) => {
           acc[lane] = [...this.beatMachine.laneVariantNames[lane]];

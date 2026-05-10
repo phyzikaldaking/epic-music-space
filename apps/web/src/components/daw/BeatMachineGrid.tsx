@@ -55,6 +55,9 @@ interface Props {
   onSuggestPattern: () => void;
   onRenderToTrack: () => void;
   onSelectBank: (bank: PatternBank) => void;
+  /** Clone the current active pattern into the target bank. Wired to
+   *  Shift+click on a bank tab — pattern + step options copy together. */
+  onCopyPatternToBank: (target: PatternBank) => void;
   onSelectKit: (kit: DrumKitId) => void;
   onSetLaneLayerKit: (lane: DrumKind, kit: DrumKitId | null) => void;
   /** Per-lane pitch (-12..+12 semitones). 0 = unity. Affects the synth
@@ -65,6 +68,11 @@ interface Props {
   /** Per-lane reverse-sample toggle. Synth-only lanes ignore it. */
   laneReversed: Partial<Record<DrumKind, boolean>>;
   onSetLaneReversed: (lane: DrumKind, reversed: boolean) => void;
+  /** Per-lane display name override (max 12 chars). Empty/unset =
+   *  canonical label. Lets producers rename lanes for percussion-only
+   *  kits or hybrid stems. */
+  laneNames: Partial<Record<DrumKind, string>>;
+  onSetLaneName: (lane: DrumKind, name: string) => void;
   onSetSwing: (swing: number) => void;
   onSetHumanize: (humanizeMs: number) => void;
   onSetFillsEnabled: (on: boolean) => void;
@@ -158,12 +166,15 @@ export default function BeatMachineGrid({
   onSuggestPattern,
   onRenderToTrack,
   onSelectBank,
+  onCopyPatternToBank,
   onSelectKit,
   onSetLaneLayerKit,
   laneSemis,
   onSetLaneSemis,
   laneReversed,
   onSetLaneReversed,
+  laneNames,
+  onSetLaneName,
   onSetSwing,
   onSetHumanize,
   onSetFillsEnabled,
@@ -334,13 +345,27 @@ export default function BeatMachineGrid({
               <button
                 key={b}
                 type="button"
-                onClick={() => onSelectBank(b)}
+                onClick={(e) => {
+                  // Shift-click copies the active pattern into the
+                  // target bank instead of switching to it. The user
+                  // doesn't lose their active edit; the dest just
+                  // mirrors current state.
+                  if (e.shiftKey && b !== activeBank) {
+                    onCopyPatternToBank(b);
+                    return;
+                  }
+                  onSelectBank(b);
+                }}
                 className={`min-w-7 rounded-md px-2 py-1 text-[11px] font-black uppercase tracking-widest transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
                   b === activeBank
                     ? "bg-accent-500 text-black"
                     : "text-white/55 hover:bg-white/10"
                 }`}
-                title={`Pattern bank ${b}`}
+                title={
+                  b === activeBank
+                    ? `Pattern bank ${b} · current`
+                    : `Pattern bank ${b} · click to switch, shift+click to copy ${activeBank} here`
+                }
               >
                 {b}
               </button>
@@ -348,6 +373,7 @@ export default function BeatMachineGrid({
           </div>
 
           <KitPickerStrip kit={kit} onSelect={onSelectKit} />
+          <BulkDropZone onAssignLaneSample={onAssignLaneSample} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StudioTooltip label={tooltips.beatOnOff}>
@@ -486,9 +512,21 @@ export default function BeatMachineGrid({
       <div className="space-y-1.5">
         {DRUM_LANES.map((lane) => (
           <div key={lane} className="flex items-center gap-2">
-            <div className={`w-14 shrink-0 text-[11px] font-black uppercase tracking-widest ${LANE_TEXT_CLASSES[lane]}`}>
-              {LANE_LABELS[lane]}
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const next = window.prompt(
+                  `Rename ${LANE_LABELS[lane]} lane (blank to reset)`,
+                  laneNames[lane] ?? "",
+                );
+                if (next !== null) onSetLaneName(lane, next);
+              }}
+              className={`w-14 shrink-0 truncate text-left text-[11px] font-black uppercase tracking-widest hover:opacity-80 focus:outline-none focus-visible:underline ${LANE_TEXT_CLASSES[lane]}`}
+              title={`Click to rename — currently "${laneNames[lane] ?? LANE_LABELS[lane]}"`}
+              aria-label={`Rename ${LANE_LABELS[lane]} lane`}
+            >
+              {laneNames[lane] ?? LANE_LABELS[lane]}
+            </button>
             <div
               className={`w-[152px] shrink-0 rounded-md border p-1 transition ${
                 dragLane === lane ? "border-accent-400/70 bg-accent-500/10" : "border-transparent"
@@ -1029,5 +1067,80 @@ function KitPickerStrip({
         })}
       </div>
     </StudioTooltip>
+  );
+}
+
+// Drop multiple sample files at once and the strip pattern-matches each
+// filename to the right lane (kick.wav → kick lane, snare-1.wav →
+// snare, etc.). Single drop replaces the whole kit instead of 8 manual
+// drag-and-drops. Filename matches are fuzzy: a file with "808" in its
+// name goes to the bass808 lane; "openhat" / "oh" → openHat; etc.
+function BulkDropZone({
+  onAssignLaneSample,
+}: {
+  onAssignLaneSample: (lane: DrumKind, file: File) => Promise<void> | void;
+}) {
+  const [hover, setHover] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  function matchLane(name: string): DrumKind | null {
+    const n = name.toLowerCase();
+    // Order matters: more specific matches before less specific ones so
+    // "openhat" doesn't get caught by the "hat" rule.
+    if (/(open[\s_-]*hat|\boh[\s_-]|\boh\.)/.test(n)) return "openHat";
+    if (/808|sub|bass[\s_-]?808/.test(n)) return "bass808";
+    if (/crash|cymbal|ride/.test(n)) return "crash";
+    if (/snare|snr|\bsd\b/.test(n)) return "snare";
+    if (/clap|hand[\s_-]?clap/.test(n)) return "clap";
+    if (/(hi[\s_-]?hat|\bhat\b|\bch\b|hh)/.test(n)) return "hat";
+    if (/perc|tom|conga|bongo|shaker|tamb|cowbell/.test(n)) return "perc";
+    if (/kick|\bbd\b|bass[\s_-]?drum/.test(n)) return "kick";
+    return null;
+  }
+
+  async function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setHover(false);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    const audio = files.filter(
+      (f) => f.type.startsWith("audio/") || /\.(wav|mp3|flac|m4a|aif|aiff|ogg)$/i.test(f.name),
+    );
+    if (audio.length === 0) return;
+    setBusy(true);
+    try {
+      // Track which lanes we've already assigned so the first match
+      // wins for duplicates (kick.wav + kick-2.wav → only kick.wav lands).
+      const taken = new Set<DrumKind>();
+      for (const file of audio) {
+        const lane = matchLane(file.name);
+        if (!lane || taken.has(lane)) continue;
+        taken.add(lane);
+        await onAssignLaneSample(lane, file);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setHover(true);
+      }}
+      onDragLeave={() => setHover(false)}
+      onDrop={(e) => void handleDrop(e)}
+      className={`flex items-center gap-1.5 rounded-lg border-2 border-dashed px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest transition ${
+        hover
+          ? "border-cyan-300/70 bg-cyan-400/10 text-cyan-100"
+          : "border-white/15 bg-black/20 text-white/55"
+      }`}
+      title="Drop a folder or multiple samples — filenames pattern-match to lanes (kick.wav → kick, etc.)"
+      role="region"
+      aria-label="Bulk sample drop zone"
+    >
+      <span aria-hidden>📦</span>
+      <span>{busy ? "Loading…" : "Drop kit"}</span>
+    </div>
   );
 }
