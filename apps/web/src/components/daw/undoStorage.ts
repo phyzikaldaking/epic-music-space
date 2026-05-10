@@ -173,6 +173,34 @@ export async function popUndoSnapshot(
   });
 }
 
+/** Jump to a specific snapshot by id. Returns the file at that id and
+ *  trims every snapshot *after* it from the stack, so the next Cmd+Z
+ *  would step back one entry from where we landed. Used by the undo
+ *  timeline panel for time-travel. */
+export async function restoreUndoSnapshotById(
+  projectId: string,
+  id: number,
+): Promise<{ file: ProjectFile; label: string } | null> {
+  return txAsync("readwrite", async (store) => {
+    const idx = store.index("projectId");
+    const all = (await reqPromise(idx.getAll(projectId))) as UndoRecord[];
+    all.sort((a, b) => a.seq - b.seq);
+    const targetIdx = all.findIndex((r) => r.id === id);
+    if (targetIdx < 0) return null;
+    const target = all[targetIdx];
+    if (!target) return null;
+    // Delete every snapshot *after* the target — the user is rewinding
+    // and any future-history beyond that point is invalidated.
+    for (let i = targetIdx + 1; i < all.length; i++) {
+      const v = all[i];
+      if (v?.id !== undefined) {
+        await reqPromise(store.delete(v.id));
+      }
+    }
+    return { file: target.file, label: target.label };
+  });
+}
+
 /** Drop every snapshot for a project. Used when starting a new session
  *  or explicitly clearing history. */
 export async function clearUndoStack(projectId: string): Promise<void> {

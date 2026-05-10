@@ -55,7 +55,14 @@ import {
 import {
   popUndoSnapshot,
   pushUndoSnapshot,
+  restoreUndoSnapshotById,
 } from "./undoStorage";
+import UndoTimelinePanel from "./UndoTimelinePanel";
+import TakeLanesStrip from "./TakeLanesStrip";
+import CollaboratorCursors from "./CollaboratorCursors";
+import VersionHistoryModal from "./VersionHistoryModal";
+import TemplatePicker from "./TemplatePicker";
+import type { StudioTemplate } from "./studioTemplates";
 import { CHANNELS, createBrowserSupabaseClient } from "@/lib/supabase";
 import { useSession } from "next-auth/react";
 import { StudioTooltip, StudioTooltipProvider } from "@/components/ui/StudioTooltip";
@@ -137,6 +144,16 @@ type CollaboratorPresence = {
   /** Stable hue (0..360) so each collaborator gets a consistent color
    *  across all surfaces — focus ring on the track, dot on the timeline. */
   hue?: number;
+  /** Live cursor position in normalized 0..1 viewport coords, scoped to
+   *  the DAW workspace container. Drawn as a small colored circle with
+   *  the collaborator's initial so producers can see what someone else
+   *  is pointing at during co-working sessions. Throttled to ~10Hz. */
+  cursorX?: number | null;
+  cursorY?: number | null;
+  /** Surface the cursor is on — mixer, grid, or "other" — so the overlay
+   *  only renders cursors that belong to the same area as the local user.
+   *  Avoids cursors floating over unrelated parts of the workspace. */
+  cursorSurface?: "mixer" | "grid" | "other" | null;
 };
 
 type VersionEntry = {
@@ -520,6 +537,22 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   /** Project save/load — id is generated lazily on first save. */
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("Untitled session");
+  // Bumped after every undo-snapshot push so the timeline panel knows
+  // to re-fetch when it's open. Keeps the IDB read off the hot path
+  // unless the user is actually looking at history.
+  const [undoRefreshKey, setUndoRefreshKey] = useState(0);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [userTemplates, setUserTemplates] = useState<
+    Array<{
+      id: string;
+      name: string;
+      bpm: number;
+      trackCount: number;
+      templateGenre: string | null;
+      updatedAt: string;
+    }>
+  >([]);
   /** Tracks unsaved changes since the last successful save. Used by #8
    *  auto-save and the multi-tab conflict notice. Mutating callbacks
    *  flip it via touchDirty(); save resets it back to false. */
@@ -610,6 +643,17 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   // subscription, causing collaborators to see "leave + rejoin" flicker.
   const focusModeRef = useRef(focusMode);
   const displayNameRef = useRef(session?.user?.name?.trim() || "Studio creator");
+  // Mirror live transport + focused track into refs so the cursor-broadcast
+  // effect (which subscribes to mousemove, not React renders) can read the
+  // latest values without re-binding on every snapshot tick.
+  const transportRef = useRef(transport);
+  const focusedIdRef = useRef(focusedId);
+  useEffect(() => {
+    transportRef.current = transport;
+  }, [transport]);
+  useEffect(() => {
+    focusedIdRef.current = focusedId;
+  }, [focusedId]);
   useEffect(() => {
     focusModeRef.current = focusMode;
   }, [focusMode]);
@@ -715,6 +759,109 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     // Use whole seconds for the dependency to throttle channel writes.
     Math.floor((transport?.positionSec ?? 0) * 2),
   ]);
+
+  // Live collab cursor — broadcast my mouse position scoped to mixer/grid
+  // surfaces. Each surface is tagged with data-collab-surface="mixer" or
+  // "grid"; mousemove walks up the DOM to find the nearest tagged node
+  // and emits the cursor's coords relative to that surface (0..1). Only
+  // collaborators on the same surface render my dot, so the overlay
+  // never bleeds into unrelated parts of the workspace.
+  useEffect(() => {
+    if (!heavyUiReady) return;
+    const channel = presenceChannelRef.current;
+    if (!channel) return;
+    let lastSentAt = 0;
+    let lastSurface: "mixer" | "grid" | "other" | null = null;
+    let lastX: number | null = null;
+    let lastY: number | null = null;
+    function emit(now: number) {
+      void channel?.track({
+        id: clientPresenceId,
+        name: displayNameRef.current,
+        focusMode: focusModeRef.current,
+        isPlaying: Boolean(transportRef.current?.isPlaying),
+        updatedAt: new Date(now).toISOString(),
+        focusedTrackId: focusedIdRef.current ?? null,
+        playheadSec:
+          typeof transportRef.current?.positionSec === "number"
+            ? transportRef.current.positionSec
+            : null,
+        hue: hueForPresenceId(clientPresenceId),
+        cursorX: lastX,
+        cursorY: lastY,
+        cursorSurface: lastSurface,
+      } satisfies CollaboratorPresence);
+    }
+    function onMove(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      const surfaceEl = target?.closest("[data-collab-surface]") as HTMLElement | null;
+      const surface = (surfaceEl?.dataset.collabSurface as
+        | "mixer"
+        | "grid"
+        | "other"
+        | undefined) ?? null;
+      if (!surfaceEl || !surface) {
+        // Cursor left a tracked surface — emit one final "off" frame so
+        // collaborators stop drawing my dot.
+        if (lastSurface !== null) {
+          lastSurface = null;
+          lastX = null;
+          lastY = null;
+          emit(Date.now());
+        }
+        return;
+      }
+      const rect = surfaceEl.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / Math.max(1, rect.width);
+      const y = (e.clientY - rect.top) / Math.max(1, rect.height);
+      lastSurface = surface;
+      lastX = Math.max(0, Math.min(1, x));
+      lastY = Math.max(0, Math.min(1, y));
+      const now = Date.now();
+      // 10Hz throttle so a fast drag doesn't drown the channel.
+      if (now - lastSentAt >= 100) {
+        lastSentAt = now;
+        emit(now);
+      }
+    }
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, [heavyUiReady, clientPresenceId]);
+
+  // Fetch the user's saved templates when the picker opens. Cheap GET
+  // returning at most 50 rows; refreshes on each open so a freshly
+  // saved template appears without a manual refresh.
+  useEffect(() => {
+    if (!templatePickerOpen) return;
+    if (!session?.user?.id) {
+      setUserTemplates([]);
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/studio/projects?templates=1", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(
+        (data: {
+          projects?: Array<{
+            id: string;
+            name: string;
+            bpm: number;
+            trackCount: number;
+            templateGenre: string | null;
+            updatedAt: string;
+          }>;
+        }) => {
+          if (cancelled) return;
+          setUserTemplates(data.projects ?? []);
+        },
+      )
+      .catch(() => {
+        if (!cancelled) setUserTemplates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [templatePickerOpen, session?.user?.id]);
 
   useEffect(() => {
     void listProjects()
@@ -1970,12 +2117,129 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             } catch {
               // BroadcastChannel unsupported (older Safari); ignore.
             }
+            // Push a server-side version snapshot (#20). FIFO-trimmed to
+            // 10 entries by the endpoint. Audio blobs are not duplicated.
+            void fetch(`/api/studio/projects/${encodeURIComponent(id)}/versions`, {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                patternJson: {
+                  transport: file.transport,
+                  beat: (file as unknown as { beat?: unknown }).beat ?? null,
+                },
+                bpm: Math.round(file.transport.bpm),
+                trackCount: file.tracks.length,
+                label: null,
+              }),
+            }).catch(() => {
+              /* version push is best-effort */
+            });
           }
         });
       }
     } catch (err) {
       console.warn("[DawWorkspace] save failed", err);
       setNotice({ tone: "error", message: "Save failed. Check browser storage settings." });
+    }
+  }
+
+  // Mark the current server-side project as a template (#22). The local
+  // copy stays where it is; only the remote row's isTemplate flag flips,
+  // so the project still appears in the user's regular saves until they
+  // explicitly delete it. After flipping, the picker will list it under
+  // "My templates" on next open.
+  async function handleSaveAsTemplate() {
+    if (!projectId) {
+      setNotice({ tone: "info", message: "Save the project first, then mark it as a template." });
+      return;
+    }
+    if (!session?.user?.id) {
+      setNotice({ tone: "info", message: "Sign in to save personal templates across devices." });
+      return;
+    }
+    try {
+      const res = await fetch(`/api/studio/projects/${encodeURIComponent(projectId)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isTemplate: true }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      pushAuditEvent("save", `Marked "${projectName}" as a personal template`);
+      setNotice({
+        tone: "success",
+        message: `"${projectName}" is now in your template library.`,
+      });
+    } catch {
+      setNotice({ tone: "error", message: "Couldn't save as template. Try again." });
+    }
+  }
+
+  // Hydrate a built-in template (#21) into the engine — BPM + kit +
+  // starter pattern. Starts a fresh project id so the template's
+  // changes don't write back over the catalog entry.
+  async function handleLoadBuiltinTemplate(t: StudioTemplate) {
+    if (!ensureInit()) return;
+    const engine = engineRef.current;
+    if (!engine) return;
+    handleNew();
+    engine.setBpm(t.bpm);
+    engine.setBeatKit(t.kit);
+    engine.setBeatPattern(t.pattern);
+    engine.setBeatEnabled(true);
+    setProjectName(t.label);
+    pushAuditEvent("load", `Loaded template "${t.label}"`);
+    setNotice({ tone: "success", message: `${t.label} loaded. Hit play.` });
+  }
+
+  // Clone a user-authored template (#22). Fetches the template's full
+  // patternJson, hydrates the engine, then assigns a fresh project id
+  // so the user's edits don't overwrite the template source.
+  async function handleLoadUserTemplate(templateProjectId: string) {
+    if (!session?.user?.id) {
+      setNotice({ tone: "info", message: "Sign in to use saved templates." });
+      return;
+    }
+    try {
+      const res = await fetch(`/api/studio/projects/${encodeURIComponent(templateProjectId)}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        project?: { name?: string; bpm?: number; patternJson?: unknown };
+      };
+      const proj = data.project;
+      if (!proj || !proj.patternJson) {
+        setNotice({ tone: "error", message: "Template missing data." });
+        return;
+      }
+      const engine = engineRef.current;
+      if (!engine || !ensureInit()) return;
+      handleNew();
+      // patternJson on a project is { transport, beat } — pull both onto
+      // the engine. Engine setters are noop-safe when fields are missing.
+      const pj = proj.patternJson as { transport?: { bpm?: number }; beat?: unknown };
+      if (typeof proj.bpm === "number") engine.setBpm(proj.bpm);
+      if (pj.transport && typeof pj.transport.bpm === "number") {
+        engine.setBpm(pj.transport.bpm);
+      }
+      if (pj.beat && typeof pj.beat === "object") {
+        const beat = pj.beat as { kit?: string; pattern?: unknown; enabled?: boolean };
+        if (typeof beat.kit === "string") {
+          engine.setBeatKit(beat.kit as Parameters<typeof engine.setBeatKit>[0]);
+        }
+        if (beat.pattern && typeof beat.pattern === "object") {
+          engine.setBeatPattern(beat.pattern as Parameters<typeof engine.setBeatPattern>[0]);
+        }
+        if (typeof beat.enabled === "boolean") engine.setBeatEnabled(beat.enabled);
+      }
+      const name = proj.name ?? "Template copy";
+      setProjectName(`${name} (copy)`);
+      pushAuditEvent("load", `Loaded user template "${name}"`);
+      setNotice({ tone: "success", message: `Template "${name}" loaded.` });
+    } catch {
+      setNotice({ tone: "error", message: "Couldn't load template." });
     }
   }
 
@@ -2106,6 +2370,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       try {
         const file = await engine.serializeProject();
         await pushUndoSnapshot(projectId, file, "Edit");
+        // Nudge the timeline panel to re-list. Cheap — just bumps a
+        // counter so the panel's effect re-runs if it's open.
+        setUndoRefreshKey((k) => k + 1);
       } catch {
         // Silent — losing one undo frame is preferable to interrupting
         // the user with an error toast.
@@ -2169,6 +2436,42 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [performUndo]);
+
+  // Live-performance stutter — hold Alt+1..4 during playback to subdivide
+  // the bar at 1/4, 1/8, 1/16, 1/32. Released = back to pattern. Plain
+  // 1..4 is already taken for marker slots, so Alt is the modifier.
+  useEffect(() => {
+    function onStutterDown(e: KeyboardEvent) {
+      if (!e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const map: Record<string, number> = { "1": 1, "2": 2, "3": 3, "4": 4 };
+      const d = map[e.key];
+      if (d === undefined) return;
+      e.preventDefault();
+      engineRef.current?.setBeatStutter(d);
+    }
+    function onStutterUp(e: KeyboardEvent) {
+      // Reset stutter on Alt-up or on the matching number-up. Easier to
+      // catch keyup of just Alt — covers the "release everything" case.
+      if (e.key === "Alt" || e.key === "1" || e.key === "2" || e.key === "3" || e.key === "4") {
+        engineRef.current?.setBeatStutter(0);
+      }
+    }
+    window.addEventListener("keydown", onStutterDown);
+    window.addEventListener("keyup", onStutterUp);
+    return () => {
+      window.removeEventListener("keydown", onStutterDown);
+      window.removeEventListener("keyup", onStutterUp);
+    };
+  }, []);
 
   // ── Tap tempo + keyboard shortcuts ──────────────────────────────────────
   function applyManualBpmInput(input: string) {
@@ -2946,6 +3249,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               onLoad={handleLoad}
               onDelete={handleDelete}
               onNew={handleNew}
+              onSaveAsTemplate={projectId ? handleSaveAsTemplate : null}
+              onOpenVersionHistory={projectId ? () => setVersionHistoryOpen(true) : null}
+              onOpenTemplatePicker={() => setTemplatePickerOpen(true)}
             />
             <SyncBadge
               isOnline={isOnline}
@@ -2962,6 +3268,34 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             >
               ↶ Undo
             </button>
+            <UndoTimelinePanel
+              projectId={projectId}
+              refreshKey={undoRefreshKey}
+              onJumpToSnapshot={async (id) => {
+                if (!projectId) return;
+                const engine = engineRef.current;
+                if (!engine) return;
+                try {
+                  const restored = await restoreUndoSnapshotById(projectId, id);
+                  if (!restored) {
+                    setNotice({ tone: "error", message: "Couldn't find that snapshot." });
+                    return;
+                  }
+                  await engine.hydrateProject(restored.file);
+                  pushAuditEvent(
+                    "load",
+                    `Time-traveled to ${new Date(restored.file.savedAt).toLocaleTimeString()}`,
+                  );
+                  setNotice({
+                    tone: "success",
+                    message: `Restored ${restored.label} (${new Date(restored.file.savedAt).toLocaleTimeString()}).`,
+                  });
+                  setUndoRefreshKey((k) => k + 1);
+                } catch {
+                  setNotice({ tone: "error", message: "Couldn't restore that snapshot." });
+                }
+              }}
+            />
             <HealthBadge health={browserHealth} />
           </div>
         </div>
@@ -3723,6 +4057,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           level={transport?.masterLevel ?? 0}
           lufs={transport?.masterLufs ?? -60}
           truePeak={transport?.masterTruePeak ?? 0}
+          limiterReductionDb={transport?.masterLimiterReduction ?? 0}
           onChange={(db) => {
             if (!ensureInit()) return;
             engineRef.current?.setMasterDb(db);
@@ -3894,7 +4229,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         )}
 
         {!showSplash && (
-          <div className="space-y-3">
+          <div className="relative space-y-3" data-collab-surface="mixer">
+            <CollaboratorCursors surface="mixer" collaborators={collaborators} />
             <CommentPinsStrip
               comments={comments}
               positionSec={transport?.positionSec ?? 0}
@@ -4022,6 +4358,29 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                 onSetCompSegment={(segmentIndex, laneId) =>
                   engineRef.current?.setTrackCompSegmentLane(track.id, segmentIndex, laneId)
                 }
+                onSetCompSegmentRange={(startIdx, endIdx, laneId) =>
+                  engineRef.current?.setTrackCompSegmentRange(track.id, startIdx, endIdx, laneId)
+                }
+                onRenameCompLane={(laneId, name) =>
+                  engineRef.current?.renameCompLane(track.id, laneId, name)
+                }
+                takeLanes={
+                  track.compLanes.length > 0
+                    ? track.compLanes.map((lane) => {
+                        const all = engineRef.current?.getCompLanePeaks(track.id) ?? [];
+                        const peaks = all.find((p) => p.id === lane.id)?.peaks ?? [];
+                        return {
+                          info: {
+                            id: lane.id,
+                            name: lane.name,
+                            durationSec: lane.durationSec,
+                            selected: lane.selected,
+                          },
+                          peaks,
+                        };
+                      })
+                    : null
+                }
                 vcaGroups={transport?.vcaGroups ?? []}
                 soloMode={transport?.soloMode ?? "sip"}
                 onSetTrackGroup={(groupId) => engineRef.current?.setTrackGroup(track.id, groupId)}
@@ -4120,13 +4479,22 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
       {/* ── Beat Machine ───────────────────────────────────────────────────── */}
       {!showSplash && beat && showArrangeTools && (
-        <div className="mb-6" data-tour="beat-grid">
+        <div className="relative mb-6" data-tour="beat-grid" data-collab-surface="grid">
+          <CollaboratorCursors surface="grid" collaborators={collaborators} />
           <BeatMachineGrid
             pattern={beat.pattern}
             enabled={beat.enabled}
             activeStep={beat.activeStep}
             activeBank={beat.activeBank}
             kit={beat.kit}
+            stepOptions={beat.stepOptions}
+            layerKitB={beat.layerKitB}
+            laneVariantNames={beat.laneVariantNames}
+            swing={beat.swing}
+            humanizeMs={beat.humanizeMs}
+            fillsEnabled={beat.fillsEnabled}
+            fillPreset={beat.fillPreset}
+            stutter={beat.stutter}
             laneSampleNames={beat.laneSampleNames}
             laneFrequencyProfiles={beat.laneFrequencyProfiles}
             laneRecommendations={laneTopRecommendations}
@@ -4142,6 +4510,50 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                   detail: { lane, step, on: !cur },
                 }),
               );
+            }}
+            onSetStepOptions={(lane, step, opts) => {
+              engineRef.current?.setStepOptions(lane, step, opts);
+              touchDirty();
+            }}
+            onSetLaneLayerKit={(lane, layerKit) => {
+              engineRef.current?.setBeatLayerKit(lane, layerKit);
+              touchDirty();
+            }}
+            onSetSwing={(v) => {
+              engineRef.current?.setBeatSwing(v);
+              touchDirty();
+            }}
+            onSetHumanize={(v) => {
+              engineRef.current?.setBeatHumanize(v);
+              touchDirty();
+            }}
+            onSetFillsEnabled={(v) => {
+              engineRef.current?.setBeatFillsEnabled(v);
+              touchDirty();
+            }}
+            onSetFillPreset={(p) => {
+              engineRef.current?.setBeatFillPreset(p);
+              touchDirty();
+            }}
+            onSetStutter={(d) => engineRef.current?.setBeatStutter(d)}
+            onAddLaneVariant={async (lane, file) => {
+              const ok = await engineRef.current?.addBeatLaneVariant(lane, file);
+              if (ok) {
+                pushAuditEvent("beat", `Added round-robin variant ${file.name} to ${lane}`);
+                setNotice({
+                  tone: "success",
+                  message: `${lane.toUpperCase()} now cycles a new round-robin variant.`,
+                });
+              } else {
+                setNotice({
+                  tone: "error",
+                  message: `Couldn't add variant. Max 3 per lane; needs a primary sample first.`,
+                });
+              }
+            }}
+            onClearLaneVariants={(lane) => {
+              engineRef.current?.clearBeatLaneVariants(lane);
+              touchDirty();
             }}
             onToggleEnabled={() => engineRef.current?.setBeatEnabled(!beat.enabled)}
             onClear={() => engineRef.current?.setBeatPattern(emptyBeatPattern())}
@@ -4616,6 +5028,69 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           onToggleMetronome={() => {
             if (!ensureInit()) return;
             engineRef.current?.setMetronome(!(transport?.metronomeOn ?? false));
+          }}
+        />
+      )}
+      {projectId && versionHistoryOpen && (
+        <VersionHistoryModal
+          projectId={projectId}
+          currentBpm={Math.round(transport?.bpm ?? 120)}
+          currentTrackCount={tracks.length}
+          open={versionHistoryOpen}
+          onClose={() => setVersionHistoryOpen(false)}
+          onRestore={async (versionId) => {
+            // Pull the full snapshot, hydrate the engine. Failure
+            // throws so the modal stays open with an error.
+            const res = await fetch(
+              `/api/studio/projects/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}`,
+              { credentials: "include" },
+            );
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = (await res.json()) as {
+              version?: { patternJson?: { transport?: unknown; beat?: unknown } };
+            };
+            const pj = data.version?.patternJson;
+            if (!pj) throw new Error("Version data missing");
+            const engine = engineRef.current;
+            if (!engine) throw new Error("Engine not ready");
+            // Hydrate from a partial — we only have the engine-state JSON,
+            // not the audio blobs (those weren't snapshotted). Track audio
+            // stays as-is; only BPM + beat + transport rewind.
+            const transportPart = (pj as { transport?: { bpm?: number; bankPatterns?: unknown } })
+              .transport;
+            const beatPart = (pj as { beat?: { kit?: string; pattern?: unknown; enabled?: boolean } })
+              .beat;
+            if (transportPart && typeof transportPart.bpm === "number") {
+              engine.setBpm(transportPart.bpm);
+            }
+            if (beatPart) {
+              if (typeof beatPart.kit === "string") {
+                engine.setBeatKit(beatPart.kit as Parameters<typeof engine.setBeatKit>[0]);
+              }
+              if (beatPart.pattern && typeof beatPart.pattern === "object") {
+                engine.setBeatPattern(
+                  beatPart.pattern as Parameters<typeof engine.setBeatPattern>[0],
+                );
+              }
+              if (typeof beatPart.enabled === "boolean") {
+                engine.setBeatEnabled(beatPart.enabled);
+              }
+            }
+            pushAuditEvent("load", `Restored version ${versionId.slice(0, 8)}`);
+            setNotice({ tone: "success", message: "Version restored." });
+          }}
+        />
+      )}
+      {templatePickerOpen && (
+        <TemplatePicker
+          open={templatePickerOpen}
+          userTemplates={userTemplates}
+          onClose={() => setTemplatePickerOpen(false)}
+          onLoadBuiltin={async (t) => {
+            await handleLoadBuiltinTemplate(t);
+          }}
+          onLoadUserTemplate={async (id) => {
+            await handleLoadUserTemplate(id);
           }}
         />
       )}
@@ -6339,19 +6814,24 @@ function MasterStrip({
   level,
   lufs,
   truePeak,
+  limiterReductionDb,
   onChange,
 }: {
   db: number;
   level: number;
   lufs: number;
   truePeak: number;
+  /** Master limiter gain reduction in dB. 0 = no clamping; -3 = limiter
+   *  pulling 3 dB. Drives the inverted red GR bar. */
+  limiterReductionDb: number;
   onChange: (db: number) => void;
 }) {
   const truePeakDbtp = truePeak > 0 ? 20 * Math.log10(truePeak) : -Infinity;
   return (
     <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-1.5">
       <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">Master</span>
-      <Meter level={level} className="h-1.5 w-16" />
+      <MasterLevelMeter level={level} className="h-3 w-20" />
+      <LimiterGrMeter reductionDb={limiterReductionDb} className="h-3 w-6" />
       <span className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-white/70" title="Integrated loudness estimate">
         {Number.isFinite(lufs) ? `${lufs.toFixed(1)} LUFS` : "-inf LUFS"}
       </span>
@@ -6371,6 +6851,73 @@ function MasterStrip({
       />
       <span className="w-10 text-right font-mono text-[11px] tabular-nums text-white/65">
         {db.toFixed(1)}
+      </span>
+    </div>
+  );
+}
+
+// Master level meter with a 1.5s peak-hold caret. The bar follows the
+// instantaneous level (0..1 linear). A thin amber line latches at the
+// recent max and falls at -12 dB/sec, mimicking the hardware standard
+// (producers rely on the caret to spot transients between glances).
+function MasterLevelMeter({ level, className = "" }: { level: number; className?: string }) {
+  const [peak, setPeak] = useState(0);
+  const peakRef = useRef({ value: 0, holdUntilMs: 0 });
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const now = performance.now();
+      const cur = peakRef.current;
+      if (level >= cur.value) {
+        // New peak — latch and reset the hold window.
+        cur.value = level;
+        cur.holdUntilMs = now + 1500;
+      } else if (now > cur.holdUntilMs) {
+        // Falloff at -12 dB/sec. Convert to linear scale per-frame.
+        // 16ms frame → ~0.192 dB → linear factor 10^(-0.192/20) ≈ 0.978.
+        cur.value = Math.max(0, cur.value * 0.978);
+      }
+      setPeak(cur.value);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [level]);
+  const widthClass = meterWidthClass(level);
+  const toneClass = meterToneClass(level);
+  return (
+    <div className={`relative overflow-hidden rounded-full bg-white/10 ${className}`}>
+      <div className={`h-full ${widthClass} ${toneClass} transition-[width,background] duration-75`} />
+      {peak > 0.02 && (
+        <div
+          className="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-amber-200/90 shadow-[0_0_4px_rgba(252,211,77,0.6)]"
+          style={{ left: `${Math.min(100, peak * 100)}%` }}
+          aria-hidden
+        />
+      )}
+    </div>
+  );
+}
+
+// Inverted gain-reduction meter for the master limiter. reductionDb is
+// negative (0 = no compression, -12 = heavy). Renders a red bar that
+// grows downward from the top — same visual language as hardware
+// limiters and plugin meters. Maps -12 dB ⇒ full height.
+function LimiterGrMeter({ reductionDb, className = "" }: { reductionDb: number; className?: string }) {
+  const grAbs = Math.max(0, -reductionDb); // 0..12+ dB
+  const fillPct = Math.min(100, (grAbs / 12) * 100);
+  return (
+    <div
+      className={`relative overflow-hidden rounded border border-white/10 bg-black/40 ${className}`}
+      title={`Limiter gain reduction: ${grAbs.toFixed(1)} dB`}
+      aria-label={`Limiter gain reduction ${grAbs.toFixed(1)} dB`}
+    >
+      <div
+        className="absolute top-0 left-0 right-0 bg-gradient-to-b from-rose-400 to-rose-600 transition-[height] duration-75"
+        style={{ height: `${fillPct}%` }}
+      />
+      <span className="absolute inset-x-0 bottom-0 text-center font-mono text-[7px] font-black uppercase tracking-tight text-white/55">
+        GR
       </span>
     </div>
   );
@@ -6408,6 +6955,9 @@ function TrackStrip({
   onInputGain,
   onSelectCompLane,
   onSetCompSegment,
+  onSetCompSegmentRange,
+  onRenameCompLane,
+  takeLanes,
   vcaGroups,
   soloMode,
   onSetTrackGroup,
@@ -6466,6 +7016,16 @@ function TrackStrip({
   onInputGain: (db: number) => void;
   onSelectCompLane: (laneId: string) => void;
   onSetCompSegment: (segmentIndex: number, laneId: string) => void;
+  /** Bulk version — assign a range of segments to a lane in one rebuild. */
+  onSetCompSegmentRange: (startIdx: number, endIdx: number, laneId: string) => void;
+  /** Rename a take lane so the take strip reads like a notebook. */
+  onRenameCompLane: (laneId: string, name: string) => void;
+  /** Pre-computed per-take mini-waveforms for the TakeLanesStrip. Null
+   *  when no takes exist; cheap to compute lazily via engine.getCompLanePeaks. */
+  takeLanes: Array<{
+    info: { id: string; name: string; durationSec: number; selected: boolean };
+    peaks: number[];
+  }> | null;
   vcaGroups: Array<{ id: string; name: string; gainDb: number }>;
   soloMode: "sip" | "afl";
   onSetTrackGroup: (groupId: string | null) => void;
@@ -6893,6 +7453,21 @@ function TrackStrip({
             onSetPoint={(timeSec, value) => onSetAutomationPoint("pan", timeSec, value)}
           />
         </div>
+
+        {track.compLanes.length > 0 && (
+          <TakeLanesStrip
+            lanes={takeLanes ?? []}
+            compSegmentLaneIds={track.compSegmentLaneIds}
+            brushLaneId={compBrushLaneId}
+            progress={progress}
+            onSetBrushLane={(laneId) => setCompBrushLaneId(laneId)}
+            onSetSegmentRange={(start, end, laneId) =>
+              onSetCompSegmentRange(start, end, laneId)
+            }
+            onSelectLane={onSelectCompLane}
+            onRenameLane={(laneId, name) => onRenameCompLane(laneId, name)}
+          />
+        )}
 
         {track.compLanes.length > 0 && (
           <div className="rounded-md border border-cyan-400/20 bg-cyan-500/5 px-2.5 py-2 text-[11px] text-cyan-50/90">

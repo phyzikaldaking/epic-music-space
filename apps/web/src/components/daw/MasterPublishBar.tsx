@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useFocusTrap } from "@/lib/useFocusTrap";
+import { computeMonoCompat, type MonoCompatReport } from "@/lib/monoCompat";
 
 interface Props {
   limiterOn: boolean;
@@ -66,6 +67,9 @@ export default function MasterPublishBar({
     blob: Blob;
     url: string;
   } | null>(null);
+  // Mono-compatibility report computed off the rendered blob. Drives the
+  // phase warning in the preview modal. Reset between renders.
+  const [monoReport, setMonoReport] = useState<MonoCompatReport | null>(null);
   // AI cover art (#5). Three base64 candidates streamed back from the
   // /api/ai/cover-art endpoint after the user clicks "Generate covers".
   // Selection is staged here and passed to onPublish once the user
@@ -175,6 +179,13 @@ export default function MasterPublishBar({
       setPendingPublish({ blob, url });
       setPhase("idle");
       setMessage("Preview your render before publishing.");
+      // Run the mono-compat check in parallel with the user listening —
+      // it decodes the full WAV (1–3s for a 3-min track) so it shouldn't
+      // gate the preview modal opening. Result lands when ready.
+      setMonoReport(null);
+      void computeMonoCompat(blob)
+        .then((report) => setMonoReport(report))
+        .catch(() => setMonoReport(null));
     } catch (err) {
       setPhase("error");
       setMessage(err instanceof Error ? err.message : "Render failed.");
@@ -191,6 +202,7 @@ export default function MasterPublishBar({
     setPendingPublish(null);
     setCoverArtOptions(null);
     setCoverArtPick(null);
+    setMonoReport(null);
     setPhase("uploading");
     setMessage("Uploading to your catalog…");
     try {
@@ -215,6 +227,7 @@ export default function MasterPublishBar({
     setCoverArtOptions(null);
     setCoverArtPick(null);
     setCoverArtError(null);
+    setMonoReport(null);
     setPhase("idle");
     setMessage("");
   }
@@ -416,6 +429,7 @@ export default function MasterPublishBar({
       {pendingPublish && (
         <RenderPreviewModal
           url={pendingPublish.url}
+          monoReport={monoReport}
           coverArt={{
             busy: coverArtBusy,
             error: coverArtError,
@@ -641,12 +655,17 @@ function ShareLinkRow({
  *  focuses the Cancel button on open and restores focus on close. */
 function RenderPreviewModal({
   url,
+  monoReport,
   coverArt,
   onCancel,
   onRerender,
   onConfirm,
 }: {
   url: string;
+  /** Mono-compatibility report. null while the check is still running
+   *  (decodes the WAV — a few seconds for long tracks). Drives the
+   *  phase-issue warning banner below the player. */
+  monoReport: MonoCompatReport | null;
   coverArt: {
     busy: boolean;
     error: string | null;
@@ -684,6 +703,8 @@ function RenderPreviewModal({
           <track kind="captions" />
         </audio>
 
+        <MonoCompatWarning report={monoReport} />
+
         <CoverArtPicker
           busy={coverArt.busy}
           error={coverArt.error}
@@ -717,6 +738,31 @@ function RenderPreviewModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Mono-compatibility warning shown in the preview modal. Surfaces only
+// when the L+R sum is >6 dB quieter than the stereo image — a strong
+// signal that something on the mix is anti-phase and the track will
+// collapse on phone speakers / Bluetooth. Silent when the check is still
+// running or when the mix is fine, so it never adds noise to a clean
+// publish flow.
+function MonoCompatWarning({ report }: { report: MonoCompatReport | null }) {
+  if (!report) return null;
+  if (!report.hasPhaseIssue) return null;
+  const lostDb = Math.abs(report.deltaDb).toFixed(1);
+  return (
+    <div className="mt-4 rounded-xl border border-rose-400/45 bg-rose-500/[0.08] p-3">
+      <p className="text-[10px] font-black uppercase tracking-[0.28em] text-rose-200">
+        Phase warning · mono drops {lostDb} dB
+      </p>
+      <p className="mt-1 text-xs leading-relaxed text-white/75">
+        Something in your mix is anti-phased — when this plays on a phone
+        speaker or Bluetooth, it&apos;ll sound gutted. Common culprits: a
+        too-wide stereo synth, a dry/wet reverb pulling against itself,
+        or a vocal doubler with inverted polarity.
+      </p>
     </div>
   );
 }

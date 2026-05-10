@@ -11,6 +11,8 @@ const patchSchema = z.object({
   isPublic: z.boolean().optional(),
   coverArtUrl: z.string().url().nullable().optional(),
   masterBlobUrl: z.string().url().nullable().optional(),
+  isTemplate: z.boolean().optional(),
+  templateGenre: z.string().max(40).nullable().optional(),
 });
 
 export async function GET(

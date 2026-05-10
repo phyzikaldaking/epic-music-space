@@ -35,8 +35,17 @@ export async function GET(req: NextRequest) {
     return jsonWithRequestId(requestId, { error: "Unauthorized" }, { status: 401 });
   }
 
+  // ?templates=1 → return only the user's saved templates (used by the
+  // TemplatePicker "My templates" tab). Default returns regular projects
+  // and excludes templates so the project list stays clean.
+  const url = new URL(req.url);
+  const templatesOnly = url.searchParams.get("templates") === "1";
+
   const projects = await prisma.studioProject.findMany({
-    where: { userId: session.user.id },
+    where: {
+      userId: session.user.id,
+      isTemplate: templatesOnly,
+    },
     orderBy: { updatedAt: "desc" },
     take: 50,
     select: {
@@ -46,6 +55,8 @@ export async function GET(req: NextRequest) {
       trackCount: true,
       thumbnailPeaks: true,
       isPublic: true,
+      isTemplate: true,
+      templateGenre: true,
       coverArtUrl: true,
       masterBlobUrl: true,
       createdAt: true,

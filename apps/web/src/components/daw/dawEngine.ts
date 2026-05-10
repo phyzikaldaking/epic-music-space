@@ -25,11 +25,15 @@
 import {
   type BeatLaneEqSetting,
   type BeatPattern,
+  type BeatStepOptionsMap,
+  type BeatStepOptions,
+  type BeatFillPreset,
   type DrumKind,
   DRUM_LANES,
   STEPS,
   STEPS_PER_BEAT,
   emptyPattern,
+  fillPattern,
   scheduleDrumHit,
   type DrumKitId,
 } from "./beatMachine";
@@ -257,6 +261,11 @@ export interface TransportState {
   masterLufs: number;
   /** Linear true-peak amplitude 0..1 of the most recent frame. */
   masterTruePeak: number;
+  /** Gain reduction from the master limiter, in dB. 0 means no clamping;
+   *  -3 means the limiter is pulling 3 dB out of the signal. Sourced from
+   *  DynamicsCompressorNode.reduction each frame. UI inverts this into a
+   *  downward-growing red bar so producers can see the limiter working. */
+  masterLimiterReduction: number;
   /** Stereo phase correlation meter, -1 (out of phase) .. +1 (in phase). */
   masterPhaseCorrelation: number;
   /** Solo behavior mode: SIP mutes others, AFL monitors selected tracks only. */
@@ -296,7 +305,7 @@ export interface TransportState {
 // Re-export the canonical DrumKitId so consumers don't need to reach
 // into beatMachine for it. Keep beatMachine.ts as the single source of
 // truth for the actual kit list.
-export type { DrumKitId } from "./beatMachine";
+export type { DrumKitId, BeatStepOptions, BeatFillPreset } from "./beatMachine";
 export type PatternBank = "A" | "B" | "C" | "D";
 
 export interface LaneFrequencyProfile {
@@ -328,12 +337,44 @@ export interface BeatMachineState {
   bankPatterns: Record<PatternBank, BeatPattern>;
   /** Drum kit preset — modulates synthesis on each hit. */
   kit: DrumKitId;
+  /** Optional secondary kit per lane. When set, the lane's hit is also
+   *  fired through this kit's synth, layered on top of the primary kit
+   *  (e.g., trap 808 + acoustic kick). null on a lane = no layering. */
+  layerKitB: Partial<Record<DrumKind, DrumKitId>>;
   /** Optional file name per lane when a custom one-shot sample is assigned. */
   laneSampleNames: Record<DrumKind, string | null>;
+  /** Round-robin variant file names per lane. The primary sample stays
+   *  in laneSampleNames; up to 3 additional samples are listed here and
+   *  the scheduler cycles through them on consecutive hits for realism. */
+  laneVariantNames: Record<DrumKind, string[]>;
   /** Lane-level EQ templates applied before each hit reaches the beat track. */
   laneEqSettings: Record<DrumKind, BeatLaneEqSetting>;
   /** Low-end occupancy profile per lane for arrangement and mix guidance. */
   laneFrequencyProfiles: Record<DrumKind, LaneFrequencyProfile>;
+  /** Per-step modifiers (velocity, probability, micro-shift, repeats).
+   *  Sparse — missing entries fall back to the defaults. Saved as part
+   *  of the project so velocity/probability/etc round-trip. */
+  stepOptions: BeatStepOptionsMap;
+  /** Same shape as stepOptions but per-bank, so bank switching keeps the
+   *  modifiers attached to the right pattern. */
+  bankStepOptions: Record<PatternBank, BeatStepOptionsMap>;
+  /** Global swing 0..0.66. Shifts every 2nd 16th forward by
+   *  swing * stepDur * 0.5 — at 0.5 you get exact 8th-note triplets. */
+  swing: number;
+  /** Humanize jitter in ms (0..15). Each step gets a random ±humanizeMs
+   *  shift before scheduling. 0 = robotic, 5–8 = recorded feel. */
+  humanizeMs: number;
+  /** Live performance stutter. 0 = off, 1..4 = subdivide the next bar at
+   *  1/4, 1/8, 1/16, 1/32 notes by repeatedly firing step 0's hits. */
+  stutter: number;
+  /** When true, the scheduler auto-injects a fill on the last bar
+   *  before a queued bank change so the switch isn't abrupt. */
+  fillsEnabled: boolean;
+  /** Queued next bank — set by setQueuedBank to defer the switch until
+   *  the loop boundary. null = no queued change. */
+  queuedBank: PatternBank | null;
+  /** Fill preset used when fillsEnabled is true and queuedBank is set. */
+  fillPreset: BeatFillPreset;
 }
 
 export interface AuxBusState {
@@ -619,6 +660,23 @@ function clonePattern(p: BeatPattern): BeatPattern {
   return out;
 }
 
+function cloneStepOptions(map: BeatStepOptionsMap): BeatStepOptionsMap {
+  const out: BeatStepOptionsMap = {};
+  for (const laneRaw of Object.keys(map)) {
+    const lane = laneRaw as DrumKind;
+    const lanemap = map[lane];
+    if (!lanemap) continue;
+    const copy: Record<number, BeatStepOptions> = {};
+    for (const k of Object.keys(lanemap)) {
+      const stepNum = Number(k);
+      const v = lanemap[stepNum];
+      if (v) copy[stepNum] = { ...v };
+    }
+    out[lane] = copy;
+  }
+  return out;
+}
+
 function emptyBeatLaneSampleNames(): Record<DrumKind, string | null> {
   return DRUM_LANES.reduce((acc, lane) => {
     acc[lane] = null;
@@ -816,14 +874,38 @@ export class DawEngine {
       D: emptyPattern(),
     },
     kit: "acoustic",
+    layerKitB: {},
     laneSampleNames: emptyBeatLaneSampleNames(),
+    laneVariantNames: DRUM_LANES.reduce((acc, lane) => {
+      acc[lane] = [];
+      return acc;
+    }, {} as Record<DrumKind, string[]>),
     laneEqSettings: emptyBeatLaneEqSettings(),
     laneFrequencyProfiles: emptyBeatLaneFrequencyProfiles(),
+    stepOptions: {},
+    bankStepOptions: { A: {}, B: {}, C: {}, D: {} },
+    swing: 0,
+    humanizeMs: 0,
+    stutter: 0,
+    fillsEnabled: false,
+    queuedBank: null,
+    fillPreset: "simple",
   };
   private beatLaneSamples: Record<DrumKind, AudioBuffer | null> = DRUM_LANES.reduce((acc, lane) => {
     acc[lane] = null;
     return acc;
   }, {} as Record<DrumKind, AudioBuffer | null>);
+  /** Round-robin variant buffers per lane (up to 3). The primary buffer
+   *  is in beatLaneSamples; this holds the alternates. Cycled via
+   *  beatLaneVariantCursor on each consecutive hit. */
+  private beatLaneVariants: Record<DrumKind, AudioBuffer[]> = DRUM_LANES.reduce((acc, lane) => {
+    acc[lane] = [];
+    return acc;
+  }, {} as Record<DrumKind, AudioBuffer[]>);
+  private beatLaneVariantCursor: Record<DrumKind, number> = DRUM_LANES.reduce((acc, lane) => {
+    acc[lane] = 0;
+    return acc;
+  }, {} as Record<DrumKind, number>);
   /** Beat track ID that drum hits route into. Created in init() so the
    *  user sees it as a real strip in the mixer. */
   private beatTrackId: TrackId | null = null;
@@ -901,6 +983,7 @@ export class DawEngine {
     masterSpectrum: new Array(32).fill(0),
     masterLufs: -Infinity,
     masterTruePeak: 0,
+    masterLimiterReduction: 0,
     masterPhaseCorrelation: 1,
     soloMode: "sip",
     aflBusLevel: 0,
@@ -1112,6 +1195,10 @@ export class DawEngine {
       if (v > peak) peak = v;
     }
     this.transport.masterLevel = peak;
+    // Master limiter gain reduction — DynamicsCompressorNode.reduction is
+    // a negative dB value (0 = passthrough, -3 = pulling 3 dB out). When
+    // the limiter is bypassed the node still runs so the value stays at 0.
+    this.transport.masterLimiterReduction = this.masterLimiter?.reduction ?? 0;
 
     // Per-track meters.
     for (const t of this.tracks.values()) {
@@ -1374,7 +1461,9 @@ export class DawEngine {
     vocalBusDrive.gain.value = 1;
     const vocalBusSaturator = ctx.createWaveShaper();
     vocalBusSaturator.curve = buildConsoleSaturationCurve(0);
-    vocalBusSaturator.oversample = "2x";
+    // 4x oversample kills aliasing above 8 kHz that 2x lets through when
+    // drive is hot. CPU cost ~12% per saturated track — worth it for vocals.
+    vocalBusSaturator.oversample = "4x";
     const vocalBusPresence = ctx.createBiquadFilter();
     vocalBusPresence.type = "peaking";
     vocalBusPresence.frequency.value = 3200;
@@ -1851,6 +1940,31 @@ export class DawEngine {
   getTrackBuffer(id: TrackId): AudioBuffer | null {
     const t = this.tracks.get(id);
     return t?.buffer ?? null;
+  }
+
+  /** Cheap per-take peak summary for the take-lanes strip UI. Returns a
+   *  fixed-length array of normalized peaks (0..1) per lane so each
+   *  take row can render a miniature waveform without exposing the full
+   *  Float32 buffer. Empty array when the track has no takes. */
+  getCompLanePeaks(trackId: TrackId, bins = 80): Array<{ id: string; peaks: number[] }> {
+    const t = this.tracks.get(trackId);
+    if (!t) return [];
+    return t.compLaneBuffers.map((lane) => {
+      const data = lane.buffer.getChannelData(0);
+      const peaks: number[] = new Array(bins).fill(0);
+      const binSize = Math.max(1, Math.floor(data.length / bins));
+      for (let i = 0; i < bins; i++) {
+        let peak = 0;
+        const start = i * binSize;
+        const end = Math.min(data.length, start + binSize);
+        for (let j = start; j < end; j++) {
+          const v = Math.abs(data[j] ?? 0);
+          if (v > peak) peak = v;
+        }
+        peaks[i] = Math.min(1, peak);
+      }
+      return { id: lane.id, peaks };
+    });
   }
 
   /** Attach an AudioBuffer to a track without going through MediaRecorder.
@@ -3385,6 +3499,71 @@ export class DawEngine {
     this.notify();
   }
 
+  /** Bulk version of setTrackCompSegmentLane for the drag-select comp
+   *  UI — assigns [start..end] inclusive to a lane in one notify, so
+   *  the user sees a single rebuilt buffer instead of N intermediate
+   *  rebuilds. */
+  setTrackCompSegmentRange(
+    trackId: TrackId,
+    startIdx: number,
+    endIdx: number,
+    laneId: string,
+  ) {
+    const track = this.tracks.get(trackId);
+    if (!track) return;
+    const lane = track.compLaneBuffers.find((entry) => entry.id === laneId);
+    if (!lane) return;
+    const lo = Math.max(0, Math.min(COMP_SEGMENT_COUNT - 1, startIdx));
+    const hi = Math.max(0, Math.min(COMP_SEGMENT_COUNT - 1, endIdx));
+    if (track.compSegmentLaneIds.length !== COMP_SEGMENT_COUNT) {
+      const fallback = laneId;
+      track.compSegmentLaneIds = Array.from(
+        { length: COMP_SEGMENT_COUNT },
+        (_, i) => track.compSegmentLaneIds[i] || fallback,
+      );
+    }
+    for (let i = lo; i <= hi; i++) {
+      track.compSegmentLaneIds[i] = laneId;
+    }
+    const composed = this.buildCompFromSegments(track);
+    if (!composed) return;
+    track.buffer = composed;
+    track.state.durationSec = composed.duration;
+    track.state.hasAudio = true;
+    track.state.compSegmentLaneIds = [...track.compSegmentLaneIds];
+    const firstLane = track.compSegmentLaneIds[0] ?? null;
+    const allSame = firstLane
+      ? track.compSegmentLaneIds.every((id) => id === firstLane)
+      : false;
+    track.state.compLanes = track.compLaneBuffers.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      durationSec: entry.buffer.duration,
+      createdAt: entry.createdAt,
+      selected: allSame ? entry.id === firstLane : false,
+    }));
+    this.waveformCache.delete(trackId);
+    this.notify();
+  }
+
+  /** Rename a take/lane. Useful for "Take 2 - softer" etc. so the comp
+   *  brush + waveform strip read like a human notebook, not "lane_3". */
+  renameCompLane(trackId: TrackId, laneId: string, name: string) {
+    const track = this.tracks.get(trackId);
+    if (!track) return;
+    const lane = track.compLaneBuffers.find((entry) => entry.id === laneId);
+    if (!lane) return;
+    lane.name = name.slice(0, 32);
+    track.state.compLanes = track.compLaneBuffers.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      durationSec: entry.buffer.duration,
+      createdAt: entry.createdAt,
+      selected: entry.id === laneId ? entry.id === laneId : entry.id === (track.state.compLanes.find((l) => l.selected)?.id ?? entry.id),
+    }));
+    this.notify();
+  }
+
   setTrackCompSegmentLane(trackId: TrackId, segmentIndex: number, laneId: string) {
     const track = this.tracks.get(trackId);
     if (!track) return;
@@ -3694,14 +3873,90 @@ export class DawEngine {
     // Persist any in-flight edits to the outgoing bank first — setBeatStep
     // mirrors but a hydrate / clear that bypasses it could leave drift.
     this.beatMachine.bankPatterns[this.beatMachine.activeBank] = this.beatMachine.pattern;
+    this.beatMachine.bankStepOptions[this.beatMachine.activeBank] = this.beatMachine.stepOptions;
     this.beatMachine.activeBank = bank;
     this.beatMachine.pattern = this.beatMachine.bankPatterns[bank];
+    this.beatMachine.stepOptions = this.beatMachine.bankStepOptions[bank] ?? {};
+    this.beatMachine.queuedBank = null;
+    this.notify();
+  }
+
+  /** Queue a bank switch for the next loop boundary instead of jumping
+   *  mid-bar. When fillsEnabled is true, the scheduler also paints the
+   *  configured fillPreset over the last bar before the switch. */
+  setQueuedBank(bank: PatternBank | null) {
+    this.beatMachine.queuedBank = bank;
     this.notify();
   }
 
   setBeatKit(kit: DrumKitId) {
     this.beatMachine.kit = kit;
     this.refreshBeatLaneFrequencyProfiles();
+    this.notify();
+  }
+
+  /** Optional secondary kit per lane. Pass null to clear. Renders to the
+   *  same beat track in the same scheduling pass, so two kits stack on
+   *  the same step without latency drift. */
+  setBeatLayerKit(lane: DrumKind, kit: DrumKitId | null) {
+    if (kit === null) {
+      delete this.beatMachine.layerKitB[lane];
+    } else {
+      this.beatMachine.layerKitB[lane] = kit;
+    }
+    this.notify();
+  }
+
+  /** Set a per-step modifier (velocity, probability, microShift, repeats).
+   *  Pass `null` for the options to clear the step's overrides entirely. */
+  setStepOptions(lane: DrumKind, step: number, opts: BeatStepOptions | null) {
+    const map = this.beatMachine.stepOptions[lane] ?? {};
+    if (opts === null) {
+      delete map[step];
+    } else {
+      // Drop fields equal to defaults so the map stays sparse.
+      const merged: BeatStepOptions = { ...(map[step] ?? {}), ...opts };
+      if (merged.velocity === 1) delete merged.velocity;
+      if (merged.probability === 1) delete merged.probability;
+      if (merged.microShiftMs === 0) delete merged.microShiftMs;
+      if (merged.repeats === 0) delete merged.repeats;
+      if (Object.keys(merged).length === 0) {
+        delete map[step];
+      } else {
+        map[step] = merged;
+      }
+    }
+    this.beatMachine.stepOptions[lane] = map;
+    this.beatMachine.bankStepOptions[this.beatMachine.activeBank] =
+      this.beatMachine.stepOptions;
+    this.notify();
+  }
+
+  setBeatSwing(swing: number) {
+    this.beatMachine.swing = Math.max(0, Math.min(0.66, swing));
+    this.notify();
+  }
+
+  setBeatHumanize(humanizeMs: number) {
+    this.beatMachine.humanizeMs = Math.max(0, Math.min(15, humanizeMs));
+    this.notify();
+  }
+
+  /** Live-performance stutter. 0 = off. 1..4 subdivide each bar by 4/8/
+   *  16/32 — every step fires the current step's hits at that rate
+   *  instead of advancing. Releasing returns to the pattern. */
+  setBeatStutter(divisor: number) {
+    this.beatMachine.stutter = Math.max(0, Math.min(4, Math.floor(divisor)));
+    this.notify();
+  }
+
+  setBeatFillsEnabled(on: boolean) {
+    this.beatMachine.fillsEnabled = on;
+    this.notify();
+  }
+
+  setBeatFillPreset(preset: BeatFillPreset) {
+    this.beatMachine.fillPreset = preset;
     this.notify();
   }
 
@@ -3871,7 +4126,42 @@ export class DawEngine {
   clearBeatLaneSample(lane: DrumKind) {
     this.beatLaneSamples[lane] = null;
     this.beatMachine.laneSampleNames[lane] = null;
+    this.beatLaneVariants[lane] = [];
+    this.beatMachine.laneVariantNames[lane] = [];
+    this.beatLaneVariantCursor[lane] = 0;
     this.refreshBeatLaneFrequencyProfiles();
+    this.notify();
+  }
+
+  /** Add a round-robin variant sample to a lane. The lane keeps the
+   *  primary in beatLaneSamples and cycles through up to 3 alternates
+   *  on consecutive triggers — sounds far more natural than the same
+   *  hit firing identically every loop. Caps at 3 variants. */
+  async addBeatLaneVariant(lane: DrumKind, file: File): Promise<boolean> {
+    if (!this.init() || !this.ctx) return false;
+    if (this.beatLaneVariants[lane].length >= 3) return false;
+    try {
+      const data = await file.arrayBuffer();
+      const decoded = await this.ctx.decodeAudioData(data.slice(0));
+      const buffer = this.prepareBeatLaneSample(decoded);
+      this.beatLaneVariants[lane].push(buffer);
+      this.beatMachine.laneVariantNames[lane].push(file.name);
+      this.notify();
+      return true;
+    } catch (err) {
+      console.warn("[DawEngine] beat lane variant decode failed", {
+        lane,
+        file: file.name,
+        err,
+      });
+      return false;
+    }
+  }
+
+  clearBeatLaneVariants(lane: DrumKind) {
+    this.beatLaneVariants[lane] = [];
+    this.beatMachine.laneVariantNames[lane] = [];
+    this.beatLaneVariantCursor[lane] = 0;
     this.notify();
   }
 
@@ -4063,24 +4353,120 @@ export class DawEngine {
         return;
       }
       while (this.beatNextTime < ctx.currentTime + 0.2) {
-        const step = this.beatNextStep % STEPS;
-        for (const lane of DRUM_LANES) {
-          if (this.beatMachine.pattern[lane][step]) {
-            scheduleDrumHit(ctx, beatTrack.fxIn, lane, {
-              when: this.beatNextTime,
-              kit: this.beatMachine.kit,
-              sampleBuffer: this.beatLaneSamples[lane],
-              laneEq: this.beatMachine.laneEqSettings[lane],
-            });
-          }
+        const stepIndex = this.beatNextStep % STEPS;
+        // Handle queued bank switch at loop boundary (step 0 of new loop).
+        if (stepIndex === 0 && this.beatNextStep > 0 && this.beatMachine.queuedBank) {
+          this.setActivePatternBank(this.beatMachine.queuedBank);
         }
-        this.beatMachine.activeStep = step;
-        this.beatNextTime += stepSec();
+        // Pick which pattern row to actually play this step. When fills
+        // are enabled and we're on the last bar before a queued bank
+        // switch, paint the fill preset over the underlying pattern.
+        const onLastBarBeforeSwitch =
+          this.beatMachine.fillsEnabled &&
+          this.beatMachine.queuedBank !== null &&
+          this.beatMachine.queuedBank !== this.beatMachine.activeBank;
+        const sourcePattern: BeatPattern = onLastBarBeforeSwitch
+          ? fillPattern(this.beatMachine.fillPreset)
+          : this.beatMachine.pattern;
+        this.fireStep(ctx, beatTrack.fxIn, sourcePattern, stepIndex, this.beatNextTime);
+        this.beatMachine.activeStep = stepIndex;
+        // Apply swing on every 2nd 16th — shift forward by
+        // swing * stepDur * 0.5 (a swing of 0.5 places the off-step exactly
+        // at the triplet). Stutter overrides normal step advance.
+        const baseStep = stepSec();
+        const isOffStep = stepIndex % 2 === 1;
+        const swingShift = isOffStep ? baseStep * this.beatMachine.swing * 0.5 : 0;
+        // When the next step (step+1) is the off-step, the *current* step
+        // gets shortened so the swing sums to a full beat across the pair.
+        const nextIsOffStep = (stepIndex + 1) % 2 === 1;
+        const advance = nextIsOffStep
+          ? baseStep + baseStep * this.beatMachine.swing * 0.5
+          : baseStep - swingShift;
+        // Stutter: subdivide the bar by 1/4..1/32. Each "step" advance is
+        // a smaller fraction so step 0 keeps re-firing repeatedly.
+        if (this.beatMachine.stutter > 0) {
+          const stutterSubdiv = Math.pow(2, this.beatMachine.stutter + 1); // 4,8,16,32
+          this.beatNextTime += (60 / this.transport.bpm) * (4 / stutterSubdiv);
+        } else {
+          this.beatNextTime += advance;
+        }
         this.beatNextStep++;
       }
       this.beatTimerId = window.setTimeout(fire, 25);
     };
     fire();
+  }
+
+  /** Fire all enabled hits for a given step at `when`. Applies per-step
+   *  velocity, probability roll, micro-shift, repeats/stutter, the
+   *  layered secondary kit, and round-robin sample variants. Pulled out
+   *  of scheduleBeatTicks so it can also be invoked directly from
+   *  scheduleDrumHit-style fire-and-forget paths (e.g., MIDI). */
+  private fireStep(
+    ctx: BaseAudioContext,
+    dest: AudioNode,
+    pattern: BeatPattern,
+    stepIndex: number,
+    when: number,
+  ) {
+    for (const lane of DRUM_LANES) {
+      if (!pattern[lane][stepIndex]) continue;
+      const opts: BeatStepOptions | undefined =
+        this.beatMachine.stepOptions[lane]?.[stepIndex];
+      // Probability gate — roll once per step per lane.
+      if (opts?.probability !== undefined && opts.probability < 1) {
+        if (Math.random() > opts.probability) continue;
+      }
+      const velocity = opts?.velocity ?? 1;
+      const microShiftMs = opts?.microShiftMs ?? 0;
+      const humanizeMs = this.beatMachine.humanizeMs;
+      const jitterMs = humanizeMs > 0 ? (Math.random() * 2 - 1) * humanizeMs : 0;
+      // Clamp the total micro-shift so it can't drift before `when` -
+      // negative shifts that put us in the past would no-op silently.
+      const shiftSec = Math.max(-0.04, (microShiftMs + jitterMs) / 1000);
+      const baseWhen = when + shiftSec;
+      // Pick the sample buffer: primary or one of the round-robin
+      // variants. Advance the per-lane cursor each consecutive hit.
+      let sampleBuffer = this.beatLaneSamples[lane];
+      const variants = this.beatLaneVariants[lane];
+      if (sampleBuffer && variants.length > 0) {
+        const cursor = this.beatLaneVariantCursor[lane] ?? 0;
+        const totalPool = 1 + variants.length;
+        const pick = cursor % totalPool;
+        sampleBuffer = pick === 0 ? this.beatLaneSamples[lane] : (variants[pick - 1] ?? sampleBuffer);
+        this.beatLaneVariantCursor[lane] = cursor + 1;
+      }
+      const laneEq = this.beatMachine.laneEqSettings[lane];
+      // Repeats — fire the hit once, then again 1..3 additional times
+      // squeezed into half the next step's duration. Halves velocity on
+      // each repeat so the burst tails off naturally.
+      const repeats = Math.max(0, Math.min(3, opts?.repeats ?? 0));
+      const stepDur = 60 / this.transport.bpm / STEPS_PER_BEAT;
+      const spacing = repeats > 0 ? (stepDur * 0.5) / (repeats + 1) : 0;
+      for (let r = 0; r <= repeats; r++) {
+        const repeatWhen = baseWhen + r * spacing;
+        const repeatVel = velocity * Math.pow(0.7, r);
+        scheduleDrumHit(ctx, dest, lane, {
+          when: repeatWhen,
+          velocity: repeatVel,
+          kit: this.beatMachine.kit,
+          sampleBuffer,
+          laneEq,
+        });
+        // Layered secondary kit — synth only (no sample) so we don't
+        // double the same one-shot. Re-uses the same lane EQ template.
+        const layerKit = this.beatMachine.layerKitB[lane];
+        if (layerKit && layerKit !== this.beatMachine.kit) {
+          scheduleDrumHit(ctx, dest, lane, {
+            when: repeatWhen,
+            velocity: repeatVel * 0.85,
+            kit: layerKit,
+            sampleBuffer: null,
+            laneEq,
+          });
+        }
+      }
+    }
   }
 
   private stopBeatScheduler() {
@@ -4251,7 +4637,9 @@ export class DawEngine {
     vocalBusSaturator.curve = buildConsoleSaturationCurve(
       fx.vocalBusEnabled ? fx.vocalBusDriveDb / 18 : 0,
     );
-    vocalBusSaturator.oversample = "2x";
+    // Match live chain — 4x oversample so the rendered bounce matches what
+    // the user was monitoring (the 2x→4x bump only helps if both paths agree).
+    vocalBusSaturator.oversample = "4x";
     const vocalBusPresence = offline.createBiquadFilter();
     vocalBusPresence.type = "peaking";
     vocalBusPresence.frequency.value = 3200;
@@ -4936,9 +5324,27 @@ export class DawEngine {
           D: clonePattern(this.beatMachine.bankPatterns.D),
         },
         kit: this.beatMachine.kit,
+        layerKitB: { ...this.beatMachine.layerKitB },
         laneSampleNames: { ...this.beatMachine.laneSampleNames },
+        laneVariantNames: DRUM_LANES.reduce((acc, lane) => {
+          acc[lane] = [...this.beatMachine.laneVariantNames[lane]];
+          return acc;
+        }, {} as Record<DrumKind, string[]>),
         laneEqSettings: { ...this.beatMachine.laneEqSettings },
         laneFrequencyProfiles: { ...this.beatMachine.laneFrequencyProfiles },
+        stepOptions: cloneStepOptions(this.beatMachine.stepOptions),
+        bankStepOptions: {
+          A: cloneStepOptions(this.beatMachine.bankStepOptions.A),
+          B: cloneStepOptions(this.beatMachine.bankStepOptions.B),
+          C: cloneStepOptions(this.beatMachine.bankStepOptions.C),
+          D: cloneStepOptions(this.beatMachine.bankStepOptions.D),
+        },
+        swing: this.beatMachine.swing,
+        humanizeMs: this.beatMachine.humanizeMs,
+        stutter: this.beatMachine.stutter,
+        fillsEnabled: this.beatMachine.fillsEnabled,
+        queuedBank: this.beatMachine.queuedBank,
+        fillPreset: this.beatMachine.fillPreset,
       },
       midi: {
         ...this.midi,

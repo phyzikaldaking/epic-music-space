@@ -59,12 +59,69 @@ export const STEPS_PER_BEAT = 4;
 
 export type BeatPattern = Record<DrumKind, boolean[]>;
 
+/** Per-step modifiers that don't fit the boolean on/off shape. Stored as
+ *  a sparse map (lane → step → options) so a default step costs zero
+ *  memory and old saves keep loading without migration. Every field is
+ *  optional; the scheduler reads defaults when a field is missing. */
+export interface BeatStepOptions {
+  /** Velocity multiplier 0..1.25. 1 is unity. Renders as proportional
+   *  fill height in the grid; shift+click on a step cycles through
+   *  preset velocities. */
+  velocity?: number;
+  /** Probability 0..1 that this step plays on a given pass. The
+   *  scheduler rolls per-step, per-loop, so a 0.6 hat plays roughly
+   *  60% of the time. Right-click on a cell to set. */
+  probability?: number;
+  /** Per-step micro-shift in milliseconds (±). Combined with the global
+   *  humanize amount so a step can be intentionally pulled or pushed
+   *  beyond the random jitter. */
+  microShiftMs?: number;
+  /** Beat-repeat / stutter — number of additional hits to fire inside
+   *  the step's duration. 0 = single hit (default). 1 = doubles, 2 =
+   *  triples, 3 = quads. Used by both the per-step UI and the live
+   *  keyboard stutter. */
+  repeats?: number;
+}
+
+/** Per-lane secondary kit override. When set, the lane's hit is also
+ *  fired through the alternate kit's synth params so two kits layer on
+ *  the same step (e.g., trap 808 + acoustic kick). */
+export type BeatLaneLayerKit = Partial<Record<DrumKind, DrumKitId>>;
+
+export type BeatStepOptionsMap = Partial<
+  Record<DrumKind, Record<number, BeatStepOptions>>
+>;
+
 /** Sensible empty pattern — all 16 steps off across all lanes. */
 export function emptyPattern(): BeatPattern {
   return DRUM_LANES.reduce((acc, lane) => {
     acc[lane] = Array(STEPS).fill(false);
     return acc;
   }, {} as BeatPattern);
+}
+
+/** Bank-fill presets — drop a 1-bar drum fill on the last bar before a
+ *  bank switch so the transition isn't abrupt. */
+export type BeatFillPreset = "simple" | "medium" | "wild";
+export function fillPattern(preset: BeatFillPreset): BeatPattern {
+  const p = emptyPattern();
+  if (preset === "simple") {
+    // Tom-roll style snare on the last beat, hat steady.
+    [12, 13, 14, 15].forEach((i) => (p.snare[i] = true));
+    [0, 2, 4, 6, 8, 10, 12, 14].forEach((i) => (p.hat[i] = true));
+  } else if (preset === "medium") {
+    [8, 10, 12, 13, 14, 15].forEach((i) => (p.snare[i] = true));
+    [0, 2, 4, 6, 8, 10].forEach((i) => (p.hat[i] = true));
+    [12, 14, 15].forEach((i) => (p.clap[i] = true));
+    [15].forEach((i) => (p.crash[i] = true));
+  } else {
+    // "Wild" — snare on every 16th of the last beat, claps doubled.
+    [8, 9, 10, 11, 12, 13, 14, 15].forEach((i) => (p.snare[i] = true));
+    [10, 12, 14, 15].forEach((i) => (p.clap[i] = true));
+    [0, 4].forEach((i) => (p.kick[i] = true));
+    [15].forEach((i) => (p.crash[i] = true));
+  }
+  return p;
 }
 
 /** Classic four-on-the-floor demo pattern so a new user has *something*

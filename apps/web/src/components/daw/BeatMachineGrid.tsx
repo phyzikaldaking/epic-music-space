@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { DRUM_LANES, STEPS, type BeatPattern, type DrumKind, type DrumKitId } from "./beatMachine";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  DRUM_LANES,
+  STEPS,
+  type BeatPattern,
+  type BeatStepOptions,
+  type BeatFillPreset,
+  type DrumKind,
+  type DrumKitId,
+} from "./beatMachine";
 import type { LaneEqRecommendation, LaneFrequencyProfile, PatternBank } from "./dawEngine";
 import { StudioTooltip } from "@/components/ui/StudioTooltip";
 import { tooltips } from "./tooltipCopy";
@@ -12,6 +20,26 @@ interface Props {
   activeStep: number;
   activeBank: PatternBank;
   kit: DrumKitId;
+  /** Sparse per-step modifiers — velocity, probability, microShift,
+   *  repeats. Cells render proportional fill heights based on velocity
+   *  and a small badge when probability < 1. */
+  stepOptions: Partial<Record<DrumKind, Record<number, BeatStepOptions>>>;
+  /** Optional secondary kit per lane. Renders a tiny chip in the lane
+   *  header so the user knows two kits are stacking on hit. */
+  layerKitB: Partial<Record<DrumKind, DrumKitId>>;
+  /** Round-robin variant filenames per lane (max 3). Shift+drop on the
+   *  lane appends a variant; clear button on each chip removes one. */
+  laneVariantNames: Record<DrumKind, string[]>;
+  /** Global swing 0..0.66 — every 2nd 16th gets shifted forward. */
+  swing: number;
+  /** Humanize jitter in ms (0..15). */
+  humanizeMs: number;
+  /** When true, scheduler auto-paints a fill on the last bar before a
+   *  queued bank switch. */
+  fillsEnabled: boolean;
+  fillPreset: BeatFillPreset;
+  /** Live stutter divisor 0..4 (0 = off). 1/4..1/32 subdivisions. */
+  stutter: number;
   laneSampleNames: Record<DrumKind, string | null>;
   laneFrequencyProfiles: Record<DrumKind, LaneFrequencyProfile>;
   laneRecommendations: Partial<Record<DrumKind, LaneEqRecommendation>>;
@@ -20,19 +48,31 @@ interface Props {
   previewRecommendation: LaneEqRecommendation | null;
   onTogglePreviewRecommendation: (rec: LaneEqRecommendation | null) => void;
   onToggleStep: (lane: DrumKind, step: number) => void;
+  onSetStepOptions: (lane: DrumKind, step: number, opts: BeatStepOptions | null) => void;
   onToggleEnabled: () => void;
   onClear: () => void;
   onSuggestPattern: () => void;
   onRenderToTrack: () => void;
   onSelectBank: (bank: PatternBank) => void;
   onSelectKit: (kit: DrumKitId) => void;
+  onSetLaneLayerKit: (lane: DrumKind, kit: DrumKitId | null) => void;
+  onSetSwing: (swing: number) => void;
+  onSetHumanize: (humanizeMs: number) => void;
+  onSetFillsEnabled: (on: boolean) => void;
+  onSetFillPreset: (preset: BeatFillPreset) => void;
+  onSetStutter: (divisor: number) => void;
   onAssignLaneSample: (lane: DrumKind, file: File) => Promise<void> | void;
+  onAddLaneVariant: (lane: DrumKind, file: File) => Promise<void> | void;
+  onClearLaneVariants: (lane: DrumKind) => void;
   onClearLaneSample: (lane: DrumKind) => void;
   onFillLane: (lane: DrumKind, on: boolean) => void;
   onRandomizeLane: (lane: DrumKind, density: number) => void;
   onShiftLane: (lane: DrumKind, direction: "left" | "right") => void;
   rendering?: boolean;
 }
+
+const VELOCITY_CYCLE = [1, 1.25, 0.25, 0.5, 0.75]; // tap order on shift+click
+const PROBABILITY_CYCLE = [1, 0.75, 0.5, 0.25];
 
 const BANKS: PatternBank[] = ["A", "B", "C", "D"];
 // Modern kit roster — ordered by how often they get reached for in 2026
@@ -87,6 +127,14 @@ export default function BeatMachineGrid({
   activeStep,
   activeBank,
   kit,
+  stepOptions,
+  layerKitB,
+  laneVariantNames,
+  swing,
+  humanizeMs,
+  fillsEnabled,
+  fillPreset,
+  stutter,
   laneSampleNames,
   laneFrequencyProfiles,
   laneRecommendations,
@@ -95,13 +143,22 @@ export default function BeatMachineGrid({
   previewRecommendation,
   onTogglePreviewRecommendation,
   onToggleStep,
+  onSetStepOptions,
   onToggleEnabled,
   onClear,
   onSuggestPattern,
   onRenderToTrack,
   onSelectBank,
   onSelectKit,
+  onSetLaneLayerKit,
+  onSetSwing,
+  onSetHumanize,
+  onSetFillsEnabled,
+  onSetFillPreset,
+  onSetStutter,
   onAssignLaneSample,
+  onAddLaneVariant,
+  onClearLaneVariants,
   onClearLaneSample,
   onFillLane,
   onRandomizeLane,
@@ -113,6 +170,13 @@ export default function BeatMachineGrid({
   const [paintMode, setPaintMode] = useState<boolean | null>(null);
   const [dragLane, setDragLane] = useState<DrumKind | null>(null);
   const [previewingLane, setPreviewingLane] = useState<DrumKind | null>(null);
+  // Probability popover. null = closed; otherwise pin coords + identity.
+  const [probMenu, setProbMenu] = useState<{
+    lane: DrumKind;
+    step: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const lanePreviewSourceRef = useRef<Record<DrumKind, Blob | null>>({
     kick: null,
     snare: null,
@@ -183,8 +247,34 @@ export default function BeatMachineGrid({
     setDragLane(null);
     const file = event.dataTransfer.files?.[0];
     if (!file) return;
+    // Shift-drop appends a round-robin variant instead of replacing the
+    // primary sample. Up to 3 variants per lane.
+    if (event.shiftKey && laneSampleNames[lane]) {
+      await onAddLaneVariant(lane, file);
+      return;
+    }
     await onAssignLaneSample(lane, file);
     lanePreviewSourceRef.current[lane] = file;
+  }
+
+  function cycleStepVelocity(lane: DrumKind, step: number) {
+    const cur = stepOptions[lane]?.[step]?.velocity ?? 1;
+    // Find the current value in the cycle (defaults to 1 at idx 0) and
+    // bump to the next.
+    let idx = VELOCITY_CYCLE.findIndex((v) => Math.abs(v - cur) < 0.01);
+    if (idx < 0) idx = 0;
+    const next = VELOCITY_CYCLE[(idx + 1) % VELOCITY_CYCLE.length] ?? 1;
+    onSetStepOptions(lane, step, { velocity: next });
+  }
+
+  function setStepProbability(lane: DrumKind, step: number, probability: number) {
+    onSetStepOptions(lane, step, { probability });
+    setProbMenu(null);
+  }
+
+  function openProbMenu(lane: DrumKind, step: number, e: ReactMouseEvent) {
+    e.preventDefault();
+    setProbMenu({ lane, step, x: e.clientX, y: e.clientY });
   }
 
   function previewLaneSample(lane: DrumKind) {
@@ -303,6 +393,95 @@ export default function BeatMachineGrid({
           </StudioTooltip>
         </div>
       </header>
+
+      <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+        <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/55">
+          Swing
+          <input
+            type="range"
+            min={0}
+            max={0.66}
+            step={0.02}
+            value={swing}
+            onChange={(e) => onSetSwing(Number(e.target.value))}
+            className="w-20 accent-accent-500"
+            aria-label="Beat machine swing"
+            title="Shift every 2nd 16th forward. 0 = robotic, 0.5 = triplet feel."
+          />
+          <span className="w-8 text-right font-mono text-[10px] text-white/70">
+            {Math.round(swing * 100)}%
+          </span>
+        </label>
+        <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/55">
+          Human
+          <input
+            type="range"
+            min={0}
+            max={15}
+            step={0.5}
+            value={humanizeMs}
+            onChange={(e) => onSetHumanize(Number(e.target.value))}
+            className="w-20 accent-accent-500"
+            aria-label="Beat machine humanize"
+            title="Random per-step timing jitter in ms. 0 = robotic; 5–8 = recorded feel."
+          />
+          <span className="w-10 text-right font-mono text-[10px] text-white/70">
+            ±{humanizeMs.toFixed(1)} ms
+          </span>
+        </label>
+        <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/55">
+          <input
+            type="checkbox"
+            checked={fillsEnabled}
+            onChange={(e) => onSetFillsEnabled(e.target.checked)}
+            aria-label="Auto-fill on bank switch"
+            className="h-3.5 w-3.5 accent-accent-500"
+          />
+          Fill on switch
+        </label>
+        {fillsEnabled && (
+          <select
+            value={fillPreset}
+            onChange={(e) => onSetFillPreset(e.target.value as BeatFillPreset)}
+            aria-label="Fill preset"
+            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-white/85"
+            title="Drum fill played on the last bar before a queued bank switch."
+          >
+            <option value="simple">Simple</option>
+            <option value="medium">Medium</option>
+            <option value="wild">Wild</option>
+          </select>
+        )}
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-white/55">
+            Stutter
+          </span>
+          {[
+            { label: "Off", v: 0 },
+            { label: "1/4", v: 1 },
+            { label: "1/8", v: 2 },
+            { label: "1/16", v: 3 },
+            { label: "1/32", v: 4 },
+          ].map((opt) => (
+            <button
+              key={opt.v}
+              type="button"
+              onClick={() => onSetStutter(opt.v)}
+              className={`rounded px-2 py-0.5 text-[10px] font-black uppercase tracking-widest transition ${
+                stutter === opt.v
+                  ? "bg-accent-500 text-black"
+                  : "border border-white/15 text-white/65 hover:bg-white/10"
+              }`}
+              title={`Stutter at ${opt.label}. Hold 1–4 during playback as a hotkey.`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="ml-auto text-[10px] text-white/45">
+          Shift+click step = velocity · Right-click = probability · Shift+drop sample = layer
+        </p>
+      </div>
 
       <div className="space-y-1.5">
         {DRUM_LANES.map((lane) => (
@@ -454,18 +633,76 @@ export default function BeatMachineGrid({
                   ▶
                 </button>
               </div>
-              <p className="mt-0.5 text-[9px] text-white/35">Drop audio here to assign lane</p>
+              <p className="mt-0.5 text-[9px] text-white/35">
+                Drop audio · Shift+drop to add variant
+              </p>
+              {laneVariantNames[lane].length > 0 && (
+                <div className="mt-0.5 flex items-center gap-1">
+                  {laneVariantNames[lane].map((name, idx) => (
+                    <span
+                      key={`${name}-${idx}`}
+                      className="truncate rounded border border-cyan-300/30 bg-cyan-500/10 px-1 text-[8px] font-bold text-cyan-100"
+                      title={`Round-robin variant ${idx + 2}: ${name}`}
+                    >
+                      v{idx + 2}
+                    </span>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => onClearLaneVariants(lane)}
+                    className="rounded border border-white/15 px-1 text-[8px] font-bold uppercase tracking-wider text-white/55 hover:bg-white/10"
+                    title="Clear all round-robin variants for this lane"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              <div className="mt-0.5 flex items-center gap-1">
+                <span
+                  className="text-[8px] font-bold uppercase tracking-widest text-white/40"
+                  title="Layer a second kit's synth on this lane for hybrid drums"
+                >
+                  Layer
+                </span>
+                <select
+                  value={layerKitB[lane] ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    onSetLaneLayerKit(lane, v === "" ? null : (v as DrumKitId));
+                  }}
+                  aria-label={`Layer kit for ${LANE_LABELS[lane]}`}
+                  className="flex-1 rounded border border-white/10 bg-black/30 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-white/80"
+                  title="Layer a secondary kit's synth on every hit"
+                >
+                  <option value="">Off</option>
+                  {KITS.filter((k) => k.id !== kit).map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="flex flex-1 gap-[3px]">
               {stepIndices.map((step) => {
                 const on = pattern[lane][step];
                 const isActive = enabled && activeStep === step;
                 const isDownbeat = step % 4 === 0;
+                const opts = stepOptions[lane]?.[step];
+                const velocity = opts?.velocity ?? 1;
+                const probability = opts?.probability ?? 1;
+                // Velocity → fill height. 1 = full; 0.25 = 25%; 1.25 = 100%+glow.
+                const fillPct = Math.min(100, Math.round(Math.min(1, velocity) * 100));
                 return (
                   <button
                     key={step}
                     type="button"
-                    onPointerDown={() => {
+                    onPointerDown={(e) => {
+                      // Shift-click cycles velocity instead of toggling.
+                      if (e.shiftKey && on) {
+                        cycleStepVelocity(lane, step);
+                        return;
+                      }
                       const next = !on;
                       setPaintMode(next);
                       onToggleStep(lane, step);
@@ -474,15 +711,47 @@ export default function BeatMachineGrid({
                       handleStepPaint(lane, step, on);
                     }}
                     onPointerUp={() => setPaintMode(null)}
-                    aria-label={`${LANE_LABELS[lane]} step ${step + 1}: ${on ? "on" : "off"}`}
-                    className={`relative h-7 flex-1 rounded-md border transition ${
+                    onContextMenu={(e) => {
+                      // Right-click on an enabled step opens the probability menu.
+                      if (!on) {
+                        e.preventDefault();
+                        return;
+                      }
+                      openProbMenu(lane, step, e);
+                    }}
+                    aria-label={`${LANE_LABELS[lane]} step ${step + 1}: ${on ? "on" : "off"}${velocity !== 1 ? ` · vel ${Math.round(velocity * 100)}` : ""}${probability < 1 ? ` · ${Math.round(probability * 100)}%` : ""}`}
+                    className={`relative h-7 flex-1 overflow-hidden rounded-md border transition ${
                       on
-                        ? `border-transparent shadow-[0_0_18px_rgba(255,255,255,0.08)] ${LANE_BG_CLASSES[lane]}`
+                        ? `border-transparent shadow-[0_0_18px_rgba(255,255,255,0.08)] bg-white/[0.04]`
                         : isDownbeat
                           ? "border-white/15 bg-white/[0.04] hover:bg-white/[0.08]"
                           : "border-white/10 bg-white/[0.02] hover:bg-white/[0.06]"
                     } ${isActive ? "ring-2 ring-white ring-offset-1 ring-offset-transparent" : ""}`}
-                  />
+                  >
+                    {on && (
+                      <span
+                        className={`absolute bottom-0 left-0 right-0 ${LANE_BG_CLASSES[lane]} ${velocity > 1 ? "shadow-[0_0_8px_rgba(255,255,255,0.5)]" : ""}`}
+                        style={{ height: `${fillPct}%` }}
+                        aria-hidden
+                      />
+                    )}
+                    {on && probability < 1 && (
+                      <span
+                        className="absolute top-0.5 right-0.5 rounded-full bg-black/55 px-1 text-[7px] font-black text-white/85"
+                        aria-hidden
+                      >
+                        {Math.round(probability * 100)}
+                      </span>
+                    )}
+                    {on && (opts?.repeats ?? 0) > 0 && (
+                      <span
+                        className="absolute top-0.5 left-0.5 text-[7px] font-black text-white/85"
+                        aria-hidden
+                      >
+                        ×{(opts?.repeats ?? 0) + 1}
+                      </span>
+                    )}
+                  </button>
                 );
               })}
             </div>
@@ -499,6 +768,118 @@ export default function BeatMachineGrid({
           </div>
         ))}
       </div>
+
+      {probMenu && (
+        <ProbabilityMenu
+          x={probMenu.x}
+          y={probMenu.y}
+          current={stepOptions[probMenu.lane]?.[probMenu.step]?.probability ?? 1}
+          repeats={stepOptions[probMenu.lane]?.[probMenu.step]?.repeats ?? 0}
+          onPick={(p) => setStepProbability(probMenu.lane, probMenu.step, p)}
+          onSetRepeats={(r) =>
+            onSetStepOptions(probMenu.lane, probMenu.step, { repeats: r })
+          }
+          onClear={() => {
+            onSetStepOptions(probMenu.lane, probMenu.step, null);
+            setProbMenu(null);
+          }}
+          onClose={() => setProbMenu(null)}
+        />
+      )}
     </section>
+  );
+}
+
+// Floating popover for setting a step's probability + per-step repeat
+// count. Positioned at the right-click coords; closes on backdrop click
+// or Escape. Clear button removes ALL options for the step (velocity,
+// probability, microShift, repeats) so undo is one click.
+function ProbabilityMenu({
+  x,
+  y,
+  current,
+  repeats,
+  onPick,
+  onSetRepeats,
+  onClear,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  current: number;
+  repeats: number;
+  onPick: (probability: number) => void;
+  onSetRepeats: (repeats: number) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [onClose]);
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[100]"
+        onClick={onClose}
+        aria-hidden
+      />
+      <div
+        role="dialog"
+        aria-label="Step modifiers"
+        className="fixed z-[101] rounded-lg border border-white/15 bg-[#0a0a10]/95 p-2 shadow-2xl shadow-black/50"
+        style={{ left: x, top: y }}
+      >
+        <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-white/55">
+          Probability
+        </p>
+        <div className="flex items-center gap-1">
+          {PROBABILITY_CYCLE.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onPick(p)}
+              className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-widest transition ${
+                Math.abs(current - p) < 0.01
+                  ? "bg-accent-500 text-black"
+                  : "border border-white/15 text-white/70 hover:bg-white/10"
+              }`}
+            >
+              {Math.round(p * 100)}%
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 mb-1 text-[9px] font-black uppercase tracking-widest text-white/55">
+          Repeats (stutter)
+        </p>
+        <div className="flex items-center gap-1">
+          {[0, 1, 2, 3].map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => onSetRepeats(r)}
+              className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-widest transition ${
+                repeats === r
+                  ? "bg-accent-500 text-black"
+                  : "border border-white/15 text-white/70 hover:bg-white/10"
+              }`}
+              title={`Fire ${r + 1} hit${r === 0 ? "" : "s"} inside this step`}
+            >
+              ×{r + 1}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="mt-2 w-full rounded border border-rose-400/40 bg-rose-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-200 hover:bg-rose-500/20"
+        >
+          Reset step
+        </button>
+      </div>
+    </>
   );
 }

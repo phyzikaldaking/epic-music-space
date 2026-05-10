@@ -10,6 +10,16 @@ interface Props {
   onLoad: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onNew: () => void;
+  /** Save the current project as a personal template (#22). Stays in
+   *  the user's library under "My templates" in the picker. Null when
+   *  there's no current project to clone from. */
+  onSaveAsTemplate?: (() => Promise<void>) | null;
+  /** Open the version-history modal (#20). Null when there's no current
+   *  project (versions are scoped per-project). */
+  onOpenVersionHistory?: (() => void) | null;
+  /** Open the template picker (#21). Available everywhere — even without
+   *  a current project — since picking a template starts a new session. */
+  onOpenTemplatePicker?: (() => void) | null;
 }
 
 function fmtBytes(n: number): string {
@@ -34,6 +44,9 @@ export default function ProjectMenu({
   onLoad,
   onDelete,
   onNew,
+  onSaveAsTemplate,
+  onOpenVersionHistory,
+  onOpenTemplatePicker,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<StoredProject[]>([]);
@@ -133,6 +146,46 @@ export default function ProjectMenu({
             >
               New
             </button>
+          </div>
+
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {onOpenTemplatePicker && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenTemplatePicker();
+                  setOpen(false);
+                }}
+                className="rounded-md border border-cyan-400/40 bg-cyan-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-cyan-100 hover:bg-cyan-400/20 transition"
+              >
+                Start from template
+              </button>
+            )}
+            {onSaveAsTemplate && currentProjectId && (
+              <button
+                type="button"
+                onClick={() => {
+                  void onSaveAsTemplate();
+                  setOpen(false);
+                }}
+                className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-amber-100 hover:bg-amber-400/20 transition"
+                title="Keep this project as a starting point for future sessions"
+              >
+                Save as template
+              </button>
+            )}
+            {onOpenVersionHistory && currentProjectId && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenVersionHistory();
+                  setOpen(false);
+                }}
+                className="rounded-md border border-violet-400/40 bg-violet-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-violet-100 hover:bg-violet-400/20 transition"
+              >
+                Version history
+              </button>
+            )}
           </div>
 
           <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">

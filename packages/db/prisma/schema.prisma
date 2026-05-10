@@ -630,11 +630,20 @@ model StudioProject {
   // Optional pointer to the rendered master bounce, set on publish so the
   // listen page (#9) has audio to play even before tracks are paginated in.
   masterBlobUrl  String?
+  // True when this project is saved as a personal template (#22). Templates
+  // show up in the TemplatePicker under "My templates" and never autosave
+  // edits back over the original — opening a template clones it to a new
+  // project id so the source is preserved.
+  isTemplate     Boolean       @default(false)
+  // Optional genre tag for templates so the picker can group them.
+  templateGenre  String?
   tracks         StudioTrack[]
+  versions       StudioProjectVersion[] @relation("ProjectVersions")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   @@index([userId, updatedAt])
   @@index([isPublic])
+  @@index([isTemplate])
 }
 
 model StudioTrack {
@@ -653,6 +662,31 @@ model StudioTrack {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   @@index([projectId, position])
+}
+
+// Snapshot of a project at a point in time. Saved-on-autosave (last 10
+// retained per project) so users can rewind through "version history"
+// without paying the full undo-stack IDB cost. Just metadata + the
+// pattern/transport JSON; track audio blobs aren't duplicated (rewinding
+// to a snapshot keeps current audio, only restores engine state). This
+// is intentionally simple — full audio time-travel would balloon storage
+// without proportionate value.
+model StudioProjectVersion {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     StudioProject @relation("ProjectVersions", fields: [projectId], references: [id], onDelete: Cascade)
+  // Saved-state JSON: bpm, beat pattern, transport snapshot, etc.
+  // Loaded back into the engine via hydrateProject(). Matches the
+  // patternJson shape on StudioProject.
+  patternJson Json
+  // Stable trackCount + bpm pulled out for the version-list summary so
+  // rendering the picker doesn't require parsing patternJson.
+  bpm         Int      @default(120)
+  trackCount  Int      @default(0)
+  // Optional label so power users can name a version ("Pre-master mix").
+  label       String?  @db.VarChar(80)
+  createdAt   DateTime @default(now())
+  @@index([projectId, createdAt])
 }
 
 model VersusMatch {
