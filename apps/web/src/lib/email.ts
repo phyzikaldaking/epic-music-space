@@ -89,7 +89,7 @@ export async function sendMagicLinkEmail(
   const headline = isGuestResume ? "Your beat is waiting" : "Your sign-in link";
   const ctaLabel = isGuestResume ? "Open my beat →" : "Sign in →";
 
-  let flavor = "Click the button below to sign in. This link works once and expires in 15 minutes.";
+  let flavor = "Click the button below to sign in. This link works once and expires in 30 minutes.";
   if (isGuestResume) {
     const parts: string[] = [];
     if (context.durationSec && context.durationSec > 0) {
@@ -102,7 +102,7 @@ export async function sendMagicLinkEmail(
       parts.push(`${mb} MB`);
     }
     const detail = parts.length > 0 ? ` (${parts.join(" · ")})` : "";
-    flavor = `The track you made in EMS Studio${detail} is saved and ready to publish. Click below — we'll log you in and walk you to publish in one tap. Link works once and expires in 15 minutes.`;
+    flavor = `The track you made in EMS Studio${detail} is saved and ready to publish. Click below — we'll log you in and walk you to publish in one tap. Link works once and expires in 30 minutes.`;
   }
 
   const html = `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#fff;font-family:-apple-system,sans-serif;padding:40px 16px">
@@ -118,8 +118,8 @@ export async function sendMagicLinkEmail(
     </div></body></html>`;
 
   const text = isGuestResume
-    ? `Your beat is waiting on Epic Music Space.\n\nClick to open it: ${url}\n\nLink works once and expires in 15 minutes.`
-    : `Sign in to Epic Music Space: ${url}\n\nLink works once and expires in 15 minutes.`;
+    ? `Your beat is waiting on Epic Music Space.\n\nClick to open it: ${url}\n\nLink works once and expires in 30 minutes.`
+    : `Sign in to Epic Music Space: ${url}\n\nLink works once and expires in 30 minutes.`;
 
   const { error } = await resend.emails.send({
     from: FROM,

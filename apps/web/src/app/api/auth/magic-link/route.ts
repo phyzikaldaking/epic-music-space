@@ -86,12 +86,17 @@ export async function POST(req: NextRequest) {
   // Remove any existing tokens for this identifier
   await prisma.verificationToken.deleteMany({ where: { identifier } });
 
-  // Create new token (15 minute expiry)
+  // Create new token (30 minute expiry). Extended from 15 minutes — too
+  // many users on slow corporate mail / iCloud relay were getting the
+  // email after expiry and bouncing back to "this link expired." 30
+  // minutes is the upper bound at which single-use email tokens are
+  // still considered safe (longer than that, the threat model shifts
+  // toward "stolen mailbox" rather than "intercepted in transit").
   await prisma.verificationToken.create({
     data: {
       identifier,
       token: hashedToken,
-      expires: new Date(Date.now() + 15 * 60 * 1000),
+      expires: new Date(Date.now() + 30 * 60 * 1000),
     },
   });
 

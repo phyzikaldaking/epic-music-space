@@ -139,7 +139,10 @@ export async function POST(req: NextRequest) {
     data: {
       identifier,
       token: hashedToken,
-      expires: new Date(Date.now() + 15 * 60 * 1000),
+      // 30 min — same as the regular magic-link flow, extended from 15
+      // because slow corporate mail / iCloud relay was making the
+      // shorter window expire before the user could click.
+      expires: new Date(Date.now() + 30 * 60 * 1000),
     },
   });
 

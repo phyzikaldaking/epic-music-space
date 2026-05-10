@@ -66,6 +66,15 @@ class MagicLinkInvalidError extends CredentialsSignin {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
+  // Trust the X-Forwarded-Host / Host header when Vercel (or any proxy
+  // in front of us) sets it. NextAuth v5 defaults to rejecting requests
+  // whose host doesn't match the configured AUTH_URL — that breaks
+  // sign-in on preview deploys, custom domains, and any setup where a
+  // load balancer rewrites Host (corporate VPNs, ISP proxies, some
+  // Safari-on-Mac configurations behind transparent caches). Without
+  // this, the failure mode is silent: the form posts, the response is
+  // 400, and the user just sees "couldn't sign in" with no recourse.
+  trustHost: true,
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days — persistent across browser restarts
