@@ -26,6 +26,19 @@ interface SongCardProps {
   totalLicenses: number;
   bpm?: number | null;
   musicalKey?: string | null;
+  /** Inferred descriptor like "Energetic" or "Chill" — see moodFor() in
+   *  lib/songMood.ts. Renders as a metadata chip next to BPM/Key/Genre
+   *  so sync buyers can scan vibe before clicking. */
+  mood?: string | null;
+  /** When true the card shows a "Buy Stems / Remix" affordance next to
+   *  the standard license CTA. Stems are released via the existing
+   *  trackout download on /track/[id] for license holders. */
+  hasStems?: boolean;
+  /** When set, renders a "Start Versus" CTA pointing to this URL.
+   *  Caller decides eligibility (typically: viewer != artist, song has
+   *  some traction). Honors EMS's battle-driven growth loop — invite
+   *  → battle → share "WHO WON?" → more signups. */
+  verzuzHref?: string;
   aiScore?: number;
   boostScore?: number;
   paidBoostApplied?: number;
@@ -91,7 +104,7 @@ function getTierClass(tier: DominanceTier) {
 
 const visualizerBars = [34, 62, 44, 76, 52, 88, 41, 70, 95, 58, 47, 82, 38, 66, 51, 73, 46, 90];
 
-export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl, licensePrice, revenueSharePct, soldLicenses, totalLicenses, bpm, musicalKey, aiScore, boostScore = 0, paidBoostApplied, paidBoostCap, paidBoostCapped = false, paidInfluencePct = 0, rankingFactors, isTrending = false, isBoosted = false, rankPosition, dominanceTier, placementLabel, competitorGap }: SongCardProps) {
+export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl, licensePrice, revenueSharePct, soldLicenses, totalLicenses, bpm, musicalKey, mood, hasStems = false, verzuzHref, aiScore, boostScore = 0, paidBoostApplied, paidBoostCap, paidBoostCapped = false, paidInfluencePct = 0, rankingFactors, isTrending = false, isBoosted = false, rankPosition, dominanceTier, placementLabel, competitorGap }: SongCardProps) {
   const remaining = Math.max(0, totalLicenses - soldLicenses);
   const remainingPct = totalLicenses > 0 ? Math.round((remaining / totalLicenses) * 100) : 0;
   const soldOutSoon = totalLicenses > 0 && remainingPct <= 20;
@@ -200,9 +213,39 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
           </div>
 
           <div className="flex min-h-7 flex-wrap gap-1.5">
+            {/* Quality-of-life metadata chips. Mood is heuristic (see
+             *  songMood.ts) but lets sync buyers scan vibe before they
+             *  click. EMS Score is a separate prominent chip so the
+             *  AI-quality status reads as proof, not flavor. The
+             *  scarcity chip ("X of Y claimed") makes every track read
+             *  as an asset with a finite supply rather than infinite
+             *  streaming — buyers move faster on visible scarcity. */}
+            {typeof aiScore === "number" && aiScore > 0 && (
+              <span
+                title="EMS AI quality score — public ranking signal"
+                className="inline-flex items-center gap-1 rounded-full border border-gold-300/45 bg-gold-300/12 px-2.5 py-1 text-xs font-black text-gold-100"
+              >
+                <span aria-hidden>◆</span>
+                EMS {aiScore.toFixed(1)}
+              </span>
+            )}
+            {totalLicenses > 0 && (
+              <span
+                title={`${soldLicenses} of ${totalLicenses} licenses claimed (${remainingPct}% available)`}
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold ${
+                  soldOutSoon
+                    ? "border-red-400/55 bg-red-500/10 text-red-200"
+                    : "border-white/15 bg-white/[0.06] text-white/75"
+                }`}
+              >
+                <span aria-hidden>{soldOutSoon ? "🔥" : "🎫"}</span>
+                {soldLicenses}/{totalLicenses} claimed
+              </span>
+            )}
             {genre && <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">{genre}</span>}
             {bpm && <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">{bpm} BPM</span>}
             {musicalKey && <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">Key {musicalKey}</span>}
+            {mood && <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs font-medium text-white/64">{mood}</span>}
           </div>
 
           <div className="rounded-xl border border-white/10 bg-black/30 p-2">
@@ -304,14 +347,58 @@ export default function SongCard({ id, title, artist, genre, coverUrl, audioUrl,
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          {/* License-forward CTA stack. The headline button is the money
+           *  action (License This Track); the secondary row carries the
+           *  remix/stems entry point when stems are available and the
+           *  Versus battle CTA when the caller has marked this track
+           *  eligible. Versus drives the share-out growth loop —
+           *  invite friends → battle → "WHO WON?" → more signups.
+           *  PromoteSongButton stays in the row as a no-op for non-
+           *  owners and a real promotion entry for owners. */}
+          <div className="space-y-2">
             <Link
               href={`/track/${id}`}
-              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/12 bg-white/8 px-4 text-sm font-bold text-white transition hover:border-accent-300/50 hover:bg-accent-400/15 hover:text-accent-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-accent-500 px-4 text-sm font-black text-white shadow-lg shadow-brand-500/25 transition hover:from-brand-400 hover:to-accent-400 hover:shadow-brand-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-300"
             >
-              View
+              <span aria-hidden>🔑</span>
+              License This Track
             </Link>
-            <PromoteSongButton songId={id} />
+            {(() => {
+              // Count the conditional secondary CTAs so we can pick the
+              // right grid column count without ternary stacking.
+              const slots = 1 + (hasStems ? 1 : 0) + (verzuzHref ? 1 : 0);
+              const gridClass =
+                slots >= 3
+                  ? "grid grid-cols-3 gap-2"
+                  : slots === 2
+                    ? "grid grid-cols-2 gap-2"
+                    : "grid grid-cols-1 gap-2";
+              return (
+                <div className={gridClass}>
+                  {hasStems && (
+                    <Link
+                      href={`/track/${id}#stems`}
+                      title="Buy a license that unlocks the trackout (vocals, drums, bass, other) for remixing."
+                      className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-tube-300/45 bg-tube-300/10 px-3 text-xs font-bold uppercase tracking-wider text-tube-100 transition hover:border-tube-300/70 hover:bg-tube-300/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-300"
+                    >
+                      <span aria-hidden>🎚️</span>
+                      Stems / Remix
+                    </Link>
+                  )}
+                  {verzuzHref && (
+                    <Link
+                      href={verzuzHref}
+                      title={`Start a Verzuz battle with "${title}" on the setlist`}
+                      className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-rose-400/45 bg-rose-500/10 px-3 text-xs font-bold uppercase tracking-wider text-rose-200 transition hover:border-rose-400/70 hover:bg-rose-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+                    >
+                      <span aria-hidden>⚔️</span>
+                      Start Versus
+                    </Link>
+                  )}
+                  <PromoteSongButton songId={id} />
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
