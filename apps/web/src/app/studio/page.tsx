@@ -43,6 +43,20 @@ export default async function StudioIndexPage() {
           Jump straight back into the DAW, open your public studio, or start
           a live room without hunting through menus.
         </p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Link
+            href="/studio/ultra"
+            className="inline-flex items-center rounded-md border border-cyan-300/35 bg-cyan-500/20 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-cyan-100"
+          >
+            Studio Ultra Upgrades
+          </Link>
+          <Link
+            href="/studio/try?force-desktop=1"
+            className="inline-flex items-center rounded-md border border-white/20 bg-black/35 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-white/85"
+          >
+            Open Full Desktop Studio
+          </Link>
+        </div>
       </header>
       <StudioHubClient studioUsername={studio?.username ?? null} />
     </div>
@@ -98,6 +112,12 @@ function PublicStudioLanding() {
                 className="studio-engage-btn inline-flex items-center justify-center gap-2 rounded-md px-6 py-4 font-display text-base uppercase tracking-[0.18em]"
               >
                 Try it now — no signup →
+              </Link>
+              <Link
+                href="/studio/ultra"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-cyan-300/35 bg-cyan-500/15 px-6 py-4 font-display text-base uppercase tracking-[0.18em] text-cyan-100"
+              >
+                See Studio Ultra →
               </Link>
               <Link
                 href="/auth/signin?callbackUrl=%2Fstudio"
@@ -182,6 +202,14 @@ function PublicStudioLanding() {
               p: "Run episodes like a media product: record for video, keep the audio pristine, cut clips, add captions, and drive listeners into live aftershows.",
               cta: "Open podcast tools",
               href: "/studio/podcast",
+            },
+            {
+              n: "05",
+              slot: "Studio Ultra",
+              h: "15 major upgrades shipped.",
+              p: "See every visual, workflow, AI-assist, and session-reliability upgrade now live on the production studio stack.",
+              cta: "View upgrades",
+              href: "/studio/ultra",
             },
           ].map((m) => (
             <Link key={m.n} href={m.href} className="studio-rack-card block">

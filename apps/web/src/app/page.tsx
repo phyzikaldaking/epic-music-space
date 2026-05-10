@@ -305,6 +305,19 @@ export default async function HomePage() {
             </span>
           </div>
 
+          <div className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-cyan-300/25 bg-black/35 px-3 py-2">
+            <span aria-hidden className="h-2 w-2 rounded-full bg-cyan-300" />
+            <p className="studio-label text-cyan-100">
+              Studio Ultra upgrade pass is live in production.
+            </p>
+            <Link
+              href="/studio/ultra"
+              className="ml-auto inline-flex items-center rounded-md border border-cyan-300/35 bg-cyan-500/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-cyan-100"
+            >
+              Open Upgrade Center
+            </Link>
+          </div>
+
           <HomeHeroMessaging />
           <HomeSplitCtas
             placement="hero"
