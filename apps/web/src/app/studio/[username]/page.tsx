@@ -18,6 +18,8 @@ import { tallyRounds } from "@/lib/verzuz";
 import { moodFor } from "@/lib/songMood";
 import { formatPrice } from "@ems/utils";
 import ShareStudioButton from "@/components/studio/ShareStudioButton";
+import CareerTipCard from "@/components/studio/CareerTipCard";
+import PromoKitButton from "@/components/studio/PromoKitButton";
 import MuxPlayer from "@mux/mux-player-react/lazy";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -927,6 +929,41 @@ export default async function StudioProfilePage({ params }: Props) {
         </section>
       )}
 
+      {/* AI Career Tip — owner-only card sits below the completion
+          meter so the artist gets a focused next-move every visit.
+          Hidden for visitors; tips are cached daily server-side. */}
+      {isOwner && <CareerTipCard />}
+
+      {/* Owner studio tools — promo kit lives next to the career tip
+          so the artist's owner-only actions are clustered. Renders
+          only when the artist has at least one track to promote. */}
+      {isOwner && user.songs.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/[0.04] p-4">
+          <span aria-hidden className="text-lg">
+            🛠️
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-300">
+              Studio tools
+            </p>
+            <p className="text-[11px] text-white/55">
+              Generate share-ready cover art, captions, and a 15-second clip
+              for any of your tracks.
+            </p>
+          </div>
+          <PromoKitButton
+            songs={user.songs.map((s) => ({
+              id: s.id,
+              title: s.title,
+              artist: s.artist,
+              coverUrl: s.coverUrl,
+              audioUrl: s.audioUrl,
+              aiScore: s.aiScore,
+            }))}
+          />
+        </div>
+      )}
+
       {/* Bio */}
       {studio.bio && (
         <p className="mt-6 text-sm text-white/60 max-w-2xl">{studio.bio}</p>
@@ -1179,6 +1216,73 @@ export default async function StudioProfilePage({ params }: Props) {
               </Link>
             )}
           </div>
+        </section>
+      )}
+
+      {/* Book a live listening session — quick-mode entry point that
+          forwards to /studio/live with an ?artist= param the live
+          page can later honor as a host filter or auto-DM template.
+          We don't add a new booking schema yet (that's its own
+          feature); this is the fan-facing doorway into live
+          engagement. Owners see a "Go live" variant pointing to
+          their own live room. Hidden when the artist isn't accepting
+          live engagement, but we don't have that flag yet, so it's
+          unconditionally visible — same approach as the verzuz CTA. */}
+      {!isOwner && (
+        <section className="mt-4 flex flex-wrap items-center gap-4 rounded-2xl border border-rose-400/35 bg-gradient-to-r from-rose-500/[0.06] via-amber-500/[0.04] to-rose-500/[0.06] p-4">
+          <span
+            aria-hidden
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-rose-500/20 text-lg text-rose-100"
+          >
+            🎙️
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-rose-200">
+              Live listening session
+            </p>
+            <p className="mt-1 text-sm font-bold text-white">
+              Want a live unreleased preview, Q&amp;A, or feedback session?
+            </p>
+            <p className="text-[11px] text-white/55">
+              Open the live room when {user.name ?? username} goes on air, or
+              request one — fans license tracks in real time as they play.
+            </p>
+          </div>
+          <Link
+            href={`/studio/live?artist=${encodeURIComponent(username)}`}
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-300/45 bg-rose-400/15 px-4 text-sm font-bold text-rose-100 transition hover:bg-rose-400/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+          >
+            <span aria-hidden>📡</span>
+            Book a live session
+          </Link>
+        </section>
+      )}
+      {isOwner && (
+        <section className="mt-4 flex flex-wrap items-center gap-4 rounded-2xl border border-rose-400/35 bg-rose-500/[0.05] p-4">
+          <span
+            aria-hidden
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-rose-500/20 text-lg text-rose-100"
+          >
+            🎙️
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-rose-200">
+              Live engagement
+            </p>
+            <p className="mt-1 text-sm font-bold text-white">
+              Go live to your fans
+            </p>
+            <p className="text-[11px] text-white/55">
+              Open a live listening room. Fans can license tracks while they
+              play and the room records to your Replay Drops.
+            </p>
+          </div>
+          <Link
+            href="/studio/live"
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-rose-500 px-4 text-sm font-black uppercase tracking-wider text-white transition hover:bg-rose-400"
+          >
+            Open live room
+          </Link>
         </section>
       )}
 
