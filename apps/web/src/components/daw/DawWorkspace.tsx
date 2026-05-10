@@ -3461,7 +3461,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       <StudioDropOverlay onFiles={importSoundKitFiles} />
       <ShortcutOverlay />
 
-      <div className="sticky top-[64px] z-30 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
+      {/* Sticky transport at z-20 so header dropdowns (ProjectMenu z-50,
+          UndoTimelinePanel z-50) consistently render *above* it. Earlier
+          this was z-30 which collided with ProjectMenu's own z-30 and
+          made the dropdown clip behind the transport on long pages — the
+          "slides up and down weird" sensation. */}
+      <div className="sticky top-[64px] z-20 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <div
         className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 shadow-2xl shadow-black/40 backdrop-blur-md transition ${
           transport?.isRecording
@@ -4057,6 +4062,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           level={transport?.masterLevel ?? 0}
           lufs={transport?.masterLufs ?? -60}
           truePeak={transport?.masterTruePeak ?? 0}
+          limiterOn={transport?.masterLimiterOn ?? false}
           limiterReductionDb={transport?.masterLimiterReduction ?? 0}
           onChange={(db) => {
             if (!ensureInit()) return;
@@ -4229,7 +4235,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         )}
 
         {!showSplash && (
-          <div className="relative space-y-3" data-collab-surface="mixer">
+          // overflow-anchor: auto on the mixer container tells the browser
+          // to maintain the visual scroll position when content above
+          // changes height (a new take lane appears, a comp segment
+          // rebuilds the buffer, etc.). Without this, every layout-shift
+          // shoves the rest of the page up/down — which the user described
+          // as "slides up and down weird."
+          <div
+            className="relative space-y-3 [overflow-anchor:auto]"
+            data-collab-surface="mixer"
+          >
             <CollaboratorCursors surface="mixer" collaborators={collaborators} />
             <CommentPinsStrip
               comments={comments}
@@ -6814,6 +6829,7 @@ function MasterStrip({
   level,
   lufs,
   truePeak,
+  limiterOn,
   limiterReductionDb,
   onChange,
 }: {
@@ -6821,6 +6837,10 @@ function MasterStrip({
   level: number;
   lufs: number;
   truePeak: number;
+  /** True when the master limiter is engaged. When false the GR meter
+   *  always renders flat — skipping the per-tick height updates that
+   *  would otherwise reflow on every snapshot for no visible change. */
+  limiterOn: boolean;
   /** Master limiter gain reduction in dB. 0 = no clamping; -3 = limiter
    *  pulling 3 dB. Drives the inverted red GR bar. */
   limiterReductionDb: number;
@@ -6831,7 +6851,11 @@ function MasterStrip({
     <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-1.5">
       <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">Master</span>
       <MasterLevelMeter level={level} className="h-3 w-20" />
-      <LimiterGrMeter reductionDb={limiterReductionDb} className="h-3 w-6" />
+      <LimiterGrMeter
+        reductionDb={limiterOn ? limiterReductionDb : 0}
+        active={limiterOn}
+        className="h-3 w-6"
+      />
       <span className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-white/70" title="Integrated loudness estimate">
         {Number.isFinite(lufs) ? `${lufs.toFixed(1)} LUFS` : "-inf LUFS"}
       </span>
@@ -6860,29 +6884,52 @@ function MasterStrip({
 // instantaneous level (0..1 linear). A thin amber line latches at the
 // recent max and falls at -12 dB/sec, mimicking the hardware standard
 // (producers rely on the caret to spot transients between glances).
+//
+// Performance: the rAF loop runs with a stable empty-dep effect (we read
+// `level` from a ref so a fresh prop doesn't tear down + recreate the
+// loop 60 times a second). When both level and held peak are below
+// 0.02 (visually inert), we pause the loop entirely — the next non-zero
+// level rehydrates it. Saves CPU + battery during silence.
 function MasterLevelMeter({ level, className = "" }: { level: number; className?: string }) {
   const [peak, setPeak] = useState(0);
   const peakRef = useRef({ value: 0, holdUntilMs: 0 });
+  const levelRef = useRef(level);
+  const rafRef = useRef<number>(0);
+  const runningRef = useRef(false);
   useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      const now = performance.now();
-      const cur = peakRef.current;
-      if (level >= cur.value) {
-        // New peak — latch and reset the hold window.
-        cur.value = level;
-        cur.holdUntilMs = now + 1500;
-      } else if (now > cur.holdUntilMs) {
-        // Falloff at -12 dB/sec. Convert to linear scale per-frame.
-        // 16ms frame → ~0.192 dB → linear factor 10^(-0.192/20) ≈ 0.978.
-        cur.value = Math.max(0, cur.value * 0.978);
-      }
-      setPeak(cur.value);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    levelRef.current = level;
+    // If the loop is paused and a non-trivial level arrives, restart it.
+    if (!runningRef.current && level > 0.02) {
+      runningRef.current = true;
+      const tick = () => {
+        const now = performance.now();
+        const cur = peakRef.current;
+        const liveLevel = levelRef.current;
+        if (liveLevel >= cur.value) {
+          cur.value = liveLevel;
+          cur.holdUntilMs = now + 1500;
+        } else if (now > cur.holdUntilMs) {
+          // -12 dB/sec falloff. Linear factor per 16ms frame ≈ 0.978.
+          cur.value = Math.max(0, cur.value * 0.978);
+        }
+        setPeak(cur.value);
+        // Pause when there's nothing to animate. The next `level` update
+        // will start the loop again.
+        if (cur.value < 0.02 && liveLevel < 0.02) {
+          runningRef.current = false;
+          return;
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    }
   }, [level]);
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      runningRef.current = false;
+    };
+  }, []);
   const widthClass = meterWidthClass(level);
   const toneClass = meterToneClass(level);
   return (
@@ -6903,20 +6950,39 @@ function MasterLevelMeter({ level, className = "" }: { level: number; className?
 // negative (0 = no compression, -12 = heavy). Renders a red bar that
 // grows downward from the top — same visual language as hardware
 // limiters and plugin meters. Maps -12 dB ⇒ full height.
-function LimiterGrMeter({ reductionDb, className = "" }: { reductionDb: number; className?: string }) {
-  const grAbs = Math.max(0, -reductionDb); // 0..12+ dB
-  const fillPct = Math.min(100, (grAbs / 12) * 100);
+function LimiterGrMeter({
+  reductionDb,
+  active = true,
+  className = "",
+}: {
+  reductionDb: number;
+  /** When false (limiter bypassed) the meter renders dim/flat — useful
+   *  visual feedback that the bar is intentionally dormant, not "no
+   *  signal." Also short-circuits the per-tick height transition. */
+  active?: boolean;
+  className?: string;
+}) {
+  const grAbs = active ? Math.max(0, -reductionDb) : 0; // 0..12+ dB
+  const fillPct = active ? Math.min(100, (grAbs / 12) * 100) : 0;
   return (
     <div
-      className={`relative overflow-hidden rounded border border-white/10 bg-black/40 ${className}`}
-      title={`Limiter gain reduction: ${grAbs.toFixed(1)} dB`}
-      aria-label={`Limiter gain reduction ${grAbs.toFixed(1)} dB`}
+      className={`relative overflow-hidden rounded border border-white/10 ${active ? "bg-black/40" : "bg-black/20"} ${className}`}
+      title={
+        active
+          ? `Limiter gain reduction: ${grAbs.toFixed(1)} dB`
+          : "Limiter off"
+      }
+      aria-label={
+        active ? `Limiter gain reduction ${grAbs.toFixed(1)} dB` : "Limiter off"
+      }
     >
-      <div
-        className="absolute top-0 left-0 right-0 bg-gradient-to-b from-rose-400 to-rose-600 transition-[height] duration-75"
-        style={{ height: `${fillPct}%` }}
-      />
-      <span className="absolute inset-x-0 bottom-0 text-center font-mono text-[7px] font-black uppercase tracking-tight text-white/55">
+      {active && (
+        <div
+          className="absolute top-0 left-0 right-0 bg-gradient-to-b from-rose-400 to-rose-600 transition-[height] duration-75"
+          style={{ height: `${fillPct}%` }}
+        />
+      )}
+      <span className={`absolute inset-x-0 bottom-0 text-center font-mono text-[7px] font-black uppercase tracking-tight ${active ? "text-white/55" : "text-white/30"}`}>
         GR
       </span>
     </div>

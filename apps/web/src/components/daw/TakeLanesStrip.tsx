@@ -148,9 +148,19 @@ export default function TakeLanesStrip({
                   if (!drag) return;
                   const idx = segmentFromEvent(e);
                   if (idx === null) return;
-                  setDrag((cur) => (cur ? { ...cur, endIdx: idx } : null));
+                  // Only re-set drag state when the segment under the
+                  // cursor changes. Saves ~95% of pointermove state
+                  // updates during a slow drag (one re-render per
+                  // segment boundary instead of one per pixel).
+                  setDrag((cur) =>
+                    cur && cur.endIdx !== idx ? { ...cur, endIdx: idx } : cur,
+                  );
                 }}
-                className={`relative h-12 flex-1 cursor-crosshair overflow-hidden rounded border ${
+                // touch-action: none lets the strip own pointer events
+                // on iOS / Android — without it the OS interprets the
+                // drag as a page scroll and the segment selector never
+                // fires. cursor-crosshair gives the desktop affordance.
+                className={`relative h-12 flex-1 cursor-crosshair overflow-hidden rounded border [touch-action:none] ${
                   isBrush ? "border-amber-300/40" : "border-white/10"
                 } bg-black/40`}
               >

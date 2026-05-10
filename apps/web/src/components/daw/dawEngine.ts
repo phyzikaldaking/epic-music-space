@@ -1175,12 +1175,49 @@ export class DawEngine {
   }
 
   private startMeterLoop() {
+    // The meter loop only needs to run when there's actually audio
+    // moving — during playback, while recording (so arm-state level
+    // monitoring works), while the beat machine is enabled, or when
+    // input monitoring is on. Otherwise we'd burn ~60Hz of CPU on a
+    // silent UI just to read analyser nodes that report zero.
     const step = () => {
-      if (!this.ctx) return;
+      if (!this.ctx) {
+        this.rafId = null;
+        return;
+      }
       this.tick();
+      if (!this.needsMeterTick()) {
+        // Nothing is producing audio → park the loop. The next play /
+        // arm / beat-enable will kick it back to life via kickMeterLoop.
+        this.rafId = null;
+        return;
+      }
       this.rafId = requestAnimationFrame(step);
     };
+    if (this.rafId !== null) return; // already running
     this.rafId = requestAnimationFrame(step);
+  }
+
+  /** Wake the meter loop from its idle state. Called whenever something
+   *  flips that should trigger meter updates again (play, arm, beat
+   *  enable, input monitor). Safe to call when the loop is already
+   *  running — startMeterLoop guards against double-starting. */
+  private kickMeterLoop() {
+    if (this.rafId !== null) return;
+    if (!this.ctx) return;
+    this.startMeterLoop();
+  }
+
+  /** True when anything actively needs meter feedback. */
+  private needsMeterTick(): boolean {
+    if (this.transport.isPlaying) return true;
+    if (this.transport.isRecording) return true;
+    if (this.beatMachine.enabled) return true;
+    // Any armed track wants live input level for the meter overlay.
+    for (const t of this.tracks.values()) {
+      if (t.state.armed) return true;
+    }
+    return false;
   }
 
   private tick() {
@@ -2018,6 +2055,9 @@ export class DawEngine {
     t.state.armed = armed;
     if (armed) {
       void this.ensureTrackInputPipeline(t);
+      // Arming a track means live-input level monitoring should run.
+      // Kick the meter loop in case it was parked at idle.
+      this.kickMeterLoop();
     } else if (!this.transport.isRecording) {
       this.teardownTrackInputPipeline(t);
     }
@@ -2959,6 +2999,9 @@ export class DawEngine {
     this.playStartCtxTime = startAt;
     this.playStartPosition = offset;
     this.transport.isPlaying = true;
+    // The meter loop parks itself when nothing's playing — wake it so
+    // levels start flowing again on this play() boundary.
+    this.kickMeterLoop();
     if (this.transport.referenceEnabled) {
       this.syncReferenceSource();
     }
@@ -3268,6 +3311,9 @@ export class DawEngine {
       }
 
       this.transport.isRecording = true;
+      // Recording always wants live meters even before play() — kick
+      // the loop here so a "record without play" arm shows levels.
+      this.kickMeterLoop();
       this.recordingAlignmentTrimSec = wasPlaying ? 0 : TRANSPORT_START_LEAD_SEC;
       this.notify();
       return true;
@@ -3850,6 +3896,10 @@ export class DawEngine {
       this.beatMachine.activeStep = -1;
       this.stopBeatScheduler();
     }
+    // Beat-on creates audio output → wake the meter loop. Beat-off
+    // doesn't need to stop it (needsMeterTick will park it on the next
+    // frame if nothing else needs it).
+    if (enabled) this.kickMeterLoop();
     this.notify();
   }
 
@@ -4348,6 +4398,12 @@ export class DawEngine {
     this.beatNextStep = 0;
 
     const fire = () => {
+      // Check enable state BEFORE doing any work or scheduling the next
+      // tick. Earlier the timeout was scheduled unconditionally at the
+      // end of every fire(), so disabling the beat machine mid-bar left
+      // up to one stale wakeup in flight. We now also clear beatTimerId
+      // on the way out so stopBeatScheduler can see "already parked"
+      // and skip the redundant clearTimeout.
       if (!this.beatMachine.enabled || !this.transport.isPlaying) {
         this.beatTimerId = null;
         return;
@@ -4391,6 +4447,13 @@ export class DawEngine {
           this.beatNextTime += advance;
         }
         this.beatNextStep++;
+      }
+      // Re-check enable state before scheduling the next poll, so a
+      // disable that happens during the while-loop's work above doesn't
+      // queue a useless 25ms-later wakeup.
+      if (!this.beatMachine.enabled || !this.transport.isPlaying) {
+        this.beatTimerId = null;
+        return;
       }
       this.beatTimerId = window.setTimeout(fire, 25);
     };

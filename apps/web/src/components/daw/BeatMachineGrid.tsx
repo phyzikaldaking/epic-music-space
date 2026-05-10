@@ -322,7 +322,7 @@ export default function BeatMachineGrid({
                 key={b}
                 type="button"
                 onClick={() => onSelectBank(b)}
-                className={`min-w-7 rounded-md px-2 py-1 text-[11px] font-black uppercase tracking-widest transition ${
+                className={`min-w-7 rounded-md px-2 py-1 text-[11px] font-black uppercase tracking-widest transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
                   b === activeBank
                     ? "bg-accent-500 text-black"
                     : "text-white/55 hover:bg-white/10"
@@ -338,7 +338,7 @@ export default function BeatMachineGrid({
           <select
             value={kit}
             onChange={(e) => onSelectKit(e.target.value as DrumKitId)}
-            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-xs font-mono text-white"
+            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-xs font-mono text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
             aria-label="Drum kit preset"
           >
             {KITS.map((k) => (
@@ -354,7 +354,7 @@ export default function BeatMachineGrid({
           <button
             type="button"
             onClick={onToggleEnabled}
-            className={`rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-widest transition ${
+            className={`rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-widest transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
               enabled
                 ? "bg-accent-500 text-black"
                 : "border border-white/15 text-white/70 hover:bg-white/10"

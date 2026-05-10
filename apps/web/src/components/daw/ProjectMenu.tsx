@@ -104,7 +104,7 @@ export default function ProjectMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-2 w-[min(400px,calc(100vw-2rem))] rounded-2xl border border-white/15 bg-[#0c0c14] p-4 shadow-2xl">
+        <div className="absolute right-0 top-full z-50 mt-2 w-[min(400px,calc(100vw-2rem))] rounded-2xl border border-white/15 bg-[#0c0c14] p-4 shadow-2xl">
           <div className="mb-3 flex items-center justify-between gap-2">
             <p className="text-[10px] font-black uppercase tracking-[0.32em] text-brand-300/85">
               Project

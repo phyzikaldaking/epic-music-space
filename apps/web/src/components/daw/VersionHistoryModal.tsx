@@ -95,7 +95,7 @@ export default function VersionHistoryModal({
       aria-modal="true"
       aria-label="Version history"
       ref={trapRef}
-      className="fixed inset-0 z-[180] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[181] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
     >
       <div className="w-[min(560px,100%)] max-h-[85vh] overflow-y-auto rounded-2xl border border-violet-400/40 bg-[#0a0a10]/95 p-6 shadow-2xl shadow-black/50">
         <div className="flex items-start justify-between gap-3">

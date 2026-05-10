@@ -72,7 +72,19 @@ export default function SpotlightTour({ steps, open, onClose }: SpotlightTourPro
       return;
     }
     setMissing(false);
-    el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    // Only scroll the target into view if it's actually off-screen —
+    // a smooth-scroll on every step transition (even when the target is
+    // already visible) makes the tour feel jerky and disconnected from
+    // the user's intent. Skip the scroll if the element is fully or
+    // partially visible inside the viewport.
+    const rect = el.getBoundingClientRect();
+    const viewportH = window.innerHeight || document.documentElement.clientHeight;
+    const viewportW = window.innerWidth || document.documentElement.clientWidth;
+    const verticallyVisible = rect.bottom > 0 && rect.top < viewportH;
+    const horizontallyVisible = rect.right > 0 && rect.left < viewportW;
+    if (!verticallyVisible || !horizontallyVisible) {
+      el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    }
     const measure = () => {
       const r = el.getBoundingClientRect();
       setRect({
@@ -113,7 +125,7 @@ export default function SpotlightTour({ steps, open, onClose }: SpotlightTourPro
       aria-modal="true"
       aria-label={step.title}
       ref={focusTrapRef}
-      className="fixed inset-0 z-[180] pointer-events-none"
+      className="fixed inset-0 z-[183] pointer-events-none"
     >
       {/* Dark overlay with cut-out for the target. SVG mask gives a clean
           rounded hole around the spotlighted control. */}

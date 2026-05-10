@@ -56,6 +56,11 @@ export default function WaveformView({
     return ratio * durationSec;
   };
 
+  // Static canvas paint — only re-runs when the waveform geometry
+  // changes (peaks or color). During playback `progress` updates at
+  // 60Hz, but we no longer pay the cost of clearing and repainting
+  // the entire canvas every frame; the playhead caret + a CSS-driven
+  // played-portion overlay handle motion instead.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -79,21 +84,26 @@ export default function WaveformView({
 
     const mid = cssHeight / 2;
     const barWidth = cssWidth / peaks.length;
-    const playedX = cssWidth * Math.max(0, Math.min(1, progress));
 
+    // Paint every bar at the unplayed tone (`${color}66`). The
+    // played-portion shading is achieved with a CSS overlay div whose
+    // width tracks progress — no canvas repaint required.
+    ctx.fillStyle = `${color}66`;
     for (let i = 0; i < peaks.length; i++) {
       const peak = Math.max(0.02, peaks[i] ?? 0);
       const h = peak * (cssHeight - 2);
       const x = i * barWidth;
-      const playedHere = x < playedX;
-      ctx.fillStyle = playedHere ? color : `${color}66`; // hex+alpha
       ctx.fillRect(x, mid - h / 2, Math.max(1, barWidth - 0.5), h);
     }
-  }, [peaks, color, progress]);
+  }, [peaks, color]);
 
   if (peaks.length === 0) return null;
 
   const playheadPct = `${Math.max(0, Math.min(100, progress * 100))}%`;
+  // CSS overlay strip — clips the canvas behind a same-colored layer
+  // sized to `progress`. Updates via inline width (which only restyles
+  // one element) instead of redrawing the canvas, which would re-paint
+  // every bar. ~30x cheaper during playback.
 
   return (
     <div
@@ -134,6 +144,17 @@ export default function WaveformView({
       }}
     >
       <canvas ref={canvasRef} className="block h-full w-full" />
+      {/* Played-portion overlay — a colored mask sized to `progress`.
+          Mix-blend-mode "lighten" subtly emphasizes the bars beneath
+          it without a second canvas pass. Only the inline width
+          attribute updates per frame; no canvas repaint. */}
+      {progress > 0 && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 mix-blend-lighten"
+          style={{ width: playheadPct, backgroundColor: `${color}33` }}
+        />
+      )}
       {scrubbable && (
         <span
           aria-hidden

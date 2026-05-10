@@ -45,7 +45,7 @@ export default function ShortcutOverlay() {
       aria-modal="true"
       aria-label="Keyboard shortcuts"
       ref={focusTrapRef}
-      className="fixed inset-0 z-[180] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[182] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
       onClick={() => setOpen(false)}
     >
       <div

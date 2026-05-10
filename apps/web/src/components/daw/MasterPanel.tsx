@@ -50,8 +50,21 @@ export default function MasterPanel({
   onApplyMasteringPreset,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Throttle spectrum repaints to ~15Hz. The engine updates the
+  // spectrum array at engine-tick rate (≈60Hz), but the visual diff
+  // between consecutive 16ms frames is imperceptible. Skipping ~75% of
+  // repaints cuts canvas draw cost dramatically with no visible
+  // quality loss. Force-paint when the canvas first attaches by
+  // initializing lastPaintRef to 0.
+  const lastPaintRef = useRef(0);
 
   useEffect(() => {
+    const now = performance.now();
+    if (now - lastPaintRef.current < 67) {
+      // Less than one 15Hz frame since the previous paint — skip.
+      return;
+    }
+    lastPaintRef.current = now;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const parent = canvas.parentElement;
