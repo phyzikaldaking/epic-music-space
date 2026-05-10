@@ -6,12 +6,12 @@ type ProMixWindowProps = {
   snapshot: EngineSnapshot;
   focusedId: TrackId | null;
   onFocusTrack: (trackId: TrackId) => void;
-  onSetTrackGain: (trackId: TrackId, gainDb: number) => void;
-  onSetTrackPan: (trackId: TrackId, pan: number) => void;
-  onToggleMute: (trackId: TrackId) => void;
-  onToggleSolo: (trackId: TrackId) => void;
-  onToggleArm: (trackId: TrackId) => void;
-  onSetMasterGain: (gainDb: number) => void;
+  onSetTrackGain?: (trackId: TrackId, gainDb: number) => void;
+  onSetTrackPan?: (trackId: TrackId, pan: number) => void;
+  onToggleMute?: (trackId: TrackId) => void;
+  onToggleSolo?: (trackId: TrackId) => void;
+  onToggleArm?: (trackId: TrackId) => void;
+  onSetMasterGain?: (gainDb: number) => void;
 };
 
 const MIX_SCENES = [
@@ -61,16 +61,17 @@ function ChannelStrip(props: {
   track: TrackState;
   selected: boolean;
   onFocus: () => void;
-  onSetGain: (gainDb: number) => void;
-  onSetPan: (pan: number) => void;
-  onToggleMute: () => void;
-  onToggleSolo: () => void;
-  onToggleArm: () => void;
+  onSetGain?: (gainDb: number) => void;
+  onSetPan?: (pan: number) => void;
+  onToggleMute?: () => void;
+  onToggleSolo?: () => void;
+  onToggleArm?: () => void;
 }) {
   const { track, selected } = props;
   const levelPct = percent(Math.sqrt(track.level), 0, 1);
   const faderPct = percent(track.gainDb, -60, 6);
   const panPct = percent(track.pan, -1, 1);
+  const controlsEnabled = Boolean(props.onSetGain && props.onSetPan);
 
   return (
     <section
@@ -110,13 +111,14 @@ function ChannelStrip(props: {
           </div>
           <input
             aria-label={`${track.name} fader`}
-            className="w-full accent-cyan-300"
+            className="w-full accent-cyan-300 disabled:opacity-50"
             type="range"
             min={-60}
             max={6}
             step={0.5}
             value={track.gainDb}
-            onChange={(event) => props.onSetGain(Number(event.currentTarget.value))}
+            disabled={!props.onSetGain}
+            onChange={(event) => props.onSetGain?.(Number(event.currentTarget.value))}
           />
           <div className="mt-1 h-1.5 rounded-full bg-white/10">
             <div className="h-full rounded-full bg-cyan-300" style={{ width: `${faderPct}%` }} />
@@ -130,13 +132,14 @@ function ChannelStrip(props: {
           </div>
           <input
             aria-label={`${track.name} pan`}
-            className="w-full accent-fuchsia-300"
+            className="w-full accent-fuchsia-300 disabled:opacity-50"
             type="range"
             min={-1}
             max={1}
             step={0.01}
             value={track.pan}
-            onChange={(event) => props.onSetPan(Number(event.currentTarget.value))}
+            disabled={!props.onSetPan}
+            onChange={(event) => props.onSetPan?.(Number(event.currentTarget.value))}
           />
           <div className="mt-1 h-1.5 rounded-full bg-white/10">
             <div className="h-full rounded-full bg-fuchsia-300" style={{ marginLeft: `${Math.min(panPct, 50)}%`, width: `${Math.abs(panPct - 50)}%` }} />
@@ -145,10 +148,11 @@ function ChannelStrip(props: {
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 text-[10px] font-black uppercase tracking-[0.2em]">
-        <button type="button" onClick={props.onToggleMute} className={`rounded-xl border px-2 py-2 ${track.muted ? "border-red-300 bg-red-400/20 text-red-100" : "border-white/10 bg-white/[0.03] text-white/60"}`}>M</button>
-        <button type="button" onClick={props.onToggleSolo} className={`rounded-xl border px-2 py-2 ${track.solo ? "border-yellow-300 bg-yellow-300/20 text-yellow-100" : "border-white/10 bg-white/[0.03] text-white/60"}`}>S</button>
-        <button type="button" onClick={props.onToggleArm} className={`rounded-xl border px-2 py-2 ${track.armed ? "border-rose-300 bg-rose-400/20 text-rose-100" : "border-white/10 bg-white/[0.03] text-white/60"}`}>R</button>
+        <button type="button" disabled={!props.onToggleMute} onClick={props.onToggleMute} className={`rounded-xl border px-2 py-2 disabled:cursor-not-allowed ${track.muted ? "border-red-300 bg-red-400/20 text-red-100" : "border-white/10 bg-white/[0.03] text-white/60"}`}>M</button>
+        <button type="button" disabled={!props.onToggleSolo} onClick={props.onToggleSolo} className={`rounded-xl border px-2 py-2 disabled:cursor-not-allowed ${track.solo ? "border-yellow-300 bg-yellow-300/20 text-yellow-100" : "border-white/10 bg-white/[0.03] text-white/60"}`}>S</button>
+        <button type="button" disabled={!props.onToggleArm} onClick={props.onToggleArm} className={`rounded-xl border px-2 py-2 disabled:cursor-not-allowed ${track.armed ? "border-rose-300 bg-rose-400/20 text-rose-100" : "border-white/10 bg-white/[0.03] text-white/60"}`}>R</button>
       </div>
+      {!controlsEnabled && <p className="mt-2 text-[10px] uppercase tracking-[0.25em] text-white/35">Read-only until engine handlers are attached</p>}
 
       <div className="mt-4 space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/70">
         <p className="text-[10px] uppercase tracking-[0.3em] text-white/40">Inserts</p>
@@ -205,11 +209,11 @@ export default function ProMixWindow({
                 track={track}
                 selected={track.id === focusedId}
                 onFocus={() => onFocusTrack(track.id)}
-                onSetGain={(gainDb) => onSetTrackGain(track.id, gainDb)}
-                onSetPan={(pan) => onSetTrackPan(track.id, pan)}
-                onToggleMute={() => onToggleMute(track.id)}
-                onToggleSolo={() => onToggleSolo(track.id)}
-                onToggleArm={() => onToggleArm(track.id)}
+                onSetGain={onSetTrackGain ? (gainDb) => onSetTrackGain(track.id, gainDb) : undefined}
+                onSetPan={onSetTrackPan ? (pan) => onSetTrackPan(track.id, pan) : undefined}
+                onToggleMute={onToggleMute ? () => onToggleMute(track.id) : undefined}
+                onToggleSolo={onToggleSolo ? () => onToggleSolo(track.id) : undefined}
+                onToggleArm={onToggleArm ? () => onToggleArm(track.id) : undefined}
               />
             ))}
 
@@ -226,7 +230,7 @@ export default function ProMixWindow({
                   <span>Master</span>
                   <span>{formatDb(transport.masterDb)}</span>
                 </div>
-                <input className="w-full accent-amber-300" type="range" min={-60} max={6} step={0.5} value={transport.masterDb} onChange={(event) => onSetMasterGain(Number(event.currentTarget.value))} />
+                <input className="w-full accent-amber-300 disabled:opacity-50" type="range" min={-60} max={6} step={0.5} value={transport.masterDb} disabled={!onSetMasterGain} onChange={(event) => onSetMasterGain?.(Number(event.currentTarget.value))} />
               </label>
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/70">
                 <span className="rounded-xl bg-black/30 p-2">LUFS<br /><strong className="text-white">{Number.isFinite(transport.masterLufs) ? transport.masterLufs.toFixed(1) : "-inf"}</strong></span>
