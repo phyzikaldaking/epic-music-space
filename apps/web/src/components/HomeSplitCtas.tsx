@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 type Placement = "hero" | "closing";
-type CtaCopyVariant = "identity" | "action";
-
-const STORAGE_KEY = "ems_home_cta_copy_variant_v1";
 
 interface HomeSplitCtasProps {
   placement: Placement;
@@ -23,33 +19,57 @@ export default function HomeSplitCtas({
   artistClassName,
   listenerClassName,
 }: HomeSplitCtasProps) {
-  const [copyVariant, setCopyVariant] = useState<CtaCopyVariant>("identity");
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    const selected: CtaCopyVariant =
-      stored === "identity" || stored === "action"
-        ? stored
-        : Math.random() < 0.5
-          ? "identity"
-          : "action";
-
-    window.localStorage.setItem(STORAGE_KEY, selected);
-    setCopyVariant(selected);
-
-    void postFunnelEvent({
-      event: FUNNEL_EVENTS.homeCtaCopyVariantAssigned,
-      source: `home_split_cta_${placement}`,
-      properties: { variant: selected },
-    });
-  }, [placement]);
-
-  const artistLabel =
-    copyVariant === "identity" ? "I\'m an Artist" : "Create as Artist";
-  const listenerLabel =
-    copyVariant === "identity" ? "I\'m a Listener" : "Discover as Listener";
+  if (placement === "hero") {
+    return (
+      <div className={containerClassName}>
+        <Link
+          href="/studio/try"
+          className={artistClassName}
+          onClick={() => {
+            void postFunnelEvent({
+              event: FUNNEL_EVENTS.homeSplitCtaClick,
+              role: "ARTIST",
+              source: "home_primary_studio_cta",
+              properties: { placement, destination: "/studio/try" },
+            });
+          }}
+        >
+          Open the Studio Free →
+        </Link>
+        <div className="flex flex-wrap items-center justify-center gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
+          <Link
+            href="/marketplace"
+            className="underline decoration-dotted underline-offset-4 hover:text-white/75"
+            onClick={() => {
+              void postFunnelEvent({
+                event: FUNNEL_EVENTS.homeSplitCtaClick,
+                role: "LISTENER",
+                source: "home_secondary_marketplace_cta",
+                properties: { placement, destination: "/marketplace" },
+              });
+            }}
+          >
+            Browse catalog
+          </Link>
+          <span aria-hidden>·</span>
+          <Link
+            href="/auth/signup?role=ARTIST"
+            className="underline decoration-dotted underline-offset-4 hover:text-white/75"
+            onClick={() => {
+              void postFunnelEvent({
+                event: FUNNEL_EVENTS.homeSplitCtaClick,
+                role: "ARTIST",
+                source: "home_secondary_signup_cta",
+                properties: { placement, destination: "/auth/signup?role=ARTIST" },
+              });
+            }}
+          >
+            Create account
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={containerClassName}>
@@ -64,8 +84,8 @@ export default function HomeSplitCtas({
             properties: { placement },
           });
         }}
-      >
-        {artistLabel} →
+        >
+        Start as Artist →
       </Link>
       <Link
         href="/auth/signup?role=LISTENER"
@@ -78,8 +98,8 @@ export default function HomeSplitCtas({
             properties: { placement },
           });
         }}
-      >
-        {listenerLabel} →
+        >
+        Explore as Listener →
       </Link>
     </div>
   );

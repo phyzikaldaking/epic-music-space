@@ -3,6 +3,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getWalletBalance } from "@/lib/revenueShare";
+import DashboardPageHeader from "@/components/dashboard/DashboardPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -140,16 +141,54 @@ export default async function WalletPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
-      <div className="mb-8">
-        <p className="mb-1 text-xs font-bold uppercase tracking-widest text-brand-300">
-          Wallet
-        </p>
-        <h1 className="text-3xl font-extrabold">Royalties &amp; Payouts</h1>
-        <p className="mt-1 text-sm text-white/55">
-          Live balance from license sales, tips, ads, and listening sessions.
-          Payouts run weekly via Stripe Connect.
-        </p>
-      </div>
+      <DashboardPageHeader
+        eyebrow="Balance center"
+        title="Royalties and payouts"
+        description="Watch live balances from license sales, tips, ads, and listening sessions, then trace when each payment moves."
+        backHref="/dashboard"
+        stats={[
+          { label: "Pending", value: `$${pending.toFixed(2)}`, tone: "amber" },
+          { label: "Paid", value: `$${paid.toFixed(2)}`, tone: "emerald" },
+          { label: "Lifetime", value: `$${lifetime.toFixed(2)}`, tone: "brand" },
+          { label: "Daily est.", value: `$${dailyEstimate.toFixed(2)}`, tone: "neutral" },
+        ]}
+        actions={
+          <>
+            <Link
+              href="/dashboard/payouts"
+              className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+            >
+              Open payouts
+            </Link>
+            <Link
+              href="/dashboard/orders"
+              className="rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white/75 transition hover:bg-white/8"
+            >
+              Review orders
+            </Link>
+          </>
+        }
+        aside={
+          <div className={`rounded-2xl border p-4 ${payoutBlocked ? "border-amber-500/30 bg-amber-500/8" : "border-emerald-500/30 bg-emerald-500/8"}`}>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">
+              Payout state
+            </p>
+            <p className="mt-2 text-lg font-semibold text-white">
+              {payoutBlocked ? "Needs setup" : "Ready to move"}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-white/55">
+              {payoutBlocked
+                ? "Connect Stripe, finish identity, and clear tax details so weekly payouts can run."
+                : "Your Stripe setup is ready and the weekly cycle can move money without extra steps."}
+            </p>
+            <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-white/65">
+              {pendingStreamCents > 0
+                ? `Stream royalty holdback preview: $${estimatedHoldback.toFixed(2)}.`
+                : "No stream-royalty holdback preview right now."}
+            </div>
+          </div>
+        }
+      />
 
       {payoutBlocked && (
         <div className="mb-6 rounded-2xl border border-amber-400/30 bg-amber-400/8 px-5 py-4 text-sm text-amber-200">

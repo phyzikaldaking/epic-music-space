@@ -5,12 +5,17 @@ import { createSubscriptionCheckoutSession, SubscriptionCheckoutError } from "@/
 import type { SubscriptionTier } from "@ems/db";
 import { strictLimiter } from "@/lib/rateLimit";
 import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 const schema = z.object({
   tier: z.string(),
 });
 
 export async function POST(req: Request) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??

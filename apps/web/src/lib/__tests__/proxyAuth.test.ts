@@ -47,6 +47,14 @@ describe("auth middleware", () => {
     expect(res.status).toBe(401);
   });
 
+  it("allows camera and microphone on HTML pages for LiveKit sessions", () => {
+    const res = middleware(makeRequest("/rooms"));
+    const policy = res.headers.get("permissions-policy") ?? "";
+
+    expect(policy).toContain("camera=(self)");
+    expect(policy).toContain("microphone=(self)");
+  });
+
   it("bounces already-authed visitors off /auth/signin to a safe absolute URL", () => {
     // A relative callbackUrl like "/ai" used to flow straight into
     // NextResponse.redirect, which calls `new URL(dest)` and threw "URL

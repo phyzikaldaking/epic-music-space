@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SERVICE_KIND_META, canListServices } from "@/lib/serviceListings";
 import OrderActions from "./OrderActions";
+import DashboardPageHeader from "@/components/dashboard/DashboardPageHeader";
+import ServiceOrderStageBar from "@/components/dashboard/ServiceOrderStageBar";
 
 export const dynamic = "force-dynamic";
 
@@ -85,26 +87,75 @@ export default async function ServicesDashboard() {
   const avgRating = reviewAgg._avg.rating ?? null;
   const totalReviews = reviewAgg._count._all;
   const proUrl = user.username ? `/pro/${user.username}` : null;
+  const liveListings = listings.filter((listing) => listing.status === "LIVE").length;
+  const readinessLabel =
+    completedSetupItems === setupItems.length
+      ? "Ready to sell"
+      : `${completedSetupItems}/${setupItems.length} setup steps complete`;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
-      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="mb-1 text-xs font-bold uppercase tracking-widest text-brand-300">
-            {user.role === "ENGINEER" ? "Engineer" : "Producer"} dashboard
-          </p>
-          <h1 className="text-3xl font-extrabold">My services</h1>
-          <p className="mt-1 text-sm text-white/55">
-            Manage listings and deliver open orders.
-          </p>
-        </div>
-        <Link
-          href="/services/new"
-          className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-600"
-        >
-          + New listing
-        </Link>
-      </div>
+      <DashboardPageHeader
+        eyebrow={user.role === "ENGINEER" ? "Engineer dashboard" : "Producer dashboard"}
+        title="My services"
+        description="Manage your storefront, track open orders, and keep every buyer moving through a clear delivery flow."
+        backHref="/dashboard"
+        stats={[
+          { label: "Listings", value: listings.length.toString(), tone: "brand" },
+          { label: "Live", value: liveListings.toString(), tone: "emerald" },
+          { label: "Open orders", value: openOrders.length.toString(), tone: "amber" },
+          { label: "Reviews", value: totalReviews.toString(), tone: "neutral" },
+        ]}
+        actions={
+          <>
+            <Link
+              href="/services/new"
+              className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+            >
+              New listing
+            </Link>
+            <Link
+              href="/dashboard/payouts"
+              className="rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white/75 transition hover:bg-white/8"
+            >
+              Payout settings
+            </Link>
+            {proUrl && (
+              <Link
+                href={proUrl}
+                className="rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white/75 transition hover:bg-white/8"
+              >
+                View pro page
+              </Link>
+            )}
+          </>
+        }
+        aside={
+          <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-300">
+              Storefront status
+            </p>
+            <p className="mt-2 text-lg font-semibold text-white">{readinessLabel}</p>
+            <p className="mt-1 text-sm leading-6 text-white/55">
+              Keep your profile, sample audio, and payouts ready so buyers have a clean path from browsing to booking.
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <Link
+                href="/profile/edit"
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-semibold text-white/75 transition hover:bg-white/8"
+              >
+                Edit profile
+              </Link>
+              <Link
+                href="/dashboard/orders"
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-semibold text-white/75 transition hover:bg-white/8"
+              >
+                Review orders
+              </Link>
+            </div>
+          </div>
+        }
+      />
 
       <section className="mb-8 rounded-2xl border border-white/10 studio-faceplate-dark p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -200,6 +251,7 @@ export default async function ServicesDashboard() {
                     <p className="text-xs text-white/45">
                       {SERVICE_KIND_META[o.listing.kind].label} · ${Number(o.priceUsd).toFixed(2)} · from {o.buyer.name ?? o.buyer.email}
                     </p>
+                    <ServiceOrderStageBar status={o.status} />
                     {o.briefText && (
                       <p className="mt-2 whitespace-pre-line rounded-lg bg-white/5 px-3 py-2 text-xs text-white/65">
                         {o.briefText}

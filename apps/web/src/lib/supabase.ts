@@ -8,12 +8,29 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
  * Browser-side Supabase client used ONLY for Realtime subscriptions.
  * Auth and data are handled by NextAuth + Prisma.
  * Returns null when env vars are not configured (graceful degradation).
+ *
+ * Singleton — returns the same instance on every call to avoid the
+ * "Multiple GoTrueClient instances detected" browser warning.
  */
+let _browserClient: ReturnType<typeof createClient> | null = null;
+
 export function createBrowserSupabaseClient() {
   if (!supabaseUrl || !supabaseAnonKey) return null;
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false },
-  });
+  if (!_browserClient) {
+    const globalKey = "__emsBrowserSupabaseClient";
+    const globalState = globalThis as typeof globalThis & {
+      [globalKey]?: ReturnType<typeof createClient>;
+    };
+
+    _browserClient =
+      globalState[globalKey] ??
+      createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false },
+      });
+
+    globalState[globalKey] = _browserClient;
+  }
+  return _browserClient;
 }
 
 /**

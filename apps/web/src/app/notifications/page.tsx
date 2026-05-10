@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
@@ -33,6 +34,20 @@ const TYPE_ICON: Record<string, string> = {
   POST_COMMENTED: "💬",
   FOLLOWED_POST: "📣",
 };
+
+const DIGEST_GROUPS = {
+  money: new Set(["LICENSE_SOLD", "PAYOUT", "TIP", "HOLDER_PAYOUT", "LICENSE_HOLDER_EARNED", "REFUND_CLAWBACK", "REFUND_ISSUED"]),
+  social: new Set(["FOLLOW", "POST_LIKED", "POST_COMMENTED", "FOLLOWED_POST", "DM"]),
+  creator: new Set(["VERSUS_VOTE", "VERSUS_RESULT", "VERZUZ_RESULT", "AUCTION_BID", "AUCTION_BID_RECEIVED", "AUCTION_WIN", "AUCTION_OUTBID"]),
+  system: new Set(["IDENTITY_VERIFIED", "STREAM_FRAUD_ALERT"]),
+} as const;
+
+function digestBucket(type: string): keyof typeof DIGEST_GROUPS {
+  if (DIGEST_GROUPS.money.has(type)) return "money";
+  if (DIGEST_GROUPS.social.has(type)) return "social";
+  if (DIGEST_GROUPS.creator.has(type)) return "creator";
+  return "system";
+}
 
 function notifHref(type: string, metadata: Record<string, unknown> | null): string | null {
   const meta = metadata ?? {};
@@ -107,6 +122,11 @@ export default function NotificationsPage() {
   }
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+  const digest = useMemo(() => {
+    const out = { money: 0, social: 0, creator: 0, system: 0 };
+    for (const n of notifications) out[digestBucket(n.type)] += 1;
+    return out;
+  }, [notifications]);
 
   if (status === "loading" || loading) {
     return (
@@ -121,24 +141,58 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-extrabold">Notifications</h1>
-          {unreadCount > 0 && (
-            <p className="mt-1 text-sm text-white/40">{unreadCount} unread</p>
-          )}
+    <div className="mx-auto max-w-4xl px-4 py-12">
+      <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-2xl">
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-brand-300/85">
+            Digest
+          </p>
+          <h1 className="mt-2 text-3xl font-extrabold text-white">Notifications</h1>
+          <p className="mt-2 text-sm leading-6 text-white/55">
+            Everything that matters, grouped so you can scan money, social, creator activity, and system updates without digging.
+          </p>
         </div>
-        {unreadCount > 0 && (
-          <button
-            onClick={markAllRead}
-            disabled={marking}
-            className="rounded-xl border border-white/10 px-4 py-2 text-sm text-white/60 transition hover:bg-white/6 disabled:opacity-40"
+        <div className="flex flex-wrap gap-2">
+          {unreadCount > 0 && (
+            <button
+              onClick={markAllRead}
+              disabled={marking}
+              className="rounded-xl border border-white/10 px-4 py-2 text-sm text-white/70 transition hover:bg-white/6 disabled:opacity-40"
+            >
+              Mark all read
+            </button>
+          )}
+          <Link
+            href="/settings/notifications"
+            className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600"
           >
-            Mark all read
-          </button>
-        )}
+            Notification settings
+          </Link>
+        </div>
       </div>
+
+      <section className="mb-6 grid gap-3 md:grid-cols-4">
+        <div className="rounded-2xl border border-brand-500/25 bg-brand-500/10 p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-200">Unread</p>
+          <p className="mt-2 text-3xl font-black text-white">{unreadCount}</p>
+          <p className="mt-1 text-xs text-white/55">Needs your attention now.</p>
+        </div>
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/8 p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">Money</p>
+          <p className="mt-2 text-3xl font-black text-white">{digest.money}</p>
+          <p className="mt-1 text-xs text-white/55">Payouts, licenses, and cash movement.</p>
+        </div>
+        <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/8 p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">Social</p>
+          <p className="mt-2 text-3xl font-black text-white">{digest.social}</p>
+          <p className="mt-1 text-xs text-white/55">Followers, comments, likes, and messages.</p>
+        </div>
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/8 p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Creator</p>
+          <p className="mt-2 text-3xl font-black text-white">{digest.creator}</p>
+          <p className="mt-1 text-xs text-white/55">Battles, auctions, and competition.</p>
+        </div>
+      </section>
 
       {/* Tabs */}
       <div className="mb-6 flex gap-1 rounded-xl border border-white/8 bg-white/[0.02] p-1">
@@ -158,10 +212,13 @@ export default function NotificationsPage() {
       </div>
 
       {notifications.length === 0 ? (
-        <div className="py-20 text-center text-white/30">
+        <div className="rounded-3xl border border-white/8 bg-white/[0.03] py-20 text-center text-white/30">
           <p className="mb-3 text-5xl">🔔</p>
-          <p className="text-lg font-semibold">
-            {filter === "unread" ? "All caught up!" : "No notifications yet"}
+          <p className="text-lg font-semibold text-white/75">
+            {filter === "unread" ? "All caught up." : "No notifications yet."}
+          </p>
+          <p className="mt-2 text-sm text-white/45">
+            Once activity starts, your digest will land here in clear sections.
           </p>
         </div>
       ) : (

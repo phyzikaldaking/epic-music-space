@@ -30,4 +30,12 @@ describe("buildContentSecurityPolicy", () => {
     expect(connectDirective).toContain("https://*.supabase.co");
     expect(connectDirective).toContain("wss://*.supabase.co");
   });
+
+  it("allows LiveKit Cloud websocket connections for rooms and studio sessions", () => {
+    const csp = buildContentSecurityPolicy("nonce123", "production");
+    const connectDirective = csp.split("; ").find((part) => part.startsWith("connect-src")) ?? "";
+
+    expect(connectDirective).toContain("https://*.livekit.cloud");
+    expect(connectDirective).toContain("wss://*.livekit.cloud");
+  });
 });

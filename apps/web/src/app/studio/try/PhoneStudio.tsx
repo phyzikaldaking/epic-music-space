@@ -17,12 +17,18 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { scheduleDrumHit, type DrumKind, type DrumKitId } from "@/components/daw/beatMachine";
 import { stashGuestMix, GUEST_RESUME_FLAG } from "@/lib/guestStash";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 import { useRouter } from "next/navigation";
+
+const MobileBeatGrid = dynamic(() => import("@/components/daw/MobileBeatGrid"), {
+  ssr: false,
+  loading: () => null,
+});
 
 type Pad = {
   kind: DrumKind;
@@ -64,12 +70,14 @@ export default function PhoneStudio() {
   const [phase, setPhase] = useState<"idle" | "saving" | "sharing">("idle");
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showBeatGrid, setShowBeatGrid] = useState(false);
 
   function getCtx(): AudioContext {
     if (ctxRef.current && ctxRef.current.state !== "closed") return ctxRef.current;
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) throw new Error("No AudioContext");
-    const ctx = new Ctor();
+    // Pro audio defaults: low latency for tap responsiveness, 48 kHz pro rate.
+    const ctx = new Ctor({ latencyHint: "interactive", sampleRate: 48000 });
     const gain = ctx.createGain();
     gain.gain.value = 0.85;
     gain.connect(ctx.destination);
@@ -78,11 +86,15 @@ export default function PhoneStudio() {
     return ctx;
   }
 
-  function fireHit(kind: DrumKind) {
+  function fireHit(kind: DrumKind, velocity = 0.85) {
     const ctx = getCtx();
     if (ctx.state === "suspended") void ctx.resume();
     const dest = masterGainRef.current ?? ctx.destination;
-    scheduleDrumHit(ctx, dest, kind, { when: ctx.currentTime, kit: DEFAULT_KIT });
+    scheduleDrumHit(ctx, dest, kind, {
+      when: ctx.currentTime,
+      kit: DEFAULT_KIT,
+      velocity: Math.max(0.4, Math.min(1, velocity)),
+    });
 
     if (recording) {
       recordedHitsRef.current.push({
@@ -276,25 +288,62 @@ export default function PhoneStudio() {
         </button>
       </div>
 
-      {/* Pads */}
-      <div className="grid flex-1 grid-cols-2 gap-3 content-start">
+      {/* Pads — auto-fit grid: 2x2 on phones, 4x1 on landscape, scales for
+          tablets without code changes. clamp() prevents sub-100px tap
+          targets on tiny screens and over-large pads on big ones. */}
+      <div
+        className="grid flex-1 content-start"
+        style={{
+          gridTemplateColumns:
+            "repeat(auto-fit, minmax(clamp(120px, 40vw, 200px), 1fr))",
+          gap: "clamp(8px, 2vw, 16px)",
+        }}
+      >
         {PADS.map((p) => {
           const active = activePad === p.kind;
           return (
             <button
               key={p.kind}
               type="button"
-              onPointerDown={(e) => { e.preventDefault(); fireHit(p.kind); }}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                // Pointer pressure on supported hardware (Pencil, force-touch
+                // trackpads, some Android pens) is 0..1; mouse and most fingers
+                // report 0 or 0.5. Default to 0.7 when no usable signal so a
+                // missed-pressure tap is still audible.
+                const pressure = e.pressure;
+                const velocity =
+                  pressure > 0 && pressure !== 0.5 ? pressure : 0.7;
+                fireHit(p.kind, velocity);
+              }}
               className={`relative aspect-square rounded-3xl border bg-gradient-to-br ${p.color} text-center transition active:scale-[0.97] ${active ? "ring-4 ring-white/40" : ""}`}
               aria-label={`Play ${p.label}`}
             >
               <span className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-                <span className="text-4xl">{p.emoji}</span>
-                <span className="text-sm font-extrabold uppercase tracking-widest text-white">{p.label}</span>
+                <span className="text-[clamp(2rem,9cqw,3rem)]">{p.emoji}</span>
+                <span className="text-[clamp(0.75rem,2.4cqw,0.95rem)] font-extrabold uppercase tracking-widest text-white">{p.label}</span>
               </span>
             </button>
           );
         })}
+      </div>
+
+      {/* Beat grid — collapsible 4×8 step sequencer for users who outgrow
+          the 4-pad surface but don't want the full desktop DAW. */}
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={() => setShowBeatGrid((v) => !v)}
+          className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-xs font-bold uppercase tracking-widest text-white/65 hover:bg-white/10 transition"
+        >
+          <span>{showBeatGrid ? "Hide beat grid" : "Show beat grid"}</span>
+          <span aria-hidden>{showBeatGrid ? "▾" : "▸"}</span>
+        </button>
+        {showBeatGrid && (
+          <div className="mt-2">
+            <MobileBeatGrid getCtx={getCtx} bpm={bpm} kit={DEFAULT_KIT} />
+          </div>
+        )}
       </div>
 
       {/* Playback + Save + Share */}
@@ -357,6 +406,70 @@ export default function PhoneStudio() {
           Open the desktop version
         </Link>
       </p>
+
+      {/* Sticky bottom transport (#6). Always-visible quick access for
+          Record / Play-back / BPM / Coach so users on phones can hit the
+          essentials no matter how far they've scrolled the pads. */}
+      <div
+        className="sticky bottom-0 -mx-4 mt-4 flex items-center justify-between gap-2 border-t border-white/10 bg-[#0a0a10]/95 px-4 py-2 backdrop-blur-md"
+        style={{
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={recording ? stopRecording : startRecording}
+          aria-label={recording ? "Stop recording" : "Record"}
+          className={`flex h-10 w-10 items-center justify-center rounded-full transition ${
+            recording
+              ? "bg-red-500 text-white animate-pulse"
+              : "border border-red-500/55 bg-red-500/10 text-red-200"
+          }`}
+        >
+          ●
+        </button>
+        <button
+          type="button"
+          onClick={playing ? stopPlayback : playRecording}
+          disabled={!hasRecording}
+          aria-label={playing ? "Stop playback" : "Play back"}
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white disabled:opacity-40"
+        >
+          {playing ? "■" : "▶"}
+        </button>
+        <div className="flex items-center gap-1 text-[11px]">
+          <button
+            type="button"
+            onClick={() => setBpm((b) => Math.max(60, b - 5))}
+            aria-label="Decrease BPM by 5"
+            className="h-7 w-7 rounded-md border border-white/15 bg-white/5 font-bold"
+          >
+            −
+          </button>
+          <span className="w-9 text-center font-mono font-bold text-white">{bpm}</span>
+          <span className="text-white/45 uppercase tracking-widest text-[9px]">BPM</span>
+          <button
+            type="button"
+            onClick={() => setBpm((b) => Math.min(180, b + 5))}
+            aria-label="Increase BPM by 5"
+            className="h-7 w-7 rounded-md border border-white/15 bg-white/5 font-bold"
+          >
+            +
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("studio:open-coach"));
+            }
+          }}
+          aria-label="Open Studio Coach"
+          className="flex h-10 items-center gap-1 rounded-full border border-tube-300/40 bg-tube-300/15 px-3 text-[11px] font-black uppercase tracking-widest text-tube-100"
+        >
+          ✨ Coach
+        </button>
+      </div>
     </div>
   );
 }

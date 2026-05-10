@@ -13,6 +13,9 @@ import HomeSplitCtas from "@/components/HomeSplitCtas";
 import HomeHeroMessaging from "@/components/HomeHeroMessaging";
 import HomeVisualEffectsGate from "@/components/HomeVisualEffectsGate";
 import AnimatedBackdropClient from "@/components/backdrops/AnimatedBackdropClient";
+import HomeFirstVisitStudioTour from "@/components/HomeFirstVisitStudioTour";
+import HomeMarketplaceActivityTicker from "@/components/HomeMarketplaceActivityTicker";
+import HomeAudiencePaths from "@/components/HomeAudiencePaths";
 
 export const revalidate = 60;
 
@@ -309,6 +312,46 @@ export default async function HomePage() {
             artistClassName="studio-engage-btn rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
             listenerClassName="rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
           />
+          <HomeFirstVisitStudioTour />
+          <HomeMarketplaceActivityTicker
+            songs={sampleSongs}
+            licenseCount={licenseCount}
+            totalRevenue={totalRevenue}
+          />
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            {[
+              {
+                title: "Start making",
+                body: "Open the browser studio, build a beat, and keep the first version moving.",
+                href: "/studio/try",
+              },
+              {
+                title: "Find your lane",
+                body: "Browse the marketplace, compare licenses, and preview tracks before you commit.",
+                href: "/marketplace",
+              },
+              {
+                title: "Set up fast",
+                body: "Create an account, pick a role, and land in the right next step automatically.",
+                href: "/auth/signup",
+              },
+            ].map((item) => (
+              <Link
+                key={item.title}
+                href={item.href}
+                className="studio-rack-card group block rounded-xl transition hover:-translate-y-0.5"
+              >
+                <p className="studio-rack-slot">
+                  <span className="num">•</span>
+                  <span> {item.title}</span>
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-white/65">{item.body}</p>
+                <p className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-tube-400 underline decoration-dotted underline-offset-4 group-hover:text-tube-300">
+                  Open →
+                </p>
+              </Link>
+            ))}
+          </div>
           <p className="mt-5 text-center studio-label text-white/55">
             Free to start · no card · flat 10% platform fee · 100% artist revenue
           </p>
@@ -328,6 +371,7 @@ export default async function HomePage() {
               How licenses work →
             </Link>
           </p>
+          <HomeAudiencePaths />
 
           {sampleSongs[0] && (
             <div className="mt-10">
@@ -418,14 +462,14 @@ export default async function HomePage() {
               ◉ Patch Bay · Your Music Social HQ
             </p>
             <h2 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
-              One console for your community,
-              <br className="hidden sm:inline" /> your catalog, your fanbase.
+              One console for your
+              <br className="hidden sm:inline" /> profile, catalog, and fans.
             </h2>
             <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/60">
-              Six modular rack units. Patch in what you need: profile,
-              catalog, services, battles, live rooms, and the city districts
-              still on the bench. Every signal flows back to the master bus
-              — your audience.
+              Use the parts you need and skip the rest. Profile, catalog,
+              services, battles, and live rooms all feed the same audience
+              bus, so the whole site feels like one system instead of six
+              disconnected pages.
             </p>
           </div>
           <span className="studio-label hidden text-white/35 sm:inline">

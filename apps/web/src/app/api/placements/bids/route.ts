@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
 import { z } from "zod";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 const bidSchema = z.object({
   songId: z.string().min(1),
@@ -47,6 +48,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

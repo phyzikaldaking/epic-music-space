@@ -1,5 +1,8 @@
 import SignUpForm from "./SignUpForm";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default function SignUpPage() {
   const googleEnabled = Boolean(
     process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,

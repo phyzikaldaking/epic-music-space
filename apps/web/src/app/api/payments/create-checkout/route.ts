@@ -5,6 +5,7 @@ import { strictLimiter } from "@/lib/rateLimit";
 import { buildIdempotencyKey } from "@/lib/idempotency";
 import { createLicenseCheckoutSession, LicenseCheckoutError } from "@/lib/payments/licenseCheckout";
 import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 const checkoutSchema = z.object({
   songId: z.string().min(1, "songId is required"),
@@ -25,6 +26,10 @@ const checkoutSchema = z.object({
  * Auth: required.
  */
 export async function POST(req: NextRequest) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??

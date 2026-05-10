@@ -8,6 +8,7 @@ import { getSiteUrl } from "@/lib/site";
 import { rateLimit } from "@/lib/rateLimitInline";
 import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
 import { buildIdempotencyKey } from "@/lib/idempotency";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,10 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??

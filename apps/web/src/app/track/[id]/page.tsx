@@ -11,6 +11,7 @@ import SongCard from "@/components/SongCard";
 import LicenseButton from "@/components/LicenseButton";
 import LicenseTierPicker from "@/components/LicenseTierPicker";
 import StickyLicenseBar from "@/components/StickyLicenseBar";
+import CheckoutRecoveryBanner from "@/components/CheckoutRecoveryBanner";
 import { RackPanel, LCDScreen, VUMeter } from "@/components/studio";
 import ReportUserButton from "@/components/ReportUserButton";
 import TrackActions from "@/components/TrackActions";
@@ -24,6 +25,8 @@ import TrackLikeButton from "@/components/TrackLikeButton";
 import StemsOpenInStudioButton from "@/components/StemsOpenInStudioButton";
 import CoWriterCta from "@/components/CoWriterCta";
 import SocialShareBar from "@/components/SocialShareBar";
+import CopyEmbedButton from "@/components/CopyEmbedButton";
+import { LufsMeter } from "@/components/LufsMeter";
 import type { Metadata } from "next";
 import { getDemoTracks } from "@/lib/demoTracks";
 import { CACHE_TAGS } from "@/lib/cacheTags";
@@ -63,6 +66,8 @@ type TrackDetail = {
   hasStems: boolean;
   allowFreeDownload: boolean;
   payWhatYouWant?: boolean;
+  /** Integrated LUFS at publish time. Null on legacy/imported tracks. */
+  masterLufs: number | null;
   artist_: { id: string; name: string | null; image: string | null } | null;
   _count: { licenses: number };
   isDemo: boolean;
@@ -135,6 +140,7 @@ const getTrack = unstable_cache(
         isActive: true,
         hasStems: false,
         allowFreeDownload: false,
+        masterLufs: null,
         artist_: null,
         _count: { licenses: demo.soldLicenses },
         isDemo: true,
@@ -189,6 +195,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     song.description ??
     `License "${song.title}" by ${song.artist} and earn ${song.revenueSharePct.toString()}% streaming revenue forever. ${formatPrice(song.licensePrice)} per license on Epic Music Space.`;
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const trackUrl = siteUrl ? `${siteUrl}/track/${song.id}` : undefined;
+
   return {
     title,
     description,
@@ -205,6 +214,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description,
       images: song.coverUrl ? [song.coverUrl] : [],
     },
+    // oEmbed discovery — lets WordPress/Discord/Slack/Notion auto-render
+    // the track URL as our iframe player.
+    ...(trackUrl
+      ? {
+          alternates: {
+            types: {
+              "application/json+oembed": `${siteUrl}/api/oembed?url=${encodeURIComponent(trackUrl)}`,
+            },
+          },
+        }
+      : {}),
   };
 }
 
@@ -397,6 +417,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
           </div>
         </div>
       )}
+      <CheckoutRecoveryBanner songId={song.id} checkoutState={checkout} />
 
       <div className="grid gap-10 md:grid-cols-2">
         {/* Cover */}
@@ -523,6 +544,18 @@ export default async function TrackPage({ params, searchParams }: Props) {
             />
           )}
 
+          {/* Master LUFS readout — captured at publish time so license
+              shoppers can verify the master is stream-ready before they
+              buy. Hidden when null (legacy/imported tracks). */}
+          {typeof song.masterLufs === "number" && Number.isFinite(song.masterLufs) && (
+            <div className="mt-4">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                Loudness · captured at publish
+              </p>
+              <LufsMeter lufs={song.masterLufs} label="Master loudness" />
+            </div>
+          )}
+
           {/* Share to social platforms */}
           <div className="mt-4">
             <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">Share this track</p>
@@ -531,7 +564,28 @@ export default async function TrackPage({ params, searchParams }: Props) {
               title={`${song.title} by ${song.artist}`}
               hashtags={["EpicMusicSpace", "NewMusic", ...(song.genre ? [song.genre.replace(/\s/g, "")] : [])]}
             />
+            <CopyEmbedButton
+              trackId={song.id}
+              siteUrl={process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? ""}
+              title={`${song.title} by ${song.artist}`}
+            />
           </div>
+
+          {isOwner && (
+            <div className="mt-4 rounded-xl border border-cyan-400/25 bg-cyan-400/5 px-4 py-3 text-xs">
+              <p className="font-bold text-cyan-100">Split sheet</p>
+              <p className="mt-1 text-cyan-100/75">
+                Set how royalties for this track are divided among collaborators.
+                Once signed, every payout follows these shares.
+              </p>
+              <Link
+                href={`/track/${song.id}/split-sheet`}
+                className="mt-2 inline-block rounded-md border border-cyan-400/40 bg-cyan-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-cyan-100 hover:bg-cyan-400/20 transition"
+              >
+                Manage split sheet →
+              </Link>
+            </div>
+          )}
 
           {!song.isDemo && (
             <div className="rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-xs text-rose-100/90">
@@ -555,7 +609,7 @@ export default async function TrackPage({ params, searchParams }: Props) {
           )}
 
           {/* Licensing economics */}
-          <div className="glass rounded-2xl p-5">
+          <div id="license-cta" className="glass rounded-2xl p-5">
             <div className="mb-4 flex items-center justify-between">
               <span className="text-2xl font-extrabold text-brand-400">
                 {formatPrice(song.licensePrice)}

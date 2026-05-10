@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   type AuxBusState,
@@ -20,6 +21,7 @@ import {
   demoPattern,
   emptyPattern as emptyBeatPattern,
   renderPatternToBuffer,
+  suggestPattern,
   trapDemoPattern,
   type BeatPattern,
   type DrumKind,
@@ -34,14 +36,38 @@ import PianoRoll from "./PianoRoll";
 import ProjectMenu from "./ProjectMenu";
 import WaveformView from "./WaveformView";
 import {
+  Fader,
+  Knob,
+  RackPanel,
+  ToggleSwitch,
+  VUMeter,
+} from "@/components/studio";
+import {
   deleteProject,
   listProjects,
   loadProject,
   newProjectId,
   saveProject,
+  syncProjectToServer,
+  setProjectPublic,
 } from "./projectStorage";
+import {
+  popUndoSnapshot,
+  pushUndoSnapshot,
+} from "./undoStorage";
 import { CHANNELS, createBrowserSupabaseClient } from "@/lib/supabase";
 import { useSession } from "next-auth/react";
+import { StudioTooltip, StudioTooltipProvider } from "@/components/ui/StudioTooltip";
+import { tooltips } from "./tooltipCopy";
+import { setStudioContext, clearStudioContext } from "@/lib/studioContextStore";
+import { curatedTrapDemo } from "./demoSessions";
+import { aiToolSchemas, type AiToolName } from "@/lib/aiTools";
+import {
+  startYjsCollab,
+  setSharedField,
+  setSharedBeatStep,
+  getSharedProject,
+} from "@/lib/yjsBridge";
 
 const MasterPanel = dynamic(() => import("./MasterPanel"), { ssr: false });
 const StemLoopBrowser = dynamic(() => import("./StemLoopBrowser"), { ssr: false });
@@ -49,6 +75,10 @@ const SampleLibraryPanel = dynamic(() => import("./SampleLibraryPanel"), { ssr: 
 const ProducerKitUploader = dynamic(() => import("./ProducerKitUploader"), { ssr: false });
 const OpenStudioSessionsPanel = dynamic(() => import("./OpenStudioSessionsPanel"), { ssr: false });
 const MidiPanel = dynamic(() => import("./MidiPanel"), { ssr: false });
+const AudioSettingsPanel = dynamic(() => import("./AudioSettingsPanel"), { ssr: false });
+const StudioDropOverlay = dynamic(() => import("./StudioDropOverlay"), { ssr: false });
+const ShortcutOverlay = dynamic(() => import("./ShortcutOverlay"), { ssr: false });
+const VoiceToMidiButton = dynamic(() => import("./VoiceToMidiButton"), { ssr: false });
 
 const DEFAULT_TRACKS: Array<{ name: string; color: string; armed: boolean }> = [
   { name: "Vocal", color: "#ec4899", armed: true },
@@ -62,6 +92,9 @@ type FocusMode = "all" | "record" | "arrange" | "mix" | "publish";
 type Notice = {
   tone: "info" | "success" | "warning" | "error";
   message: string;
+  /** Optional inline action — e.g. an "Undo" button on a destructive
+   *  notice. Clicking calls onAction() and dismisses the notice. */
+  action?: { label: string; onAction: () => void };
 };
 
 type RecordReviewState = {
@@ -95,6 +128,13 @@ type CollaboratorPresence = {
   focusMode: FocusMode;
   isPlaying: boolean;
   updatedAt: string;
+  /** Per-collaborator cursor: track they're focused on + playhead. Optional
+   *  so older clients on the channel still parse. */
+  focusedTrackId?: string | null;
+  playheadSec?: number | null;
+  /** Stable hue (0..360) so each collaborator gets a consistent color
+   *  across all surfaces — focus ring on the track, dot on the timeline. */
+  hue?: number;
 };
 
 type VersionEntry = {
@@ -130,6 +170,17 @@ type StudioComment = {
   createdAt: string;
   timelineSec: number | null;
 };
+
+function CommentPinsStrip(props: {
+  comments: StudioComment[];
+  positionSec: number;
+  durationSec: number;
+  onSeek: (sec: number) => void;
+  collaborators: CollaboratorPresence[];
+  selfId: string;
+}) {
+  return CommentPinsStripImpl(props);
+}
 
 type WalletRoleAggregate = {
   pendingCents: number;
@@ -340,6 +391,16 @@ function isFocusMode(value: unknown): value is FocusMode {
   return value === "all" || value === "record" || value === "arrange" || value === "mix" || value === "publish";
 }
 
+/** Stable hue derived from a presence id — same id always lands on the
+ *  same color across the studio surface (focus ring, timeline dot). */
+function hueForPresenceId(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % 360;
+}
+
 function deriveKitTrackColor(name: string): string {
   const lower = name.toLowerCase();
   if (/kick|snare|hat|clap|drum|perc|rim|cymbal/.test(lower)) return "#22d3ee";
@@ -401,6 +462,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const stemsSongId = searchParams.get("stems");
   const engineRef = useRef<DawEngine | null>(null);
   const [snapshot, setSnapshot] = useState<EngineSnapshot | null>(null);
+  // Derived from snapshot; declared early because several effects depend on it.
+  const transport = snapshot?.transport;
   const [initError, setInitError] = useState<string | null>(null);
   /** Which track FX edits + gear rack presets apply to. */
   const [focusedId, setFocusedId] = useState<TrackId | null>(null);
@@ -413,10 +476,24 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   /** Project save/load — id is generated lazily on first save. */
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("Untitled session");
+  /** Tracks unsaved changes since the last successful save. Used by #8
+   *  auto-save and the multi-tab conflict notice. Mutating callbacks
+   *  flip it via touchDirty(); save resets it back to false. */
+  const [dirty, setDirty] = useState(false);
+  /** Reflects the StudioProject row's isPublic flag. Drives the share
+   *  link UI in MasterPublishBar (#9). Defaults to false; flipped via
+   *  setProjectPublic API call. */
+  const [projectIsPublic, setProjectIsPublic] = useState(false);
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
+  const touchDirty = useCallback(() => {
+    if (!dirtyRef.current) setDirty(true);
+  }, []);
   const [tapFlash, setTapFlash] = useState<number | null>(null);
   const [manualBpmInput, setManualBpmInput] = useState("90");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [mobileDawBannerDismissed, setMobileDawBannerDismissed] = useState(false);
   const [sessionNotes, setSessionNotes] = useState("");
   const [notesSavedAt, setNotesSavedAt] = useState<number | null>(null);
   const [stats, setStats] = useState<SessionStats>({
@@ -431,6 +508,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [autosaveOn, setAutosaveOn] = useState(true);
   const [lastAutosaveAt, setLastAutosaveAt] = useState<number | null>(null);
+  const [trackChords, setTrackChords] = useState<Record<string, string[]>>({});
+  const [isAutosaving, setIsAutosaving] = useState(false);
+  const [autosaveError, setAutosaveError] = useState(false);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== "undefined" ? navigator.onLine : true,
+  );
   const [postingForum, setPostingForum] = useState(false);
   const [auditEvents, setAuditEvents] = useState<StudioAuditEvent[]>([]);
   const [comments, setComments] = useState<StudioComment[]>([]);
@@ -444,6 +527,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [recentlyAppliedLanes, setRecentlyAppliedLanes] = useState<Set<DrumKind>>(new Set());
   const [recommendationConfidenceThreshold, setRecommendationConfidenceThreshold] = useState(0.4);
   const [previewRecommendation, setPreviewRecommendation] = useState<LaneEqRecommendation | null>(null);
+  const referenceInputRef = useRef<HTMLInputElement | null>(null);
+  const addSoundsInputRef = useRef<HTMLInputElement | null>(null);
   const sessionStartedAt = useRef<number>(Date.now());
   const wasRecordingRef = useRef(false);
   const clientPresenceId = useMemo(() => {
@@ -524,6 +609,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           focusMode: focusModeRef.current,
           isPlaying: false,
           updatedAt: new Date().toISOString(),
+          focusedTrackId: null,
+          playheadSec: null,
+          hue: hueForPresenceId(clientPresenceId),
         } satisfies CollaboratorPresence);
       }
     });
@@ -546,8 +634,37 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       focusMode,
       isPlaying: false,
       updatedAt: new Date().toISOString(),
+      focusedTrackId: null,
+      playheadSec: null,
+      hue: hueForPresenceId(clientPresenceId),
     } satisfies CollaboratorPresence);
   }, [focusMode, clientPresenceId, heavyUiReady]);
+
+  // Broadcast my focused track + playhead so other collaborators see my
+  // cursor on the timeline. Throttled by the snapshot tick so we don't
+  // spam the channel on every animation frame.
+  useEffect(() => {
+    if (!heavyUiReady) return;
+    const channel = presenceChannelRef.current;
+    if (!channel) return;
+    void channel.track({
+      id: clientPresenceId,
+      name: displayNameRef.current,
+      focusMode: focusModeRef.current,
+      isPlaying: Boolean(transport?.isPlaying),
+      updatedAt: new Date().toISOString(),
+      focusedTrackId: focusedId ?? null,
+      playheadSec: typeof transport?.positionSec === "number" ? transport.positionSec : null,
+      hue: hueForPresenceId(clientPresenceId),
+    } satisfies CollaboratorPresence);
+  }, [
+    heavyUiReady,
+    clientPresenceId,
+    focusedId,
+    transport?.isPlaying,
+    // Use whole seconds for the dependency to throttle channel writes.
+    Math.floor((transport?.positionSec ?? 0) * 2),
+  ]);
 
   useEffect(() => {
     void listProjects()
@@ -580,6 +697,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   }, []);
 
   useEffect(() => {
+    const key = "ems-studio-mobile-banner-dismissed-v1";
+    const dismissed = safeLocalStorageGet(key);
+    setMobileDawBannerDismissed(dismissed === "1");
+  }, []);
+
+  useEffect(() => {
     const key = "ems-studio-session-notes-v1";
     const saved = safeLocalStorageGet(key);
     if (saved) setSessionNotes(saved);
@@ -605,6 +728,17 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   useEffect(() => {
     safeLocalStorageSet(STUDIO_COMMENTS_KEY, JSON.stringify(comments.slice(0, 80)));
   }, [comments]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const saved = safeLocalStorageGet(STUDIO_COMPACT_STRIPS_KEY);
@@ -728,7 +862,6 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     })();
   }, [ensureInit, stemsSongId]);
 
-  const transport = snapshot?.transport;
   const tracks = useMemo(() => snapshot?.tracks ?? [], [snapshot]);
   const beat = snapshot?.beat;
   const laneEqRecommendations = useMemo(() => {
@@ -768,6 +901,433 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     () => tracks.find((t) => t.id === focusedId) ?? tracks[0] ?? null,
     [tracks, focusedId],
   );
+
+  // Publish a snapshot of the studio session to the shared store so the
+  // global ChatbotWidget can answer questions like "what does this knob
+  // do?" with the user's current BPM, kit, and selected track in mind.
+  useEffect(() => {
+    const lastAction = auditEvents[0]?.detail ?? null;
+    setStudioContext({
+      route: typeof window !== "undefined" ? window.location.pathname : "",
+      bpm: transport?.bpm ?? null,
+      trackCount: tracks.length,
+      armedTracks: tracks.filter((t) => t.armed).length,
+      hasRecordedAudio: tracks.some((t) => t.hasAudio),
+      beatKit: snapshot?.beat?.kit ?? null,
+      beatEnabled: snapshot?.beat?.enabled ?? false,
+      selectedTrackName: focusedTrack?.name ?? null,
+      lastAction,
+      guestMode: isGuest,
+    });
+    return () => {
+      // Only clear when this component unmounts — leaves the snapshot in
+      // place while the user is in the studio.
+      clearStudioContext();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    transport?.bpm,
+    tracks,
+    snapshot?.beat?.kit,
+    snapshot?.beat?.enabled,
+    focusedTrack?.name,
+    auditEvents,
+    isGuest,
+  ]);
+
+  // Auto-save (#8). Every 60s, if the session has been edited since the
+  // last save AND has a project id (i.e. user has saved at least once),
+  // run a silent save. Skipped when the engine isn't initialized so we
+  // don't burn cycles on an empty workspace.
+  useEffect(() => {
+    if (!projectId) return;
+    const interval = window.setInterval(() => {
+      if (!dirtyRef.current) return;
+      const engine = engineRef.current;
+      if (!engine) return;
+      void (async () => {
+        try {
+          const file = await engine.serializeProject();
+          await saveProject(projectId, projectName, file);
+          setDirty(false);
+          if (session?.user?.id) {
+            void syncProjectToServer(projectId, projectName, file, null);
+          }
+        } catch (err) {
+          console.warn("[DawWorkspace] auto-save failed", err);
+        }
+      })();
+    }, 60_000);
+    return () => window.clearInterval(interval);
+  }, [projectId, projectName, session?.user?.id]);
+
+  // Yjs CRDT collab (#10). When a project has an id, bridge the engine's
+  // parameter state (BPM, kit, beat steps) with a Y.Doc shared over a
+  // Supabase realtime channel. Two clients editing the same project see
+  // each other's edits within ~300ms; CRDT semantics guarantee
+  // convergence even when both edit the same step at the same time.
+  useEffect(() => {
+    if (!projectId) return;
+    const handle = startYjsCollab(projectId);
+    const map = getSharedProject(handle.doc);
+    let suppressLocalEcho = false;
+
+    function onRemoteChange() {
+      if (suppressLocalEcho) return;
+      const engine = engineRef.current;
+      if (!engine) return;
+      const remoteBpm = map.get("bpm");
+      if (typeof remoteBpm === "number" && remoteBpm !== transportBpmRef.current) {
+        engine.setBpm(remoteBpm);
+        setManualBpmInput(String(remoteBpm));
+      }
+      const remoteKit = map.get("beatKit");
+      if (
+        typeof remoteKit === "string" &&
+        remoteKit !== beatKitRef.current
+      ) {
+        engine.setBeatKit(remoteKit as Parameters<typeof engine.setBeatKit>[0]);
+      }
+      const remoteEnabled = map.get("beatEnabled");
+      if (
+        typeof remoteEnabled === "boolean" &&
+        remoteEnabled !== beatEnabledRef.current
+      ) {
+        engine.setBeatEnabled(remoteEnabled);
+      }
+      const remoteSteps = map.get("beatSteps") as
+        | Record<string, boolean>
+        | undefined;
+      if (remoteSteps) {
+        for (const [key, on] of Object.entries(remoteSteps)) {
+          const [lane, stepStr] = key.split(":");
+          const step = Number(stepStr);
+          if (!lane || Number.isNaN(step)) continue;
+          engine.setBeatStep(
+            lane as Parameters<typeof engine.setBeatStep>[0],
+            step,
+            on,
+          );
+        }
+      }
+    }
+
+    map.observe(onRemoteChange);
+
+    // Bridge local toggles → Y. We listen to the same custom event the
+    // beat grid already dispatches… actually the beat grid calls
+    // engine.setBeatStep directly, not via an event. Simpler approach:
+    // subscribe to the engine's emitter via the existing snapshot stream.
+    // We don't have one for individual fields, so we hook into the
+    // "studio:share-step" event here and dispatch from the toggle path.
+    function onShareStep(event: Event) {
+      const detail = (event as CustomEvent<{
+        lane: string;
+        step: number;
+        on: boolean;
+      }>).detail;
+      if (!detail) return;
+      suppressLocalEcho = true;
+      setSharedBeatStep(handle.doc, detail.lane, detail.step, detail.on);
+      suppressLocalEcho = false;
+    }
+    function onShareField(event: Event) {
+      const detail = (event as CustomEvent<{
+        key: "bpm" | "beatKit" | "beatEnabled";
+        value: unknown;
+      }>).detail;
+      if (!detail) return;
+      suppressLocalEcho = true;
+      setSharedField(handle.doc, detail.key, detail.value as never);
+      suppressLocalEcho = false;
+    }
+    window.addEventListener("studio:share-step", onShareStep);
+    window.addEventListener("studio:share-field", onShareField);
+
+    return () => {
+      window.removeEventListener("studio:share-step", onShareStep);
+      window.removeEventListener("studio:share-field", onShareField);
+      map.unobserve(onRemoteChange);
+      handle.destroy();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  // Refs let the Y.observe callback above read live values without
+  // re-subscribing on every render.
+  const transportBpmRef = useRef<number | null>(null);
+  transportBpmRef.current = transport?.bpm ?? null;
+  const beatKitRef = useRef<string | null>(null);
+  beatKitRef.current = snapshot?.beat?.kit ?? null;
+  const beatEnabledRef = useRef<boolean | null>(null);
+  beatEnabledRef.current = snapshot?.beat?.enabled ?? null;
+
+  // Conflict resolution: another tab saved this same project. Surface a
+  // notice so the user can pick which version to keep.
+  useEffect(() => {
+    if (!projectId) return;
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("ems-studio");
+    } catch {
+      return; // unsupported
+    }
+    function onMsg(event: MessageEvent<{ type?: string; id?: string; savedAt?: string }>) {
+      const data = event.data;
+      if (!data || data.type !== "project:saved" || data.id !== projectId) return;
+      if (!dirtyRef.current) return;
+      setNotice({
+        tone: "warning",
+        message: "Another tab saved this project. You have unsaved edits here.",
+        action: {
+          label: "Discard mine, load theirs",
+          onAction: () => void handleLoad(projectId),
+        },
+      });
+    }
+    channel.addEventListener("message", onMsg);
+    return () => {
+      channel?.removeEventListener("message", onMsg);
+      channel?.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  // Demo-session loader. The DemoSessionOverlay (rendered in StudioTryClient)
+  // dispatches studio:load-demo with detail.kind = "curated" | "random". We
+  // listen here because the engine instance lives in this component.
+  useEffect(() => {
+    function onLoadDemo(event: Event) {
+      const detail = (event as CustomEvent<{ kind: "curated" | "random" }>).detail;
+      if (!ensureInit()) return;
+      const engine = engineRef.current;
+      if (!engine) return;
+      let label: string;
+      if (detail?.kind === "curated") {
+        const demo = curatedTrapDemo();
+        engine.setBeatKit(demo.kit);
+        engine.setBeatPattern(demo.pattern);
+        engine.setBpm(demo.bpm);
+        engine.setBeatEnabled(true);
+        label = demo.label;
+        // If the curated demo has hand-mixed stems, decode them in
+        // parallel and drop one track per stem on top of the beat
+        // machine. Failures are silent — the synth-rendered beat is the
+        // safety net.
+        if (demo.stems && demo.stems.length > 0) {
+          const ctx = engine.audioContext;
+          if (ctx) {
+            void Promise.all(
+              demo.stems.map(async (stem) => {
+                try {
+                  const res = await fetch(stem.url);
+                  if (!res.ok) return null;
+                  const arr = await res.arrayBuffer();
+                  const buf = await ctx.decodeAudioData(arr);
+                  return { stem, buf };
+                } catch {
+                  return null;
+                }
+              }),
+            ).then((stems) => {
+              const liveEngine = engineRef.current;
+              if (!liveEngine) return;
+              for (const entry of stems) {
+                if (!entry) continue;
+                const trackId = liveEngine.addTrack(entry.stem.name, entry.stem.color);
+                liveEngine.setTrackBuffer(trackId, entry.buf);
+              }
+            });
+          }
+        }
+      } else {
+        const surprise = surpriseSession();
+        engine.setBeatKit(surprise.kit);
+        engine.setBeatPattern(surprise.pattern);
+        engine.setBpm(surprise.bpm);
+        engine.setBeatEnabled(true);
+        label = surprise.label;
+      }
+      setNotice({ tone: "info", message: `✨ Loaded ${label} — press play.` });
+      pushAuditEvent("beat", `Demo loaded · ${label}`);
+      const prefersMotion =
+        typeof window !== "undefined" &&
+        !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (prefersMotion && !transport?.isPlaying) {
+        void engine.play();
+      }
+    }
+    window.addEventListener("studio:load-demo", onLoadDemo);
+    return () => window.removeEventListener("studio:load-demo", onLoadDemo);
+    // ensureInit and engineRef are stable; transport.isPlaying is read at call time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // AI tool-call executor (#3). The Coach proposes actions via the
+  // streaming `tool` events; the user opts in via the confirm card in
+  // ChatbotWidget; that fires `studio:execute-tool` with name + args.
+  // We validate args against the published schema before touching the
+  // engine — the chat surface is essentially untrusted input.
+  useEffect(() => {
+    function onExecuteTool(event: Event) {
+      const detail = (event as CustomEvent<{ name?: string; args?: unknown }>).detail;
+      if (!detail?.name) return;
+      const name = detail.name as AiToolName;
+      const schema = aiToolSchemas[name];
+      if (!schema) {
+        console.warn("[ai-tool] unknown tool", detail.name);
+        return;
+      }
+      const parsed = schema.safeParse(detail.args);
+      if (!parsed.success) {
+        console.warn("[ai-tool] invalid args", detail.name, parsed.error.issues);
+        setNotice({
+          tone: "warning",
+          message: "The Coach tried to do something that didn't validate. Skipped.",
+        });
+        return;
+      }
+      const engine = engineRef.current;
+      if (!engine) return;
+      try {
+        switch (name) {
+          case "setBpm": {
+            const args = parsed.data as { bpm: number };
+            engine.setBpm(args.bpm);
+            setManualBpmInput(String(args.bpm));
+            touchDirty();
+            setNotice({ tone: "success", message: `Coach set BPM to ${args.bpm}.` });
+            break;
+          }
+          case "setTrackEq": {
+            const args = parsed.data as {
+              trackName: string;
+              band: "low" | "mid" | "high";
+              db: number;
+            };
+            const target = tracks.find(
+              (t) => t.name.toLowerCase() === args.trackName.toLowerCase(),
+            );
+            if (!target) {
+              setNotice({
+                tone: "warning",
+                message: `No track named "${args.trackName}" — skipped.`,
+              });
+              break;
+            }
+            engine.setTrackEq(target.id, args.band, args.db);
+            touchDirty();
+            const sign = args.db >= 0 ? "+" : "";
+            setNotice({
+              tone: "success",
+              message: `Coach set ${args.band} EQ on "${target.name}" to ${sign}${args.db.toFixed(1)} dB.`,
+            });
+            break;
+          }
+          case "applyMasteringPreset": {
+            const args = parsed.data as {
+              preset:
+                | "streamReady"
+                | "loudClub"
+                | "podcast"
+                | "balancedAcoustic"
+                | "flat";
+            };
+            engine.applyMasteringPreset?.(args.preset);
+            touchDirty();
+            setNotice({ tone: "success", message: `Coach applied ${args.preset} master.` });
+            break;
+          }
+          case "loadDemo": {
+            const args = parsed.data as { kind: "curated" | "random" };
+            window.dispatchEvent(
+              new CustomEvent("studio:load-demo", { detail: { kind: args.kind } }),
+            );
+            break;
+          }
+          case "setBeatKit": {
+            const args = parsed.data as { kit: string };
+            engine.setBeatKit(args.kit as Parameters<typeof engine.setBeatKit>[0]);
+            touchDirty();
+            setNotice({ tone: "success", message: `Coach switched kit to ${args.kit}.` });
+            break;
+          }
+          case "armTrack": {
+            const args = parsed.data as { trackName: string; armed?: boolean };
+            const target = tracks.find(
+              (t) => t.name.toLowerCase() === args.trackName.toLowerCase(),
+            );
+            if (!target) {
+              setNotice({
+                tone: "warning",
+                message: `No track named "${args.trackName}" — skipped.`,
+              });
+              break;
+            }
+            const armed = args.armed !== false;
+            engine.setTrackArmed(target.id, armed);
+            touchDirty();
+            setNotice({
+              tone: "success",
+              message: `Coach ${armed ? "armed" : "disarmed"} "${target.name}".`,
+            });
+            break;
+          }
+        }
+      } catch (err) {
+        console.warn("[ai-tool] execution failed", name, err);
+      }
+    }
+    window.addEventListener("studio:execute-tool", onExecuteTool);
+    return () => window.removeEventListener("studio:execute-tool", onExecuteTool);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracks]);
+
+  // Per-track pitch correction (#13). Applied non-destructively: we
+  // read the buffer, run the soft PSOLA-lite, and write it back via
+  // setTrackBuffer. The effect is irreversible-on-the-track (no undo
+  // here yet), so we surface a clear notice with the option to retake.
+  useEffect(() => {
+    function onTuneTrack(event: Event) {
+      const detail = (event as CustomEvent<{ trackId?: string }>).detail;
+      if (!detail?.trackId) return;
+      const engine = engineRef.current;
+      const ctx = engine?.audioContext;
+      if (!engine || !ctx) return;
+      const buffer = engine.getTrackBuffer(detail.trackId);
+      const track = tracks.find((t) => t.id === detail.trackId);
+      if (!buffer || !track) {
+        setNotice({
+          tone: "warning",
+          message: "Pitch-correction needs an audio take first.",
+        });
+        return;
+      }
+      setNotice({ tone: "info", message: `Tuning "${track.name}"…` });
+      void (async () => {
+        try {
+          const { applyPitchCorrection } = await import("@/lib/pitchCorrect");
+          const corrected = applyPitchCorrection(buffer, ctx, {
+            key: "C",
+            amount: 0.6,
+          });
+          engine.setTrackBuffer(detail.trackId!, corrected);
+          touchDirty();
+          setNotice({
+            tone: "success",
+            message: `Tuned "${track.name}" to C major. Re-record if it sounds off.`,
+          });
+        } catch (err) {
+          console.warn("[pitchCorrect] failed", err);
+          setNotice({ tone: "error", message: "Pitch correction failed." });
+        }
+      })();
+    }
+    window.addEventListener("studio:tune-track", onTuneTrack);
+    return () => window.removeEventListener("studio:tune-track", onTuneTrack);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracks]);
+
   const reviewTrack = useMemo(
     () => (recordReview ? tracks.find((track) => track.id === recordReview.trackId) ?? null : null),
     [recordReview, tracks],
@@ -781,6 +1341,10 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   // Live-session heartbeat — pings /api/studio/heartbeat every 30 s so the
   // production timeline can set isLiveNow for this user's posts.
   useEffect(() => {
+    // Guest sessions have no authenticated studio identity, so heartbeat
+    // endpoints return 401 and spam the console without adding value.
+    if (isGuest) return;
+
     const ping = () => { void fetch("/api/studio/heartbeat", { method: "POST" }); };
     ping(); // immediate ping on mount
     const id = setInterval(ping, 30_000);
@@ -1171,6 +1735,34 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       setProjectName(name);
       pushAuditEvent("save", `Saved "${name}"`);
       setNotice({ tone: "success", message: `Saved "${name}".` });
+      setDirty(false);
+
+      // Write-through to the server so the project resumes on a fresh
+      // device / browser. Best-effort — guests stay local-only, signed-in
+      // users get cross-device sync. Failures don't block local save.
+      if (session?.user?.id) {
+        // Master thumbnail peaks aren't yet exposed by the engine; we
+        // pass null and the hub falls back to placeholder bars. Wire
+        // engine.getMasterThumbnailPeaks() when available.
+        void syncProjectToServer(id, name, file, null).then((result) => {
+          if (!result.ok) {
+            console.warn("[DawWorkspace] remote sync failed", result.reason);
+          } else {
+            // Broadcast the save to other tabs (#8 conflict resolution).
+            try {
+              const channel = new BroadcastChannel("ems-studio");
+              channel.postMessage({
+                type: "project:saved",
+                id,
+                savedAt: file.savedAt,
+              });
+              channel.close();
+            } catch {
+              // BroadcastChannel unsupported (older Safari); ignore.
+            }
+          }
+        });
+      }
     } catch (err) {
       console.warn("[DawWorkspace] save failed", err);
       setNotice({ tone: "error", message: "Save failed. Check browser storage settings." });
@@ -1231,6 +1823,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     if (!autosaveOn) return;
     const engine = engineRef.current;
     if (!engine) return;
+    setIsAutosaving(true);
     try {
       const file = await engine.serializeProject();
       const id = projectId ?? newProjectId();
@@ -1240,9 +1833,15 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       await saveProject(versionId, `${name} [v${new Date().toLocaleTimeString()}]`, file);
       if (!projectId) setProjectId(id);
       setLastAutosaveAt(Date.now());
+      setAutosaveError(false);
       pushAuditEvent("autosave", `Autosaved "${name}"`);
     } catch {
-      // Silent on autosave failures to avoid interrupting recording flow.
+      // Quiet on the audit log to avoid interrupting recording flow,
+      // but surface to the SyncBadge so the user knows their work
+      // didn't make it to disk.
+      setAutosaveError(true);
+    } finally {
+      setIsAutosaving(false);
     }
   }, [autosaveOn, projectId, projectName, pushAuditEvent]);
 
@@ -1268,6 +1867,83 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     return () => window.clearTimeout(timer);
   }, [autosaveOn, beat?.kit, createAutosaveVersion, laneSampleSignature, snapshot, transport?.bpm]);
 
+  // ── Undo: snapshot capture + Cmd/Ctrl+Z handler ─────────────────────────
+  // Coarse-grained reload-survivable undo. Debounces to ~3s of idle so
+  // dragging a knob doesn't spam the IDB stack with mid-gesture frames.
+  // Snapshots live in IDB, so undo works after a tab close / refresh.
+  useEffect(() => {
+    if (!snapshot) return;
+    if (!projectId) return;
+    const engine = engineRef.current;
+    if (!engine) return;
+    const timer = window.setTimeout(async () => {
+      try {
+        const file = await engine.serializeProject();
+        await pushUndoSnapshot(projectId, file, "Edit");
+      } catch {
+        // Silent — losing one undo frame is preferable to interrupting
+        // the user with an error toast.
+      }
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [
+    projectId,
+    snapshot,
+    transport?.bpm,
+    transport?.masterDb,
+    transport?.masterEqLowDb,
+    transport?.masterEqMidDb,
+    transport?.masterEqHighDb,
+    laneSampleSignature,
+    beat?.kit,
+  ]);
+
+  const performUndo = useCallback(async () => {
+    if (!projectId) {
+      setNotice({ tone: "info", message: "Nothing to undo yet — make an edit first." });
+      return;
+    }
+    const engine = engineRef.current;
+    if (!engine) return;
+    try {
+      const previous = await popUndoSnapshot(projectId);
+      if (!previous) {
+        setNotice({ tone: "info", message: "No earlier state to restore." });
+        return;
+      }
+      await engine.hydrateProject(previous.file);
+      pushAuditEvent("load", `Undid last edit (restored to ${new Date(previous.file.savedAt).toLocaleTimeString()})`);
+      setNotice({ tone: "success", message: "Undid last edit." });
+    } catch {
+      setNotice({ tone: "error", message: "Couldn't undo (storage error)." });
+    }
+  }, [projectId, pushAuditEvent]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      // Don't hijack undo inside text inputs — let the browser handle
+      // text-edit undo there.
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      // Don't hijack undo while a modal/dialog is open. Hydrating the
+      // engine while a dialog is rendered against stale state would
+      // desync UI and engine. We don't have any role="dialog" modals
+      // in the DAW today, but this is the safe place to gate it.
+      if (target && typeof target.closest === "function" && target.closest('[role="dialog"]')) {
+        return;
+      }
+      const cmd = e.metaKey || e.ctrlKey;
+      if (cmd && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        void performUndo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [performUndo]);
+
   // ── Tap tempo + keyboard shortcuts ──────────────────────────────────────
   function applyManualBpmInput(input: string) {
     if (!ensureInit()) return;
@@ -1279,6 +1955,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     const clamped = Math.max(40, Math.min(240, Math.round(parsed)));
     engineRef.current?.setBpm(clamped);
     setManualBpmInput(String(clamped));
+    touchDirty();
+    window.dispatchEvent(
+      new CustomEvent("studio:share-field", {
+        detail: { key: "bpm", value: clamped },
+      }),
+    );
   }
 
   function nudgeBpm(delta: number) {
@@ -1694,7 +2376,34 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   }
 
   // ── Publish: render mix → WAV → /api/upload signed URL → PUT bytes ──────
-  async function publishMix(wav: Blob): Promise<{ ok: boolean; message?: string }> {
+  async function publishMix(
+    wav: Blob,
+    opts?: { coverArtDataUrl?: string },
+  ): Promise<{ ok: boolean; message?: string }> {
+    // If the user generated cover art (#5), upload the chosen image to
+    // Vercel Blob first so the URL is ready when we patch the project.
+    // Failure here is non-fatal — a missing cover doesn't block publish.
+    if (opts?.coverArtDataUrl && projectId && session?.user?.id) {
+      void (async () => {
+        try {
+          const res = await fetch(opts.coverArtDataUrl!);
+          const blob = await res.blob();
+          const { uploadStudioAudio } = await import("@/lib/blobClient");
+          const upload = await uploadStudioAudio(
+            `studio/${projectId}/cover-${Date.now()}.png`,
+            blob,
+          );
+          await fetch(`/api/studio/projects/${encodeURIComponent(projectId)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ coverArtUrl: upload.url }),
+          });
+        } catch (err) {
+          console.warn("[publishMix] cover art persist failed", err);
+        }
+      })();
+    }
+
     // Guest path: stash the WAV in IndexedDB and bounce through signup.
     // /studio/new picks the stash up after auth and finishes the upload
     // against the now-authenticated session, so the visitor never has
@@ -1768,7 +2477,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       // Use router.push so the SPA stays mounted briefly and we don't tear
       // down the engine/IndexedDB save while it's still flushing.
       const audioUrl = signJson.publicUrl ?? "";
-      const target = `/studio/new?audioUrl=${encodeURIComponent(audioUrl)}&from=board`;
+      // Snapshot the master LUFS so the publish form can persist it on
+      // the new Song row. Track page renders this as a stream-readiness
+      // signal for license shoppers. Null if the analyser hasn't
+      // produced a stable reading yet (e.g. user never played the mix
+      // before publishing).
+      const lufs = engineRef.current
+        ? engineRef.current.getSnapshot().transport.masterLufs
+        : Number.NaN;
+      const lufsParam = Number.isFinite(lufs) ? `&masterLufs=${encodeURIComponent(lufs.toFixed(2))}` : "";
+      const target = `/studio/new?audioUrl=${encodeURIComponent(audioUrl)}&from=board${lufsParam}`;
       setStats((s) => ({ ...s, publishes: s.publishes + 1 }));
       pushAuditEvent("publish", "Uploaded mix and moved to publish flow");
       router.push(target);
@@ -1843,7 +2561,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   }
 
   return (
-    <div className="relative mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8">
+    <StudioTooltipProvider delayDuration={250} skipDelayDuration={500}>
+    <div data-studio-content className="relative mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
@@ -1853,7 +2572,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         <div className="absolute bottom-20 left-1/4 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl" />
       </div>
 
-      {showGuide && (
+      {!mobileDawBannerDismissed && (
+        <MobileDawBanner
+          onDismiss={() => {
+            safeLocalStorageSet("ems-studio-mobile-banner-dismissed-v1", "1");
+            setMobileDawBannerDismissed(true);
+          }}
+        />
+      )}
+
+      {!isGuest && showGuide && (
         <QuickStartGuide
           onInstantSetup={launchInstantRecordSetup}
           onClose={() => {
@@ -1895,6 +2623,21 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               onDelete={handleDelete}
               onNew={handleNew}
             />
+            <SyncBadge
+              isOnline={isOnline}
+              isAutosaving={isAutosaving}
+              autosaveError={autosaveError}
+              lastAutosaveAt={lastAutosaveAt}
+              autosaveOn={autosaveOn}
+            />
+            <button
+              type="button"
+              onClick={() => void performUndo()}
+              className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs font-bold uppercase tracking-widest text-white/70 hover:bg-white/10 transition"
+              title="Undo last edit (⌘/Ctrl+Z) — survives reload"
+            >
+              ↶ Undo
+            </button>
             <HealthBadge health={browserHealth} />
           </div>
         </div>
@@ -2024,6 +2767,42 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           through tracks, FX, or the master section. The big REC pill on
           the left makes it impossible to mistake whether the engine is
           recording. */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-400/30 bg-gradient-to-r from-cyan-500/10 via-violet-500/10 to-fuchsia-500/10 px-4 py-2.5">
+        <div className="flex items-center gap-2 text-xs">
+          <span aria-hidden className="text-cyan-300">⤓</span>
+          <span className="font-bold text-white/90">
+            Drop your sounds anywhere on the studio
+          </span>
+          <span className="hidden text-white/45 sm:inline">
+            — WAV, MP3, FLAC, AIFF, OGG, M4A
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => addSoundsInputRef.current?.click()}
+          data-tour="add-sounds-cta"
+          className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-black transition hover:bg-cyan-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+        >
+          + Add sounds
+        </button>
+        <input
+          ref={addSoundsInputRef}
+          type="file"
+          accept="audio/*,.wav,.mp3,.m4a,.aif,.aiff,.flac,.ogg"
+          multiple
+          aria-label="Add audio files to the studio"
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            if (files.length > 0) void importSoundKitFiles(files);
+            e.currentTarget.value = "";
+          }}
+        />
+      </div>
+
+      <StudioDropOverlay onFiles={importSoundKitFiles} />
+      <ShortcutOverlay />
+
       <div className="sticky top-[64px] z-30 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
       <div
         className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 shadow-2xl shadow-black/40 backdrop-blur-md transition ${
@@ -2055,8 +2834,25 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           >
             {transport?.isRecording ? "● REC LIVE" : transport?.isPlaying ? "PLAYBACK" : "STANDBY"}
           </span>
+          {snapshot?.midi.midiAvailable && (
+            <StudioTooltip
+              label={
+                snapshot.midi.deviceNames.length > 0
+                  ? `MIDI controller connected: ${snapshot.midi.deviceNames.join(", ")}`
+                  : "Web MIDI access granted — plug in a controller to play."
+              }
+            >
+              <span className="rounded-full border border-tube-300/45 bg-tube-300/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-tube-100">
+                ◉ MIDI
+              </span>
+            </StudioTooltip>
+          )}
         </div>
 
+        <StudioTooltip
+          label={transport?.isPlaying ? tooltips.transportStop : tooltips.transportPlay}
+          shortcut="Space"
+        >
         <button
           type="button"
           onClick={() => {
@@ -2075,7 +2871,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         >
           {transport?.isPlaying ? "■" : "▶"}
         </button>
+        </StudioTooltip>
 
+        <StudioTooltip label={tooltips.transportSurprise}>
         <button
           type="button"
           onClick={() => {
@@ -2098,11 +2896,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             }
           }}
           className="flex h-11 items-center gap-1.5 rounded-full border border-amber-400/40 bg-gradient-to-r from-amber-400/15 via-fuchsia-500/15 to-cyan-400/10 px-3 text-xs font-extrabold uppercase tracking-widest text-amber-200 transition hover:from-amber-400/25 hover:via-fuchsia-500/25"
-          title="Load a randomized finished session"
         >
           ✨ Surprise me
         </button>
+        </StudioTooltip>
 
+        <StudioTooltip label={tooltips.transportRecord} shortcut="R">
         <button
           type="button"
           onClick={() => {
@@ -2115,6 +2914,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               : "border border-red-500/55 bg-red-500/10 text-red-200 hover:bg-red-500/20"
           }`}
           aria-label={transport?.isRecording ? "Stop recording" : "Record"}
+          data-tour="record-button"
         >
           <span
             aria-hidden
@@ -2124,6 +2924,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           />
           {transport?.isRecording ? "● Recording" : "Record"}
         </button>
+        </StudioTooltip>
 
         <button
           type="button"
@@ -2145,14 +2946,15 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         <div className="rounded-xl border border-white/12 bg-black/30 px-2 py-2">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white/70">BPM</span>
+            <StudioTooltip label="Decrease BPM by 1.">
             <button
               type="button"
               onClick={() => nudgeBpm(-1)}
               className="rounded-md border border-white/15 px-2 py-1 text-xs font-bold text-white/80 hover:bg-white/10"
-              title="Decrease BPM by 1"
             >
               −
             </button>
+            </StudioTooltip>
             <input
               type="number"
               min={40}
@@ -2166,31 +2968,35 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               className="w-16 rounded-md border border-white/15 bg-black/40 px-2 py-1 text-center text-sm font-mono"
               aria-label="Manual BPM"
               title="Type BPM and press Enter"
+              data-tour="bpm-input"
             />
+            <StudioTooltip label="Increase BPM by 1.">
             <button
               type="button"
               onClick={() => nudgeBpm(1)}
               className="rounded-md border border-white/15 px-2 py-1 text-xs font-bold text-white/80 hover:bg-white/10"
-              title="Increase BPM by 1"
             >
               +
             </button>
+            </StudioTooltip>
+            <StudioTooltip label={tooltips.transportBpmHalf}>
             <button
               type="button"
               onClick={() => applyManualBpmInput(String(Math.max(40, Math.round((transport?.bpm ?? 90) / 2))))}
               className="rounded-md border border-white/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white/70 hover:bg-white/10"
-              title="Half-time"
             >
               1/2
             </button>
+            </StudioTooltip>
+            <StudioTooltip label={tooltips.transportBpmDouble}>
             <button
               type="button"
               onClick={() => applyManualBpmInput(String(Math.min(240, Math.round((transport?.bpm ?? 90) * 2))))}
               className="rounded-md border border-white/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white/70 hover:bg-white/10"
-              title="Double-time"
             >
               ×2
             </button>
+            </StudioTooltip>
           </div>
           <input
             type="range"
@@ -2204,6 +3010,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           />
         </div>
 
+        <StudioTooltip label={tooltips.transportTapTempo} shortcut="T">
         <button
           type="button"
           onClick={handleTapTempo}
@@ -2212,11 +3019,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               ? "border-accent-400 bg-accent-500/20 text-accent-100"
               : "border-white/15 text-white/65 hover:bg-white/10"
           }`}
-          title="Tap to set the BPM (or press T)"
         >
           {tapFlash !== null ? `Tap · ${tapFlash}` : "Tap"}
         </button>
+        </StudioTooltip>
 
+        <StudioTooltip label={tooltips.transportLoop} shortcut="L">
         <button
           type="button"
           onClick={() => {
@@ -2228,10 +3036,10 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               ? "bg-emerald-500 text-black"
               : "border border-white/15 text-white/70 hover:bg-white/10"
           }`}
-          title="Loop the region between the start and end markers (L)"
         >
           Loop
         </button>
+        </StudioTooltip>
 
         <button
           type="button"
@@ -2336,6 +3144,24 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </label>
 
         <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
+          Input Monitor
+          <select
+            value={transport?.inputMonitorMode ?? "low-latency"}
+            onChange={(e) => {
+              if (!ensureInit()) return;
+              engineRef.current?.setInputMonitorMode(
+                e.target.value as "low-latency" | "high-quality",
+              );
+            }}
+            className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-sm font-semibold"
+            title="Low-latency keeps performer monitoring tight; high-quality smooths for mix confidence."
+          >
+            <option value="low-latency">Low-latency</option>
+            <option value="high-quality">High-quality</option>
+          </select>
+        </label>
+
+        <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
           Vocal
           <select
             value={transport?.vocalCaptureProfile ?? "hybrid"}
@@ -2370,9 +3196,105 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           Metronome
         </button>
 
+        <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
+          <input
+            type="checkbox"
+            checked={transport?.countInEnabled ?? true}
+            onChange={(e) => {
+              if (!ensureInit()) return;
+              engineRef.current?.setCountIn(
+                e.target.checked,
+                transport?.countInBars ?? 1,
+              );
+            }}
+            className="accent-accent-400"
+          />
+          Count-in
+          <input
+            type="number"
+            min={1}
+            max={4}
+            step={1}
+            value={transport?.countInBars ?? 1}
+            onChange={(e) => {
+              if (!ensureInit()) return;
+              engineRef.current?.setCountIn(
+                transport?.countInEnabled ?? true,
+                Number(e.target.value) === 2 ? 2 : 1,
+              );
+            }}
+            className="w-12 rounded border border-white/15 bg-black/40 px-1.5 py-1 text-right text-xs"
+            aria-label="Count-in bars"
+          />
+          bars
+        </label>
+
+        <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
+          Pre-roll
+          <input
+            type="number"
+            min={0}
+            max={2}
+            step={0.1}
+            value={(transport?.preRollSec ?? 1.5).toFixed(1)}
+            onChange={(e) => {
+              if (!ensureInit()) return;
+              engineRef.current?.setPreRoll(Number(e.target.value));
+            }}
+            className="w-14 rounded border border-white/15 bg-black/40 px-1.5 py-1 text-right text-xs"
+            aria-label="Pre-roll seconds"
+          />
+          sec
+        </label>
+
+        <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
+          <input
+            type="checkbox"
+            checked={transport?.loopRecordEnabled ?? false}
+            onChange={(e) => {
+              if (!ensureInit()) return;
+              engineRef.current?.setLoopRecording(
+                e.target.checked,
+                transport?.maxLoopTakes ?? 6,
+              );
+            }}
+            className="accent-cyan-300"
+          />
+          Loop Rec
+          <input
+            type="number"
+            min={1}
+            max={16}
+            step={1}
+            value={transport?.maxLoopTakes ?? 6}
+            onChange={(e) => {
+              if (!ensureInit()) return;
+              engineRef.current?.setLoopRecording(
+                transport?.loopRecordEnabled ?? false,
+                Number(e.target.value),
+              );
+            }}
+            className="w-12 rounded border border-white/15 bg-black/40 px-1.5 py-1 text-right text-xs"
+            aria-label="Maximum loop takes"
+          />
+          takes
+        </label>
+
+        {Boolean((transport?.countInRemainingBeats ?? 0) > 0) && (
+          <span className="rounded-md border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-widest text-amber-100">
+            Count-in {transport?.countInRemainingBeats}
+          </span>
+        )}
+
+        <span className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-white/60">
+          Capture {transport?.captureBackend ?? "mediarecorder"}
+        </span>
+
         <MasterStrip
           db={transport?.masterDb ?? 0}
           level={transport?.masterLevel ?? 0}
+          lufs={transport?.masterLufs ?? -60}
+          truePeak={transport?.masterTruePeak ?? 0}
           onChange={(db) => {
             if (!ensureInit()) return;
             engineRef.current?.setMasterDb(db);
@@ -2381,9 +3303,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       </div>
       </div>
 
-      <p className="-mt-3 mb-6 text-center text-[10px] uppercase tracking-[0.28em] text-white/30">
+      <p className="-mt-3 mb-3 text-center text-[10px] uppercase tracking-[0.28em] text-white/30">
         Space play · R record · L loop · M metronome · T tap · Home rewind · A-W-S-E-D... play synth · Drop audio on a track to import
       </p>
+
+      <div className="mb-6">
+        <AudioSettingsPanel
+          ctx={engineRef.current?.audioContext ?? null}
+          latencyMode={transport?.latencyMode ?? "recording"}
+        />
+      </div>
 
       {!showSplash && (
         <div className="mb-5 grid gap-2 sm:grid-cols-5">
@@ -2422,6 +3351,101 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </div>
       )}
 
+      {!showSplash && transport && showMixTools && (
+        <div className="mb-5 grid gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-3 lg:grid-cols-[auto_1fr_auto]">
+          <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
+            Solo mode
+            <select
+              value={transport.soloMode}
+              onChange={(e) => engineRef.current?.setSoloMode(e.target.value as "sip" | "afl")}
+              className="rounded border border-white/15 bg-black/40 px-2 py-1 text-xs"
+            >
+              <option value="sip">SIP</option>
+              <option value="afl">AFL</option>
+            </select>
+          </label>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {transport.vcaGroups.length === 0 && (
+              <span className="text-[11px] text-white/45">Assign a track to group A/B/C to create VCA faders.</span>
+            )}
+            {transport.vcaGroups.map((group) => (
+              <label key={group.id} className="flex items-center gap-2 rounded-md border border-white/12 bg-black/25 px-2 py-1 text-[10px] uppercase tracking-wider text-white/65">
+                <span className="font-bold">{group.name}</span>
+                <input
+                  type="range"
+                  min={-24}
+                  max={12}
+                  step={0.5}
+                  value={group.gainDb}
+                  onChange={(e) => engineRef.current?.setVcaGroupGain(group.id, Number(e.target.value))}
+                  className="w-20 accent-cyan-300"
+                />
+                <span className="w-10 text-right font-mono tabular-nums">{group.gainDb.toFixed(1)}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 justify-self-end">
+            <input
+              ref={referenceInputRef}
+              type="file"
+              accept="audio/*"
+              aria-label="Import reference track"
+              title="Import reference track"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                void (async () => {
+                  const ok = await engineRef.current?.setReferenceTrack(file);
+                  if (!ok) {
+                    setNotice({ tone: "error", message: "Couldn't decode reference track." });
+                    return;
+                  }
+                  engineRef.current?.setReferenceEnabled(true);
+                  setNotice({ tone: "success", message: "Reference track loaded. A/B enabled." });
+                })();
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => referenceInputRef.current?.click()}
+              className="rounded border border-white/20 px-2 py-1 text-xs font-semibold text-white/80 hover:bg-white/10"
+            >
+              Import Ref
+            </button>
+            <button
+              type="button"
+              onClick={() => engineRef.current?.setReferenceEnabled(!transport.referenceEnabled)}
+              className={`rounded border px-2 py-1 text-xs font-semibold transition ${transport.referenceEnabled ? "border-emerald-300/70 bg-emerald-300/20 text-emerald-100" : "border-white/20 text-white/80 hover:bg-white/10"}`}
+            >
+              {transport.referenceEnabled ? "Ref B" : "Mix A"}
+            </button>
+            <label className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-white/55">
+              Match
+              <input
+                type="range"
+                min={-24}
+                max={12}
+                step={0.5}
+                value={transport.referenceMatchDb}
+                onChange={(e) => engineRef.current?.setReferenceMatchDb(Number(e.target.value))}
+                className="w-16 accent-emerald-300"
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
+      {!showSplash && transport && showMixTools && (
+        <AflBusPanel
+          mode={transport.soloMode}
+          level={transport.aflBusLevel}
+        />
+      )}
+
       {/* ── Track strips ─────────────────────────────────────────────────────
           Pushed up to immediately follow the transport so the recording
           surface is the FIRST thing the artist sees and clicks. The Sound
@@ -2443,13 +3467,37 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
         {!showSplash && (
           <div className="space-y-3">
-            {tracks.map((track) => (
-              <TrackStrip
+            <CommentPinsStrip
+              comments={comments}
+              positionSec={transport?.positionSec ?? 0}
+              durationSec={Math.max(
+                ...tracks.map((t) => t.durationSec),
+                ...comments.map((c) => c.timelineSec ?? 0),
+                transport?.loopEndSec ?? 0,
+                (transport?.positionSec ?? 0) + 1,
+                8,
+              )}
+              onSeek={(sec: number) => {
+                if (!ensureInit()) return;
+                engineRef.current?.seek(Math.max(0, sec));
+              }}
+              collaborators={collaborators}
+              selfId={clientPresenceId}
+            />
+            {tracks.map((track, trackIndex) => (
+              <div
                 key={track.id}
+                data-tour={trackIndex === 0 ? "track-strip" : undefined}
+              >
+              <TrackStrip
                 track={track}
                 focused={track.id === focusedId}
+                focusedByCollaborators={collaborators
+                  .filter((c) => c.id !== clientPresenceId && c.focusedTrackId === track.id)
+                  .map((c) => ({ id: c.id, name: c.name, hue: c.hue ?? 200 }))}
                 peaks={track.hasAudio ? engineRef.current?.getWaveformPeaks(track.id, 200) ?? [] : []}
                 positionSec={transport?.positionSec ?? 0}
+                detectedChords={trackChords[track.id] ?? null}
                 midiClip={track.name === "Synth" ? snapshot?.midi.clip ?? null : null}
                 positionBeats={
                   transport ? (transport.positionSec / 60) * transport.bpm : 0
@@ -2461,6 +3509,26 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                 onArm={(armed) => engineRef.current?.setTrackArmed(track.id, armed)}
                 onMute={(muted) => engineRef.current?.setTrackMute(track.id, muted)}
                 onSolo={(solo) => engineRef.current?.setTrackSolo(track.id, solo)}
+                onToggleFreeze={async () => {
+                  const engine = engineRef.current;
+                  if (!engine) return;
+                  if (track.frozen) {
+                    const ok = engine.unfreezeTrack(track.id);
+                    if (ok) {
+                      pushAuditEvent("export", `Unfroze "${track.name}"`);
+                      setNotice({ tone: "success", message: `${track.name} unfrozen — FX chain is live again.` });
+                    }
+                  } else {
+                    setNotice({ tone: "info", message: `Freezing ${track.name}…` });
+                    const ok = await engine.freezeTrack(track.id);
+                    if (ok) {
+                      pushAuditEvent("export", `Froze "${track.name}" (FX chain rendered)`);
+                      setNotice({ tone: "success", message: `${track.name} frozen — CPU freed.` });
+                    } else {
+                      setNotice({ tone: "error", message: `Couldn't freeze ${track.name} (no audio?).` });
+                    }
+                  }
+                }}
                 onGain={(db) => engineRef.current?.setTrackGainDb(track.id, db)}
                 onPan={(pan) => engineRef.current?.setTrackPan(track.id, pan)}
                 onRename={(name) => engineRef.current?.renameTrack(track.id, name)}
@@ -2477,24 +3545,82 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                   if (ok) {
                     setStats((s) => ({ ...s, imports: s.imports + 1 }));
                     pushAuditEvent("import", `Imported audio into ${track.name}`);
-                    setNotice({ tone: "success", message: `Imported into ${track.name}.` });
+                    setNotice({ tone: "success", message: `Imported into ${track.name}. Analyzing chords…` });
+                    // Background chord detection so the import success is
+                    // not blocked. ~300ms for a typical 60s clip.
+                    setTimeout(() => {
+                      const engine = engineRef.current;
+                      if (!engine) return;
+                      void engine.detectTrackChords(track.id).then((hits) => {
+                        const labels = hits.map((h) => h.label).slice(0, 16);
+                        setTrackChords((prev) => ({ ...prev, [track.id]: labels }));
+                        if (labels.length > 0) {
+                          const sample = labels.slice(0, 4).join(" → ");
+                          setNotice({
+                            tone: "success",
+                            message: `Detected chords: ${sample}${labels.length > 4 ? "…" : ""}`,
+                          });
+                        }
+                      });
+                    }, 100);
                   }
                   else setNotice({ tone: "error", message: "Couldn't decode that file." });
                 }}
                 onPreviewTake={track.hasAudio ? () => engineRef.current?.previewTake(track.id) : null}
+                onConvertToMidi={track.hasAudio ? () => {
+                  const engine = engineRef.current;
+                  if (!engine) return;
+                  setNotice({ tone: "info", message: `Analyzing ${track.name} for pitches…` });
+                  void engine.convertTrackToMidi(track.id).then((clip) => {
+                    if (!clip || clip.notes.length === 0) {
+                      setNotice({ tone: "warning", message: `No clear pitches found in ${track.name}.` });
+                      return;
+                    }
+                    pushAuditEvent("import", `Converted ${track.name} to MIDI (${clip.notes.length} notes)`);
+                    setNotice({
+                      tone: "success",
+                      message: `Created ${clip.notes.length}-note MIDI clip from ${track.name}. Edit in the piano roll.`,
+                    });
+                  });
+                } : null}
                 onDeleteTake={track.hasAudio ? () => {
                   const ok = engineRef.current?.deleteTrackAudio(track.id);
                   if (ok) {
                     setRecordReview({ trackId: track.id, durationSec: track.durationSec, deleted: true });
-                    setNotice({ tone: "success", message: `Take deleted. Hit ↩ Undo in the banner to restore.` });
+                    setNotice({
+                      tone: "success",
+                      message: `Take on "${track.name}" deleted.`,
+                      action: { label: "Undo", onAction: () => void performUndo() },
+                    });
                   }
                 } : null}
                 onSeek={(sec) => engineRef.current?.seek(sec)}
                 onInputGain={(db) => engineRef.current?.setTrackInputGain(track.id, db)}
+                onSelectCompLane={(laneId) => engineRef.current?.setTrackCompLane(track.id, laneId)}
+                onSetCompSegment={(segmentIndex, laneId) =>
+                  engineRef.current?.setTrackCompSegmentLane(track.id, segmentIndex, laneId)
+                }
+                vcaGroups={transport?.vcaGroups ?? []}
+                soloMode={transport?.soloMode ?? "sip"}
+                onSetTrackGroup={(groupId) => engineRef.current?.setTrackGroup(track.id, groupId)}
+                onSetAutomationPoint={(lane, timeSec, value) =>
+                  engineRef.current?.setTrackAutomationPoint(track.id, lane, timeSec, value)
+                }
+                onClearAutomation={(lane) => engineRef.current?.clearTrackAutomation(track.id, lane)}
                 isRecording={transport?.isRecording ?? false}
                 compact={compactStrips}
               />
+              </div>
             ))}
+
+            <button
+              type="button"
+              onClick={() => addSoundsInputRef.current?.click()}
+              className="group flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 bg-black/20 px-4 py-5 text-sm font-bold uppercase tracking-widest text-white/55 transition hover:border-cyan-400/60 hover:bg-cyan-500/[0.06] hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+            >
+              <span aria-hidden className="text-lg leading-none">＋</span>
+              Add sounds (drag, click, or paste)
+            </button>
           </div>
         )}
       </div>}
@@ -2572,7 +3698,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
       {/* ── Beat Machine ───────────────────────────────────────────────────── */}
       {!showSplash && beat && showArrangeTools && (
-        <div className="mb-6">
+        <div className="mb-6" data-tour="beat-grid">
           <BeatMachineGrid
             pattern={beat.pattern}
             enabled={beat.enabled}
@@ -2587,9 +3713,48 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             onToggleStep={(lane, step) => {
               const cur = beat.pattern[lane][step];
               engineRef.current?.setBeatStep(lane, step, !cur);
+              touchDirty();
+              // Broadcast to collaborators via Yjs (#10).
+              window.dispatchEvent(
+                new CustomEvent("studio:share-step", {
+                  detail: { lane, step, on: !cur },
+                }),
+              );
             }}
             onToggleEnabled={() => engineRef.current?.setBeatEnabled(!beat.enabled)}
             onClear={() => engineRef.current?.setBeatPattern(emptyBeatPattern())}
+            onSuggestPattern={() => {
+              const engine = engineRef.current;
+              if (!engine) return;
+              const bpm = transport?.bpm ?? 120;
+              const fresh = suggestPattern(beat.kit, bpm);
+              // Stream the new pattern in lane-by-lane so the user sees
+              // (and hears) the beat being built instead of dumping all
+              // 8 lanes at once. Honors prefers-reduced-motion by dropping
+              // the whole pattern in one go.
+              const reduced =
+                typeof window !== "undefined" &&
+                window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+              if (reduced) {
+                engine.setBeatPattern(fresh);
+              } else {
+                // Clear current pattern first so the reveal is visible.
+                engine.setBeatPattern(emptyBeatPattern());
+                const lanes = Object.keys(fresh) as Array<keyof typeof fresh>;
+                lanes.forEach((lane, laneIdx) => {
+                  window.setTimeout(() => {
+                    const liveEngine = engineRef.current;
+                    if (!liveEngine) return;
+                    const row = fresh[lane];
+                    row.forEach((on, step) => {
+                      if (on) liveEngine.setBeatStep(lane, step, true);
+                    });
+                  }, laneIdx * 180);
+                });
+              }
+              pushAuditEvent("beat", `Suggested fresh ${beat.kit} pattern @ ${Math.round(bpm)} BPM`);
+              setNotice({ tone: "success", message: `New ${beat.kit} pattern. Click again for a different one.` });
+            }}
             onRenderToTrack={renderBeatToTrack}
             onSelectBank={(bank) => engineRef.current?.setActivePatternBank(bank)}
             onSelectKit={(kit) => engineRef.current?.setBeatKit(kit)}
@@ -2715,7 +3880,42 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
       {/* ── MIDI Synth ─────────────────────────────────────────────────────── */}
       {!showSplash && snapshot && showArrangeTools && heavyUiReady && (
-        <div className="mb-6">
+        <div className="mb-6 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-tube-300">
+                Voice → MIDI
+              </p>
+              <p className="text-[11px] text-white/55">
+                Hum a melody. We turn pitch into notes you can edit.
+              </p>
+            </div>
+            <VoiceToMidiButton
+              getCtx={() => engineRef.current?.audioContext ?? null}
+              onCaptured={async (buffer) => {
+                const engine = engineRef.current;
+                if (!engine) return;
+                const clip = await engine.convertBufferToMidi(buffer);
+                if (!clip) {
+                  setNotice({
+                    tone: "warning",
+                    message:
+                      "No clear pitches found — try humming again, louder and steadier.",
+                  });
+                  return;
+                }
+                pushAuditEvent(
+                  "import",
+                  `Voice → MIDI: ${clip.notes.length} notes`,
+                );
+                setNotice({
+                  tone: "success",
+                  message: `Captured ${clip.notes.length} notes. Edit them on the piano roll.`,
+                });
+                touchDirty();
+              }}
+            />
+          </div>
           <MidiPanel
             state={snapshot.midi}
             onEnableMidi={async () => {
@@ -2740,7 +3940,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
       {/* ── Master mastering panel — EQ + spectrum + LUFS ───────────────── */}
       {!showSplash && transport && showPublishTools && heavyUiReady && (
-        <div className="mb-6">
+        <div className="mb-6" data-tour="master-panel">
           <MasterPanel
             spectrum={transport.masterSpectrum}
             lufs={transport.masterLufs}
@@ -2749,6 +3949,13 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             eqMidDb={transport.masterEqMidDb}
             eqHighDb={transport.masterEqHighDb}
             onSetEq={(band, db) => engineRef.current?.setMasterEq(band, db)}
+            onApplyMasteringPreset={(preset) => {
+              const engine = engineRef.current;
+              if (!engine) return;
+              const cfg = engine.applyMasteringPreset(preset);
+              pushAuditEvent("export", `Applied "${cfg.label}" mastering preset`);
+              setNotice({ tone: "success", message: `${cfg.label} chain applied — tweak the EQ to taste.` });
+            }}
           />
         </div>
       )}
@@ -2759,6 +3966,19 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           limiterOn={transport.masterLimiterOn}
           canExport={canExport}
           emptyReason={emptyExportReason}
+          shareLink={
+            projectId
+              ? {
+                  projectId,
+                  isPublic: projectIsPublic,
+                  onToggle: async (next) => {
+                    const ok = await setProjectPublic(projectId, next);
+                    if (ok) setProjectIsPublic(next);
+                    return ok;
+                  },
+                }
+              : undefined
+          }
           onToggleLimiter={() =>
             engineRef.current?.setMasterLimiter(!transport.masterLimiterOn)
           }
@@ -2804,6 +4024,30 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           onSetTruePeakTarget={setExportTruePeakTarget}
           onPublish={publishMix}
           onAiMaster={aiMasterMix}
+          onSharePreview={async (wav) => {
+            try {
+              const fd = new FormData();
+              fd.append("audio", wav, `ems-mix-${Date.now()}.wav`);
+              const res = await fetch("/api/guest-share", {
+                method: "POST",
+                body: fd,
+              });
+              const json = (await res.json().catch(() => ({}))) as {
+                shareUrl?: string;
+                error?: string;
+              };
+              if (!res.ok || !json.shareUrl) {
+                return { ok: false, message: json.error ?? `Share failed (${res.status}).` };
+              }
+              pushAuditEvent("publish", "Created 7-day preview share link");
+              return { ok: true, shareUrl: json.shareUrl };
+            } catch (err) {
+              return {
+                ok: false,
+                message: err instanceof Error ? err.message : "Share failed.",
+              };
+            }
+          }}
         />
       )}
 
@@ -2829,10 +4073,14 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           auditEvents={auditEvents}
           comments={comments}
           onSubmitComment={submitComment}
+          onSeekToComment={(sec) => {
+            if (!ensureInit()) return;
+            engineRef.current?.seek(Math.max(0, sec));
+          }}
         />
       )}
 
-      {!showSplash && showPublishTools && heavyUiReady && (
+      {!showSplash && showPublishTools && heavyUiReady && !isGuest && (
         <StudioMonetizationPanel
           onAudit={pushAuditEvent}
           onNotice={setNotice}
@@ -2939,6 +4187,41 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           }}
         />
       )}
+    </div>
+    </StudioTooltipProvider>
+  );
+}
+
+function MobileDawBanner({ onDismiss }: { onDismiss: () => void }) {
+  // Only visible on small screens via responsive classes.
+  return (
+    <div className="md:hidden sticky top-[64px] z-40 mt-4">
+      <div className="rounded-2xl border border-cyan-300/25 bg-cyan-300/10 p-4 shadow-xl shadow-black/35">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/90">
+          Phone mode
+        </p>
+        <p className="mt-1 text-sm font-semibold text-white/85">
+          The full Studio board is built for desktop.
+        </p>
+        <p className="mt-1 text-xs leading-5 text-white/65">
+          For quick ideas on mobile, use Phone Studio. You can still stay here if you want.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link
+            href="/studio/try"
+            className="rounded-xl bg-cyan-300 px-4 py-2 text-xs font-bold uppercase tracking-wider text-cyan-950 hover:bg-cyan-200"
+          >
+            Open Phone Studio
+          </Link>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-white/70 hover:bg-white/10"
+          >
+            Continue here
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3770,6 +5053,204 @@ function MetricCell({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CommentPinsStripImpl({
+  comments,
+  positionSec,
+  durationSec,
+  onSeek,
+  collaborators,
+  selfId,
+}: {
+  comments: StudioComment[];
+  positionSec: number;
+  durationSec: number;
+  onSeek: (sec: number) => void;
+  collaborators: CollaboratorPresence[];
+  selfId: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const safeDuration = Math.max(0.25, durationSec);
+  const pinned = comments.filter((c) => c.timelineSec !== null);
+
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, x / Math.max(1, rect.width)));
+    onSeek(ratio * safeDuration);
+  };
+
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((r) => ({
+    ratio: r,
+    label: fmtTime(r * safeDuration),
+  }));
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+      <div className="mb-1 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em] text-white/45">
+        <span>Timeline · comments</span>
+        <span className="font-mono normal-case tracking-normal text-cyan-200/80">
+          {fmtTime(positionSec)} / {fmtTime(safeDuration)}
+        </span>
+      </div>
+      <div
+        ref={ref}
+        onClick={handleClick}
+        className="relative h-8 cursor-pointer rounded-md border border-white/10 bg-gradient-to-b from-white/[0.04] to-black/40"
+        title="Click to seek"
+      >
+        {ticks.map((t) => (
+          <div
+            key={t.ratio}
+            className="absolute top-0 bottom-0 w-px bg-white/10"
+            style={{ left: `${t.ratio * 100}%` }}
+          />
+        ))}
+        <div
+          className="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-cyan-300/90"
+          style={{ left: `${Math.max(0, Math.min(1, positionSec / safeDuration)) * 100}%` }}
+          aria-label="Playhead"
+        />
+        {pinned.map((c) => {
+          const ratio = Math.max(0, Math.min(1, (c.timelineSec ?? 0) / safeDuration));
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSeek(c.timelineSec ?? 0);
+              }}
+              title={`${c.authorName}: ${c.message.slice(0, 80)}${c.message.length > 80 ? "…" : ""} · ${fmtTime(c.timelineSec ?? 0)}`}
+              aria-label={`Comment by ${c.authorName} at ${fmtTime(c.timelineSec ?? 0)}`}
+              className="absolute -translate-x-1/2 transform"
+              style={{ left: `${ratio * 100}%`, top: "50%", marginTop: "-6px" }}
+            >
+              <span className="block h-3 w-3 rounded-full border border-amber-200 bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.55)] transition-transform hover:scale-125" />
+            </button>
+          );
+        })}
+        {/* Live collaborator cursors. Each peer's playhead position
+            renders as a thin colored line so everyone can see where
+            their bandmates are listening from. */}
+        {collaborators
+          .filter((c) => c.id !== selfId && typeof c.playheadSec === "number")
+          .map((c) => {
+            const sec = c.playheadSec as number;
+            const ratio = Math.max(0, Math.min(1, sec / safeDuration));
+            const hue = c.hue ?? 200;
+            return (
+              <div
+                key={c.id}
+                className="pointer-events-none absolute -translate-x-1/2 transform"
+                style={{ left: `${ratio * 100}%`, top: 0, bottom: 0 }}
+                title={`${c.name} @ ${fmtTime(sec)}`}
+              >
+                <div
+                  className="h-full w-0.5"
+                  style={{ background: `hsl(${hue}, 80%, 70%)` }}
+                />
+                <span
+                  className="absolute -top-2 left-1/2 -translate-x-1/2 transform whitespace-nowrap rounded px-1 py-[1px] text-[9px] font-bold uppercase tracking-widest text-white"
+                  style={{
+                    background: `hsla(${hue}, 80%, 50%, 0.85)`,
+                  }}
+                >
+                  {c.name.slice(0, 12)}
+                </span>
+              </div>
+            );
+          })}
+      </div>
+      <div className="mt-1 flex justify-between font-mono text-[9px] text-white/35">
+        {ticks.map((t) => (
+          <span key={t.ratio}>{t.label}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SyncBadge({
+  isOnline,
+  isAutosaving,
+  autosaveError,
+  lastAutosaveAt,
+  autosaveOn,
+}: {
+  isOnline: boolean;
+  isAutosaving: boolean;
+  autosaveError: boolean;
+  lastAutosaveAt: number | null;
+  autosaveOn: boolean;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  if (!autosaveOn) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-white/55">
+        <div className="flex items-center gap-2 font-black uppercase tracking-widest">
+          <span className="h-2 w-2 rounded-full bg-white/30" />
+          Autosave off
+        </div>
+      </div>
+    );
+  }
+
+  let tone: "saved" | "saving" | "offline" | "error" | "pending";
+  if (isAutosaving) tone = "saving";
+  else if (!isOnline) tone = "offline";
+  else if (autosaveError) tone = "error";
+  else if (lastAutosaveAt === null) tone = "pending";
+  else tone = "saved";
+
+  const palette = {
+    saved: { border: "border-emerald-400/30", bg: "bg-emerald-400/10", text: "text-emerald-100", dot: "bg-emerald-300" },
+    saving: { border: "border-cyan-400/30", bg: "bg-cyan-400/10", text: "text-cyan-100", dot: "bg-cyan-300 animate-pulse" },
+    offline: { border: "border-yellow-400/30", bg: "bg-yellow-400/10", text: "text-yellow-100", dot: "bg-yellow-300" },
+    error: { border: "border-red-400/30", bg: "bg-red-400/10", text: "text-red-100", dot: "bg-red-300" },
+    pending: { border: "border-white/10", bg: "bg-black/25", text: "text-white/55", dot: "bg-white/30" },
+  }[tone];
+
+  let label: string;
+  let detail: string | null = null;
+  if (tone === "saving") label = "Saving…";
+  else if (tone === "offline") {
+    label = "Offline";
+    detail = "Changes will sync when you reconnect.";
+  } else if (tone === "error") {
+    label = "Save failed";
+    detail = "We'll retry on the next autosave tick.";
+  } else if (tone === "pending") label = "Not saved yet";
+  else {
+    const seconds = lastAutosaveAt ? Math.max(0, Math.round((now - lastAutosaveAt) / 1000)) : 0;
+    if (seconds < 5) label = "Saved just now";
+    else if (seconds < 60) label = `Saved ${seconds}s ago`;
+    else if (seconds < 3600) label = `Saved ${Math.round(seconds / 60)}m ago`;
+    else label = `Saved ${Math.round(seconds / 3600)}h ago`;
+  }
+
+  return (
+    <div
+      className={`rounded-xl border px-3 py-2 text-xs ${palette.border} ${palette.bg} ${palette.text}`}
+      title={lastAutosaveAt ? `Last autosave: ${new Date(lastAutosaveAt).toLocaleTimeString()}` : "No autosave yet"}
+    >
+      <div className="flex items-center gap-2 font-black uppercase tracking-widest">
+        <span className={`h-2 w-2 rounded-full ${palette.dot}`} />
+        {label}
+      </div>
+      {detail && (
+        <p className="mt-1 max-w-[16rem] text-[11px] leading-relaxed opacity-75">{detail}</p>
+      )}
+    </div>
+  );
+}
+
 function HealthBadge({ health }: { health: BrowserHealth | null }) {
   if (!health) {
     return (
@@ -3819,7 +5300,19 @@ function StudioNotice({ notice, onDismiss }: { notice: Notice; onDismiss: () => 
 
   return (
     <div className={`mb-4 flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${toneClass}`}>
-      <p>{notice.message}</p>
+      <p className="flex-1">{notice.message}</p>
+      {notice.action ? (
+        <button
+          type="button"
+          onClick={() => {
+            notice.action?.onAction();
+            onDismiss();
+          }}
+          className="rounded-md border border-white/20 bg-black/30 px-3 py-1 text-xs font-bold uppercase tracking-wider transition hover:bg-white/10"
+        >
+          {notice.action.label}
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={onDismiss}
@@ -3892,6 +5385,7 @@ function CollaborationPresencePanel({
   auditEvents,
   comments,
   onSubmitComment,
+  onSeekToComment,
 }: {
   selfId: string;
   sessionId: string | null;
@@ -3909,6 +5403,7 @@ function CollaborationPresencePanel({
   auditEvents: StudioAuditEvent[];
   comments: StudioComment[];
   onSubmitComment: (message: string) => Promise<void>;
+  onSeekToComment: (positionSec: number) => void;
 }) {
   const [commentDraft, setCommentDraft] = useState("");
   const [commentSending, setCommentSending] = useState(false);
@@ -3984,7 +5479,19 @@ function CollaborationPresencePanel({
               <li key={comment.id} className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1 text-[11px] text-white/80">
                 <p className="font-semibold text-white/85">
                   {comment.authorName} · {comment.focusMode}
-                  {comment.timelineSec !== null ? ` · ${fmtTime(comment.timelineSec)}` : ""}
+                  {comment.timelineSec !== null && (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        onClick={() => onSeekToComment(comment.timelineSec ?? 0)}
+                        className="rounded px-1 font-mono text-cyan-300 underline-offset-2 hover:underline focus:outline-none focus:ring-1 focus:ring-cyan-400/50"
+                        title="Jump playhead to this moment"
+                      >
+                        {fmtTime(comment.timelineSec)}
+                      </button>
+                    </>
+                  )}
                 </p>
                 <p className="mt-0.5 break-words text-white/70">{comment.message}</p>
               </li>
@@ -4398,16 +5905,27 @@ function StudioMonetizationPanel({
 function MasterStrip({
   db,
   level,
+  lufs,
+  truePeak,
   onChange,
 }: {
   db: number;
   level: number;
+  lufs: number;
+  truePeak: number;
   onChange: (db: number) => void;
 }) {
+  const truePeakDbtp = truePeak > 0 ? 20 * Math.log10(truePeak) : -Infinity;
   return (
     <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-1.5">
       <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">Master</span>
       <Meter level={level} className="h-1.5 w-16" />
+      <span className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-white/70" title="Integrated loudness estimate">
+        {Number.isFinite(lufs) ? `${lufs.toFixed(1)} LUFS` : "-inf LUFS"}
+      </span>
+      <span className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-white/70" title="True peak level">
+        {Number.isFinite(truePeakDbtp) ? `${truePeakDbtp.toFixed(1)} dBTP` : "-inf dBTP"}
+      </span>
       <input
         type="range"
         min={-60}
@@ -4429,8 +5947,10 @@ function MasterStrip({
 function TrackStrip({
   track,
   focused,
+  focusedByCollaborators,
   peaks,
   positionSec,
+  detectedChords,
   midiClip,
   positionBeats,
   sidechainOptions,
@@ -4438,6 +5958,7 @@ function TrackStrip({
   onArm,
   onMute,
   onSolo,
+  onToggleFreeze,
   onGain,
   onPan,
   onRename,
@@ -4450,17 +5971,32 @@ function TrackStrip({
   onImportFile,
   onDeleteTake,
   onPreviewTake,
+  onConvertToMidi,
   onSeek,
   onInputGain,
+  onSelectCompLane,
+  onSetCompSegment,
+  vcaGroups,
+  soloMode,
+  onSetTrackGroup,
+  onSetAutomationPoint,
+  onClearAutomation,
   isRecording,
   compact,
 }: {
   track: EngineSnapshot["tracks"][number];
   focused: boolean;
+  /** Other collaborators currently focused on this track. Drawn as
+   *  small colored dots in the track header so the user sees who's
+   *  looking at what without leaving the workspace. */
+  focusedByCollaborators: Array<{ id: string; name: string; hue: number }>;
   /** Pre-computed waveform peaks. Empty array = no audio yet. */
   peaks: number[];
   /** Live transport position so the waveform progress overlay updates. */
   positionSec: number;
+  /** Detected chord progression (e.g. ["C", "G", "Am", "F"]). Null when
+   *  detection hasn't run yet for this track. */
+  detectedChords: string[] | null;
   /** MIDI clip — only the Synth track has one. null on every other strip. */
   midiClip: import("./dawEngine").MidiClip | null;
   /** Live position in beats for the piano-roll playhead. */
@@ -4471,6 +6007,7 @@ function TrackStrip({
   onArm: (armed: boolean) => void;
   onMute: (muted: boolean) => void;
   onSolo: (solo: boolean) => void;
+  onToggleFreeze: () => void;
   onGain: (db: number) => void;
   onPan: (pan: number) => void;
   onRename: (name: string) => void;
@@ -4489,21 +6026,57 @@ function TrackStrip({
   onImportFile: (file: Blob) => void;
   onDeleteTake: (() => void) | null;
   onPreviewTake: (() => void) | null;
+  onConvertToMidi: (() => void) | null;
   /** Click/drag the waveform to scrub. Receives target position in
    *  seconds. */
   onSeek: (positionSec: number) => void;
   /** Per-track input trim, in dB. Range -24..+12. */
   onInputGain: (db: number) => void;
+  onSelectCompLane: (laneId: string) => void;
+  onSetCompSegment: (segmentIndex: number, laneId: string) => void;
+  vcaGroups: Array<{ id: string; name: string; gainDb: number }>;
+  soloMode: "sip" | "afl";
+  onSetTrackGroup: (groupId: string | null) => void;
+  onSetAutomationPoint: (lane: "gainDb" | "pan", timeSec: number, value: number) => void;
+  onClearAutomation: (lane?: "gainDb" | "pan") => void;
   /** True when the transport is currently recording. Combined with
    *  track.armed to draw the red ring on the track being captured. */
   isRecording: boolean;
   compact: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
+  const [compBrushLaneId, setCompBrushLaneId] = useState<string | null>(null);
+  const [compSweeping, setCompSweeping] = useState(false);
+
+  useEffect(() => {
+    if (!compBrushLaneId && track.compLanes.length > 0) {
+      const selected = track.compLanes.find((lane) => lane.selected)?.id ?? track.compLanes[0]?.id ?? null;
+      setCompBrushLaneId(selected);
+    }
+    if (compBrushLaneId && !track.compLanes.some((lane) => lane.id === compBrushLaneId)) {
+      const selected = track.compLanes.find((lane) => lane.selected)?.id ?? track.compLanes[0]?.id ?? null;
+      setCompBrushLaneId(selected);
+    }
+  }, [track.compLanes, compBrushLaneId]);
+
+  useEffect(() => {
+    if (!compSweeping) return;
+    const stopSweep = () => setCompSweeping(false);
+    window.addEventListener("mouseup", stopSweep);
+    return () => window.removeEventListener("mouseup", stopSweep);
+  }, [compSweeping]);
 
   const progress = track.durationSec > 0 ? positionSec / track.durationSec : 0;
 
+  // Stencilled label on the rack chassis. We always render the rack frame,
+  // even on empty tracks, because the rack-unit aesthetic is what makes the
+  // workspace read as a studio rather than a web form.
+  const rackLabel = track.name.toUpperCase();
+  const rackLed: "rec" | "amber" | "green" | null =
+    isRecording && track.armed ? "rec" : track.armed ? "amber" : focused ? "green" : null;
+
   return (
+    <RackPanel label={rackLabel} unit={focused ? "FOCUSED" : undefined} led={rackLed}>
     <div
       onDragOver={(e) => {
         e.preventDefault();
@@ -4516,14 +6089,14 @@ function TrackStrip({
         const file = e.dataTransfer?.files?.[0];
         if (file) onImportFile(file);
       }}
-      className={`relative rounded-xl border transition ${compact ? "p-2.5" : "p-3"} ${
+      className={`relative rounded-lg border transition ${compact ? "p-2.5" : "p-3"} ${
         isRecording && track.armed
           ? "border-red-500/70 bg-red-500/[0.06] shadow-[0_0_0_1px_rgba(239,68,68,0.45),0_0_24px_rgba(239,68,68,0.25)]"
           : dragging
             ? "border-brand-400 bg-brand-500/10"
             : focused
               ? "border-white/25 bg-gradient-to-r from-white/[0.07] to-cyan-400/[0.04]"
-              : "border-white/10 bg-gradient-to-r from-white/[0.04] to-transparent"
+              : "border-white/5 bg-gradient-to-r from-white/[0.02] to-transparent"
       }`}
     >
       {isRecording && track.armed && (
@@ -4545,22 +6118,138 @@ function TrackStrip({
           <div className={`h-12 w-1.5 shrink-0 rounded-full ${trackBgClass(track.color)}`} />
 
           <div className="min-w-0">
-            <input
-              type="text"
-              value={track.name}
-              onChange={(e) => onRename(e.target.value)}
-              maxLength={24}
-              className="w-full bg-transparent text-sm font-bold text-white/95 outline-none focus:bg-white/[0.06] rounded px-1 -mx-1"
-              aria-label="Track name"
-            />
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                value={track.name}
+                onChange={(e) => onRename(e.target.value)}
+                maxLength={24}
+                className="w-full bg-transparent text-sm font-bold text-white/95 outline-none focus:bg-white/[0.06] rounded px-1 -mx-1"
+                aria-label="Track name"
+              />
+              <StudioTooltip label={tooltips.trackImport}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const input = e.currentTarget
+                      .nextElementSibling as HTMLInputElement | null;
+                    input?.click();
+                  }}
+                  className="shrink-0 rounded-md border border-white/10 px-1.5 py-0.5 text-[11px] font-bold text-white/55 transition hover:border-tube-300/45 hover:bg-tube-300/10 hover:text-tube-200"
+                  aria-label={`Replace audio in ${track.name}`}
+                >
+                  ⤒
+                </button>
+              </StudioTooltip>
+              <input
+                type="file"
+                accept="audio/*,.wav,.mp3,.m4a,.aif,.aiff,.flac,.ogg"
+                aria-label={`Replace audio in ${track.name}`}
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) onImportFile(file);
+                  e.currentTarget.value = "";
+                }}
+              />
+              <StudioTooltip label={`Ask the Studio Coach about "${track.name}".`}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (typeof window !== "undefined") {
+                      window.dispatchEvent(
+                        new CustomEvent("studio:open-coach", {
+                          detail: { prefill: `Help me mix the "${track.name}" track.` },
+                        }),
+                      );
+                    }
+                  }}
+                  className="shrink-0 rounded-md border border-white/10 px-1.5 py-0.5 text-[11px] font-bold text-white/55 transition hover:border-tube-300/45 hover:bg-tube-300/10 hover:text-tube-200"
+                  aria-label={`Coach me on ${track.name}`}
+                >
+                  ✨
+                </button>
+              </StudioTooltip>
+              {track.hasAudio ? (
+                <StudioTooltip label="Soft pitch-correct this take to a major scale. Subtle by design.">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(
+                          new CustomEvent("studio:tune-track", {
+                            detail: { trackId: track.id },
+                          }),
+                        );
+                      }
+                    }}
+                    className="shrink-0 rounded-md border border-white/10 px-1.5 py-0.5 text-[10px] font-bold text-white/55 transition hover:border-cyan-300/45 hover:bg-cyan-300/10 hover:text-cyan-200"
+                    aria-label={`Apply pitch correction to ${track.name}`}
+                  >
+                    ♪
+                  </button>
+                </StudioTooltip>
+              ) : null}
+            </div>
             <p className="text-[10px] text-white/40">
               {track.hasAudio ? `${track.durationSec.toFixed(1)}s recorded` : "Empty"}
               {focused && " · focused"}
             </p>
+            {focusedByCollaborators.length > 0 && (
+              <div
+                className="mt-1 flex flex-wrap items-center gap-1"
+                title="Collaborators currently looking at this track"
+              >
+                {focusedByCollaborators.slice(0, 4).map((c) => (
+                  <span
+                    key={c.id}
+                    className="rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-widest text-white"
+                    style={{ background: `hsla(${c.hue}, 80%, 50%, 0.85)` }}
+                    title={c.name}
+                  >
+                    {c.name.slice(0, 8)}
+                  </span>
+                ))}
+                {focusedByCollaborators.length > 4 && (
+                  <span className="text-[9px] text-white/45">
+                    +{focusedByCollaborators.length - 4}
+                  </span>
+                )}
+              </div>
+            )}
+            {detectedChords && detectedChords.length > 0 && (
+              <div
+                className="mt-1 flex flex-wrap items-center gap-1"
+                title="Detected chord progression — heuristic, treat as a hint not ground truth"
+              >
+                <span className="text-[9px] font-bold uppercase tracking-widest text-cyan-300/70">
+                  Chords
+                </span>
+                {detectedChords.slice(0, 8).map((label, idx) => (
+                  <span
+                    key={`${idx}-${label}`}
+                    className={`rounded px-1.5 py-[1px] font-mono text-[10px] ${
+                      label === "?"
+                        ? "border border-white/10 text-white/30"
+                        : "border border-cyan-400/30 bg-cyan-400/10 text-cyan-100"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                ))}
+                {detectedChords.length > 8 && (
+                  <span className="text-[9px] text-white/35">+{detectedChords.length - 8}</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+        <StudioTooltip label={tooltips.trackArm}>
         <button
           type="button"
           onClick={() => onArm(!track.armed)}
@@ -4569,36 +6258,63 @@ function TrackStrip({
               ? "bg-red-500 text-white"
               : "border border-red-500/40 text-red-300 hover:bg-red-500/10"
           }`}
-          title="Arm track for recording"
         >
           ●
         </button>
+        </StudioTooltip>
 
+        <ToggleSwitch
+          checked={track.muted}
+          onChange={onMute}
+          label="Mute"
+          labelOn="MUTE"
+          labelOff="OPEN"
+          tone="amber"
+        />
+
+        <ToggleSwitch
+          checked={track.solo}
+          onChange={onSolo}
+          label="Solo"
+          labelOn="SOLO"
+          labelOff="OFF"
+          tone="amber"
+        />
+
+        <StudioTooltip
+          label={
+            track.frozen
+              ? "Unfreeze: restore the live FX chain."
+              : track.hasAudio
+                ? tooltips.trackFreeze
+                : "Record or import audio first to freeze."
+          }
+        >
         <button
           type="button"
-          onClick={() => onMute(!track.muted)}
-          className={`min-h-9 min-w-9 rounded-md px-2.5 py-1.5 text-[11px] font-black uppercase tracking-widest transition ${
-            track.muted
-              ? "bg-white/85 text-black"
-              : "border border-white/15 text-white/70 hover:bg-white/10"
+          onClick={onToggleFreeze}
+          disabled={!track.hasAudio}
+          className={`min-h-9 min-w-9 rounded-md px-2.5 py-1.5 text-[11px] font-black uppercase tracking-widest transition disabled:opacity-30 disabled:cursor-not-allowed ${
+            track.frozen
+              ? "bg-cyan-300 text-black"
+              : "border border-cyan-400/40 text-cyan-200 hover:bg-cyan-400/10"
           }`}
         >
-          M
+          {track.frozen ? "❄" : "F"}
         </button>
+        </StudioTooltip>
 
-        <button
-          type="button"
-          onClick={() => onSolo(!track.solo)}
-          className={`min-h-9 min-w-9 rounded-md px-2.5 py-1.5 text-[11px] font-black uppercase tracking-widest transition ${
-            track.solo
-              ? "bg-yellow-400 text-black"
-              : "border border-white/15 text-white/70 hover:bg-white/10"
-          }`}
-        >
-          S
-        </button>
+          {track.solo && (
+            <span className="rounded border border-yellow-300/40 bg-yellow-300/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-yellow-100">
+              {soloMode}
+            </span>
+          )}
 
-          <Meter level={track.level} className={`h-2 ${compact ? "w-16" : "w-24"}`} />
+          <VUMeter
+            value={Math.max(0, Math.min(1, track.level))}
+            label="LEVEL"
+            size="sm"
+          />
         </div>
 
         {track.hasAudio && (
@@ -4623,56 +6339,221 @@ function TrackStrip({
                 🗑
               </button>
             )}
+            {onConvertToMidi && (
+              <button
+                type="button"
+                onClick={onConvertToMidi}
+                title="Convert this audio to MIDI (sung pitches → piano roll)"
+                className="min-h-9 rounded-md px-2.5 py-1.5 text-[11px] font-bold border border-violet-400/40 text-violet-200 hover:bg-violet-400/10 transition"
+              >
+                → MIDI
+              </button>
+            )}
           </div>
         )}
 
-        <div className={`grid gap-2 ${compact ? "sm:grid-cols-1" : "sm:grid-cols-3"} sm:items-center`}>
-          <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/50">
-            Input
-            <input
-              type="range"
-              min={-24}
-              max={12}
-              step={0.5}
-              value={track.inputGainDb ?? -6}
-              onChange={(e) => onInputGain(Number(e.target.value))}
-              className="flex-1 accent-amber-400"
-              title="Mic input trim — lower if the mic is too hot"
-            />
-            <span className="w-10 text-right font-mono text-[10px] tabular-nums text-amber-300/85">
-              {(track.inputGainDb ?? -6).toFixed(1)}
-            </span>
-          </label>
-
-          <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/50">
-            Pan
-            <input
-              type="range"
-              min={-1}
-              max={1}
-              step={0.05}
-              value={track.pan}
-              onChange={(e) => onPan(Number(e.target.value))}
-              className="w-full accent-accent-500"
-            />
-          </label>
-
-          <label className="flex flex-1 items-center gap-2 text-[10px] uppercase tracking-wider text-white/50">
-            Gain
-            <input
-              type="range"
-              min={-60}
-              max={6}
-              step={0.5}
-              value={track.gainDb}
-              onChange={(e) => onGain(Number(e.target.value))}
-              className="flex-1 accent-brand-500"
-            />
-            <span className="w-10 text-right font-mono text-[10px] tabular-nums text-white/65">
-              {track.gainDb.toFixed(1)}
-            </span>
-          </label>
+        <div className={`flex flex-wrap items-end justify-start gap-5 sm:justify-around`}>
+          <Knob
+            value={track.inputGainDb ?? -6}
+            onChange={onInputGain}
+            min={-24}
+            max={12}
+            step={0.5}
+            label="INPUT"
+            tone="amber"
+            format={(v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)} dB`}
+          />
+          <Knob
+            value={track.pan}
+            onChange={onPan}
+            min={-1}
+            max={1}
+            step={0.05}
+            label="PAN"
+            tone="cyan"
+            format={(v) => {
+              if (Math.abs(v) < 0.02) return "C";
+              return v < 0 ? `L${Math.round(Math.abs(v) * 100)}` : `R${Math.round(v * 100)}`;
+            }}
+          />
+          <Fader
+            value={track.gainDb}
+            onChange={onGain}
+            min={-60}
+            max={6}
+            step={0.5}
+            label="GAIN"
+            height={compact ? 90 : 130}
+            format={(v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)} dB`}
+          />
         </div>
+
+        <div className="grid gap-2 sm:grid-cols-3 sm:items-center">
+          <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/50">
+            VCA
+            <select
+              value={track.vcaGroupId ?? ""}
+              onChange={(e) => onSetTrackGroup(e.target.value || null)}
+              className="rounded border border-white/15 bg-black/30 px-1.5 py-1 text-[10px] text-white/80"
+              aria-label="Track VCA group"
+              title="Track VCA group"
+            >
+              <option value="">Off</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              {vcaGroups
+                .filter((group) => !["A", "B", "C"].includes(group.id))
+                .map((group) => (
+                  <option key={group.id} value={group.id}>{group.name}</option>
+                ))}
+            </select>
+          </label>
+
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wider text-white/50">
+            <span>Automation</span>
+            <button
+              type="button"
+              onClick={() => onSetAutomationPoint("gainDb", positionSec, track.gainDb)}
+              className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] font-semibold text-white/75 hover:bg-white/10"
+            >
+              Gain @ now
+            </button>
+            <button
+              type="button"
+              onClick={() => onSetAutomationPoint("pan", positionSec, track.pan)}
+              className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] font-semibold text-white/75 hover:bg-white/10"
+            >
+              Pan @ now
+            </button>
+            <button
+              type="button"
+              onClick={() => onClearAutomation()}
+              className="rounded border border-red-400/35 px-1.5 py-0.5 text-[10px] font-semibold text-red-300 hover:bg-red-500/10"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className="text-[10px] text-white/45">
+            A-gain {track.automation.gainDb.length} · A-pan {track.automation.pan.length}
+          </div>
+        </div>
+
+        {(track.inputCalibrating || track.suggestedInputGainDb !== null) && (
+          <div className="rounded-md border border-amber-400/25 bg-amber-500/5 px-2.5 py-2 text-[11px] text-amber-50/90">
+            {track.inputCalibrating ? (
+              <p className="font-semibold">Sampling armed input for 2s to suggest gain trim...</p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold">
+                  Input peak {(track.inputObservedPeak * 100).toFixed(0)}% · Suggested trim {track.suggestedInputGainDb?.toFixed(1)} dB
+                </p>
+                {track.suggestedInputGainDb !== null && (
+                  <button
+                    type="button"
+                    onClick={() => onInputGain(track.suggestedInputGainDb ?? track.inputGainDb)}
+                    className="rounded border border-amber-300/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-100 hover:bg-amber-300/10"
+                  >
+                    Apply
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="grid gap-2 lg:grid-cols-2">
+          <AutomationLaneEditor
+            lane="gainDb"
+            points={track.automation.gainDb}
+            durationSec={Math.max(track.durationSec, positionSec + 1, 8)}
+            currentValue={track.gainDb}
+            onSetPoint={(timeSec, value) => onSetAutomationPoint("gainDb", timeSec, value)}
+          />
+          <AutomationLaneEditor
+            lane="pan"
+            points={track.automation.pan}
+            durationSec={Math.max(track.durationSec, positionSec + 1, 8)}
+            currentValue={track.pan}
+            onSetPoint={(timeSec, value) => onSetAutomationPoint("pan", timeSec, value)}
+          />
+        </div>
+
+        {track.compLanes.length > 0 && (
+          <div className="rounded-md border border-cyan-400/20 bg-cyan-500/5 px-2.5 py-2 text-[11px] text-cyan-50/90">
+            <p className="mb-1 font-semibold">Comp lanes</p>
+            <div className="flex flex-wrap gap-1.5">
+              {track.compLanes.map((lane) => (
+                <button
+                  key={lane.id}
+                  type="button"
+                  onClick={() => onSelectCompLane(lane.id)}
+                  className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide transition ${
+                    lane.selected
+                      ? "border-cyan-200/70 bg-cyan-200/20 text-cyan-50"
+                      : "border-cyan-300/25 text-cyan-100/80 hover:bg-cyan-300/10"
+                  }`}
+                >
+                  {lane.name}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-cyan-100/75">Brush</span>
+              {track.compLanes.map((lane) => (
+                <button
+                  key={`brush_${lane.id}`}
+                  type="button"
+                  onClick={() => setCompBrushLaneId(lane.id)}
+                  className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide transition ${
+                    compBrushLaneId === lane.id
+                      ? "border-cyan-100/80 bg-cyan-200/25 text-cyan-50"
+                      : "border-cyan-300/25 text-cyan-100/75 hover:bg-cyan-300/10"
+                  }`}
+                >
+                  {lane.name}
+                </button>
+              ))}
+            </div>
+
+            {track.compSegmentLaneIds.length > 0 && (
+              <div className="mt-2 grid grid-cols-8 gap-1">
+                {track.compSegmentLaneIds.map((laneId, index) => {
+                  const laneName =
+                    track.compLanes.find((lane) => lane.id === laneId)?.name ??
+                    track.compLanes.find((lane) => lane.selected)?.name ??
+                    "Take";
+                  const active = compBrushLaneId === laneId;
+                  return (
+                    <button
+                      key={`seg_${index}`}
+                      type="button"
+                      onMouseDown={() => {
+                        if (!compBrushLaneId) return;
+                        setCompSweeping(true);
+                        onSetCompSegment(index, compBrushLaneId);
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!compSweeping || !compBrushLaneId || e.buttons !== 1) return;
+                        onSetCompSegment(index, compBrushLaneId);
+                      }}
+                      className={`rounded border px-1 py-1 text-[9px] font-bold uppercase tracking-wide transition ${
+                        active
+                          ? "border-cyan-100/70 bg-cyan-200/25 text-cyan-50"
+                          : "border-cyan-300/30 bg-cyan-500/10 text-cyan-100/80 hover:bg-cyan-300/15"
+                      }`}
+                      title={`Segment ${index + 1}: ${laneName}`}
+                    >
+                      {laneName.replace(/^Take\s*/i, "T")}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {!compact && peaks.length > 0 && (
@@ -4696,6 +6577,8 @@ function TrackStrip({
       {!compact && (
         <FxPanel
           fx={track.fx}
+          eqSpectrum={track.eqSpectrum}
+          compGainReductionDb={track.compGainReductionDb}
           sidechainFromId={track.sidechainFromId}
           sidechainAmount={track.sidechainAmount}
           sidechainOptions={sidechainOptions}
@@ -4708,6 +6591,7 @@ function TrackStrip({
         />
       )}
     </div>
+    </RackPanel>
   );
 }
 
@@ -4717,6 +6601,116 @@ function Meter({ level, className = "" }: { level: number; className?: string })
   return (
     <div className={`overflow-hidden rounded-full bg-white/10 ${className}`}>
       <div className={`h-full ${widthClass} ${toneClass} transition-[width,background] duration-75`} />
+    </div>
+  );
+}
+
+function AflBusPanel({ mode, level }: { mode: "sip" | "afl"; level: number }) {
+  return (
+    <div className="mb-5 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/55">AFL audition bus</p>
+        <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${mode === "afl" ? "border-cyan-200/40 bg-cyan-200/15 text-cyan-100" : "border-white/20 text-white/45"}`}>
+          {mode}
+        </span>
+      </div>
+      <Meter level={mode === "afl" ? level : 0} className="h-2 w-full" />
+      <p className="mt-1 text-[10px] text-white/45">Dedicated meter for post-fader solo audition path.</p>
+    </div>
+  );
+}
+
+function AutomationLaneEditor({
+  lane,
+  points,
+  durationSec,
+  currentValue,
+  onSetPoint,
+}: {
+  lane: "gainDb" | "pan";
+  points: Array<{ timeSec: number; valueDb: number }> | Array<{ timeSec: number; value: number }>;
+  durationSec: number;
+  currentValue: number;
+  onSetPoint: (timeSec: number, value: number) => void;
+}) {
+  const width = 280;
+  const height = 78;
+  const min = lane === "gainDb" ? -60 : -1;
+  const max = lane === "gainDb" ? 6 : 1;
+
+  const normalize = (value: number) => {
+    const clamped = Math.max(min, Math.min(max, value));
+    return (clamped - min) / Math.max(1e-6, max - min);
+  };
+  const denormalize = (k: number) => {
+    const clamped = Math.max(0, Math.min(1, k));
+    return min + clamped * (max - min);
+  };
+  const toX = (timeSec: number) => Math.max(0, Math.min(width, (timeSec / Math.max(0.25, durationSec)) * width));
+  const toY = (value: number) => Math.max(0, Math.min(height, height - normalize(value) * height));
+  const toTime = (x: number) => Math.max(0, Math.min(durationSec, (x / width) * durationSec));
+  const toValue = (y: number) => denormalize(1 - y / height);
+
+  const normalizedPoints = points
+    .map((p) => {
+      const value = "valueDb" in p ? p.valueDb : p.value;
+      return {
+        timeSec: p.timeSec,
+        value,
+        x: toX(p.timeSec),
+        y: toY(value),
+      };
+    })
+    .sort((a, b) => a.timeSec - b.timeSec);
+
+  const path =
+    normalizedPoints.length === 0
+      ? ""
+      : normalizedPoints
+          .map((p, index) => `${index === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`)
+          .join(" ");
+
+  const handlePointer = (event: React.PointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / Math.max(1, rect.width)) * width;
+    const y = ((event.clientY - rect.top) / Math.max(1, rect.height)) * height;
+    onSetPoint(toTime(x), toValue(y));
+  };
+
+  return (
+    <div className="rounded-md border border-white/12 bg-black/25 p-2">
+      <div className="mb-1 flex items-center justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/55">
+          {lane === "gainDb" ? "Gain automation" : "Pan automation"}
+        </p>
+        <span className="font-mono text-[10px] text-white/55">
+          {lane === "gainDb" ? `${currentValue.toFixed(1)} dB` : currentValue.toFixed(2)}
+        </span>
+      </div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-20 w-full cursor-crosshair overflow-hidden rounded border border-white/10 bg-black/35"
+        onPointerDown={handlePointer}
+        onPointerMove={(event) => {
+          if (event.buttons !== 1) return;
+          handlePointer(event);
+        }}
+      >
+        <line x1={0} y1={height / 2} x2={width} y2={height / 2} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+        {path && <path d={path} fill="none" stroke="rgba(34,211,238,0.9)" strokeWidth={2} />}
+        {normalizedPoints.map((p) => (
+          <circle
+            key={`${lane}_${p.timeSec.toFixed(3)}`}
+            cx={p.x}
+            cy={p.y}
+            r={2.5}
+            fill="rgba(236,254,255,0.95)"
+            stroke="rgba(8,145,178,0.95)"
+            strokeWidth={1}
+          />
+        ))}
+      </svg>
+      <p className="mt-1 text-[10px] text-white/45">Click to place points. Drag to draw curves over time.</p>
     </div>
   );
 }

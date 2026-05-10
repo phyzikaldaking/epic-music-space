@@ -18,7 +18,7 @@ import dynamic from "next/dynamic";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 import GuestStudioBanner from "./GuestStudioBanner";
-import FirstBeatCoach from "./FirstBeatCoach";
+import StudioFirstVisitTour from "./StudioFirstVisitTour";
 
 const DawWorkspace = dynamic(() => import("@/components/daw/DawWorkspace"), {
   ssr: false,
@@ -28,6 +28,10 @@ const PhoneStudio = dynamic(() => import("./PhoneStudio"), {
   ssr: false,
   loading: () => null,
 });
+const DemoSessionOverlay = dynamic(
+  () => import("@/components/daw/DemoSessionOverlay"),
+  { ssr: false, loading: () => null },
+);
 
 const PHONE_BREAKPOINT_PX = 768;
 
@@ -68,7 +72,8 @@ export default function StudioTryClient({ isAuthed }: { isAuthed: boolean }) {
   return (
     <>
       {!isAuthed && <GuestStudioBanner />}
-      {!isAuthed && <FirstBeatCoach />}
+      {!isAuthed && <DemoSessionOverlay />}
+      <StudioFirstVisitTour isAuthed={isAuthed} />
       <DawWorkspace isGuest={!isAuthed} />
     </>
   );

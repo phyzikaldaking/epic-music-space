@@ -471,6 +471,34 @@
   0%, 100% { box-shadow: 0 0 30px rgba(255,45,146,0.55), inset 0 1px 0 rgba(255,255,255,0.3); }
   50% { box-shadow: 0 0 44px rgba(255,45,146,0.85), inset 0 1px 0 rgba(255,255,255,0.35); }
 }
+
+/* When the Studio Coach is docked, shift studio-content right so the panel
+   doesn't cover transport / master / mixer. The body attribute is toggled
+   by ChatbotWidget. Mobile (<lg) keeps the floating bubble — the docked
+   panel only mounts on viewports with enough room for it. */
+@media (min-width: 1024px) {
+  body[data-studio-coach-docked] [data-studio-content] {
+    padding-right: 380px;
+    transition: padding-right 200ms ease;
+  }
+}
+
+/* Tube-amber pulsing ring for the SpotlightTour. Used to draw attention to
+   a target control without obscuring it. The component overrides the
+   first/last keyframes with a hard 2px ring + outer glow so the visible
+   color stays consistent; this animation modulates the outer glow only. */
+@keyframes tube-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 2px rgba(255, 184, 77, 0.85),
+      0 0 24px 0 rgba(255, 184, 77, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(255, 184, 77, 0.85),
+      0 0 36px 8px rgba(255, 184, 77, 0.7);
+  }
+}
 .vc-btn-chrome {
   background: linear-gradient(180deg, #f7f7f9 0%, #b8b8c8 30%, #f7f7f9 50%, #6a6a78 70%, #c4c4d0 100%);
   color: #1a0530;

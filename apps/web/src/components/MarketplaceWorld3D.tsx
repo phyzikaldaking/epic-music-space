@@ -16,11 +16,15 @@ function hashString(s: string): number {
   return Math.abs(h);
 }
 
+function stableCoord(value: number): number {
+  return Number(value.toFixed(6));
+}
+
 function TrackOrb({ item, index, total }: { item: Item; index: number; total: number }) {
   const angle = (index / Math.max(total, 1)) * 2 * Math.PI;
   const radius = total <= 6 ? 36 : total <= 12 ? 38 : 40;
-  const cx = 50 + radius * Math.cos(angle);
-  const cy = 50 + radius * Math.sin(angle);
+  const cx = stableCoord(50 + radius * Math.cos(angle));
+  const cy = stableCoord(50 + radius * Math.sin(angle));
   const seed = hashString(item.id);
   const hue = (seed % 360);
   const size = 1.5 + (seed % 20) / 10;

@@ -7,6 +7,7 @@ import { strictLimiter } from "@/lib/rateLimit";
 import { enqueueAnalytics } from "@/lib/queues";
 import { getSiteUrl } from "@/lib/site";
 import { getActiveLimits } from "@/lib/tierLimits";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 // ─────────────────────────────────────────────────────────
 // Boost package definitions
@@ -67,6 +68,10 @@ export async function GET() {
  * Auth: required. Caller must own the song.
  */
 export async function POST(req: NextRequest) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??

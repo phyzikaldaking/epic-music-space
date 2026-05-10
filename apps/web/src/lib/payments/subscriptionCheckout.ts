@@ -3,6 +3,7 @@ import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
 import { getStripePriceIdForTier } from "@/lib/subscriptions";
 import type { SubscriptionTier } from "@ems/db";
+import { checkoutMaintenanceMessage, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 export class SubscriptionCheckoutError extends Error {
   constructor(
@@ -24,6 +25,10 @@ type SubscriptionCheckoutInput = {
 export async function createSubscriptionCheckoutSession(
   input: SubscriptionCheckoutInput,
 ) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    throw new SubscriptionCheckoutError(checkoutMaintenanceMessage(), 503);
+  }
+
   const priceId = getStripePriceIdForTier(input.tier);
   if (!priceId) {
     throw new SubscriptionCheckoutError("Subscription tier not configured.", 503);

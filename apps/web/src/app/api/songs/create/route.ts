@@ -10,6 +10,7 @@ import { getActiveLimits } from "@/lib/tierLimits";
 import { track } from "@/lib/analytics";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import { classifyAudioSource } from "@/lib/audioSource";
+import { fanoutSavedArtistDrop } from "@/lib/savedReleaseNotifications";
 
 const createSongSchema = z.object({
   title: z.string().min(1).max(200),
@@ -32,6 +33,11 @@ const createSongSchema = z.object({
     .optional(),
   bpm: z.coerce.number().int().min(20).max(999).optional(),
   key: z.string().max(10).optional(),
+  // Integrated LUFS captured from the studio master analyser at the
+  // moment of publish. Optional because non-studio uploads (paste URL,
+  // import) won't have it. Range gates against malformed values from
+  // hand-crafted requests.
+  masterLufs: z.coerce.number().min(-60).max(0).optional(),
   licensePrice: z.coerce
     .number()
     .min(0.5, "License price must be at least $0.50")
@@ -200,6 +206,18 @@ export async function POST(req: NextRequest) {
     songId: song.id,
     timestamp: new Date().toISOString(),
   });
+
+  // New-drop fanout: users who saved tracks from this artist get a
+  // notification (in-app + push + optional email) when a track is
+  // immediately public. Draft/scheduled releases are notified later when
+  // they are actually published.
+  if (song.isActive && !song.isDraft && !song.scheduledAt) {
+    try {
+      await fanoutSavedArtistDrop(song.id);
+    } catch (err) {
+      console.warn("[songs:create] saved-drop fanout failed", err);
+    }
+  }
 
   if (existingSongCount === 0) {
     track({

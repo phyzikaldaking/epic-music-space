@@ -9,6 +9,9 @@ type CompareTrack = {
   artist: string;
   audioUrl?: string | null;
   aiScore?: number;
+  licensePrice?: number;
+  revenueSharePct?: number;
+  totalLicenses?: number;
   /** Total licenses claimed — used to render Chart Movers with real signal. */
   soldLicenses?: number;
 };
@@ -70,6 +73,57 @@ export default function MarketplaceConfidencePanel({ tracks, recentLicenses }: P
 
   const trackA = usableTracks.find((t) => t.id === aId) ?? usableTracks[0];
   const trackB = usableTracks.find((t) => t.id === bId) ?? usableTracks[1] ?? usableTracks[0];
+  const compareRows =
+    trackA && trackB
+      ? [
+          {
+            label: "Price",
+            a: `$${(trackA.licensePrice ?? 0).toFixed(2)}`,
+            b: `$${(trackB.licensePrice ?? 0).toFixed(2)}`,
+            winner:
+              (trackA.licensePrice ?? 0) === (trackB.licensePrice ?? 0)
+                ? "Tie"
+                : (trackA.licensePrice ?? 0) < (trackB.licensePrice ?? 0)
+                  ? "A"
+                  : "B",
+          },
+          {
+            label: "Revenue share",
+            a: `${(trackA.revenueSharePct ?? 0).toFixed(1)}%`,
+            b: `${(trackB.revenueSharePct ?? 0).toFixed(1)}%`,
+            winner:
+              (trackA.revenueSharePct ?? 0) === (trackB.revenueSharePct ?? 0)
+                ? "Tie"
+                : (trackA.revenueSharePct ?? 0) > (trackB.revenueSharePct ?? 0)
+                  ? "A"
+                  : "B",
+          },
+          {
+            label: "Supply",
+            a: `${trackA.soldLicenses ?? 0}/${trackA.totalLicenses ?? 0}`,
+            b: `${trackB.soldLicenses ?? 0}/${trackB.totalLicenses ?? 0}`,
+            winner:
+              (trackA.totalLicenses ?? 0) - (trackA.soldLicenses ?? 0) ===
+              (trackB.totalLicenses ?? 0) - (trackB.soldLicenses ?? 0)
+                ? "Tie"
+                : (trackA.totalLicenses ?? 0) - (trackA.soldLicenses ?? 0) <
+                  (trackB.totalLicenses ?? 0) - (trackB.soldLicenses ?? 0)
+                  ? "A"
+                  : "B",
+          },
+          {
+            label: "Demand",
+            a: `${trackA.soldLicenses ?? 0} sold`,
+            b: `${trackB.soldLicenses ?? 0} sold`,
+            winner:
+              (trackA.soldLicenses ?? 0) === (trackB.soldLicenses ?? 0)
+                ? "Tie"
+                : (trackA.soldLicenses ?? 0) > (trackB.soldLicenses ?? 0)
+                  ? "A"
+                  : "B",
+          },
+        ]
+      : [];
 
   function jumpToCue(audioId: "ab-player-a" | "ab-player-b", seconds: number) {
     const el = document.getElementById(audioId) as HTMLAudioElement | null;
@@ -173,6 +227,39 @@ export default function MarketplaceConfidencePanel({ tracks, recentLicenses }: P
             </div>
           ))}
         </div>
+
+        {compareRows.length > 0 && (
+          <div className="mt-5 rounded-xl border border-white/10 bg-black/25 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-300">
+                  Buyer compare
+                </p>
+                <p className="mt-1 text-sm text-white/65">
+                  See the tradeoffs without doing mental gymnastics.
+                </p>
+              </div>
+              <p className="text-xs text-white/45">
+                Winner column highlights the better value on that row.
+              </p>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {compareRows.map((row) => (
+                <div
+                  key={row.label}
+                  className="grid grid-cols-[1.2fr_1fr_1fr_auto] items-center gap-2 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2 text-sm"
+                >
+                  <p className="font-semibold text-white/75">{row.label}</p>
+                  <p className="text-white/80">{row.a}</p>
+                  <p className="text-white/80">{row.b}</p>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-brand-200">
+                    {row.winner}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5 lg:col-span-3">

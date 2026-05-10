@@ -1,0 +1,188 @@
+/**
+ * Reload-survivable undo stack for the EMS studio.
+ *
+ * Strategy:
+ *   • Each meaningful state change pushes a SNAPSHOT (the full ProjectFile)
+ *     into a per-project ring buffer in IndexedDB.
+ *   • Undo restores the previous snapshot by hydrating the engine from it.
+ *   • The stack survives reloads because it's in IDB, not memory.
+ *
+ * Why snapshots, not operation logs:
+ *   The engine has ~50 setters mutating audio nodes, automation, beat
+ *   patterns, FX, and so on. Building inverse-op tracking for all of
+ *   them is a multi-week refactor with high risk of subtle bugs. A
+ *   serialize/hydrate snapshot is coarse-grained but lossless for
+ *   everything the user can actually edit, and we already have both
+ *   sides of the wire (serializeProject + hydrateProject) battle-tested
+ *   from the project save/load flow.
+ *
+ * Cost is bounded: each snapshot only contains audio blobs by reference
+ * (IDB stores Blob natively). The cap on stack depth is configurable
+ * (default 30). Old snapshots are evicted FIFO.
+ */
+
+import type { ProjectFile } from "./dawEngine";
+
+const DB_NAME = "ems-daw";
+const DB_VERSION = 2;
+const STORE_PROJECTS = "projects";
+const STORE_UNDO = "undoSnapshots";
+const MAX_SNAPSHOTS_PER_PROJECT = 30;
+
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+function openDb(): Promise<IDBDatabase> {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      reject(new Error("IndexedDB unavailable"));
+      return;
+    }
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_PROJECTS)) {
+        const store = db.createObjectStore(STORE_PROJECTS, { keyPath: "id" });
+        store.createIndex("savedAt", "savedAt");
+      }
+      if (!db.objectStoreNames.contains(STORE_UNDO)) {
+        const store = db.createObjectStore(STORE_UNDO, { keyPath: "id", autoIncrement: true });
+        store.createIndex("projectId", "projectId");
+        store.createIndex("projectId_seq", ["projectId", "seq"]);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("IDB open failed"));
+  });
+  return dbPromise;
+}
+
+interface UndoRecord {
+  id?: number;
+  projectId: string;
+  seq: number;
+  capturedAt: string;
+  label: string;
+  file: ProjectFile;
+}
+
+function txAsync<T>(
+  mode: IDBTransactionMode,
+  fn: (store: IDBObjectStore) => Promise<T>,
+): Promise<T> {
+  return openDb().then(
+    (db) =>
+      new Promise<T>((resolve, reject) => {
+        const transaction = db.transaction(STORE_UNDO, mode);
+        const store = transaction.objectStore(STORE_UNDO);
+        Promise.resolve(fn(store))
+          .then(resolve)
+          .catch(reject);
+        transaction.onerror = () => reject(transaction.error ?? new Error("IDB tx failed"));
+      }),
+  );
+}
+
+function reqPromise<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("IDB op failed"));
+  });
+}
+
+/** Push a new snapshot onto the undo stack for this project. Evicts the
+ *  oldest if we're past the cap. */
+export async function pushUndoSnapshot(
+  projectId: string,
+  file: ProjectFile,
+  label: string,
+): Promise<void> {
+  await txAsync("readwrite", async (store) => {
+    // Get current stack to compute next seq + evict.
+    const idx = store.index("projectId");
+    const all = (await reqPromise(idx.getAll(projectId))) as UndoRecord[];
+    all.sort((a, b) => a.seq - b.seq);
+    const nextSeq = (all[all.length - 1]?.seq ?? -1) + 1;
+    await reqPromise(
+      store.add({
+        projectId,
+        seq: nextSeq,
+        capturedAt: new Date().toISOString(),
+        label,
+        file,
+      }),
+    );
+    if (all.length + 1 > MAX_SNAPSHOTS_PER_PROJECT) {
+      const overage = all.length + 1 - MAX_SNAPSHOTS_PER_PROJECT;
+      for (let i = 0; i < overage; i++) {
+        const victim = all[i];
+        if (victim?.id !== undefined) {
+          await reqPromise(store.delete(victim.id));
+        }
+      }
+    }
+  });
+}
+
+export interface UndoSnapshotInfo {
+  id: number;
+  seq: number;
+  capturedAt: string;
+  label: string;
+}
+
+/** List metadata about all snapshots (no file payloads, so cheap to call). */
+export async function listUndoSnapshots(projectId: string): Promise<UndoSnapshotInfo[]> {
+  return txAsync("readonly", async (store) => {
+    const idx = store.index("projectId");
+    const all = (await reqPromise(idx.getAll(projectId))) as UndoRecord[];
+    return all
+      .filter((r) => r.id !== undefined)
+      .sort((a, b) => a.seq - b.seq)
+      .map(({ id, seq, capturedAt, label }) => ({
+        id: id as number,
+        seq,
+        capturedAt,
+        label,
+      }));
+  });
+}
+
+/** Pop the most recent snapshot — returns the *previous* one (the state
+ *  to restore on undo). The popped snapshot is removed from the stack
+ *  so a second undo goes one step further back. */
+export async function popUndoSnapshot(
+  projectId: string,
+): Promise<{ file: ProjectFile; label: string } | null> {
+  return txAsync("readwrite", async (store) => {
+    const idx = store.index("projectId");
+    const all = (await reqPromise(idx.getAll(projectId))) as UndoRecord[];
+    all.sort((a, b) => a.seq - b.seq);
+    if (all.length < 2) {
+      // Need at least 2 — the latest is the *current* state, so popping
+      // means dropping the current and returning the previous.
+      return null;
+    }
+    const current = all[all.length - 1];
+    if (current?.id !== undefined) {
+      await reqPromise(store.delete(current.id));
+    }
+    const previous = all[all.length - 2];
+    if (!previous) return null;
+    return { file: previous.file, label: previous.label };
+  });
+}
+
+/** Drop every snapshot for a project. Used when starting a new session
+ *  or explicitly clearing history. */
+export async function clearUndoStack(projectId: string): Promise<void> {
+  await txAsync("readwrite", async (store) => {
+    const idx = store.index("projectId");
+    const all = (await reqPromise(idx.getAll(projectId))) as UndoRecord[];
+    for (const r of all) {
+      if (r.id !== undefined) {
+        await reqPromise(store.delete(r.id));
+      }
+    }
+  });
+}

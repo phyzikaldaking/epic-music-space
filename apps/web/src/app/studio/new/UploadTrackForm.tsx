@@ -70,6 +70,17 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
   const initialAudioUrl =
     prefillAudioUrl ||
     (audioUrlParam && /^https?:\/\//.test(audioUrlParam) ? audioUrlParam : "");
+  // Captured at studio publish time and forwarded as a query param. Persists
+  // to the new Song row so the track page can render the LUFS meter for
+  // license shoppers. Coerced to a finite number in the gated range; bad
+  // values silently drop to undefined rather than block the publish.
+  const masterLufsParam = (() => {
+    const raw = searchParams.get("masterLufs");
+    if (!raw) return undefined;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < -60 || n > 0) return undefined;
+    return n;
+  })();
   // Set by /vault/new so we know to return the artist to the vault
   // after a successful publish — they came from there, they should land
   // there (and see their tape sitting in the room they just left).
@@ -449,6 +460,7 @@ export default function UploadTrackForm({ prefillAudioUrl = "" }: UploadTrackFor
         priceUsd: t.priceUsd,
         terms: t.terms,
       })),
+      masterLufs: masterLufsParam,
     });
     if (!check.ok) {
       setError(check.reason);

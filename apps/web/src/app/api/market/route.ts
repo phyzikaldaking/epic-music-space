@@ -6,6 +6,7 @@ import { strictLimiter, lenientLimiter } from "@/lib/rateLimit";
 import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 import { buildIdempotencyKey } from "@/lib/idempotency";
 import { createLicenseCheckoutSession, LicenseCheckoutError } from "@/lib/payments/licenseCheckout";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 // ─────────────────────────────────────────────────────────
 // Zod schemas
@@ -82,6 +83,10 @@ export async function GET(req: NextRequest) {
 // ─────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??

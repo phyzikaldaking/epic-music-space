@@ -68,6 +68,11 @@ export interface TrackFormState {
   // Optional tiered licensing. The base licensePrice is always the BASIC
   // tier; additional tiers are layered on top.
   licenseVariants?: LicenseVariantInput[];
+  // Integrated LUFS captured from the studio master analyser at publish
+  // time. Forwarded as a query param from /studio/board → /studio/new.
+  // Optional — only studio-published tracks have this; pasted-URL imports
+  // and legacy uploads don't.
+  masterLufs?: number;
 }
 
 export interface TrackPublishPayload {
@@ -91,6 +96,7 @@ export interface TrackPublishPayload {
   isDraft?: boolean;
   scheduledAt?: string;
   licenseVariants?: LicenseVariant[];
+  masterLufs?: number;
 }
 
 export type TrackPublishCheck =
@@ -265,6 +271,13 @@ export function validateTrackSubmission(state: TrackFormState): TrackPublishChec
       isDraft: state.saveAsDraft || undefined,
       scheduledAt: scheduledAtIso,
       licenseVariants,
+      masterLufs:
+        typeof state.masterLufs === "number" &&
+        Number.isFinite(state.masterLufs) &&
+        state.masterLufs >= -60 &&
+        state.masterLufs <= 0
+          ? state.masterLufs
+          : undefined,
     },
   };
 }

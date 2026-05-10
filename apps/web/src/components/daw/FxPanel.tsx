@@ -11,6 +11,8 @@ interface SidechainOption {
 
 interface Props {
   fx: TrackFx;
+  eqSpectrum: number[];
+  compGainReductionDb: number;
   /** Current sidechain source track id (or null for off). */
   sidechainFromId: TrackId | null;
   /** Sidechain depth 0..1. */
@@ -33,6 +35,8 @@ interface Props {
 
 export default function FxPanel({
   fx,
+  eqSpectrum,
+  compGainReductionDb,
   sidechainFromId,
   sidechainAmount,
   sidechainOptions,
@@ -61,6 +65,7 @@ export default function FxPanel({
       {open && (
         <div className="grid gap-3 pb-3 sm:grid-cols-2">
           <FxBlock title="EQ" subtitle="3-band">
+            <SpectrumOverlay values={eqSpectrum} />
             <Slider
               label="Low"
               min={-12}
@@ -110,6 +115,7 @@ export default function FxPanel({
               </button>
             }
           >
+            <GainReductionMeter reductionDb={compGainReductionDb} />
             <Slider
               label="Threshold"
               min={-60}
@@ -278,6 +284,86 @@ export default function FxPanel({
           </FxBlock>
         </div>
       )}
+    </div>
+  );
+}
+
+function SpectrumOverlay({ values }: { values: number[] }) {
+  const bars = (values.length > 0 ? values : Array.from({ length: 24 }, () => 0)).slice(0, 24);
+  const heightClasses = [
+    "h-[6%]",
+    "h-[12%]",
+    "h-[18%]",
+    "h-[24%]",
+    "h-[30%]",
+    "h-[36%]",
+    "h-[42%]",
+    "h-[48%]",
+    "h-[54%]",
+    "h-[60%]",
+    "h-[66%]",
+    "h-[72%]",
+    "h-[78%]",
+    "h-[84%]",
+    "h-[90%]",
+    "h-[96%]",
+    "h-[100%]",
+  ];
+  return (
+    <div className="mb-2 h-14 rounded-md border border-cyan-200/15 bg-gradient-to-b from-cyan-300/10 to-transparent p-1">
+      <div className="flex h-full items-end gap-[2px]">
+        {bars.map((v, idx) => {
+          const level = Math.max(0, Math.min(1, v));
+          const classIndex = Math.max(0, Math.min(heightClasses.length - 1, Math.round(level * (heightClasses.length - 1))));
+          const barHeight = heightClasses[classIndex] ?? "h-[6%]";
+          return (
+            <div
+              key={`${idx}_${v.toFixed(3)}`}
+              className={`flex-1 rounded-sm bg-cyan-200/70 ${barHeight}`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function GainReductionMeter({ reductionDb }: { reductionDb: number }) {
+  const amount = Math.max(0, Math.min(24, -reductionDb));
+  const widthClasses = [
+    "w-[0%]",
+    "w-[5%]",
+    "w-[10%]",
+    "w-[15%]",
+    "w-[20%]",
+    "w-[25%]",
+    "w-[30%]",
+    "w-[35%]",
+    "w-[40%]",
+    "w-[45%]",
+    "w-[50%]",
+    "w-[55%]",
+    "w-[60%]",
+    "w-[65%]",
+    "w-[70%]",
+    "w-[75%]",
+    "w-[80%]",
+    "w-[85%]",
+    "w-[90%]",
+    "w-[95%]",
+    "w-[100%]",
+  ];
+  const widthIndex = Math.max(0, Math.min(widthClasses.length - 1, Math.round((amount / 24) * (widthClasses.length - 1))));
+  const meterWidth = widthClasses[widthIndex] ?? "w-[0%]";
+  return (
+    <div className="mb-2 rounded-md border border-white/10 bg-black/30 p-1.5">
+      <div className="mb-1 flex items-center justify-between text-[9px] font-bold uppercase tracking-widest text-white/55">
+        <span>GR</span>
+        <span className="font-mono text-white/70">{(-amount).toFixed(1)} dB</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-white/10">
+        <div className={`h-full bg-gradient-to-r from-emerald-300 to-amber-300 transition-[width] duration-100 ${meterWidth}`} />
+      </div>
     </div>
   );
 }

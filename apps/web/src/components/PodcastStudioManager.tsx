@@ -57,6 +57,11 @@ type ShowSummary = {
 
 type Props = {
   initialShows: ShowSummary[];
+  /** True when the platform has LiveKit env vars set. When false, the
+   *  Go Live buttons are disabled with an explanatory banner — clicking
+   *  them otherwise runs a UI-only animation that misleads the user
+   *  into thinking they're broadcasting. */
+  liveKitOnline?: boolean;
 };
 
 type StudioPhase = "PRE_PRODUCTION" | "RECORDING" | "POST_PRODUCTION" | "PUBLISH";
@@ -166,7 +171,7 @@ const STAGGER_ENTER = ["", "delay-75", "delay-100", "delay-150", "delay-200", "d
 const VIDEO_ACCEPT = "video/mp4,video/quicktime,video/x-m4v,video/webm";
 const AUDIO_ACCEPT = "audio/*,audio/mp4,audio/x-m4a,.mp3,.wav,.flac,.aac,.m4a,.aif,.aiff,.ogg,.oga,.opus,.webm";
 
-export default function PodcastStudioManager({ initialShows }: Props) {
+export default function PodcastStudioManager({ initialShows, liveKitOnline = false }: Props) {
   const router = useRouter();
   const [shows, setShows] = useState(initialShows);
   const [phase, setPhase] = useState<StudioPhase>("PRE_PRODUCTION");
@@ -876,6 +881,27 @@ export default function PodcastStudioManager({ initialShows }: Props) {
 
   return (
     <div className="mx-auto mt-8 max-w-7xl px-4 pb-36 md:pb-16">
+      {!liveKitOnline && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/8 px-5 py-4 text-sm text-amber-100 backdrop-blur-md">
+          <span aria-hidden className="text-lg">📹</span>
+          <div className="flex-1">
+            <p className="font-bold text-amber-200">
+              Live broadcast isn&apos;t switched on yet — Go Live is disabled.
+            </p>
+            <p className="mt-0.5 text-xs text-amber-100/75">
+              Set LIVEKIT_API_KEY, LIVEKIT_API_SECRET, and NEXT_PUBLIC_LIVEKIT_URL in your Vercel environment, redeploy, and the Go Live buttons unlock. Episode planning, uploads, transcripts, and clips all still work without it.
+            </p>
+            <a
+              href="https://livekit.io/cloud"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-amber-200 underline decoration-dotted underline-offset-2 hover:text-white"
+            >
+              Get LiveKit credentials →
+            </a>
+          </div>
+        </div>
+      )}
       <div className="relative z-20 overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(120%_140%_at_10%_0%,rgba(56,189,248,0.12),transparent_45%),radial-gradient(90%_90%_at_100%_0%,rgba(244,63,94,0.12),transparent_55%),rgba(3,7,18,0.86)] p-5 shadow-[0_30px_80px_rgba(15,23,42,0.45)] sm:p-6">
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,rgba(255,255,255,0.06)_35%,transparent_70%)] opacity-60 [mask-image:radial-gradient(circle_at_top,black,transparent_72%)]" />
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -906,7 +932,9 @@ export default function PodcastStudioManager({ initialShows }: Props) {
             <button
               type="button"
               onClick={() => setIsLive((current) => !current)}
-              className={`rounded-xl px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition ${isLive ? "bg-rose-500 text-white shadow-[0_0_24px_rgba(244,63,94,0.45)]" : "bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(56,189,248,0.35)]"}`}
+              disabled={!liveKitOnline}
+              title={liveKitOnline ? undefined : "Configure LiveKit (LIVEKIT_API_KEY / LIVEKIT_API_SECRET / NEXT_PUBLIC_LIVEKIT_URL) to enable live broadcast."}
+              className={`rounded-xl px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition disabled:cursor-not-allowed disabled:opacity-50 ${isLive ? "bg-rose-500 text-white shadow-[0_0_24px_rgba(244,63,94,0.45)]" : "bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(56,189,248,0.35)]"}`}
             >
               {isLive ? "Stop" : "Go Live"}
             </button>
@@ -1514,7 +1542,9 @@ export default function PodcastStudioManager({ initialShows }: Props) {
             <button
               type="button"
               onClick={() => setIsLive((current) => !current)}
-              className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${isLive ? "bg-rose-500 text-white" : "bg-cyan-400 text-slate-950"}`}
+              disabled={!liveKitOnline}
+              title={liveKitOnline ? undefined : "Configure LiveKit to enable live broadcast."}
+              className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.14em] disabled:cursor-not-allowed disabled:opacity-50 ${isLive ? "bg-rose-500 text-white" : "bg-cyan-400 text-slate-950"}`}
             >
               {isLive ? "Stop" : "Go Live"}
             </button>

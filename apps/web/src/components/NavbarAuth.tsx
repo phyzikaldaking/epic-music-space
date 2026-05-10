@@ -34,6 +34,12 @@ export default function NavbarAuth() {
 
   return (
     <div className="flex items-center gap-3">
+      <Link
+        href="/studio"
+        className="hidden rounded-md studio-faceplate-dark px-3 py-1.5 font-display text-sm uppercase tracking-[0.14em] text-white/80 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 sm:inline-flex"
+      >
+        Studio
+      </Link>
       <div className="hidden md:flex items-center gap-2.5">
         <div className="studio-tube-bezel flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-tube-300">
           {initial}

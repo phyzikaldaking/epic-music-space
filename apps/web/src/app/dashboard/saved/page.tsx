@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { Metadata } from "next";
+import DashboardPageHeader from "@/components/dashboard/DashboardPageHeader";
 
 export const metadata: Metadata = {
   title: "Saved tracks",
@@ -35,23 +36,67 @@ export default async function SavedTracksPage() {
       })
     : [];
   const bySongId = new Map(songs.map((s) => [s.id, s]));
+  const activeSaved = songs.filter((song) => song.isActive).length;
+  const totalValue = songs.reduce((sum, song) => sum + Number(song.licensePrice), 0);
+  const averageValue = songs.length ? totalValue / songs.length : 0;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-extrabold">Saved tracks</h1>
-        <Link href="/marketplace" className="text-xs text-brand-300 hover:underline">
-          Browse marketplace →
-        </Link>
-      </div>
+      <DashboardPageHeader
+        eyebrow="Personal shelf"
+        title="Saved tracks"
+        description="Keep the songs you want to come back to in one place, with a clean path back to the marketplace when you're ready."
+        backHref="/dashboard"
+        stats={[
+          { label: "Saved", value: rows.length.toString(), tone: "brand" },
+          { label: "Active", value: activeSaved.toString(), tone: "emerald" },
+          { label: "Avg price", value: `$${averageValue.toFixed(0)}`, tone: "amber" },
+        ]}
+        actions={
+          <>
+            <Link
+              href="/marketplace"
+              className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+            >
+              Browse marketplace
+            </Link>
+            <Link
+              href="/dashboard"
+              className="rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white/75 transition hover:bg-white/8"
+            >
+              Back to dashboard
+            </Link>
+          </>
+        }
+        aside={
+          <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-300">
+              Quick reminder
+            </p>
+            <p className="mt-2 text-lg font-semibold text-white">
+              {rows.length > 0 ? "Your shortlist is ready" : "Start a shortlist"}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-white/55">
+              Saved tracks work best when they are easy to revisit. Keep this list lean, and use it to move from curiosity to checkout fast.
+            </p>
+          </div>
+        }
+      />
 
       {rows.length === 0 ? (
         <div className="rounded-2xl border border-white/8 bg-white/3 p-10 text-center">
           <p className="mb-2 text-2xl">♡</p>
-          <p className="text-sm text-white/55">
-            You haven&apos;t saved any tracks yet. Tap &ldquo;Save&rdquo; on any
-            track to keep it here for later.
+          <p className="mx-auto max-w-md text-sm text-white/55">
+            You haven&apos;t saved any tracks yet. Tap &ldquo;Save&rdquo; on any track to keep it here for later, then come back when you want to compare or buy.
           </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-3">
+            <Link href="/marketplace" className="rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-brand-600">
+              Browse marketplace
+            </Link>
+            <Link href="/feed" className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-semibold text-white/75 transition hover:bg-white/8">
+              Open feed
+            </Link>
+          </div>
         </div>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

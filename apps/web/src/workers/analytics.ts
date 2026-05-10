@@ -4,6 +4,11 @@ import { getRedis } from "../lib/redis";
 import { QUEUE_NAMES } from "../lib/queueNames";
 import type { AnalyticsJobData } from "../lib/queues";
 
+function hasValidPostHogApiKey() {
+  const apiKey = process.env.POSTHOG_API_KEY;
+  return Boolean(apiKey && apiKey.startsWith("phc_"));
+}
+
 const connection = getRedis();
 
 if (!connection) {
@@ -12,15 +17,18 @@ if (!connection) {
 }
 
 let posthog: PostHog | null = null;
-if (process.env.POSTHOG_API_KEY) {
-  posthog = new PostHog(process.env.POSTHOG_API_KEY, {
-    host: process.env.POSTHOG_HOST ?? "https://us.i.posthog.com",
-    flushAt: 20,
-    flushInterval: 10_000,
-  });
+if (hasValidPostHogApiKey()) {
+  const apiKey = process.env.POSTHOG_API_KEY;
+  if (apiKey && apiKey.startsWith("phc_")) {
+    posthog = new PostHog(apiKey, {
+      host: process.env.POSTHOG_HOST ?? "https://us.i.posthog.com",
+      flushAt: 20,
+      flushInterval: 10_000,
+    });
+  }
   console.info("[analytics-worker] PostHog sink active");
 } else {
-  console.warn("[analytics-worker] POSTHOG_API_KEY not set — logging to stdout only");
+  console.warn("[analytics-worker] POSTHOG_API_KEY is missing or invalid — logging to stdout only");
 }
 
 const worker = new Worker<AnalyticsJobData>(

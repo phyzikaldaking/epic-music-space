@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { sanitizeCallbackPath } from "@/lib/safeCallback";
 import SignInForm from "./SignInForm";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function SignInPage({
   searchParams,
 }: {

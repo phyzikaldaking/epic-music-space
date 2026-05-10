@@ -4,6 +4,7 @@ import Image from "next/image";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import AdActions from "./AdActions";
+import DashboardPageHeader from "@/components/dashboard/DashboardPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -26,28 +27,68 @@ export default async function AdsDashboardPage() {
   });
 
   const now = new Date();
+  const livePlacements = placements.filter((p) => p.isActive && p.startDate <= now && p.endDate >= now).length;
+  const pausedPlacements = placements.filter((p) => !p.isActive && p.endDate >= now).length;
+  const endedPlacements = placements.filter((p) => p.endDate < now).length;
+  const totalImpressions = placements.reduce((sum, p) => sum + p._count.impressions, 0);
+  const totalClicks = placements.reduce((sum, p) => sum + p._count.clicks, 0);
+  const overallCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
-      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="mb-1 text-xs font-bold uppercase tracking-widest text-brand-300">Ads</p>
-          <h1 className="text-3xl font-extrabold">My Placements</h1>
-          <p className="mt-1 text-sm text-white/55">
-            Track impressions and clicks. Pause or cancel a campaign at any time.
-          </p>
-        </div>
-        <Link
-          href="/ads"
-          className="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-600"
-        >
-          + New placement
-        </Link>
-      </div>
+      <DashboardPageHeader
+        eyebrow="Placement control"
+        title="My placements"
+        description="Track impressions, clicks, and flight time from one place so campaigns stay easy to read and easy to act on."
+        backHref="/dashboard"
+        stats={[
+          { label: "Live", value: livePlacements.toString(), tone: "emerald" },
+          { label: "Paused", value: pausedPlacements.toString(), tone: "amber" },
+          { label: "Ended", value: endedPlacements.toString(), tone: "neutral" },
+          { label: "CTR", value: `${overallCtr.toFixed(2)}%`, tone: "brand" },
+        ]}
+        actions={
+          <Link
+            href="/ads"
+            className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+          >
+            New placement
+          </Link>
+        }
+        aside={
+          <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-300">
+              Campaign snapshot
+            </p>
+            <p className="mt-2 text-lg font-semibold text-white">
+              {placements.length > 0 ? `${placements.length} placement${placements.length === 1 ? "" : "s"} on file` : "No placements yet"}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-white/55">
+              Keep the creative, timing, and placement state visible so you can pause or scale with confidence.
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/65">
+              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                <p className="text-white/38">Impressions</p>
+                <p className="mt-1 font-semibold tabular-nums">{totalImpressions.toLocaleString()}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                <p className="text-white/38">Clicks</p>
+                <p className="mt-1 font-semibold tabular-nums">{totalClicks.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        }
+      />
 
       {placements.length === 0 ? (
-        <div className="rounded-2xl border border-white/8 bg-white/3 px-5 py-8 text-center text-sm text-white/40">
-          No ad placements yet. <Link href="/ads" className="text-brand-300 hover:underline">Create your first →</Link>
+        <div className="rounded-2xl border border-white/8 bg-white/3 px-5 py-10 text-center text-sm text-white/40">
+          <p className="mb-2 text-lg font-semibold text-white/80">No ad placements yet</p>
+          <p className="mx-auto max-w-md">
+            Once you launch a placement, this page will show the live flight, total reach, clicks, and the part where the campaign is in its lifecycle.
+          </p>
+          <Link href="/ads" className="mt-5 inline-flex rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-brand-600">
+            Create your first placement
+          </Link>
         </div>
       ) : (
         <div className="space-y-4">

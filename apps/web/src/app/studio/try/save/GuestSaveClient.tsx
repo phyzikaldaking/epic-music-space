@@ -89,6 +89,21 @@ export default function GuestSaveClient() {
     );
   }
 
+  if (hasMix === null) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <div className="text-5xl">🎛️</div>
+        <h1 className="mt-4 text-2xl font-extrabold">Checking your mix…</h1>
+        <p className="mt-2 text-sm text-white/60">
+          Confirming there&apos;s a saved session in this browser.
+        </p>
+        <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full w-2/3 animate-pulse rounded-full bg-brand-500/60" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-md px-4 py-16">
       <div className="pointer-events-none fixed top-0 left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full bg-brand-500/10 blur-[130px]" />
@@ -134,12 +149,14 @@ export default function GuestSaveClient() {
           <form onSubmit={handleSubmit} className="mt-8 space-y-3">
             <input
               type="email"
+              name="email"
               autoComplete="email"
               inputMode="email"
               required
               autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
               placeholder="you@example.com"
               className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-4 text-base text-white placeholder-white/30 outline-none transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500/40"
             />
@@ -150,7 +167,7 @@ export default function GuestSaveClient() {
             )}
             <button
               type="submit"
-              disabled={submitting || !email}
+              disabled={submitting || email.trim().length === 0}
               className="w-full rounded-xl bg-gradient-to-r from-brand-500 to-accent-500 py-4 text-base font-extrabold text-white shadow-lg shadow-brand-500/30 transition hover:from-brand-400 hover:to-accent-400 disabled:opacity-50"
             >
               {submitting ? "Sending link…" : "Send me the link →"}

@@ -9,6 +9,10 @@ const srcDir = path.resolve(__dirname, "src");
 // Checkout / OAuth popups need same-origin-allow-popups (not same-origin) to
 // open and post back. The Permissions-Policy denies every powerful API we
 // don't use and self-allows camera/mic for creator recording flows.
+// X-Frame-Options is split out (frameOptionsHeader) so the headers() block
+// can omit it for /track/[id]/embed and /versus/[id]/embed routes that
+// are designed to be iframed by third parties.
+const frameOptionsHeader = { key: "X-Frame-Options", value: "DENY" };
 const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "off" },
   { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
@@ -16,7 +20,6 @@ const securityHeaders = [
   { key: "Cross-Origin-Resource-Policy", value: "same-site" },
   { key: "Origin-Agent-Cluster", value: "?1" },
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",
@@ -122,6 +125,14 @@ const nextConfig = {
       {
         source: "/(.*)",
         headers: securityHeaders,
+      },
+      // X-Frame-Options DENY for everything EXCEPT public embed routes
+      // (track player, versus battle widget). Embed paths are explicitly
+      // designed to be iframed by third-party sites; the rest of the
+      // app is clickjacking-protected as before.
+      {
+        source: "/((?!.*\\/embed(?:\\/|$)).*)",
+        headers: [frameOptionsHeader],
       },
       // Auth pages: no-cache + revalidate every request (prevent stale sign-in)
       {

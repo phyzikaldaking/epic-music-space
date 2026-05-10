@@ -18,15 +18,18 @@ fi
 
 start=$(date +%s)
 
-echo "[preflight] 1/3  Lint (apps/web)"
+echo "[preflight] 1/4  Secret scan (tracked files)"
+bash scripts/ops/check-tracked-secrets.sh
+
+echo "[preflight] 2/4  Lint (apps/web)"
 npm --workspace apps/web run lint --silent
 
-echo "[preflight] 2/3  TypeScript (apps/web)"
+echo "[preflight] 3/4  TypeScript (apps/web)"
 # Skip Next's auto-generated .next/types so we don't need a .next dir.
 npm --workspace apps/web exec -- tsc --noEmit -p tsconfig.json --excludeFiles ".next/types/**" 2>/dev/null \
   || npm --workspace apps/web exec -- tsc --noEmit -p tsconfig.json
 
-echo "[preflight] 3/3  Vitest (focused suites)"
+echo "[preflight] 4/4  Vitest (focused suites)"
 npm --workspace apps/web exec -- vitest run \
   src/lib/__tests__/requiredEnv.test.ts \
   src/lib/__tests__/studioNewMode.test.ts \

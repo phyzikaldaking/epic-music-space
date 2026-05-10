@@ -1,4 +1,8 @@
-export function buildContentSecurityPolicy(nonce: string, env = process.env.NODE_ENV) {
+export function buildContentSecurityPolicy(
+  nonce: string,
+  env = process.env.NODE_ENV,
+  options: { allowEmbed?: boolean } = {},
+) {
   // 'strict-dynamic' lets nonced root scripts transitively load further
   // chunks (Next.js's RSC flight payloads, lazy chunks, etc.) without
   // requiring a nonce on every inline script. Without this, the browser
@@ -26,9 +30,12 @@ export function buildContentSecurityPolicy(nonce: string, env = process.env.NODE
     // endpoint — note: NO `.i.` infix for flags). Allowing *.posthog.com
     // covers all three plus future regional endpoints (eu.posthog.com,
     // eu.i.posthog.com) without another CSP edit when we expand.
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://api.stripe.com https://checkout.stripe.com https://stream.mux.com https://*.mux.com https://*.litix.io https://*.posthog.com",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://api.stripe.com https://checkout.stripe.com https://stream.mux.com https://*.mux.com https://*.litix.io https://*.posthog.com https://*.livekit.cloud wss://*.livekit.cloud",
     "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com https://*.mux.com https://www.youtube.com https://player.vimeo.com https://w.soundcloud.com https://open.spotify.com",
-    "frame-ancestors 'none'",
+    // Embed routes (e.g. /track/[id]/embed) are designed to be iframed by
+    // third parties — blogs, Discord, Notion. Everything else stays
+    // 'none' to block clickjacking on the main app surface.
+    options.allowEmbed ? "frame-ancestors *" : "frame-ancestors 'none'",
     "base-uri 'self'",
     "object-src 'none'",
     "font-src 'self' https://fonts.gstatic.com",

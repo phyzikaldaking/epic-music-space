@@ -12,6 +12,7 @@ import {
   phoneLoginIdentifier,
   sendPhoneLoginCode,
 } from "@/lib/phoneAuth";
+import { readJsonBodyLimited } from "@/lib/apiHardening";
 
 const requestSchema = z.object({
   phone: z.string().min(8).max(32),
@@ -36,8 +37,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = (await req.json().catch(() => ({}))) as unknown;
-  const parsed = requestSchema.safeParse(body);
+  const bodyResult = await readJsonBodyLimited<Record<string, unknown>>(req, {
+    maxBytes: 12 * 1024,
+    invalidMessage: "Invalid JSON payload.",
+  });
+  if (!bodyResult.ok) return bodyResult.response;
+
+  const parsed = requestSchema.safeParse(bodyResult.value);
 
   if (!parsed.success) {
     return NextResponse.json({ error: "Enter a valid phone number." }, { status: 400 });

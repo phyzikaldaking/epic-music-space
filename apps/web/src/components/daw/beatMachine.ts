@@ -94,6 +94,139 @@ export function trapDemoPattern(): BeatPattern {
   return p;
 }
 
+/** Mulberry32 — small deterministic PRNG so the same seed reproduces
+ *  the same pattern. Lets the UI label suggestions ("Suggestion #3") and
+ *  keeps tests reproducible. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Per-kit template: the rhythmic "feel" we want to land on before
+ *  variation. Each entry lists the canonical step indices for that lane. */
+type LaneTemplate = Partial<Record<DrumKind, number[]>>;
+
+const KIT_TEMPLATES: Record<DrumKitId, LaneTemplate> = {
+  trap: {
+    kick: [0, 6, 10],
+    snare: [4, 12],
+    clap: [4, 12],
+    hat: [0, 2, 4, 6, 8, 10, 12, 14],
+    openHat: [7],
+    bass808: [0, 6, 10],
+  },
+  drill: {
+    // Sliding 808 + sparse kick, snare on 4 only, off-grid hats
+    kick: [0, 7],
+    snare: [4, 12],
+    clap: [12],
+    hat: [0, 2, 3, 4, 6, 8, 10, 11, 12, 14],
+    openHat: [11],
+    bass808: [0, 7, 10],
+  },
+  afro: {
+    // Driving polyrhythm — kick on 1 + 11, perc fills the spaces
+    kick: [0, 6, 10],
+    snare: [4, 12],
+    clap: [4, 12],
+    hat: [0, 2, 4, 6, 8, 10, 12, 14],
+    perc: [3, 7, 11, 15],
+    openHat: [14],
+  },
+  hyperpop: {
+    // Fast, dense, lots of openHat splashes
+    kick: [0, 4, 8, 12],
+    snare: [4, 12],
+    clap: [2, 6, 10, 14],
+    hat: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    openHat: [3, 11],
+    crash: [0],
+  },
+  boomBap: {
+    // Classic 90s — kick on 1 and the "and" of 3, snare on 2 + 4
+    kick: [0, 10],
+    snare: [4, 12],
+    hat: [0, 2, 4, 6, 8, 10, 12, 14],
+    perc: [6, 14],
+  },
+  lofi: {
+    // Laid-back, lots of space, slight swing comes from the engine
+    kick: [0, 8],
+    snare: [4, 12],
+    hat: [2, 6, 10, 14],
+    perc: [11],
+  },
+  acoustic: {
+    // Standard rock — four-on-the-floor kick, hat eighths
+    kick: [0, 4, 8, 12],
+    snare: [4, 12],
+    hat: [0, 2, 4, 6, 8, 10, 12, 14],
+    crash: [0],
+  },
+};
+
+/** Density target by tempo. Faster songs get sparser hits per lane so
+ *  they don't feel cluttered; slower songs get denser. */
+function densityForBpm(bpm: number): number {
+  if (bpm >= 160) return 0.7;
+  if (bpm >= 130) return 0.85;
+  if (bpm >= 100) return 1.0;
+  if (bpm >= 80) return 1.1;
+  return 1.2;
+}
+
+/** Generate a kit-aware drum pattern. Takes the canonical template,
+ *  applies a small amount of pseudo-random variation (drop a step,
+ *  add a ghost note, shift a hat) so repeated clicks feel fresh
+ *  without leaving the genre. */
+export function suggestPattern(kit: DrumKitId, bpm: number, seed?: number): BeatPattern {
+  const rng = mulberry32(seed ?? Math.floor(Math.random() * 2 ** 31));
+  const density = densityForBpm(bpm);
+  const template = KIT_TEMPLATES[kit] ?? KIT_TEMPLATES.acoustic;
+  const p = emptyPattern();
+
+  for (const lane of DRUM_LANES) {
+    const baseSteps = template[lane];
+    if (!baseSteps) continue;
+
+    // Decide how many template hits survive for this lane.
+    const keepRatio = Math.min(1, density);
+    for (const step of baseSteps) {
+      // Always keep "structural" hits: kick on 1, snare on 4 + 12,
+      // clap on 4 + 12. These define the genre, dropping them breaks it.
+      const isStructural =
+        (lane === "kick" && step === 0) ||
+        ((lane === "snare" || lane === "clap") && (step === 4 || step === 12));
+      if (isStructural || rng() < keepRatio) {
+        p[lane][step] = true;
+      }
+    }
+
+    // Add ghost notes on hats at low probability to add motion.
+    if (lane === "hat" && rng() < 0.4) {
+      const ghostStep = Math.floor(rng() * 16);
+      if (ghostStep !== 4 && ghostStep !== 12) p.hat[ghostStep] = true;
+    }
+
+    // Sparingly: a single perc accent on a non-template step.
+    if (lane === "perc" && rng() < 0.3) {
+      const candidates = [3, 7, 11, 15].filter((s) => !p.perc[s]);
+      if (candidates.length > 0) {
+        const pick = candidates[Math.floor(rng() * candidates.length)];
+        p.perc[pick] = true;
+      }
+    }
+  }
+
+  return p;
+}
+
 export type DrumKitId =
   | "trap"
   | "drill"

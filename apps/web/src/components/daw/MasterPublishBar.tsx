@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface Props {
   limiterOn: boolean;
@@ -13,20 +13,39 @@ interface Props {
   onToggleLimiter: () => void;
   onExport: () => Promise<Blob>;
   /** Hands the rendered WAV to the upload pipeline. Returns the new
-   *  song ID or throws. */
-  onPublish: (wav: Blob) => Promise<{ ok: boolean; message?: string }>;
+   *  song ID or throws. The optional `coverArtDataUrl` is the user's
+   *  pick from the AI cover-art generator (#5) — caller can persist it
+   *  alongside the audio. */
+  onPublish: (
+    wav: Blob,
+    opts?: { coverArtDataUrl?: string },
+  ) => Promise<{ ok: boolean; message?: string }>;
   /** Bounce → upload → AI master (matchering) → load mastered as a
    *  new "Master (AI)" track. Provided by DawWorkspace.aiMasterMix. */
   onAiMaster?: (wav: Blob) => Promise<{ ok: boolean; message?: string }>;
+  /** Render the current session and POST it to /api/guest-share so the
+   *  user gets a public preview link they can copy and text to a friend.
+   *  Anonymous, 7-day TTL — meant for "play this for someone" not
+   *  "publish for licensing." */
+  onSharePreview?: (wav: Blob) => Promise<{ ok: boolean; shareUrl?: string; message?: string }>;
+  /** When set, the publish bar shows a "Public share" toggle that flips
+   *  the StudioProject row's isPublic flag (#9). Null when no project
+   *  has been saved yet — caller hides the row. */
+  shareLink?: {
+    projectId: string;
+    isPublic: boolean;
+    onToggle: (next: boolean) => Promise<boolean>;
+  };
 }
 
-type Phase = "idle" | "rendering" | "uploading" | "mastering" | "done" | "error";
+type Phase = "idle" | "rendering" | "uploading" | "mastering" | "sharing" | "done" | "error";
 
 export default function MasterPublishBar({
   limiterOn,
   canExport,
   emptyReason,
   loudnessPreset,
+  shareLink,
   truePeakTarget,
   onSetLoudnessPreset,
   onSetTruePeakTarget,
@@ -34,10 +53,26 @@ export default function MasterPublishBar({
   onExport,
   onPublish,
   onAiMaster,
+  onSharePreview,
 }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string>("");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  // Pre-publish preview: hold the rendered Blob + a temporary URL while
+  // the user listens. Confirming in the modal commits the publish.
+  const [pendingPublish, setPendingPublish] = useState<{
+    blob: Blob;
+    url: string;
+  } | null>(null);
+  // AI cover art (#5). Three base64 candidates streamed back from the
+  // /api/ai/cover-art endpoint after the user clicks "Generate covers".
+  // Selection is staged here and passed to onPublish once the user
+  // commits. Lives inside the publish modal lifecycle.
+  const [coverArtOptions, setCoverArtOptions] = useState<string[] | null>(null);
+  const [coverArtPick, setCoverArtPick] = useState<number | null>(null);
+  const [coverArtBusy, setCoverArtBusy] = useState(false);
+  const [coverArtError, setCoverArtError] = useState<string | null>(null);
 
   async function renderAndDownload() {
     if (!canExport) {
@@ -88,6 +123,41 @@ export default function MasterPublishBar({
     }
   }
 
+  async function renderAndShare() {
+    if (!onSharePreview) return;
+    if (!canExport) {
+      setPhase("error");
+      setMessage(emptyReason ?? "Record audio or enable the beat machine before sharing.");
+      return;
+    }
+    setPhase("rendering");
+    setMessage("Rendering preview…");
+    try {
+      const blob = await onExport();
+      setPhase("sharing");
+      setMessage("Uploading preview to a temporary public link…");
+      const result = await onSharePreview(blob);
+      if (result.ok && result.shareUrl) {
+        setShareUrl(result.shareUrl);
+        setPhase("done");
+        // Best-effort clipboard copy. If it fails (HTTP, focus, perms),
+        // the URL is still rendered as a clickable link below the bar.
+        try {
+          await navigator.clipboard.writeText(result.shareUrl);
+          setMessage(`Copied to clipboard. Link expires in 7 days.`);
+        } catch {
+          setMessage("Link ready. Click to copy.");
+        }
+      } else {
+        setPhase("error");
+        setMessage(result.message ?? "Couldn't create share link.");
+      }
+    } catch (err) {
+      setPhase("error");
+      setMessage(err instanceof Error ? err.message : "Share failed.");
+    }
+  }
+
   async function renderAndPublish() {
     if (!canExport) {
       setPhase("error");
@@ -95,12 +165,36 @@ export default function MasterPublishBar({
       return;
     }
     setPhase("rendering");
-    setMessage("Rendering mix…");
+    setMessage("Rendering mix for preview…");
     try {
       const blob = await onExport();
-      setPhase("uploading");
-      setMessage("Uploading to your catalog…");
-      const result = await onPublish(blob);
+      const url = URL.createObjectURL(blob);
+      // Hand off to the preview modal. The modal calls confirmPublish on
+      // approval; cancellation revokes the URL and resets state.
+      setPendingPublish({ blob, url });
+      setPhase("idle");
+      setMessage("Preview your render before publishing.");
+    } catch (err) {
+      setPhase("error");
+      setMessage(err instanceof Error ? err.message : "Render failed.");
+    }
+  }
+
+  async function confirmPublish() {
+    if (!pendingPublish) return;
+    const { blob, url } = pendingPublish;
+    const chosenCover =
+      coverArtPick !== null && coverArtOptions
+        ? coverArtOptions[coverArtPick]
+        : undefined;
+    setPendingPublish(null);
+    setCoverArtOptions(null);
+    setCoverArtPick(null);
+    setPhase("uploading");
+    setMessage("Uploading to your catalog…");
+    try {
+      const result = await onPublish(blob, { coverArtDataUrl: chosenCover });
+      URL.revokeObjectURL(url);
       if (result.ok) {
         setPhase("done");
         setMessage(result.message ?? "Published. Check your studio profile.");
@@ -111,6 +205,48 @@ export default function MasterPublishBar({
     } catch (err) {
       setPhase("error");
       setMessage(err instanceof Error ? err.message : "Publish failed.");
+    }
+  }
+
+  function cancelPreview() {
+    if (pendingPublish) URL.revokeObjectURL(pendingPublish.url);
+    setPendingPublish(null);
+    setCoverArtOptions(null);
+    setCoverArtPick(null);
+    setCoverArtError(null);
+    setPhase("idle");
+    setMessage("");
+  }
+
+  async function generateCoverArt(trackName: string) {
+    if (coverArtBusy) return;
+    setCoverArtBusy(true);
+    setCoverArtError(null);
+    try {
+      const res = await fetch("/api/ai/cover-art", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackName, count: 3 }),
+      });
+      if (res.status === 401) {
+        setCoverArtError("Sign in to generate cover art.");
+        return;
+      }
+      if (res.status === 429) {
+        setCoverArtError("Slow down — wait a minute and try again.");
+        return;
+      }
+      const data = (await res.json().catch(() => ({}))) as { images?: string[]; error?: string };
+      if (!res.ok) {
+        setCoverArtError(data.error ?? "Couldn't generate covers.");
+        return;
+      }
+      setCoverArtOptions(data.images ?? []);
+      setCoverArtPick(0);
+    } catch {
+      setCoverArtError("Network error.");
+    } finally {
+      setCoverArtBusy(false);
     }
   }
 
@@ -198,15 +334,73 @@ export default function MasterPublishBar({
         </button>
       )}
 
+      {onSharePreview && (
+        <button
+          type="button"
+          onClick={renderAndShare}
+          disabled={
+            !canExport ||
+            phase === "rendering" ||
+            phase === "uploading" ||
+            phase === "mastering" ||
+            phase === "sharing"
+          }
+          className="rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-100 hover:bg-cyan-400/20 disabled:opacity-50 transition"
+          title={canExport ? "Render and create a 7-day public preview link" : emptyReason}
+        >
+          {phase === "sharing" ? "Sharing…" : "Share preview"}
+        </button>
+      )}
+
       <button
         type="button"
         onClick={renderAndPublish}
-        disabled={!canExport || phase === "rendering" || phase === "uploading" || phase === "mastering"}
+        disabled={!canExport || phase === "rendering" || phase === "uploading" || phase === "mastering" || phase === "sharing"}
         className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-extrabold text-white hover:bg-brand-600 disabled:opacity-50 transition"
         title={canExport ? "Render and upload this session" : emptyReason}
       >
         {phase === "rendering" ? "Rendering…" : phase === "uploading" ? "Uploading…" : "Publish to catalog"}
       </button>
+
+      {shareLink ? <ShareLinkRow shareLink={shareLink} /> : null}
+
+      {shareUrl && phase !== "rendering" && phase !== "uploading" && phase !== "sharing" && (
+        <div className="w-full rounded-lg border border-cyan-400/30 bg-cyan-400/5 px-3 py-2 text-xs">
+          <p className="mb-1 font-bold uppercase tracking-widest text-cyan-200/85">
+            Preview link · expires in 7 days
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              readOnly
+              value={shareUrl}
+              onFocus={(e) => e.currentTarget.select()}
+              aria-label="Public preview share link"
+              className="min-w-0 flex-1 rounded border border-white/15 bg-black/40 px-2 py-1 font-mono text-[11px] text-cyan-100"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(shareUrl).then(
+                  () => setMessage("Copied to clipboard."),
+                  () => setMessage("Press ⌘C / Ctrl+C to copy."),
+                );
+              }}
+              className="rounded border border-cyan-400/40 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-cyan-100 hover:bg-cyan-400/15"
+            >
+              Copy
+            </button>
+            <a
+              href={shareUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded border border-white/15 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-white/80 hover:bg-white/10"
+            >
+              Open
+            </a>
+          </div>
+        </div>
+      )}
 
       {message && (
         <p
@@ -217,6 +411,261 @@ export default function MasterPublishBar({
           {message}
         </p>
       )}
+
+      {pendingPublish && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Render preview"
+          className="fixed inset-0 z-[170] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
+        >
+          <div className="w-[min(560px,100%)] rounded-2xl border border-emerald-400/35 bg-[#0a0a10]/95 p-6 shadow-2xl shadow-black/50">
+            <p className="text-[10px] font-black uppercase tracking-[0.32em] text-emerald-300/85">
+              Last check
+            </p>
+            <h2 className="mt-1 font-display text-xl uppercase tracking-wide text-white">
+              Preview before publishing
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/70">
+              Listen back to the rendered mix. Catch dead air at the start,
+              clipping, or accidentally muted tracks before this goes public.
+            </p>
+
+            <audio
+              src={pendingPublish.url}
+              controls
+              autoPlay
+              className="mt-4 w-full"
+            >
+              <track kind="captions" />
+            </audio>
+
+            <CoverArtPicker
+              busy={coverArtBusy}
+              error={coverArtError}
+              options={coverArtOptions}
+              pick={coverArtPick}
+              onPick={setCoverArtPick}
+              onGenerate={() => generateCoverArt("New track")}
+            />
+
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelPreview}
+                className="rounded-md border border-white/15 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/65 hover:bg-white/10 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  cancelPreview();
+                  void renderAndPublish();
+                }}
+                className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-amber-200 hover:bg-amber-400/20 transition"
+              >
+                Re-render
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void confirmPublish();
+                }}
+                className="rounded-md bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-wider text-black transition hover:bg-emerald-400"
+              >
+                Sounds good — Publish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+/** AI-generated cover-art picker shown in the publish preview modal (#5).
+ *  Three candidates render as 1024×1024 thumbnails; the chosen one (or
+ *  none) is passed to onPublish so the parent can persist it alongside
+ *  the audio. Generation is opt-in via the "Generate covers" button so
+ *  every publish doesn't burn $0.12. */
+function CoverArtPicker({
+  busy,
+  error,
+  options,
+  pick,
+  onPick,
+  onGenerate,
+}: {
+  busy: boolean;
+  error: string | null;
+  options: string[] | null;
+  pick: number | null;
+  onPick: (idx: number | null) => void;
+  onGenerate: () => void;
+}) {
+  return (
+    <div className="mt-4 rounded-xl border border-tube-300/30 bg-tube-300/[0.04] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.32em] text-tube-300">
+            Cover art · AI
+          </p>
+          <p className="mt-0.5 text-[11px] text-white/55">
+            Optional. Generates 3 candidates you can pick from.
+          </p>
+        </div>
+        {!options && (
+          <button
+            type="button"
+            onClick={onGenerate}
+            disabled={busy}
+            className="rounded-md border border-tube-300/40 bg-tube-300/15 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-tube-100 hover:bg-tube-300/25 transition disabled:opacity-50"
+          >
+            {busy ? "Generating…" : "Generate covers"}
+          </button>
+        )}
+        {options && (
+          <button
+            type="button"
+            onClick={() => onPick(null)}
+            className="rounded-md border border-white/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white/55 hover:bg-white/10 transition"
+          >
+            Skip cover
+          </button>
+        )}
+      </div>
+      {error && <p className="mt-2 text-[11px] text-rose-300">{error}</p>}
+      {options && options.length > 0 && (
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {options.map((src, idx) => {
+            const selected = pick === idx;
+            const className = `overflow-hidden rounded-lg border-2 transition ${
+              selected
+                ? "border-tube-300 ring-2 ring-tube-300/60"
+                : "border-white/10 hover:border-tube-300/50"
+            }`;
+            const img = (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={src}
+                alt={`Cover option ${idx + 1}`}
+                className="aspect-square w-full object-cover"
+              />
+            );
+            return selected ? (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onPick(idx)}
+                aria-pressed="true"
+                className={className}
+              >
+                {img}
+              </button>
+            ) : (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onPick(idx)}
+                aria-pressed="false"
+                className={className}
+              >
+                {img}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "Public share link" toggle (#9). Flips the StudioProject row's
+ *  isPublic flag. When on, the listen page at /studio/listen/[id] is
+ *  reachable without auth — like SoundCloud's unlisted-link mode. */
+function ShareLinkRow({
+  shareLink,
+}: {
+  shareLink: NonNullable<Props["shareLink"]>;
+}) {
+  const [isPublic, setIsPublic] = useState(shareLink.isPublic);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setIsPublic(shareLink.isPublic);
+  }, [shareLink.isPublic]);
+
+  const url =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/studio/listen/${shareLink.projectId}`
+      : `/studio/listen/${shareLink.projectId}`;
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      const next = !isPublic;
+      const ok = await shareLink.onToggle(next);
+      if (ok) setIsPublic(next);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore — clipboard API may be unavailable in some contexts
+    }
+  }
+
+  const toggleClass = `rounded-md px-2.5 py-1 text-[11px] font-black uppercase tracking-widest transition disabled:opacity-50 ${
+    isPublic
+      ? "bg-tube-300/30 text-tube-100"
+      : "border border-tube-300/35 text-tube-200 hover:bg-tube-300/15"
+  }`;
+  const toggleLabel = busy ? "…" : isPublic ? "✓ Public link on" : "Enable share link";
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-tube-300/30 bg-tube-300/5 px-3 py-2 text-xs">
+      {isPublic ? (
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={busy}
+          aria-pressed="true"
+          className={toggleClass}
+        >
+          {toggleLabel}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={busy}
+          aria-pressed="false"
+          className={toggleClass}
+        >
+          {toggleLabel}
+        </button>
+      )}
+      {isPublic && (
+        <>
+          <code className="min-w-0 flex-1 truncate rounded bg-black/40 px-2 py-1 font-mono text-[11px] text-tube-200">
+            {url}
+          </code>
+          <button
+            type="button"
+            onClick={copy}
+            className="rounded-md border border-white/15 px-2 py-1 text-[11px] font-bold text-white/70 hover:bg-white/10 transition"
+          >
+            {copied ? "✓ Copied" : "Copy"}
+          </button>
+        </>
+      )}
+    </div>
   );
 }

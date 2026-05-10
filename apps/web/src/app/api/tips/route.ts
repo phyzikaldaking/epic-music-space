@@ -7,6 +7,7 @@ import { moderateLimiter } from "@/lib/rateLimit";
 import { z } from "zod";
 import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
 import { buildIdempotencyKey } from "@/lib/idempotency";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,10 @@ const tipSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??

@@ -7,8 +7,30 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { appendCallbackParam, sanitizeCallbackPath } from "@/lib/safeCallback";
 import { isCapacitorWebView } from "@/lib/runtime";
 import TurnstileWidget from "@/components/TurnstileWidget";
+import { postFunnelEvent } from "@/lib/funnelClient";
+import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+
+function authTelemetryProps(callbackUrl: string) {
+  if (typeof window === "undefined") return { callbackUrl };
+  return {
+    callbackUrl,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    standalone: window.matchMedia("(display-mode: standalone)").matches,
+    webView: isCapacitorWebView(),
+  };
+}
+
+function destinationCopy(callbackUrl: string) {
+  if (callbackUrl.startsWith("/studio")) return "After sign-in, we will take you back to the studio.";
+  if (callbackUrl.startsWith("/dashboard")) return "After sign-in, we will take you to your dashboard.";
+  if (callbackUrl.startsWith("/marketplace") || callbackUrl.startsWith("/track")) return "After sign-in, we will return you to the marketplace flow.";
+  if (callbackUrl.startsWith("/feed")) return "After sign-in, we will open your music feed.";
+  return "After sign-in, we will continue to the page you requested.";
+}
 
 function SignInContent({
   googleEnabled,
@@ -67,13 +89,34 @@ function SignInContent({
     ? oauthErrorCopy(oauthError)
     : "";
 
+  useEffect(() => {
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.authSigninView,
+      source: "web_signin",
+      properties: authTelemetryProps(callbackUrl),
+    });
+  }, [callbackUrl]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.authSigninAttempt,
+      source: "web_signin",
+      properties: {
+        ...authTelemetryProps(callbackUrl),
+        method: mode,
+      },
+    });
 
     if (turnstileEnabled && !turnstileToken) {
       setError("Please complete the bot-check below before signing in.");
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.authSigninFailure,
+        source: "web_signin",
+        properties: { method: mode, reason: "turnstile_missing", ...authTelemetryProps(callbackUrl) },
+      });
       setLoading(false);
       return;
     }
@@ -96,6 +139,11 @@ function SignInContent({
             });
     } catch {
       setError("Sign-in is taking longer than expected. Check your connection and try again.");
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.authSigninFailure,
+        source: "web_signin",
+        properties: { method: mode, reason: "request_exception", ...authTelemetryProps(callbackUrl) },
+      });
       setLoading(false);
       return;
     }
@@ -149,6 +197,11 @@ function SignInContent({
       } else {
         setError("Email or password didn't match. Try again, or use Forgot password.");
       }
+      void postFunnelEvent({
+        event: FUNNEL_EVENTS.authSigninFailure,
+        source: "web_signin",
+        properties: { method: mode, reason: authCode || "unknown", ...authTelemetryProps(callbackUrl) },
+      });
       setLoading(false);
     } else {
       // Confirm the session cookie actually committed before we navigate.
@@ -187,16 +240,11 @@ function SignInContent({
       }
 
       if (!sessionConfirmed) {
-        // Cookie didn't show up. Most common cause: third-party-cookie
-        // blockers + cross-origin Set-Cookie. Surface a clear, actionable
-        // error instead of bouncing the user to a signed-out landing page.
-        setError(
-          "Signed in, but your browser didn't accept the session cookie. " +
-            "Disable strict tracking protection for this site (or try a " +
-            "different browser) and sign in again.",
-        );
-        setLoading(false);
-        return;
+        // Fail open. In the wild, some browsers race the session probe even
+        // when auth succeeded; blocking navigation here can trap valid users
+        // on the sign-in form. We still hard-navigate so server pages can
+        // read the freshest cookie state.
+        console.warn("Session probe did not confirm cookie; continuing with hard navigation.");
       }
 
       // Hard-navigate so every server component on the next page renders
@@ -206,12 +254,18 @@ function SignInContent({
       // Add a 50ms microtask delay to ensure Set-Cookie is flushed in
       // browsers that batch microtasks before the request is sent.
       if (typeof window !== "undefined") {
+        void postFunnelEvent({
+          event: FUNNEL_EVENTS.authSigninSuccess,
+          source: "web_signin",
+          properties: { method: mode, sessionConfirmed, ...authTelemetryProps(callbackUrl) },
+        });
         setTimeout(() => {
           window.location.assign(callbackUrl);
         }, 50);
       } else {
         router.push(callbackUrl);
       }
+      return;
     }
   }
 
@@ -247,6 +301,11 @@ function SignInContent({
   async function handleGoogleSignIn() {
     setOauthLoading("google");
     setError("");
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.authOAuthStarted,
+      source: "web_signin",
+      properties: { provider: "google", ...authTelemetryProps(callbackUrl) },
+    });
 
     try {
       // Google sign-in uses a top-level redirect here, not a popup. The real
@@ -295,6 +354,11 @@ function SignInContent({
     }
 
     setMagicLinkSending(true);
+    void postFunnelEvent({
+      event: FUNNEL_EVENTS.authMagicLinkRequested,
+      source: "web_signin",
+      properties: { ...authTelemetryProps(callbackUrl), hasEmail: Boolean(email) },
+    });
     try {
       const res = await fetch("/api/auth/magic-link", {
         method: "POST",
@@ -374,6 +438,24 @@ function SignInContent({
           <p className="mb-6 mt-2 text-sm text-white/55">
             Welcome back to Epic Music Space
           </p>
+          <div className="mb-5 rounded-lg border border-tube-300/20 bg-tube-300/8 px-3 py-2">
+            <p className="studio-label text-tube-300">Destination</p>
+            <p className="mt-1 text-xs leading-5 text-white/60">
+              {destinationCopy(callbackUrl)}
+            </p>
+          </div>
+
+          <div className="mb-5 grid gap-2 sm:grid-cols-3">
+            {[
+              "Saved session",
+              "Email link fallback",
+              phoneEnabled ? "Phone code option" : "Fast browser login",
+            ].map((item) => (
+              <div key={item} className="studio-faceplate-dark rounded-lg px-3 py-2 text-center">
+                <p className="studio-label text-white/60">{item}</p>
+              </div>
+            ))}
+          </div>
 
           {accountCreated && (
             <div className="mb-4 rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">
@@ -658,6 +740,31 @@ function SignInContent({
               Weekly payout schedule
             </div>
           </div>
+          <div className="mt-5 rounded-xl border border-white/10 bg-black/25 p-4">
+            <p className="studio-label text-white/55">Account Recovery</p>
+            <div className="mt-3 grid gap-2 text-sm">
+              <Link
+                href={appendCallbackParam("/auth/forgot-password", callbackUrl)}
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white/70 hover:bg-white/10"
+              >
+                1. Reset password with email
+              </Link>
+              <button
+                type="button"
+                onClick={handleSendMagicLink}
+                disabled={magicLinkSending || !email}
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-white/70 hover:bg-white/10 disabled:opacity-50"
+              >
+                2. Send one-time sign-in link
+              </button>
+              <Link
+                href="/support"
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white/70 hover:bg-white/10"
+              >
+                3. Contact support for identity review
+              </Link>
+            </div>
+          </div>
           </div>
         </div>
       </div>
@@ -733,21 +840,6 @@ function SignInFallback() {
           <div className="h-10 w-full rounded-xl bg-brand-500/30" />
         </div>
         <p className="text-center text-xs text-white/40">Loading sign-in…</p>
-      </div>
-    </div>
-  );
-  return (
-    <div className="flex min-h-[80vh] items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="glass rounded-3xl p-8">
-          <h1 className="mb-2 text-2xl font-extrabold">Sign in</h1>
-          <p className="mb-6 text-sm text-white/50">Welcome back to Epic Music Space</p>
-          <div className="space-y-4">
-            <div className="h-11 w-full animate-pulse rounded-xl bg-white/6" />
-            <div className="h-11 w-full animate-pulse rounded-xl bg-white/6" />
-            <div className="h-11 w-full animate-pulse rounded-xl bg-white/8" />
-          </div>
-        </div>
       </div>
     </div>
   );

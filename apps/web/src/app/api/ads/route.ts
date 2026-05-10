@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getSiteUrl } from "@/lib/site";
 import { validateTrustSafetyInput } from "@/lib/trustSafety";
 import { computeRiskScore, riskBlockResponse } from "@/lib/riskScore";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 const createAdSchema = z.object({
   location: z.enum([
@@ -43,6 +44,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

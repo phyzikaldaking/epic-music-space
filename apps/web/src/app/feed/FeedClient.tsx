@@ -73,6 +73,7 @@ export default function FeedClient({
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissedOnboarding, setDismissedOnboarding] = useState(false);
+  const [showAllRendered, setShowAllRendered] = useState(false);
 
   const showListenerOnboarding =
     onboarding === "listener" && Boolean(viewerId) && !dismissedOnboarding;
@@ -123,6 +124,12 @@ export default function FeedClient({
   function handleDeleted(id: string) {
     setPosts((prev) => prev.filter((p) => p.id !== id));
   }
+
+  // Mobile guard: avoid rendering huge lists in one go (React + media embeds
+  // can choke low-memory phones). Still lets power users expand.
+  const renderCap = 60;
+  const visiblePosts = showAllRendered ? posts : posts.slice(0, renderCap);
+  const isCapped = posts.length > renderCap && !showAllRendered;
 
   return (
     <div className="space-y-5">
@@ -206,6 +213,23 @@ export default function FeedClient({
         </p>
       )}
 
+      {loading && posts.length === 0 && !error && (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="rounded-2xl border border-white/10 bg-white/5 p-4 animate-pulse">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-white/10" />
+                <div className="flex-1">
+                  <div className="h-3 w-40 rounded bg-white/10" />
+                  <div className="mt-2 h-3 w-24 rounded bg-white/10" />
+                </div>
+              </div>
+              <div className="mt-4 h-20 rounded-xl bg-white/10" />
+            </div>
+          ))}
+        </div>
+      )}
+
       {posts.length === 0 && !loading && !error && (
         <div className="glass rounded-2xl p-8 text-center">
           <div className="mb-3 text-4xl" aria-hidden>
@@ -258,7 +282,21 @@ export default function FeedClient({
         </div>
       )}
 
-      {posts.map((p) => (
+      {isCapped && (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/65">
+          Showing the latest {renderCap} posts to keep scrolling fast on mobile.{" "}
+          <button
+            type="button"
+            onClick={() => setShowAllRendered(true)}
+            className="font-semibold text-brand-300 underline decoration-dotted underline-offset-4 hover:text-brand-200"
+          >
+            Show all ({posts.length})
+          </button>
+          .
+        </div>
+      )}
+
+      {visiblePosts.map((p) => (
         <PostCard
           key={p.id}
           {...p}

@@ -2,8 +2,14 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import dynamic from "next/dynamic";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
+
+const RecentSessionsRail = dynamic(() => import("./RecentSessionsRail"), {
+  ssr: false,
+  loading: () => null,
+});
 
 interface StudioHubClientProps {
   studioUsername: string | null;
@@ -86,6 +92,12 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
       onClick: () => trackClick("podcaster_console", "/studio/podcast"),
       variant: "accent" as const,
     },
+    {
+      href: "/studio/insights",
+      label: "Insights",
+      icon: "📊",
+      onClick: () => trackClick("studio_insights", "/studio/insights"),
+    },
   ];
 
   const getButtonClasses = (variant?: string) => {
@@ -139,6 +151,8 @@ export default function StudioHubClient({ studioUsername }: StudioHubClientProps
           </Link>
         ))}
       </div>
+
+      <RecentSessionsRail />
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         <FeatureCard

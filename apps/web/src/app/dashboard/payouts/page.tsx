@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import PayoutActions from "./PayoutActions";
 import PayoutMethodPicker from "./PayoutMethodPicker";
 import IdentityVerifyButton from "@/components/IdentityVerifyButton";
+import DashboardPageHeader from "@/components/dashboard/DashboardPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -168,6 +169,42 @@ export default async function PayoutsPage(props: {
   const totalPending = songsWithEarnings.reduce((s, sg) => s + sg.pendingAmount, 0);
   const totalPaid = songsWithEarnings.reduce((s, sg) => s + sg.paidAmount, 0);
 
+  // 30-day forecast: license sales momentum based on recent velocity.
+  const now = Date.now();
+  const since14d = new Date(now - 14 * 24 * 60 * 60 * 1000);
+  const since30d = new Date(now - 30 * 24 * 60 * 60 * 1000);
+  const [sales14d, sales30d] = await Promise.all([
+    prisma.licenseToken.aggregate({
+      where: {
+        purchasedAt: { gte: since14d },
+        song: { artistId: session.user.id },
+      },
+      _count: { _all: true },
+      _sum: { price: true },
+    }),
+    prisma.licenseToken.aggregate({
+      where: {
+        purchasedAt: { gte: since30d },
+        song: { artistId: session.user.id },
+      },
+      _count: { _all: true },
+      _sum: { price: true },
+    }),
+  ]);
+  const sales14dCount = sales14d._count._all;
+  const sales30dCount = sales30d._count._all;
+  const sales14dGross = Number(sales14d._sum.price ?? 0);
+  const sales30dGross = Number(sales30d._sum.price ?? 0);
+  const dailyRate = sales14dCount / 14;
+  const projected30dCount = Math.round(dailyRate * 30);
+  const avgTicket =
+    sales14dCount > 0
+      ? sales14dGross / sales14dCount
+      : sales30dCount > 0
+        ? sales30dGross / sales30dCount
+        : 0;
+  const projected30dGross = projected30dCount * avgTicket;
+
   function fmt(n: number) {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
   }
@@ -180,21 +217,102 @@ export default async function PayoutsPage(props: {
   return (
     <div className="studio-room relative min-h-screen">
       <div className="relative z-[1] mx-auto max-w-4xl px-4 py-12">
-      <div className="mb-10">
-        <Link href="/dashboard" className="studio-label text-white/40 hover:text-tube-400 transition mb-4 inline-block">
-          ← Control Room
-        </Link>
-        <div className="flex items-center gap-3">
-          <span aria-hidden className="led-on-amber h-2.5 w-2.5 rounded-full" />
-          <h1 className="font-display text-5xl uppercase tracking-wider text-white">
-            Payouts
-          </h1>
-          <span className="studio-label ml-auto text-white/35">PAY-01</span>
-        </div>
-        <p className="mt-2 text-white/55">
-          Your revenue share, paid directly to you.
-        </p>
-      </div>
+        <DashboardPageHeader
+          eyebrow="Revenue control"
+          title="Payouts"
+          description="Track your verified payout status, tax readiness, and the money moving out of the platform."
+          backHref="/dashboard"
+          stats={[
+            { label: "Pending", value: fmt(totalPending), tone: "amber" },
+            { label: "Paid out", value: fmt(totalPaid), tone: "emerald" },
+            { label: "YTD", value: fmt(ytdEarnings), tone: "brand" },
+            { label: "Songs", value: songsWithEarnings.length.toString(), tone: "neutral" },
+          ]}
+          actions={
+            <>
+              <Link
+                href="/dashboard/wallet"
+                className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600"
+              >
+                View wallet
+              </Link>
+              <Link
+                href="/dashboard/services"
+                className="rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white/75 transition hover:bg-white/8"
+              >
+                Manage services
+              </Link>
+            </>
+          }
+          aside={
+            <div className="space-y-3">
+              <div className={`rounded-2xl border p-4 ${payoutsBlocked ? "border-amber-500/30 bg-amber-500/8" : "border-emerald-500/30 bg-emerald-500/8"}`}>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">
+                  Payout status
+                </p>
+                <p className="mt-2 text-lg font-semibold text-white">
+                  {payoutsBlocked ? "Needs attention" : "Ready to pay"}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-white/55">
+                  {payoutsBlocked
+                    ? "Finish Connect, identity, or tax verification so funds can move on the weekly cycle."
+                    : "Stripe Connect is clear and weekly payouts can move without manual follow-up."}
+                </p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <Link
+                    href="/dashboard/wallet"
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-semibold text-white/75 transition hover:bg-white/8"
+                  >
+                    Review wallet
+                  </Link>
+                  <Link
+                    href="/dashboard"
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-semibold text-white/75 transition hover:bg-white/8"
+                  >
+                    Back to control room
+                  </Link>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">
+                  30-day forecast
+                </p>
+                <p className="mt-2 text-lg font-semibold text-white">
+                  {projected30dCount} projected license sale{projected30dCount === 1 ? "" : "s"}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-white/55">
+                  Baseline gross license revenue:{" "}
+                  <span className="font-semibold text-white/80">
+                    {fmt(projected30dGross)}
+                  </span>
+                  .
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/40">
+                      Last 14 days
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white/80">
+                      {sales14dCount} sale{sales14dCount === 1 ? "" : "s"} · {fmt(sales14dGross)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/40">
+                      Last 30 days
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white/80">
+                      {sales30dCount} sale{sales30dCount === 1 ? "" : "s"} · {fmt(sales30dGross)}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-[11px] text-white/40">
+                  Directional only. Streaming payouts are periodic; this tracks near-term sales momentum.
+                </p>
+              </div>
+            </div>
+          }
+        />
 
       {/* ── Success toast ───────────────────────────────────────────────── */}
       {justConnected && (

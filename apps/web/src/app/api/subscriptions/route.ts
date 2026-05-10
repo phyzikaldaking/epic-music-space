@@ -5,6 +5,8 @@ import { z } from "zod";
 import { strictLimiter } from "@/lib/rateLimit";
 import { createSubscriptionCheckoutSession, SubscriptionCheckoutError } from "@/lib/payments/subscriptionCheckout";
 import type { SubscriptionTier } from "@ems/db";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
+import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
 
 const subscribeSchema = z.object({
   tier: z.enum(["starter", "pro", "prime", "team", "label"]),
@@ -20,13 +22,17 @@ const TIER_MAP: Record<z.infer<typeof subscribeSchema>["tier"], SubscriptionTier
 
 // POST /api/subscriptions — create Stripe Checkout session for a subscription
 export async function POST(req: NextRequest) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??
     "unknown";
 
   try {
-    await strictLimiter.consume(ip);
+    await strictLimiter.consume(`subscriptions:post:ip:${ip}`);
   } catch {
     return NextResponse.json(
       { error: "Too many requests." },
@@ -39,19 +45,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json();
-  const parsed = subscribeSchema.safeParse(body);
+  const bodyResult = await readJsonBodyLimited<Record<string, unknown>>(req, {
+    maxBytes: 8 * 1024,
+    invalidMessage: "Invalid JSON body",
+  });
+  if (!bodyResult.ok) return bodyResult.response;
+
+  const parsed = subscribeSchema.safeParse(bodyResult.value);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid tier" }, { status: 400 });
   }
 
   try {
-    const checkout = await createSubscriptionCheckoutSession({
-      cancelPath: "/pricing",
-      successPath: `/pricing?subscribed=${parsed.data.tier}`,
-      tier: TIER_MAP[parsed.data.tier],
-      userId: session.user.id,
-    });
+    const checkoutResult = await withRouteTimeout("subscriptions-checkout-create", 4500, async () =>
+      createSubscriptionCheckoutSession({
+        cancelPath: "/pricing",
+        successPath: `/pricing?subscribed=${parsed.data.tier}`,
+        tier: TIER_MAP[parsed.data.tier],
+        userId: session.user.id,
+      }),
+    );
+    if (!checkoutResult.ok) return checkoutResult.response;
+    const checkout = checkoutResult.value;
     return NextResponse.json({ checkoutUrl: checkout.checkoutUrl });
   } catch (error) {
     if (error instanceof SubscriptionCheckoutError) {
@@ -69,7 +84,7 @@ export async function GET(req: NextRequest) {
     "unknown";
 
   try {
-    await strictLimiter.consume(ip);
+    await strictLimiter.consume(`subscriptions:get:ip:${ip}`);
   } catch {
     return NextResponse.json(
       { error: "Too many requests." },

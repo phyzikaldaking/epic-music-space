@@ -105,7 +105,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   // Reduce referer leakage across origins
   "Referrer-Policy": "strict-origin-when-cross-origin",
   // Lock down browser feature access
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=(self), payment=()",
+  "Permissions-Policy": "camera=(self), microphone=(self), geolocation=(self), payment=()",
   // Disable the legacy XSS auditor (CSP does this better and the auditor causes bugs)
   "X-XSS-Protection": "0",
 };
@@ -216,11 +216,20 @@ export function middleware(req: NextRequest): NextResponse {
   // 3. Security headers on all non-redirected responses
   // ------------------------------------------------------------------
   const res = NextResponse.next({ request: { headers: requestHeaders } });
+  // Embed routes (e.g. /track/<id>/embed, /versus/<id>/embed) are
+  // designed to be iframed by third parties. Skip the X-Frame-Options
+  // DENY/SAMEORIGIN header for those paths, and emit a permissive
+  // frame-ancestors via CSP instead so the iframe is allowed everywhere.
+  const isEmbedPath = /\/embed(\/|$)/.test(pathname);
   for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
+    if (isEmbedPath && header === "X-Frame-Options") continue;
     res.headers.set(header, value);
   }
   if (attachCsp && nonce) {
-    res.headers.set("Content-Security-Policy", buildContentSecurityPolicy(nonce));
+    res.headers.set(
+      "Content-Security-Policy",
+      buildContentSecurityPolicy(nonce, undefined, { allowEmbed: isEmbedPath }),
+    );
   }
   return res;
 }

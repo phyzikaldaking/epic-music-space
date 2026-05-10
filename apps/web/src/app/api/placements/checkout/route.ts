@@ -8,6 +8,7 @@ import { buildIdempotencyKey } from "@/lib/idempotency";
 import { retry, withCircuitBreaker, withTimeout } from "@/lib/resilience";
 import { z } from "zod";
 import { readJsonBodyLimited } from "@/lib/apiHardening";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 const placementSchema = z.object({
   songId: z.string().min(1),
@@ -21,6 +22,10 @@ const PACKAGES = {
 } as const;
 
 export async function POST(req: NextRequest) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??

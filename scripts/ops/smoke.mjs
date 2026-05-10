@@ -16,7 +16,8 @@ const checks = [
     method: "POST",
     path: "/api/checkout",
     body: { songId: "cm00000000000000000000000" },
-    expected: [401, 429],
+    // During planned Stripe cutovers we intentionally gate checkout with 503.
+    expected: [401, 429, 503],
   },
 ];
 

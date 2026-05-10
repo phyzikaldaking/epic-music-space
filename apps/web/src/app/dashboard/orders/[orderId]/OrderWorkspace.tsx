@@ -196,24 +196,60 @@ export default function OrderWorkspace({
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
-      <Link href={isProvider ? "/dashboard/services" : "/dashboard/orders"} className="text-xs text-white/45 hover:text-white">
-        ← Back
-      </Link>
+      <section className="mb-6 rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,rgba(14,15,24,0.96),rgba(11,18,25,0.94)_45%,rgba(26,14,31,0.9))] p-6 shadow-2xl shadow-black/35 sm:p-8">
+        <Link
+          href={isProvider ? "/dashboard/services" : "/dashboard/orders"}
+          className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-white/42 transition hover:text-tube-300"
+        >
+          Back {"->"}
+        </Link>
 
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="mb-1 text-xs font-bold uppercase tracking-widest text-brand-300">
-            {order.listing.kindLabel} · ${Number(order.priceUsd).toFixed(2)}
-          </p>
-          <h1 className="text-2xl font-extrabold sm:text-3xl">{order.listing.title}</h1>
-          <p className="mt-1 text-xs text-white/45">
-            {isProvider ? "Buyer:" : "Engineer:"} {counterpart.name ?? counterpart.username ?? "—"}
-          </p>
+        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-200/75">
+              {order.listing.kindLabel} · ${Number(order.priceUsd).toFixed(2)}
+            </p>
+            <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
+              {order.listing.title}
+            </h1>
+            <p className="mt-1 text-xs text-white/45">
+              {isProvider ? "Buyer:" : "Engineer:"} {counterpart.name ?? counterpart.username ?? "—"}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-white/42">
+              <span className="rounded-md border border-white/12 px-2.5 py-1">
+                {status.label}
+              </span>
+              <span className="rounded-md border border-white/12 px-2.5 py-1">
+                {order.listing.isInstant ? "Instant delivery" : `${order.listing.deliveryDays} day delivery`}
+              </span>
+              <span className="rounded-md border border-white/12 px-2.5 py-1">
+                Revisions used {order.revisionsUsed}/3
+              </span>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:min-w-[240px]">
+            <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-300">
+                Current focus
+              </p>
+              <p className="mt-2 text-lg font-semibold text-white">
+                {isProvider
+                  ? canDeliver
+                    ? "Deliver the work"
+                    : "Waiting on the buyer"
+                  : canAccept
+                    ? "Approve the delivery"
+                    : order.status === "DELIVERED"
+                      ? "Review the delivery"
+                      : "Track the work"}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-white/55">
+                Keep the order moving from here. The chat, file handoff, and approval tools are all below.
+              </p>
+            </div>
+          </div>
         </div>
-        <span className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-widest ${status.cls}`}>
-          {status.label}
-        </span>
-      </div>
+      </section>
 
       {err && (
         <div className="mt-4 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2 text-sm text-red-300">

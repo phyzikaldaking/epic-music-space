@@ -20,7 +20,7 @@ export const revalidate = 30;
 export const metadata: Metadata = {
   title: "Marketplace",
   description:
-    "Discover trending tracks, follow rising artists, and support music directly from the community in real time.",
+    "Browse the early catalog of independent artists on Epic Music Space. Buy a license, share in their streaming revenue, and back the artists before they break.",
 };
 
 type PriceLike = string | number | { toString(): string };
@@ -218,6 +218,107 @@ function normalizedText(value: string | null | undefined): string {
   return typeof value === "string" ? value : "";
 }
 
+function levenshteinWithinOne(a: string, b: string) {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let edits = 0;
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      i += 1;
+      j += 1;
+    } else {
+      edits += 1;
+      if (edits > 1) return false;
+      if (a.length > b.length) i += 1;
+      else if (b.length > a.length) j += 1;
+      else {
+        i += 1;
+        j += 1;
+      }
+    }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  cinematic: ["trailer", "film", "score", "sync"],
+  trap: ["808", "drill", "dark"],
+  lofi: ["lo-fi", "chill", "ambient"],
+  rnb: ["r&b", "soul"],
+  club: ["house", "dance", "electronic"],
+};
+
+function matchesSearchIntent(song: MarketplaceSong, query: string) {
+  if (!query) return true;
+  const haystack = [
+    song.title,
+    song.artist,
+    song.genre ?? "",
+    song.key ?? "",
+    `${song.bpm ?? ""}`,
+  ]
+    .join(" ")
+    .toLowerCase();
+  const terms = query.split(/\s+/).filter(Boolean);
+  return terms.every((term) => {
+    const expanded = [term, ...(SEARCH_SYNONYMS[term] ?? [])];
+    return expanded.some((needle) => {
+      if (haystack.includes(needle)) return true;
+      return haystack.split(/\s+/).some((word) => word.length > 3 && levenshteinWithinOne(word, needle));
+    });
+  });
+}
+
+function matchesBudget(price: number, budget: string) {
+  if (!budget) return true;
+  if (budget === "under_50") return price < 50;
+  if (budget === "50_150") return price >= 50 && price <= 150;
+  if (budget === "150_500") return price > 150 && price <= 500;
+  if (budget === "500_plus") return price > 500;
+  return true;
+}
+
+function matchesTempo(bpm: number | null, tempo: string) {
+  if (!tempo) return true;
+  if (!bpm) return false;
+  if (tempo === "slow") return bpm < 90;
+  if (tempo === "mid") return bpm >= 90 && bpm <= 130;
+  if (tempo === "fast") return bpm > 130;
+  return true;
+}
+
+function matchesMood(song: MarketplaceSong, mood: string) {
+  if (!mood) return true;
+  const text = `${song.title} ${song.artist} ${song.genre ?? ""}`.toLowerCase();
+  const moodTerms: Record<string, string[]> = {
+    cinematic: ["cinematic", "trailer", "score", "film"],
+    dark: ["dark", "minor", "trap", "drill", "night"],
+    bright: ["pop", "major", "bright", "summer"],
+    club: ["club", "house", "dance", "electronic"],
+    lofi: ["lofi", "lo-fi", "chill", "ambient"],
+  };
+  return (moodTerms[mood] ?? [mood]).some((term) => text.includes(term));
+}
+
+function matchesRights(song: MarketplaceSong, rights: string) {
+  if (!rights) return true;
+  if (rights === "social") return song.licensePrice <= 150;
+  if (rights === "broadcast") return song.revenueSharePct >= 5;
+  if (rights === "exclusive") return song.totalLicenses > 0 && song.totalLicenses <= 25;
+  return true;
+}
+
+function matchesScarcity(song: MarketplaceSong, scarcity: string) {
+  if (!scarcity) return true;
+  const remaining = Math.max(0, song.totalLicenses - song.soldLicenses);
+  const ratio = song.totalLicenses > 0 ? remaining / song.totalLicenses : 1;
+  if (scarcity === "low") return ratio <= 0.2;
+  if (scarcity === "medium") return ratio > 0.2 && ratio <= 0.6;
+  if (scarcity === "open") return ratio > 0.6;
+  return true;
+}
+
 function toNumber(value: PriceLike | null | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "string") {
@@ -285,6 +386,13 @@ export default async function MarketplacePage(props: {
   const rawQuery = firstSearchParam(searchParams.q) || firstSearchParam(searchParams.search);
   const searchQuery = rawQuery.toLowerCase().trim();
   const genreFilter = firstSearchParam(searchParams.genre).toLowerCase().trim();
+  const sortFilter = firstSearchParam(searchParams.sort) || "trending";
+  const tempoFilter = firstSearchParam(searchParams.tempo);
+  const budgetFilter = firstSearchParam(searchParams.budget);
+  const keyFilter = firstSearchParam(searchParams.key).toLowerCase().trim();
+  const moodFilter = firstSearchParam(searchParams.mood).toLowerCase().trim();
+  const rightsFilter = firstSearchParam(searchParams.rights).toLowerCase().trim();
+  const scarcityFilter = firstSearchParam(searchParams.scarcity).toLowerCase().trim();
   // Producer-role filter: when set, restrict the marketplace to tracks
   // uploaded by users with the matching role. Lets buyers find "tracks
   // from producers" without wading through artist uploads.
@@ -347,19 +455,32 @@ export default async function MarketplacePage(props: {
     .filter((song): song is MarketplaceSong => Boolean(song))
     .sort((a, b) => Number(b.rankScore ?? 0) - Number(a.rankScore ?? 0));
 
+  const rawById = new Map(allSongs.map((track) => [track.id, track]));
   const displaySongs = rankedSongs.filter((song) => {
-    const title = normalizedText(song.title).toLowerCase();
-    const artist = normalizedText(song.artist).toLowerCase();
     const genre = normalizedText(song.genre).toLowerCase();
-
-    const matchesQuery =
-      searchQuery.length === 0 ||
-      title.includes(searchQuery) ||
-      artist.includes(searchQuery) ||
-      genre.includes(searchQuery);
     const matchesGenre = genreFilter.length === 0 || genre === genreFilter;
+    const matchesKey = keyFilter.length === 0 || normalizedText(song.key).toLowerCase() === keyFilter;
 
-    return matchesQuery && matchesGenre;
+    return (
+      matchesSearchIntent(song, searchQuery) &&
+      matchesGenre &&
+      matchesKey &&
+      matchesTempo(song.bpm, tempoFilter) &&
+      matchesBudget(song.licensePrice, budgetFilter) &&
+      matchesMood(song, moodFilter) &&
+      matchesRights(song, rightsFilter) &&
+      matchesScarcity(song, scarcityFilter)
+    );
+  }).sort((a, b) => {
+    if (sortFilter === "newest") {
+      const aDate = rawById.get(a.id)?.createdAt ? new Date(rawById.get(a.id)!.createdAt!).getTime() : 0;
+      const bDate = rawById.get(b.id)?.createdAt ? new Date(rawById.get(b.id)!.createdAt!).getTime() : 0;
+      return bDate - aDate;
+    }
+    if (sortFilter === "price_asc") return a.licensePrice - b.licensePrice;
+    if (sortFilter === "price_desc") return b.licensePrice - a.licensePrice;
+    if (sortFilter === "rev_desc") return b.revenueSharePct - a.revenueSharePct;
+    return b.rankScore - a.rankScore;
   });
 
   const topSong = rankedSongs[0];
@@ -368,7 +489,6 @@ export default async function MarketplacePage(props: {
   // Build the rail candidate set. The personalization library needs a
   // few extra fields (versusWins/Losses, createdAt) that don't live on
   // MarketplaceSong, so look them up by id from the raw track list.
-  const rawById = new Map(allSongs.map((track) => [track.id, track]));
   const railCandidates: RailCandidate[] = rankedSongs.map((song) => {
     const raw = rawById.get(song.id);
     return {
@@ -403,7 +523,7 @@ export default async function MarketplacePage(props: {
       />
       <div className="relative mx-auto max-w-7xl px-4 py-10 md:px-6 lg:px-8">
         {/* MARKETPLACE HERO  ·  walnut-trim console with crown LCD readout */}
-        <section className="studio-faceplate relative rounded-xl p-6 sm:p-9">
+        <section className="studio-faceplate relative rounded-xl p-6 sm:p-8">
           <div
             aria-hidden
             className="studio-walnut absolute left-0 top-0 bottom-0 w-3 rounded-l-xl"
@@ -417,30 +537,34 @@ export default async function MarketplacePage(props: {
           <span aria-hidden className="studio-screw absolute left-5 bottom-3" />
           <span aria-hidden className="studio-screw absolute right-5 bottom-3" />
 
-          <div className="ml-3 mr-3 grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+          <div className="ml-3 mr-3 grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
             <div>
               <div className="flex items-center gap-2">
                 <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
                 <p className="studio-label text-tube-300">
-                  Creator Marketplace · License Floor
+                  Catalog · Early Artists
                 </p>
                 <span className="studio-label ml-auto hidden text-white/35 sm:inline">
                   MKT-01 · Live
                 </span>
               </div>
+              <h2 className="mt-3 text-xs font-black uppercase tracking-[0.28em] text-white/45">
+                Premium Exchange Floor
+              </h2>
               <h1 className="mt-4 max-w-4xl font-display text-3xl uppercase leading-[1.02] tracking-wider text-white sm:text-4xl md:text-5xl lg:text-6xl">
-                The premium exchange floor
-                <br className="hidden sm:inline" /> for music licensing.
+                Find a track.
+                <br className="hidden sm:inline" /> Compare rights.
+                <br className="hidden sm:inline" /> Buy fast.
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-relaxed text-white/65 md:text-base">
-                Ranked tracks, studio drops, and creator-ready music with
-                clear licensing terms, supply visibility, and marketplace
-                momentum built into every release.
+                Independent artists, real songs, plain-English licenses. Preview
+                first, compare the rights, and buy a license in a few clicks —
+                90% to the artist, 10% to the platform.
               </p>
               <p className="mt-4 inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-3 py-1.5">
                 <span aria-hidden className="led-on-green h-1.5 w-1.5 rounded-full" />
                 <span className="studio-label text-white/70">
-                  Open ranking · every factor & paid-boost cap on every track
+                  Early days · {formatCompactNumber(rankedSongs.length)} {rankedSongs.length === 1 ? "track" : "tracks"} live · new drops weekly
                 </span>
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
@@ -448,13 +572,13 @@ export default async function MarketplacePage(props: {
                   href="#marketplace-catalog"
                   className="studio-engage-btn inline-flex items-center justify-center gap-2 rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
                 >
-                  Explore catalog →
+                  Browse the catalog →
                 </a>
                 <Link
-                  href="/auth/signup"
+                  href="/how-licenses-work"
                   className="inline-flex items-center justify-center gap-2 rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
                 >
-                  Sell your music
+                  How licenses work
                 </Link>
               </div>
             </div>
@@ -512,53 +636,94 @@ export default async function MarketplacePage(props: {
           </div>
         </section>
 
-        <section className="mt-8">
-          <Suspense><AdSlot location="MARKETPLACE_BANNER" className="mb-6" /></Suspense>
+        <section className="mt-7" id="marketplace-catalog">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex flex-1 gap-3 overflow-x-auto pb-2 sm:pb-0">
+                {categories.map((category, index) => {
+                  const isAll = index === 0;
+                  const isActive = isAll
+                    ? genreFilter.length === 0
+                    : category.toLowerCase() === genreFilter;
+                  const params = new URLSearchParams();
+                  if (!isAll) params.set("genre", category);
+                  if (rawQuery) params.set("q", rawQuery);
+                  const href = params.toString()
+                    ? `/marketplace?${params.toString()}`
+                    : "/marketplace";
+                  return (
+                    <a
+                      key={category}
+                      href={href}
+                      aria-current={isActive ? "page" : undefined}
+                      className={`whitespace-nowrap rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
+                        isActive
+                          ? "border-cyan-200/35 bg-cyan-200/12 text-cyan-100 shadow-lg shadow-cyan-500/10"
+                          : "border-white/10 bg-white/[0.045] text-white/52 hover:border-cyan-200/35 hover:bg-cyan-200/10 hover:text-cyan-100"
+                      }`}
+                    >
+                      {category}
+                    </a>
+                  );
+                })}
+              </div>
+              <Suspense><MarketplaceSearch initialQuery={rawQuery} /></Suspense>
+            </div>
+            {searchQuery && (
+              <p className="mt-3 text-sm text-white/45">
+                {displaySongs.length === 0
+                  ? `No tracks found for "${rawQuery}"`
+                  : `${displaySongs.length} track${displaySongs.length !== 1 ? "s" : ""} matching "${rawQuery}"`}
+              </p>
+            )}
+          </div>
+          <div className="mt-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+              {displaySongs.slice(0, 6).map((song, index) => (
+                <SongCard
+                  key={song.id}
+                  id={song.id}
+                  title={song.title}
+                  artist={song.artist}
+                  genre={song.genre}
+                  coverUrl={song.coverUrl}
+                  audioUrl={song.audioUrl}
+                  licensePrice={song.licensePrice}
+                  revenueSharePct={song.revenueSharePct}
+                  soldLicenses={song.soldLicenses}
+                  totalLicenses={song.totalLicenses}
+                  bpm={song.bpm}
+                  musicalKey={song.key}
+                  aiScore={song.aiScore}
+                  boostScore={song.boostScore}
+                  paidBoostApplied={song.paidBoostApplied}
+                  paidBoostCap={song.paidBoostCap}
+                  paidBoostCapped={song.paidBoostCapped}
+                  paidInfluencePct={song.paidInfluencePct}
+                  rankingFactors={song.rankingFactors}
+                  rankPosition={index + 1}
+                  competitorGap={getCompetitorGap(song, rankedSongs[index - 1])}
+                  placementLabel={index === 0 ? "Top Placement" : null}
+                />
+              ))}
+            </div>
+            {displaySongs.length > 6 && (
+              <div className="mt-5 flex justify-center">
+                <a
+                  href="#full-catalog"
+                  className="rounded-full border border-white/12 bg-white/5 px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white/70 hover:bg-white/10"
+                >
+                  Continue to full catalog →
+                </a>
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="mt-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex flex-1 gap-3 overflow-x-auto pb-2 sm:pb-0">
-              {categories.map((category, index) => {
-                const isAll = index === 0;
-                const isActive = isAll
-                  ? genreFilter.length === 0
-                  : category.toLowerCase() === genreFilter;
-                // Preserve the active search query when switching genres so a
-                // user filtering by "trap" + searching "808" doesn't lose
-                // their search term every time they tap a pill.
-                const params = new URLSearchParams();
-                if (!isAll) params.set("genre", category);
-                if (rawQuery) params.set("q", rawQuery);
-                const href = params.toString()
-                  ? `/marketplace?${params.toString()}`
-                  : "/marketplace";
-                return (
-                  <a
-                    key={category}
-                    href={href}
-                    aria-current={isActive ? "page" : undefined}
-                    className={`whitespace-nowrap rounded-full border px-5 py-2.5 text-sm font-black uppercase tracking-[0.12em] transition ${
-                      isActive
-                        ? "border-cyan-200/35 bg-cyan-200/12 text-cyan-100 shadow-lg shadow-cyan-500/10"
-                        : "border-white/10 bg-white/[0.045] text-white/52 hover:border-cyan-200/35 hover:bg-cyan-200/10 hover:text-cyan-100"
-                    }`}
-                  >
-                    {category}
-                  </a>
-                );
-              })}
-            </div>
-            <Suspense><MarketplaceSearch initialQuery={rawQuery} /></Suspense>
-          </div>
-          {searchQuery && (
-            <p className="mt-3 text-sm text-white/45">
-              {displaySongs.length === 0
-                ? `No tracks found for "${rawQuery}"`
-                : `${displaySongs.length} track${displaySongs.length !== 1 ? "s" : ""} matching "${rawQuery}"`}
-            </p>
-          )}
+          <Suspense><AdSlot location="MARKETPLACE_BANNER" className="mb-6" /></Suspense>
         </section>
+        <div className="mt-10" />
 
         {dominanceStrip.length > 0 && (
           <section className="mt-8 studio-faceplate overflow-hidden p-5">
@@ -597,9 +762,22 @@ export default async function MarketplacePage(props: {
             <div className="studio-faceplate p-5"><div className="mb-5 flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-gold-100/70">Pro Filters</p><h2 className="mt-1 text-2xl font-black tracking-[-0.045em] text-white">Refine the floor</h2></div><div className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-lg shadow-cyan-300/60" /></div><Suspense><MarketplaceFilters totalCount={rankedSongs.length} /></Suspense></div>
             <div className="studio-faceplate p-5"><div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">Live Presence</p><p className="mt-1 text-sm text-white/55">See who is active around the catalog.</p></div><SectionErrorBoundary title="Live Presence"><MarketplacePresence compact /></SectionErrorBoundary></div></div>
           </aside>
-          <div id="marketplace-catalog" className="space-y-8">
+          <div id="full-catalog" className="space-y-8">
             <div className="studio-faceplate p-5"><div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-200/75">Ranked Catalog</p><h2 className="mt-2 text-3xl font-black tracking-[-0.055em] text-white md:text-5xl">Studio monitor listings</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/50">Every screen represents a track competing for attention, licensing, and placement. Stronger score means stronger visibility.</p></div><div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white/48">{displaySongs.length} {searchQuery ? "results" : "active listings"}</div></div></div>
-            <SectionErrorBoundary title="Waveform Compare"><MarketplaceConfidencePanel tracks={displaySongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore, soldLicenses: song.soldLicenses }))} /></SectionErrorBoundary>
+            <section className="grid gap-3 md:grid-cols-3" aria-label="License type explainer">
+              {[
+                { title: "Social + Ads", body: "Best for reels, shorts, ads, YouTube, and creator campaigns.", hint: "Usually lower price, fast clearance." },
+                { title: "Broadcast", body: "Built for podcast, TV, streaming, and wider distribution needs.", hint: "Look for higher rights scope and clear receipt." },
+                { title: "Exclusive-Style Scarcity", body: "Limited supply listings where fewer buyers can hold the track.", hint: "Use scarcity filter to find low remaining supply." },
+              ].map((item) => (
+                <div key={item.title} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-tube-300">{item.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-white/65">{item.body}</p>
+                  <p className="mt-2 text-[11px] font-semibold text-white/40">{item.hint}</p>
+                </div>
+              ))}
+            </section>
+            <SectionErrorBoundary title="Waveform Compare"><MarketplaceConfidencePanel tracks={displaySongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore, licensePrice: Number(song.licensePrice), revenueSharePct: Number(song.revenueSharePct), soldLicenses: song.soldLicenses, totalLicenses: song.totalLicenses }))} /></SectionErrorBoundary>
             <SectionErrorBoundary title="Saved Searches"><MarketplaceRetentionTools tracks={displaySongs.map((song) => ({ id: song.id, title: song.title }))} /></SectionErrorBoundary>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
               {displaySongs.map((song, index) => (

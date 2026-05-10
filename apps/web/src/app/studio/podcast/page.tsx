@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isLiveKitConfigured } from "@/lib/livekit";
 import PodcastStudioPanel from "@/components/PodcastStudioPanel";
 import PodcastStudioManager from "@/components/PodcastStudioManager";
 
@@ -74,6 +75,7 @@ export default async function StudioPodcastPage() {
 
       <PodcastStudioPanel studioUsername={studio?.username ?? null} />
       <PodcastStudioManager
+        liveKitOnline={isLiveKitConfigured()}
         initialShows={shows.map((show) => ({
           id: show.id,
           title: show.title,

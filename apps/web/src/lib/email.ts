@@ -450,6 +450,55 @@ export async function sendWeeklyDigestEmail(d: WeeklyDigest) {
   return { ok: true };
 }
 
+export interface SavedReleasesDigest {
+  to: string;
+  listenerName: string;
+  items: Array<{
+    songId: string;
+    songTitle: string;
+    artistName: string;
+  }>;
+}
+
+/** Weekly digest for listeners who saved tracks from artists that dropped new music. */
+export async function sendSavedReleasesDigestEmail(d: SavedReleasesDigest) {
+  if (!resend) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[email] saved releases digest blocked — RESEND_API_KEY not set");
+      return { ok: false };
+    }
+    console.info("[email] (dev) saved releases digest:", d);
+    return { ok: true, dev: true };
+  }
+
+  const base = getSiteUrl();
+  const maxItems = d.items.slice(0, 8);
+  const total = d.items.length;
+  const more = total - maxItems.length;
+
+  const rowsHtml = maxItems
+    .map((item) => {
+      const href = `${base}/track/${encodeURIComponent(item.songId)}`;
+      return `<tr><td style="padding:11px 0;border-bottom:1px solid rgba(255,255,255,0.08)"><a href="${href}" style="color:#fff;text-decoration:none;font-weight:700">${escapeHtml(item.songTitle)}</a><div style="margin-top:4px;font-size:12px;color:rgba(255,255,255,0.55)">${escapeHtml(item.artistName)}</div></td></tr>`;
+    })
+    .join("");
+
+  const html = `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#fff;font-family:-apple-system,sans-serif;padding:40px 16px"><div style="max-width:560px;margin:0 auto;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:36px 32px"><p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.18em;color:#a78bfa">Saved tracks digest</p><h1 style="margin:0 0 12px;font-size:22px">Hi ${escapeHtml(d.listenerName)} — fresh drops this week</h1><p style="margin:0;color:rgba(255,255,255,0.68);line-height:1.6">Artists you've saved just released new music. Here's what's new:</p><table style="width:100%;border-collapse:collapse;margin:18px 0">${rowsHtml}</table>${more > 0 ? `<p style="margin:0 0 14px;color:rgba(255,255,255,0.55);font-size:13px">+ ${more} more release${more === 1 ? "" : "s"} waiting in your notifications.</p>` : ""}<p style="margin:24px 0"><a href="${base}/notifications" style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:700">Open notifications →</a></p><p style="color:rgba(255,255,255,0.4);font-size:11px;margin-top:24px">You're getting this because you saved tracks on Epic Music Space. Manage notification email preferences in your profile settings.</p></div></body></html>`;
+
+  const textLines = maxItems.map((item) => `- ${item.songTitle} — ${item.artistName} (${base}/track/${encodeURIComponent(item.songId)})`);
+  const text = `Hi ${d.listenerName},\n\nArtists you've saved dropped new tracks this week:\n${textLines.join("\n")}${more > 0 ? `\n+ ${more} more in your notifications.` : ""}\n\nOpen notifications: ${base}/notifications`;
+
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: d.to,
+    subject: `${total} new drop${total === 1 ? "" : "s"} from your saved artists`,
+    html,
+    text,
+  });
+  if (error) return { ok: false, error };
+  return { ok: true };
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }

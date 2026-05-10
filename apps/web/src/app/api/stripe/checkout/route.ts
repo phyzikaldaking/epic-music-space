@@ -5,12 +5,17 @@ import { buildIdempotencyKey } from "@/lib/idempotency";
 import { createLicenseCheckoutSession, LicenseCheckoutError } from "@/lib/payments/licenseCheckout";
 import { strictLimiter } from "@/lib/rateLimit";
 import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 const checkoutSchema = z.object({
   songId: z.string().min(1),
 });
 
 export async function POST(request: Request) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     request.headers.get("x-real-ip") ??

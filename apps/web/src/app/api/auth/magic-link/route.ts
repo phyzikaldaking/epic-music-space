@@ -6,6 +6,8 @@ import { strictLimiter } from "@/lib/rateLimit";
 import { emitAuthEvent } from "@/lib/authObservability";
 import { getClientIp, hashAuthToken, normalizeEmail } from "@/lib/authIdentity";
 import { sendMagicLinkEmail } from "@/lib/email";
+import { sanitizeCallbackPath } from "@/lib/safeCallback";
+import { readJsonBodyLimited } from "@/lib/apiHardening";
 
 const requestSchema = z.object({
   email: z.string().email(),
@@ -24,8 +26,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = (await req.json().catch(() => ({}))) as unknown;
-  const parsed = requestSchema.safeParse(body);
+  const bodyResult = await readJsonBodyLimited<Record<string, unknown>>(req, {
+    maxBytes: 12 * 1024,
+    invalidMessage: "Invalid JSON payload.",
+  });
+  if (!bodyResult.ok) return bodyResult.response;
+
+  const parsed = requestSchema.safeParse(bodyResult.value);
 
   if (!parsed.success) {
     return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
@@ -33,6 +40,7 @@ export async function POST(req: NextRequest) {
 
   const { email, callbackUrl } = parsed.data;
   const normalizedEmail = normalizeEmail(email);
+  const safeCallbackUrl = sanitizeCallbackPath(callbackUrl);
 
   // Rate-limit per-email to prevent enumeration/abuse
   try {
@@ -88,7 +96,7 @@ export async function POST(req: NextRequest) {
   });
 
   // Send email
-  const emailResult = await sendMagicLinkEmail(normalizedEmail, token, callbackUrl || undefined);
+  const emailResult = await sendMagicLinkEmail(normalizedEmail, token, safeCallbackUrl || undefined);
 
   if (!emailResult.ok) {
     await emitAuthEvent("magic_link_send_failed", {

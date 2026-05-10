@@ -7,6 +7,7 @@ import { strictLimiter } from "@/lib/rateLimit";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import { cacheDel, CACHE_KEYS } from "@/lib/redis";
 import { readJsonBodyLimited } from "@/lib/apiHardening";
+import { fanoutSavedArtistDrop } from "@/lib/savedReleaseNotifications";
 
 export const runtime = "nodejs";
 
@@ -77,7 +78,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const song = await prisma.song.findUnique({
     where: { id },
-    select: { artistId: true, soldLicenses: true },
+    select: {
+      artistId: true,
+      soldLicenses: true,
+      isActive: true,
+      isDraft: true,
+      scheduledAt: true,
+    },
   });
   if (!song) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (song.artistId !== session.user.id && session.user.role !== "ADMIN") {
@@ -123,6 +130,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     where: { id },
     data: updateData,
   });
+
+  const wasPublic =
+    song.isActive &&
+    !song.isDraft &&
+    (song.scheduledAt == null || song.scheduledAt.getTime() <= Date.now());
+  const isPublic =
+    updated.isActive &&
+    !updated.isDraft &&
+    (updated.scheduledAt == null || updated.scheduledAt.getTime() <= Date.now());
+
+  if (!wasPublic && isPublic) {
+    try {
+      await fanoutSavedArtistDrop(updated.id);
+    } catch (err) {
+      console.warn("[songs:update] saved-drop fanout failed", err);
+    }
+  }
 
   await cacheDel(CACHE_KEYS.trendingSongs);
   revalidateTag(CACHE_TAGS.songs, "max");

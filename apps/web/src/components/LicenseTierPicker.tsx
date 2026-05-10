@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/contexts/ToastContext";
+import { saveCheckoutRecoveryIntent } from "@/lib/payments/checkoutRecovery";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
@@ -53,6 +54,14 @@ export default function LicenseTierPicker({ songId, basePrice, variants }: Props
           tierName: tier?.name,
           amountUsd: tier?.priceUsd,
         },
+      });
+      saveCheckoutRecoveryIntent({
+        songId,
+        amountUsd: tier?.priceUsd ?? basePrice,
+        mode: "tier",
+        tierId: selected,
+        tierName: tier?.name,
+        source: "license_tier_picker",
       });
       const res = await fetch("/api/checkout", {
         method: "POST",

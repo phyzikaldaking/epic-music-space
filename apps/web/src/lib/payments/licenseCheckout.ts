@@ -7,6 +7,7 @@ import { track } from "@/lib/analytics";
 import { fireAndForget, retry, withCircuitBreaker, withTimeout } from "@/lib/resilience";
 import { computeRiskScore } from "@/lib/riskScore";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
+import { isCheckoutMaintenanceModeEnabled, checkoutMaintenanceMessage } from "@/lib/payments/checkoutMaintenance";
 
 export class LicenseCheckoutError extends Error {
   constructor(
@@ -59,6 +60,10 @@ export type LicenseCheckoutResult = {
 export async function createLicenseCheckoutSession(
   input: CreateLicenseCheckoutInput,
 ): Promise<LicenseCheckoutResult> {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    throw new LicenseCheckoutError(checkoutMaintenanceMessage(), 503);
+  }
+
   const buyer = await prisma.user.findUnique({
     where: { id: input.userId },
     select: { subscriptionTier: true },

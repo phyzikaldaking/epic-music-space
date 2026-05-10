@@ -3,8 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useToast } from "@/contexts/ToastContext";
 import { formatPrice } from "@ems/utils";
+import { saveCheckoutRecoveryIntent } from "@/lib/payments/checkoutRecovery";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
@@ -27,6 +29,7 @@ export default function LicenseButton({
   const [loading, setLoading] = useState(false);
   const [agreementOpen, setAgreementOpen] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const [hasRememberedConsent, setHasRememberedConsent] = useState(false);
   // PWYW state: pre-fill with the floor so a fan who doesn't want to type
   // anything just clicks through. They can bump it up; the server enforces
   // the floor regardless of what's posted.
@@ -34,6 +37,20 @@ export default function LicenseButton({
   const [customAmount, setCustomAmount] = useState<string>(floor.toFixed(2));
   const router = useRouter();
   const { error } = useToast();
+
+  // "1-click" repeat checkout UX: once the user has accepted the license
+  // agreement on this device, skip the modal and go straight to checkout.
+  // We still render links to review terms, and we can version-bump this key
+  // if terms change.
+  const CONSENT_KEY = "ems_license_terms_v1_accepted";
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(CONSENT_KEY);
+      setHasRememberedConsent(stored === "1");
+    } catch {
+      setHasRememberedConsent(false);
+    }
+  }, []);
 
   async function startCheckout() {
     setLoading(true);
@@ -59,6 +76,12 @@ export default function LicenseButton({
           pricingMode: payWhatYouWant ? "pwyw" : "fixed",
           amountUsd: payWhatYouWant ? Number.parseFloat(customAmount) : Number(licensePrice),
         },
+      });
+      saveCheckoutRecoveryIntent({
+        songId,
+        amountUsd: payWhatYouWant ? Number.parseFloat(customAmount) : Number(licensePrice),
+        mode: payWhatYouWant ? "pwyw" : "fixed",
+        source: "license_button",
       });
       const res = await fetch("/api/checkout", {
         method: "POST",
@@ -146,22 +169,65 @@ export default function LicenseButton({
           </div>
           <button
             type="button"
-            onClick={() => setAgreementOpen(true)}
+            onClick={() => {
+              // If they've already accepted on this device, go straight to checkout.
+              if (hasRememberedConsent) {
+                void startCheckout();
+                return;
+              }
+              setAgreementOpen(true);
+            }}
             className="w-full rounded-xl bg-tube-300 py-3.5 text-base font-bold text-black shadow-lg shadow-tube-300/20 transition hover:bg-tube-200"
           >
             License for ${(Number.parseFloat(customAmount) || floor).toFixed(2)}
           </button>
+          <div className="text-center text-[11px] text-white/45">
+            By continuing you agree to the{" "}
+            <Link href="/license-agreement" target="_blank" className="underline hover:text-white/70">
+              license terms
+            </Link>
+            .
+          </div>
         </div>
       );
     }
     return (
-      <button
-        type="button"
-        onClick={() => setAgreementOpen(true)}
-        className="w-full rounded-xl bg-brand-500 py-3.5 text-base font-bold text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-600"
-      >
-        License this song for {formatPrice(licensePrice)}
-      </button>
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            // If they've already accepted on this device, go straight to checkout.
+            if (hasRememberedConsent) {
+              void startCheckout();
+              return;
+            }
+            setAgreementOpen(true);
+          }}
+          className="w-full rounded-xl bg-brand-500 py-3.5 text-base font-bold text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-600"
+        >
+          {hasRememberedConsent
+            ? `License now for ${formatPrice(licensePrice)}`
+            : `License this song for ${formatPrice(licensePrice)}`}
+        </button>
+        <div className="flex items-center justify-between text-[11px] text-white/45">
+          <span>
+            By continuing you agree to the{" "}
+            <Link href="/license-agreement" target="_blank" className="underline hover:text-white/70">
+              license terms
+            </Link>
+            .
+          </span>
+          {!hasRememberedConsent ? null : (
+            <button
+              type="button"
+              onClick={() => setAgreementOpen(true)}
+              className="font-semibold text-brand-300 underline decoration-dotted underline-offset-4 hover:text-brand-200"
+            >
+              Review
+            </button>
+          )}
+        </div>
+      </div>
     );
   }
 
@@ -209,7 +275,16 @@ export default function LicenseButton({
         </button>
         <button
           type="button"
-          onClick={() => void startCheckout()}
+          onClick={() => {
+            // Persist consent for faster repeat purchases on mobile.
+            try {
+              window.localStorage.setItem(CONSENT_KEY, "1");
+              setHasRememberedConsent(true);
+            } catch {
+              // ignore
+            }
+            void startCheckout();
+          }}
           disabled={!agreed || loading}
           className="flex-1 rounded-xl bg-brand-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition hover:bg-brand-600 disabled:opacity-50"
         >

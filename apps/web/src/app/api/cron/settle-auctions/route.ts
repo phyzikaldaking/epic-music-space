@@ -4,6 +4,7 @@ import { stripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/site";
 import { enqueueNotification } from "@/lib/queues";
 import { requireCronRequest } from "@/lib/routeAuth";
+import { isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 // Stripe error subclasses that are never worth retrying (invalid input,
 // auth, or account-level rejections). Anything else (connection, rate-limit,
@@ -51,6 +52,16 @@ function nextRetryAtIso(now: Date, retryCount: number) {
 export async function GET(req: NextRequest) {
   const access = requireCronRequest(req);
   if (!access.ok) return access.response;
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return NextResponse.json(
+      {
+        ok: true,
+        maintenance: true,
+        message: "Checkout maintenance mode enabled; auction settlement checkout creation is paused.",
+      },
+      { status: 200 },
+    );
+  }
 
   const now = new Date();
   const baseUrl = getSiteUrl();

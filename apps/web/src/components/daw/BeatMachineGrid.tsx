@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { DRUM_LANES, STEPS, type BeatPattern, type DrumKind, type DrumKitId } from "./beatMachine";
 import type { LaneEqRecommendation, LaneFrequencyProfile, PatternBank } from "./dawEngine";
+import { StudioTooltip } from "@/components/ui/StudioTooltip";
+import { tooltips } from "./tooltipCopy";
 
 interface Props {
   pattern: BeatPattern;
@@ -20,6 +22,7 @@ interface Props {
   onToggleStep: (lane: DrumKind, step: number) => void;
   onToggleEnabled: () => void;
   onClear: () => void;
+  onSuggestPattern: () => void;
   onRenderToTrack: () => void;
   onSelectBank: (bank: PatternBank) => void;
   onSelectKit: (kit: DrumKitId) => void;
@@ -94,6 +97,7 @@ export default function BeatMachineGrid({
   onToggleStep,
   onToggleEnabled,
   onClear,
+  onSuggestPattern,
   onRenderToTrack,
   onSelectBank,
   onSelectKit,
@@ -240,11 +244,12 @@ export default function BeatMachineGrid({
             ))}
           </div>
 
+          <StudioTooltip label={tooltips.beatKit}>
           <select
             value={kit}
             onChange={(e) => onSelectKit(e.target.value as DrumKitId)}
             className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-xs font-mono text-white"
-            title="Drum kit preset"
+            aria-label="Drum kit preset"
           >
             {KITS.map((k) => (
               <option key={k.id} value={k.id}>
@@ -252,8 +257,10 @@ export default function BeatMachineGrid({
               </option>
             ))}
           </select>
+          </StudioTooltip>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <StudioTooltip label={tooltips.beatOnOff}>
           <button
             type="button"
             onClick={onToggleEnabled}
@@ -265,6 +272,8 @@ export default function BeatMachineGrid({
           >
             {enabled ? "On" : "Off"}
           </button>
+          </StudioTooltip>
+          <StudioTooltip label="Clear every step in every lane.">
           <button
             type="button"
             onClick={onClear}
@@ -272,6 +281,17 @@ export default function BeatMachineGrid({
           >
             Clear
           </button>
+          </StudioTooltip>
+          <StudioTooltip label={tooltips.beatSuggest}>
+          <button
+            type="button"
+            onClick={onSuggestPattern}
+            className="rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-cyan-100 hover:bg-cyan-400/20 transition"
+          >
+            Suggest
+          </button>
+          </StudioTooltip>
+          <StudioTooltip label={tooltips.beatRender}>
           <button
             type="button"
             onClick={onRenderToTrack}
@@ -280,6 +300,7 @@ export default function BeatMachineGrid({
           >
             {rendering ? "Rendering…" : "Render to Beat track"}
           </button>
+          </StudioTooltip>
         </div>
       </header>
 

@@ -7,6 +7,7 @@ import { getTierLimits } from "@/lib/tierLimits";
 import { buildIdempotencyKey } from "@/lib/idempotency";
 import { createLicenseCheckoutSession, LicenseCheckoutError } from "@/lib/payments/licenseCheckout";
 import { readJsonBodyLimited, withRouteTimeout } from "@/lib/apiHardening";
+import { checkoutMaintenanceResponse, isCheckoutMaintenanceModeEnabled } from "@/lib/payments/checkoutMaintenance";
 
 const checkoutSchema = z.object({
   songId: z.string().cuid(),
@@ -20,6 +21,10 @@ const checkoutSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  if (isCheckoutMaintenanceModeEnabled()) {
+    return checkoutMaintenanceResponse();
+  }
+
   // Rate limit checkout — prevents card testing attacks
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??

@@ -42,6 +42,8 @@ export const optionalRequirements = {
   GoogleOAuth: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
   EmailBranding: ["EMAIL_FROM"],
   PostHogHost: ["POSTHOG_HOST"],
+  // Used by server-side admin analytics endpoints that query HogQL.
+  PostHogQuery: ["POSTHOG_PERSONAL_API_KEY", "POSTHOG_PROJECT_ID"],
   DopplerProject: ["DOPPLER_PROJECT"],
   DopplerConfigs: [
     "DOPPLER_CONFIG_DEV",
@@ -49,6 +51,11 @@ export const optionalRequirements = {
     "DOPPLER_CONFIG_PROD",
   ],
   StripeWebhookForward: ["STRIPE_WEBHOOK_FORWARD_URL"],
+  CheckoutMaintenance: [
+    "CHECKOUT_MAINTENANCE_MODE",
+    "CHECKOUT_MAINTENANCE_MESSAGE",
+    "STRIPE_CHECKOUT_MAINTENANCE_MODE",
+  ],
   ReliabilityAlerts: [
     "RELIABILITY_ALERT_WEBHOOK_URL",
     "SYNTH_WARN_FAILURE_RATE",
@@ -78,6 +85,9 @@ export const sharedAppKeys = unique([
   "STRIPE_PRICE_ID_PRIME",
   "STRIPE_PRICE_ID_TEAM",
   "STRIPE_PRICE_ID_LABEL",
+  "CHECKOUT_MAINTENANCE_MODE",
+  "CHECKOUT_MAINTENANCE_MESSAGE",
+  "STRIPE_CHECKOUT_MAINTENANCE_MODE",
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
   "REDIS_URL",
@@ -86,6 +96,8 @@ export const sharedAppKeys = unique([
   "EMAIL_FROM",
   "POSTHOG_API_KEY",
   "POSTHOG_HOST",
+  "POSTHOG_PERSONAL_API_KEY",
+  "POSTHOG_PROJECT_ID",
   "CRON_SECRET",
   "AD_TRACKING_SALT",
   "MIN_CREATOR_PAYOUT_USD",

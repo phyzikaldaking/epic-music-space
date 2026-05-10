@@ -29,26 +29,6 @@ const ROLES = [
     textAccent: "text-brand-400",
   },
   {
-    value: "PRODUCER",
-    icon: "🎛️",
-    label: "Producer",
-    sub: "Sell beats, kits, templates",
-    border: "border-orange-500/50",
-    bg: "bg-orange-500/8",
-    ring: "ring-orange-500",
-    textAccent: "text-orange-400",
-  },
-  {
-    value: "ENGINEER",
-    icon: "🎚️",
-    label: "Engineer",
-    sub: "Offer mixing & mastering",
-    border: "border-emerald-500/50",
-    bg: "bg-emerald-500/8",
-    ring: "ring-emerald-500",
-    textAccent: "text-emerald-400",
-  },
-  {
     value: "LISTENER",
     icon: "🎧",
     label: "Fan / Listener",
@@ -83,13 +63,11 @@ function SignUpContent({
   const searchParams = useSearchParams();
   const [selectedRole, setSelectedRole] = useState<RoleValue>("LISTENER");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
   const [showPassword, setShowPassword] = useState(false);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
-  const [confirmTouched, setConfirmTouched] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [buyerGuide, setBuyerGuide] = useState({
@@ -159,18 +137,9 @@ function SignUpContent({
     [form.password, personalTokens],
   );
 
-  const passwordsMatch =
-    confirmPassword.length > 0 && form.password === confirmPassword;
-  const showMatchError =
-    confirmTouched && confirmPassword.length > 0 && !passwordsMatch;
-
   const roleTasks =
     selectedRole === "ARTIST"
       ? ["Create profile", "Upload first song", "Set price"]
-      : selectedRole === "PRODUCER"
-      ? ["List a beat or template", "Set price", "Connect Stripe payouts"]
-      : selectedRole === "ENGINEER"
-      ? ["List mix / master service", "Set delivery time", "Connect Stripe payouts"]
       : selectedRole === "LABEL"
       ? ["Create label profile", "Invite first artist", "Launch campaign"]
       : ["Save first search", "Watchlist 3 tracks", "License first track"];
@@ -187,10 +156,6 @@ function SignUpContent({
         strength.hint ||
           `Password must be at least ${PASSWORD_MIN_LENGTH} characters and mix letters with numbers.`,
       );
-      return;
-    }
-    if (!passwordsMatch) {
-      setError("Passwords don't match. Re-type the same password in both fields.");
       return;
     }
     if (!ageConfirmed) {
@@ -216,7 +181,6 @@ function SignUpContent({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          confirmPassword,
           role: selectedRole,
           inviteCode: inviteCode || undefined,
           callbackUrl: resolvedCallbackUrl,
@@ -307,6 +271,18 @@ function SignUpContent({
             )}
           </div>
 
+          <div className="mb-6 grid gap-2 sm:grid-cols-3">
+            {[
+              "Free to start",
+              "No credit card",
+              "Switch roles later",
+            ].map((item) => (
+              <div key={item} className="studio-faceplate-dark rounded-lg px-3 py-2 text-center">
+                <p className="studio-label text-white/60">{item}</p>
+              </div>
+            ))}
+          </div>
+
           {/* OAuth — top of page so new users can register with one click. */}
           {(googleEnabled || appleEnabled) && (
             <>
@@ -361,7 +337,7 @@ function SignUpContent({
             <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-white/40">
               I am a…
             </p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {ROLES.map((role) => (
                 <button
                   key={role.value}
@@ -394,29 +370,24 @@ function SignUpContent({
                   <div className="rounded-lg border border-brand-500/25 bg-brand-500/10 px-3 py-2">2. Upload</div>
                   <div className="rounded-lg border border-brand-500/25 bg-brand-500/10 px-3 py-2">3. Pricing</div>
                 </div>
-              </>
-            ) : selectedRole === "PRODUCER" ? (
-              <>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">Producer storefront</p>
-                <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-white/70 sm:grid-cols-3">
-                  <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-3 py-2">List beats &amp; templates</div>
-                  <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-3 py-2">Instant download</div>
-                  <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-3 py-2">100% to you*</div>
-                </div>
                 <p className="mt-2 text-[10px] leading-4 text-white/40">
-                  *Every sale allocated 100% to you. Flat 10% platform fee per
-                  license, itemized on every payout. See{" "}
-                  <Link href="/pricing" className="underline decoration-dotted underline-offset-2">/pricing</Link>.
+                  Producer or engineer? Sign up as Artist — you can list beats,
+                  mixing, and mastering services from your profile after
+                  onboarding.
                 </p>
               </>
-            ) : selectedRole === "ENGINEER" ? (
+            ) : selectedRole === "LABEL" ? (
               <>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">Engineer services</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold-300">Label portal</p>
                 <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-white/70 sm:grid-cols-3">
-                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">Mixing</div>
-                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">Mastering</div>
-                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">Templates &amp; lessons</div>
+                  <div className="rounded-lg border border-gold-500/25 bg-gold-500/10 px-3 py-2">Roster &amp; invites</div>
+                  <div className="rounded-lg border border-gold-500/25 bg-gold-500/10 px-3 py-2">Per-artist payouts</div>
+                  <div className="rounded-lg border border-gold-500/25 bg-gold-500/10 px-3 py-2">Campaign tools</div>
                 </div>
+                <p className="mt-2 text-[10px] leading-4 text-white/40">
+                  Onboard your roster, set up split payouts, and run release
+                  campaigns from one dashboard.
+                </p>
               </>
             ) : (
               <>
@@ -681,53 +652,6 @@ function SignUpContent({
               )}
             </div>
 
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label
-                  htmlFor="signup-confirm"
-                  className="block text-xs font-semibold uppercase tracking-widest text-white/40"
-                >
-                  Confirm password
-                </label>
-                {confirmPassword.length > 0 && (
-                  <span
-                    className={`text-[11px] font-bold ${
-                      passwordsMatch ? "text-emerald-300" : "text-red-300"
-                    }`}
-                    aria-live="polite"
-                  >
-                    {passwordsMatch ? "✓ Matches" : "✕ Doesn't match"}
-                  </span>
-                )}
-              </div>
-              <input
-                id="signup-confirm"
-                type={showPassword ? "text" : "password"}
-                name="confirm-password"
-                autoComplete="new-password"
-                autoCapitalize="off"
-                spellCheck={false}
-                required
-                minLength={PASSWORD_MIN_LENGTH}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                onBlur={() => setConfirmTouched(true)}
-                className={`w-full rounded-xl border bg-white/4 px-4 py-3 text-base text-white placeholder-white/25 transition focus:outline-none focus:ring-1 ${
-                  showMatchError
-                    ? "border-red-500/45 focus:border-red-400 focus:ring-red-400/40"
-                    : passwordsMatch
-                      ? "border-emerald-500/45 focus:border-emerald-400 focus:ring-emerald-400/40"
-                      : "border-white/10 focus:border-brand-500/60 focus:ring-brand-500/40"
-                }`}
-                placeholder="Re-type your password"
-              />
-              {showMatchError && (
-                <p className="mt-1 text-[11px] text-red-300">
-                  These don&apos;t match yet.
-                </p>
-              )}
-            </div>
-
             <label className="flex items-start gap-2 text-xs text-white/65">
               <input
                 type="checkbox"
@@ -773,15 +697,11 @@ function SignUpContent({
                     ? "Pick a password."
                     : !strength.acceptable
                       ? strength.hint || "Make the password a little stronger."
-                      : confirmPassword.length === 0
-                        ? "Re-type your password to confirm."
-                        : !passwordsMatch
-                          ? "The two passwords don't match."
-                          : !ageConfirmed
-                            ? "Confirm you're at least 13."
-                            : !termsAccepted
-                              ? "Accept the Terms to continue."
-                              : null;
+                      : !ageConfirmed
+                        ? "Confirm you're at least 13."
+                        : !termsAccepted
+                          ? "Accept the Terms to continue."
+                          : null;
               return missing ? (
                 <p className="-mt-1 text-center text-xs text-amber-300/85">
                   ⚠ {missing}

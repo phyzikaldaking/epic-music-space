@@ -21,6 +21,17 @@ function getStripe(): Stripe {
   return new Stripe(key, { apiVersion: "2025-02-24.acacia", typescript: true });
 }
 
+function isCheckoutMaintenanceEnabled(): boolean {
+  const values = [
+    process.env.CHECKOUT_MAINTENANCE_MODE,
+    process.env.STRIPE_CHECKOUT_MAINTENANCE_MODE,
+  ];
+  return values.some((value) => {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "on" || normalized === "yes";
+  });
+}
+
 // ─────────────────────────────────────────────────────────
 // Zod schemas
 // ─────────────────────────────────────────────────────────
@@ -102,6 +113,20 @@ marketRouter.post(
   authMiddleware,
   riskScoringMiddleware,
   async (c) => {
+    if (isCheckoutMaintenanceEnabled()) {
+      return c.json(
+        {
+          error: "Checkout temporarily unavailable",
+          message:
+            process.env.CHECKOUT_MAINTENANCE_MESSAGE ??
+            "Checkout is temporarily paused while payments are being secured. Please try again shortly.",
+          code: "CHECKOUT_MAINTENANCE",
+        },
+        503,
+        { "Retry-After": "300" },
+      );
+    }
+
     const userId = c.get("userId");
 
     // ── Parse + validate body ──────────────────────────────────────────────

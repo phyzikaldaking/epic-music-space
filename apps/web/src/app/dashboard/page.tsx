@@ -301,6 +301,152 @@ export default async function DashboardPage() {
       ? Math.max(0, Math.ceil((user.trialExpiresAt.getTime() - Date.now()) / 86_400_000))
       : null;
 
+  const nextStep = (() => {
+    if (isArtist && !user.studio) {
+      return {
+        label: "Claim studio username",
+        href: "/profile/edit",
+        body: "Make your public handle discoverable.",
+        icon: "🏷️",
+      };
+    }
+
+    if (isArtist && user.songs.length === 0) {
+      return {
+        label: "Upload first track",
+        href: "/studio/new",
+        body: "Get a release live in minutes.",
+        icon: "⚡",
+      };
+    }
+
+    if (isArtist && !connectStatus.onboardingComplete) {
+      return {
+        label: "Finish payouts",
+        href: "/dashboard/payouts",
+        body: "Activate Stripe so you can get paid.",
+        icon: "💳",
+      };
+    }
+
+    if (isProvider && providerStats && providerStats.listingsCount === 0) {
+      return {
+        label: "Create storefront",
+        href: "/services/new",
+        body: "List your first service.",
+        icon: "🧰",
+      };
+    }
+
+    if (user.role === "LISTENER") {
+      return {
+        label: "Browse marketplace",
+        href: "/marketplace",
+        body: "Find something worth playing next.",
+        icon: "🎧",
+      };
+    }
+
+    return {
+      label: "Open studio",
+      href: "/studio",
+      body: "Jump back into your control room.",
+      icon: "🎛️",
+    };
+  })();
+
+  const quickActions = [
+    {
+      label: nextStep.label,
+      href: nextStep.href,
+      body: nextStep.body,
+      icon: nextStep.icon,
+      primary: true,
+    },
+    {
+      label: "Continue listening",
+      href: "/marketplace",
+      body: "Pick up where you left off.",
+      icon: "▶",
+    },
+    {
+      label: isArtist ? "Upload track" : user.role === "LISTENER" ? "Saved items" : "Manage services",
+      href: isArtist ? "/studio/new" : user.role === "LISTENER" ? "/dashboard/saved" : "/dashboard/services",
+      body: isArtist ? "Open the quick publish flow." : user.role === "LISTENER" ? "Return to your saved work." : "Adjust your storefront.",
+      icon: isArtist ? "⚡" : user.role === "LISTENER" ? "🔖" : "🧾",
+    },
+    {
+      label: isProvider ? "Services dashboard" : "Battles",
+      href: isProvider ? "/dashboard/services" : "/versus",
+      body: isProvider ? "Track orders and listings." : "See what is trending now.",
+      icon: isProvider ? "🧰" : "⚔️",
+    },
+  ];
+
+  const dashboardSummary = [
+    {
+      label: "Role",
+      value: user.role.replace("_", " "),
+    },
+    {
+      label: "Studio",
+      value: user.studio?.username ? `@${user.studio.username}` : "Not set",
+    },
+    {
+      label: "Payouts",
+      value: isArtist
+        ? connectStatus.onboardingComplete
+          ? "Ready"
+          : connectStatus.connected
+            ? "Finish setup"
+            : "Not connected"
+        : "Not required",
+    },
+    {
+      label: "Since last visit",
+      value: wasFirstVisit ? "First time" : `${sinceLastVisitTotal} changes`,
+    },
+  ];
+
+  const topSong = user.songs.length > 0
+    ? [...user.songs].sort((a, b) => b.soldLicenses - a.soldLicenses || b.streamCount - a.streamCount)[0]
+    : null;
+
+  const insightCards = [
+    {
+      label: "Momentum",
+      value: wasFirstVisit ? "Fresh start" : `${sinceLastVisitTotal} changes`,
+      detail: !wasFirstVisit && sinceLastVisitTotal > 0
+        ? `${sinceLastVisitFollowers} new followers, ${sinceLastVisitLicenseSales} sales${sinceLastVisitTipUsd > 0 ? `, $${sinceLastVisitTipUsd.toFixed(2)} in tips` : ""}.`
+        : "We’ll summarize what moved while you were away.",
+      tone: "brand",
+    },
+    {
+      label: "Engagement",
+      value: user.role === "LISTENER" ? `${user.licenses.length} licenses` : `${totalSongsSold} sold`,
+      detail: user.role === "LISTENER"
+        ? `You’ve collected ${user.licenses.length} active license${user.licenses.length === 1 ? "" : "s"}.`
+        : `Your catalog has ${user.songs.length} live track${user.songs.length === 1 ? "" : "s"}.`,
+      tone: "gold",
+    },
+    {
+      label: "Top performer",
+      value: topSong ? topSong.title : "Nothing yet",
+      detail: topSong
+        ? `${topSong.soldLicenses} sold · ${topSong.streamCount} streams`
+        : "Upload or promote one track to surface a leader.",
+      tone: "accent",
+    },
+    {
+      label: "Invite pull",
+      value: inviteData ? `${inviteData.usedCount} claimed` : "Invite off",
+      detail: inviteData
+        ? `Code ${inviteData.code} has been used by ${inviteData.usedCount} account${inviteData.usedCount === 1 ? "" : "s"}.`
+        : "Create an invite code to measure word-of-mouth.",
+      tone: "white",
+    },
+  ];
+
   const unknownBadgeMeta = {
     label: "Unlocked Badge",
     icon: "🏅",
@@ -312,6 +458,93 @@ export default async function DashboardPage() {
     <div className="studio-room relative min-h-screen">
       <div className="relative z-[1] mx-auto max-w-7xl px-4 py-10">
         <DashboardTimingBeacon />
+        <section className="mb-8 rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,rgba(14,15,24,0.96),rgba(11,18,25,0.94)_45%,rgba(26,14,31,0.9))] p-6 shadow-2xl shadow-black/35 sm:p-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-200/75">
+                Control Room
+              </p>
+              <h1 className="mt-3 text-4xl font-black tracking-tight md:text-5xl">
+                {user.name ?? user.email ?? "Epic Music Space User"}
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/62 sm:text-base">
+                Your dashboard is the command center for the parts of the site that matter most:
+                studio, marketplace, payouts, and the activity that happened while you were away.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {dashboardSummary.map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-xl border border-white/10 bg-white/4 px-3 py-2"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/38">
+                      {item.label}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white/82">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2 lg:w-[380px]">
+              <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-300">
+                  Next best step
+                </p>
+                <p className="mt-2 text-lg font-semibold text-white">{nextStep.label}</p>
+                <p className="mt-1 text-sm leading-6 text-white/55">{nextStep.body}</p>
+                <Link
+                  href={nextStep.href}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-black text-white transition hover:bg-brand-600"
+                >
+                  {nextStep.icon} Open →
+                </Link>
+              </div>
+              <div className="grid gap-2">
+                <Link
+                  href={user.role !== "LISTENER" ? "/studio/new" : "/marketplace"}
+                  className="rounded-2xl border border-white/10 bg-white/4 px-4 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/8"
+                >
+                  {user.role !== "LISTENER" ? "Open quick upload →" : "Browse the catalog →"}
+                </Link>
+                <Link
+                  href={isArtist ? "/dashboard/payouts" : "/dashboard/saved"}
+                  className="rounded-2xl border border-white/10 bg-white/4 px-4 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/8"
+                >
+                  {isArtist ? "Review payouts →" : "Open saved items →"}
+                </Link>
+                <Link
+                  href={isProvider ? "/dashboard/services" : "/versus"}
+                  className="rounded-2xl border border-white/10 bg-white/4 px-4 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/8"
+                >
+                  {isProvider ? "Manage services →" : "Jump to battles →"}
+                </Link>
+              </div>
+            </div>
+          </div>
+          <div className="mt-6 grid gap-3 md:grid-cols-4">
+            {quickActions.map((action) => (
+              <Link
+                key={action.label}
+                href={action.href}
+                className={`rounded-2xl border p-4 transition hover:-translate-y-0.5 ${
+                  action.primary
+                    ? "border-brand-500/35 bg-brand-500/10 shadow-lg shadow-brand-500/10"
+                    : "border-white/10 bg-white/4 hover:bg-white/7"
+                }`}
+              >
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-white/42">
+                  {action.icon} {action.label}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-white/60">{action.body}</p>
+                <p className="mt-4 text-xs font-bold uppercase tracking-[0.16em] text-tube-300">
+                  Open →
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+
         {/* ── Trial expiry banner ──────────────────────── */}
         {trialDaysLeft !== null && trialDaysLeft > 0 && (
           <div className="mb-6 flex items-center justify-between rounded-2xl border border-brand-500/30 bg-brand-500/10 px-5 py-3.5">
@@ -340,15 +573,41 @@ export default async function DashboardPage() {
             </Link>
           </div>
         )}
+
+        <section className="mb-8 grid gap-3 md:grid-cols-4">
+          {insightCards.map((card) => (
+            <div
+              key={card.label}
+              className={`rounded-2xl border p-4 ${
+                card.tone === "brand"
+                  ? "border-brand-500/25 bg-brand-500/10"
+                  : card.tone === "gold"
+                    ? "border-gold-500/25 bg-gold-500/8"
+                    : card.tone === "accent"
+                      ? "border-accent-500/25 bg-accent-500/8"
+                      : "border-white/10 bg-white/4"
+              }`}
+            >
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">{card.label}</p>
+              <p className="mt-2 truncate text-lg font-black text-white">{card.value}</p>
+              <p className="mt-1 text-xs leading-5 text-white/55">{card.detail}</p>
+            </div>
+          ))}
+        </section>
+
         {/* ── Header ──────────────────────────────────── */}
         <div className="mb-10 flex flex-col gap-6 border-b border-white/10 pb-8 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="mb-3 border-l-2 border-accent-400 pl-3 text-xs font-black uppercase tracking-[0.24em] text-accent-300">
               Workspace
             </p>
-            <h1 className="text-4xl font-black tracking-tight md:text-5xl">
-              {user.name ?? user.email ?? "Epic Music Space User"}
-            </h1>
+            <h2 className="text-3xl font-black tracking-tight md:text-4xl">
+              Your activity feed, receipts, and creator tools
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/55">
+              Everything below is organized around the things a returning user usually needs first:
+              what changed, what is pending, and where to go next.
+            </p>
             <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.16em] text-white/42">
               <span className="rounded-md border border-white/12 px-2.5 py-1">
                 {user.role}

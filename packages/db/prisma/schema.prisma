@@ -89,10 +89,11 @@ model User {
   identityVerifiedAt      DateTime?
 
   // ── Stripe Connect compliance ──────────────────────────────
-  connectChargesEnabled Boolean  @default(false)
-  connectPayoutsEnabled Boolean  @default(false)
-  connectRequirements   Json?    // Stripe requirements object (currently_due, errors, etc.)
-  connectCountry        String?  // ISO 3166-1 alpha-2 from Stripe account
+  connectChargesEnabled  Boolean   @default(false)
+  connectPayoutsEnabled  Boolean   @default(false)
+  connectDetailsSubmitted Boolean  @default(false)  // mirrors Stripe's account.details_submitted; gates payout-eligible UI
+  connectRequirements    Json?     // Stripe requirements object (currently_due, errors, etc.)
+  connectCountry         String?   // ISO 3166-1 alpha-2 from Stripe account
 
   // ── Tax compliance ─────────────────────────────────────────
   taxFormStatus TaxFormStatus @default(NOT_COLLECTED)
@@ -109,6 +110,7 @@ model User {
   transactions Transaction[]
   payouts      Payout[]
   studio           Studio?
+  studioProjects   StudioProject[]
   podcastShows     PodcastShow[]    @relation("PodcastShowOwner")
   podcastEpisodes  PodcastEpisode[] @relation("PodcastEpisodeCreator")
   ownedLabel       Label?         @relation("LabelOwner")
@@ -135,6 +137,7 @@ model User {
   roomBans           RoomBan[]           @relation("RoomBanned")
   roomBansIssued     RoomBan[]           @relation("RoomBannedBy")
   revenueSplits      RevenueSplit[]      @relation("RevenueSplits")
+  splitSheetEntries  SplitSheetEntry[]   @relation("SplitSheetEntries")
   serviceListings    ServiceListing[]    @relation("ServiceProvider")
   serviceOrdersAsBuyer    ServiceOrder[] @relation("ServiceBuyer")
   serviceOrdersAsProvider ServiceOrder[] @relation("ServiceProviderOrders")
@@ -314,6 +317,12 @@ model Song {
   versusWins   Int      @default(0)
   versusLosses Int      @default(0)
   streamCount  Int      @default(0)
+  // Integrated LUFS captured at publish time from the studio's master
+  // analyser. Surfaced on the track page so license shoppers can see at
+  // a glance whether the master is stream-ready (-14 LUFS target) or
+  // hot/quiet. Null on legacy tracks published before the field existed
+  // and on imports from outside the studio.
+  masterLufs   Float?
   // Track-page views (distinct from streamCount, which counts /stream hits).
   // Lets producers compute a real funnel: viewCount -> streamCount -> licenses.
   viewCount    Int      @default(0)
@@ -383,6 +392,10 @@ model Song {
   // reviews the queue and accepts/declines; on accept a real writer
   // share is minted via the existing license/payout pipeline.
   coWriterInterest    CoWriterInterest[]
+  // The royalty split agreement for this song. Optional — single-artist
+  // tracks don't need one. When present and SIGNED, payouts allocate
+  // RevenueSplit rows according to the entries here.
+  splitSheet          SplitSheet?
   @@index([artistId])
   @@index([district])
   @@index([isActive])
@@ -593,6 +606,55 @@ model Studio {
   updatedAt   DateTime @updatedAt
 }
 
+// Server-side persistence for an in-progress DAW session. Mirrors what
+// the client used to keep only in IndexedDB so the same project resumes
+// across devices. Audio bytes live in Vercel Blob; row stores metadata
+// + the parameter state (BPM, kit, beat pattern) as JSON.
+model StudioProject {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String        @db.VarChar(120)
+  bpm            Int           @default(120)
+  trackCount     Int           @default(0)
+  // Snapshot of beat pattern + transport (active bank, kit, etc.) and
+  // any non-track engine state. Validated server-side at save time.
+  patternJson    Json?
+  // Pre-computed waveform peaks for the hub thumbnail. Roughly 60 floats.
+  thumbnailPeaks Json?
+  // Public read-only share link (#9). When true, the listen page is
+  // accessible without auth via /studio/listen/[id].
+  isPublic       Boolean       @default(false)
+  // AI-generated cover art (#5) saved alongside the published render.
+  coverArtUrl    String?
+  // Optional pointer to the rendered master bounce, set on publish so the
+  // listen page (#9) has audio to play even before tracks are paginated in.
+  masterBlobUrl  String?
+  tracks         StudioTrack[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  @@index([userId, updatedAt])
+  @@index([isPublic])
+}
+
+model StudioTrack {
+  id          String        @id @default(cuid())
+  projectId   String
+  project     StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String        @db.VarChar(80)
+  color       String        @db.VarChar(16)
+  // Public Vercel Blob URL for this track's audio. Null while a track is
+  // empty (no recording yet). Removed via the Blob delete API on project
+  // delete (Prisma cascade only handles the row, not the blob).
+  blobUrl     String?
+  durationSec Float         @default(0)
+  // Stable ordering — engine adds tracks in a deterministic sequence.
+  position    Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  @@index([projectId, position])
+}
+
 model VersusMatch {
   id        String       @id @default(cuid())
   songAId   String
@@ -779,6 +841,66 @@ enum RevenueSplitStatus {
   PAID          // included in a Payout that succeeded
   CLAWED_BACK   // refund/dispute reversed it
   EXCLUDED      // platform fee, not actually paid out
+}
+
+// SplitSheet — the agreement among collaborators about how royalties
+// for a song will be divided. Generated automatically at publish time
+// by snapshotting the active studio session's collaborators (everyone
+// who was present when the artist hit publish), defaulted to equal
+// shares. The artist can override before signing. Once status=SIGNED
+// the platform uses these shares to allocate RevenueSplit rows on
+// each payout. status=DRAFT means the shares are still editable.
+model SplitSheet {
+  id        String          @id @default(cuid())
+  songId    String          @unique
+  song      Song            @relation(fields: [songId], references: [id], onDelete: Cascade)
+  status    SplitSheetStatus @default(DRAFT)
+  // Captured at the moment the artist published, so the split sheet
+  // tells a fair story even if the artist later removes a collaborator
+  // from their network.
+  createdFromSessionId String?
+  signedAt  DateTime?
+  entries   SplitSheetEntry[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([status])
+}
+
+model SplitSheetEntry {
+  id            String     @id @default(cuid())
+  sheetId       String
+  sheet         SplitSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  // userId is null when the entry represents a collaborator who was
+  // present in the session but isn't a registered EMS user yet (a
+  // friend invited via link). They get an invite to claim the share.
+  userId        String?
+  user          User?      @relation("SplitSheetEntries", fields: [userId], references: [id], onDelete: SetNull)
+  displayName   String     // captured at publish so the row is readable even if user is null
+  role          SplitSheetRole @default(WRITER)
+  // Share in basis points (10000 = 100%). Sum across entries should
+  // equal 10000; the UI enforces this before SIGNED.
+  shareBps      Int
+  inviteEmail   String?    // for non-user entries — the invite link goes here
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([sheetId])
+  @@index([userId])
+}
+
+enum SplitSheetStatus {
+  DRAFT      // editable; not yet binding
+  SIGNED     // locked; revenue splits flow off this sheet
+  ARCHIVED   // superseded by a newer signed sheet (kept for audit)
+}
+
+enum SplitSheetRole {
+  ARTIST     // primary creator (default 100% if no collaborators)
+  WRITER     // co-writer
+  PRODUCER   // beat / production
+  ENGINEER   // mix / master
+  FEATURE    // featured performer
 }
 
 enum AdLocation {

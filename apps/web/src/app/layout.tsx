@@ -10,6 +10,7 @@ const bebasNeue = Bebas_Neue({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-bebas-neue",
+  preload: false,
 });
 
 const orbitron = Orbitron({
@@ -17,6 +18,7 @@ const orbitron = Orbitron({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-orbitron",
+  preload: false,
 });
 
 const audiowide = Audiowide({
@@ -24,7 +26,7 @@ const audiowide = Audiowide({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-audiowide",
-  preload: true,
+  preload: false,
 });
 const siteUrl = getSiteUrl();
 
@@ -155,6 +157,7 @@ export default async function RootLayout({
           Skip to main content
         </a>
         <script
+          suppressHydrationWarning
           nonce={nonce}
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: structuredDataJson }}

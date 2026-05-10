@@ -33,6 +33,7 @@ import {
   scheduleDrumHit,
   type DrumKitId,
 } from "./beatMachine";
+import type { ChordHit } from "./chordDetect";
 import { audioBufferToWav } from "./wavEncoder";
 
 export type TrackId = string;
@@ -83,12 +84,46 @@ export interface TrackState {
   hasAudio: boolean; // true once a buffer or blob is attached
   durationSec: number;
   level: number; // 0..1 instantaneous output level (UI-driven)
+  /** Per-track EQ analyzer bins (0..1), sampled from this strip's EQ stage. */
+  eqSpectrum: number[];
   fx: TrackFx;
   /** When set, this track's level ducks based on the source track's
    *  amplitude — modern sidechain pumping. null disables. */
   sidechainFromId: TrackId | null;
   /** Sidechain depth: 0 = no ducking, 1 = full duck on peaks. */
   sidechainAmount: number;
+  /** Input calibration: true while sampling armed input for gain staging. */
+  inputCalibrating: boolean;
+  /** Peak input amplitude observed during the latest calibration window. */
+  inputObservedPeak: number;
+  /** Suggested trim in dB after calibration. Null when no suggestion yet. */
+  suggestedInputGainDb: number | null;
+  /** Current compressor gain reduction in dB (negative when reducing). */
+  compGainReductionDb: number;
+  /** Optional VCA group this track follows. */
+  vcaGroupId: string | null;
+  /** Simple automation lanes for foundational mixing moves. */
+  automation: {
+    gainDb: Array<{ timeSec: number; valueDb: number }>;
+    pan: Array<{ timeSec: number; value: number }>;
+  };
+  /** Loop recording take lanes for comping. */
+  compLanes: Array<{
+    id: string;
+    name: string;
+    durationSec: number;
+    createdAt: string;
+    selected: boolean;
+  }>;
+  /** Phrase comp map: 8 segments, each pointing to a lane id. */
+  compSegmentLaneIds: string[];
+  /** Track freezing: when true, the audio buffer attached to this track
+   *  is the pre-rendered output of its FX chain (EQ + comp + vocal bus +
+   *  reverb send + delay send + gain + pan), so the live playback chain
+   *  is bypassed and CPU drops dramatically. The user can unfreeze any
+   *  time to keep editing. The original buffer + FX values are stashed
+   *  in TrackInternal during freeze so unfreeze fully restores them. */
+  frozen: boolean;
 }
 
 interface TrackInternal {
@@ -103,6 +138,8 @@ interface TrackInternal {
   eqLow: BiquadFilterNode;
   eqMid: BiquadFilterNode;
   eqHigh: BiquadFilterNode;
+  eqAnalyser: AnalyserNode;
+  eqSpectrumBuf: Uint8Array;
   comp: DynamicsCompressorNode;
   compBypass: GainNode;
   compMix: GainNode;
@@ -118,6 +155,8 @@ interface TrackInternal {
   delaySendGain: GainNode;
   gainNode: GainNode;
   panNode: StereoPannerNode;
+  /** Post-pan monitor gate (used for AFL monitoring mode). */
+  monitorOutGain: GainNode;
   meterAnalyser: AnalyserNode;
   meterBuf: Uint8Array;
   /** Current audio buffer for playback/export. */
@@ -137,8 +176,49 @@ interface TrackInternal {
    *  what causes feedback when monitoring without headphones. UI flips
    *  this to 1 only after explicit confirm. */
   monitorGain: GainNode | null;
+  /** Optional monitor latency delay. Driven by transport.latencyMode. */
+  monitorLatencyDelay: DelayNode | null;
+  /** Optional monitor tone filter for high-quality monitoring mode. */
+  monitorToneFilter: BiquadFilterNode | null;
   recorder: MediaRecorder | null;
   recordedChunks: Blob[];
+  /** PCM ring buffer used for pre-roll. */
+  preRollChunks: Float32Array[];
+  preRollFrames: number;
+  /** PCM captured for the currently active take. */
+  activeTakeChunks: Float32Array[];
+  /** True while a take is actively capturing audio frames. */
+  captureActive: boolean;
+  /** Audio tap node for pre-roll + auto-gain sampling. */
+  inputTap: ScriptProcessorNode | null;
+  inputTapSink: GainNode | null;
+  /** Timestamp for armed-input auto-calibration start. */
+  inputCalibrationStartedAtMs: number | null;
+  inputCalibrationPeak: number;
+  /** Optional WebCodecs encoder state for Opus capture path. */
+  webCodecEncoder: {
+    flush: () => Promise<void>;
+    close: () => void;
+    encode: (data: unknown) => void;
+    state?: string;
+  } | null;
+  webCodecChunks: Array<{
+    type: "key" | "delta";
+    timestamp: number;
+    duration: number;
+    data: Uint8Array;
+  }>;
+  webCodecInputFrames: number;
+  webCodecSampleRate: number;
+  captureBackend: "mediarecorder" | "webcodecs-opus";
+  /** Comp lane buffers for loop recording. */
+  compLaneBuffers: Array<{ id: string; name: string; buffer: AudioBuffer; createdAt: string }>;
+  compSegmentLaneIds: string[];
+  /** Track freezing — set when we render-and-bypass. Null when unfrozen. */
+  preFreezeBuffer: AudioBuffer | null;
+  preFreezeFx: TrackFx | null;
+  preFreezeGainDb: number | null;
+  preFreezePan: number | null;
 }
 
 export interface TransportState {
@@ -148,6 +228,7 @@ export interface TransportState {
   positionSec: number;
   metronomeOn: boolean;
   latencyMode: "recording" | "mixing";
+  inputMonitorMode: "low-latency" | "high-quality";
   vocalCaptureProfile: "raw" | "punchy" | "smooth" | "hybrid";
   masterDb: number; // -60 .. +6
   masterLevel: number; // 0..1 instantaneous
@@ -171,14 +252,34 @@ export interface TransportState {
   masterTruePeak: number;
   /** Stereo phase correlation meter, -1 (out of phase) .. +1 (in phase). */
   masterPhaseCorrelation: number;
+  /** Solo behavior mode: SIP mutes others, AFL monitors selected tracks only. */
+  soloMode: "sip" | "afl";
+  /** Dedicated AFL audition bus meter level (0..1). */
+  aflBusLevel: number;
   /** True when monitor output is collapsed to mono for translation checks. */
   monoPreviewOn: boolean;
+  /** VCA group controls for linked multi-track fader moves. */
+  vcaGroups: Array<{ id: string; name: string; gainDb: number }>;
+  /** Reference-track A/B state at matched loudness. */
+  referenceEnabled: boolean;
+  referenceMatchDb: number;
   /** Punch-in / punch-out recording mode. When enabled, recording only
    *  captures between punchInSec and punchOutSec, leaving the rest of
    *  the existing take intact. */
   punchInEnabled: boolean;
   punchInSec: number;
   punchOutSec: number;
+  /** Count-in before recording starts when transport is idle. */
+  countInEnabled: boolean;
+  countInBars: 1 | 2;
+  countInRemainingBeats: number;
+  /** Pre-roll audio retained from armed input before Record is pressed. */
+  preRollSec: number;
+  /** Loop recording generates take lanes while looping the same section. */
+  loopRecordEnabled: boolean;
+  maxLoopTakes: number;
+  /** Recording backend currently used for capture. */
+  captureBackend: "mediarecorder" | "webcodecs-opus";
   /** ID of the track captured in the most recent recording pass.
    *  Cleared when the user dismisses the post-record action banner or
    *  starts a new recording. */
@@ -310,6 +411,11 @@ export interface ProjectFileTrack {
   solo: boolean;
   armed: boolean;
   fx: TrackFx;
+  vcaGroupId?: string | null;
+  automation?: {
+    gainDb: Array<{ timeSec: number; valueDb: number }>;
+    pan: Array<{ timeSec: number; value: number }>;
+  };
   durationSec: number;
   /** Original recording blob (WebM/Opus) when available, else WAV-encoded
    *  re-render of an in-memory AudioBuffer. Null for empty tracks. */
@@ -326,6 +432,15 @@ export interface ProjectFile {
     loopEnabled: boolean;
     loopStartSec: number;
     loopEndSec: number;
+    inputMonitorMode?: "low-latency" | "high-quality";
+    countInEnabled?: boolean;
+    countInBars?: 1 | 2;
+    preRollSec?: number;
+    loopRecordEnabled?: boolean;
+    maxLoopTakes?: number;
+    soloMode?: "sip" | "afl";
+    vcaGroups?: Array<{ id: string; name: string; gainDb: number }>;
+    referenceMatchDb?: number;
   };
   beat: {
     enabled: boolean;
@@ -351,6 +466,98 @@ const DB_TO_LINEAR = (db: number): number => Math.pow(10, db / 20);
 const TRANSPORT_START_LEAD_SEC = 0.05;
 const VOCAL_MAX_AUTO_GAIN = 2.0;
 const VOCAL_TARGET_PEAK = 0.82;
+const COMP_SEGMENT_COUNT = 8;
+
+export type MasteringPresetId =
+  | "streamReady"
+  | "loudClub"
+  | "podcast"
+  | "balancedAcoustic"
+  | "flat";
+
+export interface MasteringPresetConfig {
+  /** Display label shown in the preset selector. */
+  label: string;
+  /** One-line description for the user. */
+  description: string;
+  /** Master EQ low shelf gain at 200 Hz (-12..+12). */
+  eqLowDb: number;
+  /** Master EQ mid peaking gain at 1 kHz (-12..+12). */
+  eqMidDb: number;
+  /** Master EQ high shelf gain at 5 kHz (-12..+12). */
+  eqHighDb: number;
+  /** Whether the master limiter is engaged. */
+  limiterOn: boolean;
+  /** Master output gain in dB. Slight pre-limiter push lets loud
+   *  presets hit the limiter harder for that "radio" sheen, while
+   *  podcast/flat keep more headroom. */
+  masterDb: number;
+}
+
+/** Five blessed mastering chains. Tuned by ear against 2024-2025 reference
+ *  releases on streaming platforms; values are conservative starting points
+ *  rather than maximum-loudness commitments — users can push harder
+ *  manually after applying a preset. */
+const MASTERING_PRESETS: Record<MasteringPresetId, MasteringPresetConfig> = {
+  streamReady: {
+    label: "Stream-Ready",
+    description: "-14 LUFS target. Balanced, translates well on phone speakers and headphones.",
+    eqLowDb: 1.5,
+    eqMidDb: -1.5,
+    eqHighDb: 2.0,
+    limiterOn: true,
+    masterDb: -1,
+  },
+  loudClub: {
+    label: "Loud Club",
+    description: "Max impact for sound systems. Pushes the limiter hard — use on already-mixed tracks.",
+    eqLowDb: 3.0,
+    eqMidDb: -2.5,
+    eqHighDb: 2.5,
+    limiterOn: true,
+    masterDb: 2,
+  },
+  podcast: {
+    label: "Podcast / Voice",
+    description: "Speech-clarity curve. Cuts low rumble, lifts presence, gentle limiting only.",
+    eqLowDb: -3.0,
+    eqMidDb: 1.5,
+    eqHighDb: 1.0,
+    limiterOn: true,
+    masterDb: -2,
+  },
+  balancedAcoustic: {
+    label: "Acoustic / Live",
+    description: "Natural feel for acoustic, live, or jazz. No limiter, plenty of dynamics.",
+    eqLowDb: 0.5,
+    eqMidDb: 0.5,
+    eqHighDb: 1.5,
+    limiterOn: false,
+    masterDb: -3,
+  },
+  flat: {
+    label: "Flat (No Master Processing)",
+    description: "Bypass — every band at 0 dB, limiter off. Use when you want to A/B against a preset.",
+    eqLowDb: 0,
+    eqMidDb: 0,
+    eqHighDb: 0,
+    limiterOn: false,
+    masterDb: 0,
+  },
+};
+
+export const MASTERING_PRESET_ORDER: MasteringPresetId[] = [
+  "streamReady",
+  "loudClub",
+  "podcast",
+  "balancedAcoustic",
+  "flat",
+];
+
+export function getMasteringPreset(id: MasteringPresetId): MasteringPresetConfig {
+  return MASTERING_PRESETS[id];
+}
+
 const DEFAULT_TRACK_FX: TrackFx = {
   eqLowDb: 0,
   eqMidDb: 0,
@@ -547,6 +754,9 @@ function findSampleTrimRange(buffer: AudioBuffer, threshold: number): { start: n
 }
 
 export class DawEngine {
+  /** Read-only handle to the audio context for diagnostics panels.
+   *  Set after init() succeeds; null before the first user gesture. */
+  audioContext: AudioContext | null = null;
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private masterEqLow: BiquadFilterNode | null = null;
@@ -554,7 +764,12 @@ export class DawEngine {
   private masterEqHigh: BiquadFilterNode | null = null;
   private masterLimiter: DynamicsCompressorNode | null = null;
   private masterAnalyser: AnalyserNode | null = null;
+  private aflBusAnalyser: AnalyserNode | null = null;
+  private aflBusBuf: Uint8Array | null = null;
   private monitorOutGain: GainNode | null = null;
+  private referenceGain: GainNode | null = null;
+  private referenceBuffer: AudioBuffer | null = null;
+  private referenceSource: AudioBufferSourceNode | null = null;
   private monoOutGain: GainNode | null = null;
   private monoSplitter: ChannelSplitterNode | null = null;
   private monoMerger: ChannelMergerNode | null = null;
@@ -665,6 +880,7 @@ export class DawEngine {
     positionSec: 0,
     metronomeOn: false,
     latencyMode: "recording",
+    inputMonitorMode: "low-latency",
     vocalCaptureProfile: "punchy",
     masterDb: 0,
     masterLevel: 0,
@@ -679,10 +895,22 @@ export class DawEngine {
     masterLufs: -Infinity,
     masterTruePeak: 0,
     masterPhaseCorrelation: 1,
+    soloMode: "sip",
+    aflBusLevel: 0,
     monoPreviewOn: false,
+    vcaGroups: [],
+    referenceEnabled: false,
+    referenceMatchDb: 0,
     punchInEnabled: false,
     punchInSec: 0,
     punchOutSec: 4,
+    countInEnabled: true,
+    countInBars: 1,
+    countInRemainingBeats: 0,
+    preRollSec: 1.5,
+    loopRecordEnabled: false,
+    maxLoopTakes: 6,
+    captureBackend: "mediarecorder",
     lastRecordedTrackId: null,
   };
 
@@ -723,9 +951,15 @@ export class DawEngine {
         (window as unknown as { webkitAudioContext?: typeof AudioContext })
           .webkitAudioContext;
       if (!Ctor) return false;
+      // Pro audio defaults: 48 kHz is the studio/video standard and the
+      // sweet spot of CPU-vs-quality. Browsers may fall back to the device
+      // rate if 48 kHz isn't supported — the engine reads ctx.sampleRate
+      // everywhere, so a fallback is harmless.
       this.ctx = new Ctor({
         latencyHint: this.transport.latencyMode === "recording" ? "interactive" : "playback",
+        sampleRate: 48000,
       });
+      this.audioContext = this.ctx;
       this.master = this.ctx.createGain();
       this.master.gain.value = DB_TO_LINEAR(this.transport.masterDb);
       // Master EQ — three biquads matching the per-track EQ shape so the
@@ -753,8 +987,13 @@ export class DawEngine {
       this.masterAnalyser = this.ctx.createAnalyser();
       this.masterAnalyser.fftSize = 512;
       this.masterMeterBuf = new Uint8Array(this.masterAnalyser.fftSize);
+      this.aflBusAnalyser = this.ctx.createAnalyser();
+      this.aflBusAnalyser.fftSize = 512;
+      this.aflBusBuf = new Uint8Array(this.aflBusAnalyser.fftSize);
       this.monitorOutGain = this.ctx.createGain();
       this.monitorOutGain.gain.value = 1;
+      this.referenceGain = this.ctx.createGain();
+      this.referenceGain.gain.value = 0;
       this.monoOutGain = this.ctx.createGain();
       this.monoOutGain.gain.value = 0;
       this.monoSplitter = this.ctx.createChannelSplitter(2);
@@ -795,6 +1034,7 @@ export class DawEngine {
         .connect(this.masterLimiter)
         .connect(this.masterAnalyser);
       this.masterAnalyser.connect(this.monitorOutGain).connect(this.ctx.destination);
+      this.referenceGain.connect(this.ctx.destination);
       this.masterAnalyser.connect(this.monoSplitter);
       this.monoSplitter.connect(this.monoSumGain, 0);
       this.monoSplitter.connect(this.monoSumGain, 1);
@@ -834,6 +1074,8 @@ export class DawEngine {
       this.metronomeGain = this.ctx.createGain();
       this.metronomeGain.gain.value = 0;
       this.metronomeGain.connect(this.master);
+      this.applyReferenceMonitoring();
+      this.applyInputMonitorMode();
       this.startMeterLoop();
       return true;
     } catch (err) {
@@ -875,6 +1117,37 @@ export class DawEngine {
         if (v > trackPeak) trackPeak = v;
       }
       t.state.level = trackPeak;
+      t.state.compGainReductionDb = t.comp.reduction ?? 0;
+
+      t.eqAnalyser.getByteFrequencyData(
+        t.eqSpectrumBuf as unknown as Uint8Array<ArrayBuffer>,
+      );
+      const eqBins = t.eqSpectrumBuf.length;
+      const eqOut: number[] = [];
+      for (let i = 0; i < 24; i++) {
+        const lo = Math.floor(Math.pow(i / 24, 2) * eqBins);
+        const hi = Math.floor(Math.pow((i + 1) / 24, 2) * eqBins);
+        let v = 0;
+        for (let j = lo; j < Math.max(lo + 1, hi); j++) {
+          v = Math.max(v, t.eqSpectrumBuf[j] ?? 0);
+        }
+        eqOut.push(v / 255);
+      }
+      t.state.eqSpectrum = eqOut;
+    }
+
+    if (this.aflBusAnalyser && this.aflBusBuf && this.transport.soloMode === "afl") {
+      this.aflBusAnalyser.getByteTimeDomainData(
+        this.aflBusBuf as unknown as Uint8Array<ArrayBuffer>,
+      );
+      let aflPeak = 0;
+      for (let i = 0; i < this.aflBusBuf.length; i++) {
+        const v = Math.abs((this.aflBusBuf[i] ?? 128) - 128) / 128;
+        if (v > aflPeak) aflPeak = v;
+      }
+      this.transport.aflBusLevel = aflPeak;
+    } else {
+      this.transport.aflBusLevel = 0;
     }
 
     // Sidechain ducking — drive each target track's duck-gain from the
@@ -972,6 +1245,29 @@ export class DawEngine {
       const elapsed = Math.max(0, this.ctx.currentTime - this.playStartCtxTime);
       this.transport.positionSec = this.playStartPosition + elapsed;
 
+      for (const t of this.tracks.values()) {
+        const autoGain = this.automationValueAt(
+          t.state.automation.gainDb,
+          this.transport.positionSec,
+          (p) => p.valueDb,
+        );
+        if (autoGain !== null) {
+          t.state.gainDb = autoGain;
+          if (!t.state.muted) {
+            t.gainNode.gain.value = DB_TO_LINEAR(this.effectiveTrackGainDb(t));
+          }
+        }
+        const autoPan = this.automationValueAt(
+          t.state.automation.pan,
+          this.transport.positionSec,
+          (p) => p.value,
+        );
+        if (autoPan !== null) {
+          t.state.pan = autoPan;
+          t.panNode.pan.value = autoPan;
+        }
+      }
+
       // Loop region: when position crosses the end point, jump back to
       // the start point and re-arm sources. Tiny audible gap (~5ms scheduling
       // latency); good enough for practice / composition.
@@ -1051,6 +1347,10 @@ export class DawEngine {
     const eqHigh = ctx.createBiquadFilter();
     eqHigh.type = "highshelf";
     eqHigh.frequency.value = 5000;
+    const eqAnalyser = ctx.createAnalyser();
+    eqAnalyser.fftSize = 1024;
+    eqAnalyser.smoothingTimeConstant = 0.75;
+    const eqSpectrumBuf = new Uint8Array(eqAnalyser.frequencyBinCount);
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -18;
     comp.ratio.value = 3;
@@ -1094,6 +1394,8 @@ export class DawEngine {
 
     const gainNode = ctx.createGain();
     const panNode = ctx.createStereoPanner();
+    const monitorOutGain = ctx.createGain();
+    monitorOutGain.gain.value = 1;
     const meterAnalyser = ctx.createAnalyser();
     meterAnalyser.fftSize = 256;
     const meterBuf = new Uint8Array(meterAnalyser.fftSize);
@@ -1103,6 +1405,7 @@ export class DawEngine {
     sidechainDuck.connect(eqLow);
     eqLow.connect(eqMid);
     eqMid.connect(eqHigh);
+    eqHigh.connect(eqAnalyser);
     eqHigh.connect(comp);
     eqHigh.connect(compBypass); // parallel bypass path
     comp.connect(compMix);
@@ -1120,7 +1423,9 @@ export class DawEngine {
     // post-fader sends to shared aux returns.
     vocalBusSum.connect(gainNode);
     gainNode.connect(panNode);
-    panNode.connect(meterAnalyser);
+    panNode.connect(monitorOutGain);
+    if (this.aflBusAnalyser) monitorOutGain.connect(this.aflBusAnalyser);
+    monitorOutGain.connect(meterAnalyser);
     meterAnalyser.connect(this.master);
     panNode.connect(reverbSendGain);
     panNode.connect(delaySendGain);
@@ -1142,15 +1447,30 @@ export class DawEngine {
         hasAudio: false,
         durationSec: 0,
         level: 0,
+        eqSpectrum: new Array(24).fill(0),
         fx: { ...DEFAULT_TRACK_FX },
         sidechainFromId: null,
         sidechainAmount: 0.6,
+        inputCalibrating: false,
+        inputObservedPeak: 0,
+        suggestedInputGainDb: null,
+        compGainReductionDb: 0,
+        vcaGroupId: null,
+        automation: {
+          gainDb: [],
+          pan: [],
+        },
+        compLanes: [],
+        compSegmentLaneIds: [],
+        frozen: false,
       },
       fxIn,
       sidechainDuck,
       eqLow,
       eqMid,
       eqHigh,
+      eqAnalyser,
+      eqSpectrumBuf,
       comp,
       compBypass,
       compMix,
@@ -1166,6 +1486,7 @@ export class DawEngine {
       delaySendGain,
       gainNode,
       panNode,
+      monitorOutGain,
       meterAnalyser,
       meterBuf,
       buffer: null,
@@ -1176,8 +1497,29 @@ export class DawEngine {
       liveStream: null,
       inputGain: null,
       monitorGain: null,
+      monitorLatencyDelay: null,
+      monitorToneFilter: null,
       recorder: null,
       recordedChunks: [],
+      preRollChunks: [],
+      preRollFrames: 0,
+      activeTakeChunks: [],
+      captureActive: false,
+      inputTap: null,
+      inputTapSink: null,
+      inputCalibrationStartedAtMs: null,
+      inputCalibrationPeak: 0,
+      webCodecEncoder: null,
+      webCodecChunks: [],
+      webCodecInputFrames: 0,
+      webCodecSampleRate: 0,
+      captureBackend: "mediarecorder",
+      compLaneBuffers: [],
+      compSegmentLaneIds: [],
+      preFreezeBuffer: null,
+      preFreezeFx: null,
+      preFreezeGainDb: null,
+      preFreezePan: null,
     };
     this.tracks.set(id, t);
     this.notify();
@@ -1396,7 +1738,113 @@ export class DawEngine {
     this.notify();
   }
 
+  setSoloMode(mode: "sip" | "afl") {
+    this.transport.soloMode = mode;
+    this.applySoloMuteRouting();
+    this.notify();
+  }
+
+  setTrackGroup(id: TrackId, groupId: string | null) {
+    const t = this.tracks.get(id);
+    if (!t) return;
+    t.state.vcaGroupId = groupId;
+    if (groupId && !this.transport.vcaGroups.some((g) => g.id === groupId)) {
+      this.transport.vcaGroups.push({ id: groupId, name: groupId.toUpperCase(), gainDb: 0 });
+    }
+    this.applySoloMuteRouting();
+    this.notify();
+  }
+
+  setVcaGroupGain(groupId: string, gainDb: number) {
+    const clamped = Math.max(-60, Math.min(6, gainDb));
+    const group = this.transport.vcaGroups.find((entry) => entry.id === groupId);
+    if (group) {
+      group.gainDb = clamped;
+    } else {
+      this.transport.vcaGroups.push({ id: groupId, name: groupId.toUpperCase(), gainDb: clamped });
+    }
+    this.applySoloMuteRouting();
+    this.notify();
+  }
+
+  setVcaGroupName(groupId: string, name: string) {
+    const group = this.transport.vcaGroups.find((entry) => entry.id === groupId);
+    if (!group) return;
+    group.name = name.trim().slice(0, 20) || group.name;
+    this.notify();
+  }
+
+  setTrackAutomationPoint(
+    id: TrackId,
+    lane: "gainDb" | "pan",
+    timeSec: number,
+    value: number,
+  ) {
+    const t = this.tracks.get(id);
+    if (!t) return;
+    const safeTime = Math.max(0, timeSec);
+    if (lane === "gainDb") {
+      const safeValue = Math.max(-60, Math.min(6, value));
+      const rest = t.state.automation.gainDb.filter((p) => Math.abs(p.timeSec - safeTime) > 0.001);
+      rest.push({ timeSec: safeTime, valueDb: safeValue });
+      rest.sort((a, b) => a.timeSec - b.timeSec);
+      t.state.automation.gainDb = rest;
+    } else {
+      const safeValue = Math.max(-1, Math.min(1, value));
+      const rest = t.state.automation.pan.filter((p) => Math.abs(p.timeSec - safeTime) > 0.001);
+      rest.push({ timeSec: safeTime, value: safeValue });
+      rest.sort((a, b) => a.timeSec - b.timeSec);
+      t.state.automation.pan = rest;
+    }
+    this.notify();
+  }
+
+  clearTrackAutomation(id: TrackId, lane?: "gainDb" | "pan") {
+    const t = this.tracks.get(id);
+    if (!t) return;
+    if (!lane || lane === "gainDb") t.state.automation.gainDb = [];
+    if (!lane || lane === "pan") t.state.automation.pan = [];
+    this.notify();
+  }
+
+  private vcaGainDbForTrack(t: TrackInternal): number {
+    if (!t.state.vcaGroupId) return 0;
+    return this.transport.vcaGroups.find((g) => g.id === t.state.vcaGroupId)?.gainDb ?? 0;
+  }
+
+  private effectiveTrackGainDb(t: TrackInternal): number {
+    return t.state.gainDb + this.vcaGainDbForTrack(t);
+  }
+
+  private automationValueAt<T extends { timeSec: number }>(
+    points: T[],
+    timeSec: number,
+    readValue: (p: T) => number,
+  ): number | null {
+    if (points.length === 0) return null;
+    if (timeSec <= points[0]!.timeSec) return readValue(points[0]!);
+    if (timeSec >= points[points.length - 1]!.timeSec) return readValue(points[points.length - 1]!);
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i]!;
+      const b = points[i + 1]!;
+      if (timeSec >= a.timeSec && timeSec <= b.timeSec) {
+        const span = Math.max(1e-6, b.timeSec - a.timeSec);
+        const k = (timeSec - a.timeSec) / span;
+        return readValue(a) * (1 - k) + readValue(b) * k;
+      }
+    }
+    return null;
+  }
+
   // ── Track audio I/O — programmatic buffer attach (used by beat render) ───
+
+  /** Read-only view of a track's AudioBuffer. Used by the pitch-correct
+   *  flow (#13) which clones, processes, and writes back via
+   *  setTrackBuffer. Returns null when the track has no audio. */
+  getTrackBuffer(id: TrackId): AudioBuffer | null {
+    const t = this.tracks.get(id);
+    return t?.buffer ?? null;
+  }
 
   /** Attach an AudioBuffer to a track without going through MediaRecorder.
    *  Used by the beat machine "Render to Beat track" flow. */
@@ -1415,7 +1863,7 @@ export class DawEngine {
     const t = this.tracks.get(id);
     if (!t) return;
     t.state.gainDb = db;
-    t.gainNode.gain.value = t.state.muted ? 0 : DB_TO_LINEAR(db);
+    t.gainNode.gain.value = t.state.muted ? 0 : DB_TO_LINEAR(this.effectiveTrackGainDb(t));
     this.notify();
   }
 
@@ -1447,7 +1895,412 @@ export class DawEngine {
     const t = this.tracks.get(id);
     if (!t) return;
     t.state.armed = armed;
+    if (armed) {
+      void this.ensureTrackInputPipeline(t);
+    } else if (!this.transport.isRecording) {
+      this.teardownTrackInputPipeline(t);
+    }
     this.notify();
+  }
+
+  private canUseWebCodecsCapture(): boolean {
+    const g = globalThis as unknown as {
+      AudioEncoder?: unknown;
+      AudioData?: unknown;
+    };
+    return Boolean(g.AudioEncoder && g.AudioData);
+  }
+
+  private canAccessMicrophone(): boolean {
+    if (typeof document === "undefined") return true;
+    // Some embedded browsers/webviews enforce Permissions-Policy and will
+    // hard-fail getUserMedia("microphone") with noisy console violations.
+    const doc = document as Document & {
+      permissionsPolicy?: { allowsFeature?: (feature: string) => boolean };
+      featurePolicy?: { allowsFeature?: (feature: string) => boolean };
+    };
+    const policy = doc.permissionsPolicy ?? doc.featurePolicy;
+    const allowsFeature = policy?.allowsFeature;
+    if (typeof allowsFeature !== "function") return true;
+    try {
+      return allowsFeature.call(policy, "microphone") !== false;
+    } catch {
+      return true;
+    }
+  }
+
+  private async ensureTrackInputPipeline(t: TrackInternal): Promise<boolean> {
+    if (!this.ctx) return false;
+    if (t.liveStream && t.liveSource && t.inputGain && t.monitorGain) {
+      this.beginInputCalibration(t);
+      return true;
+    }
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      return false;
+    }
+    if (!this.canAccessMicrophone()) {
+      return false;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: this.ctx.sampleRate,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+      t.liveStream = stream;
+      const live = this.ctx.createMediaStreamSource(stream);
+      const inputGain = this.ctx.createGain();
+      inputGain.gain.value = DB_TO_LINEAR(t.state.inputGainDb);
+      const monitorDelay = this.ctx.createDelay(0.2);
+      monitorDelay.delayTime.value =
+        this.transport.inputMonitorMode === "low-latency" ? 0.004 : 0.042;
+      const monitorTone = this.ctx.createBiquadFilter();
+      monitorTone.type = "lowpass";
+      monitorTone.frequency.value =
+        this.transport.inputMonitorMode === "low-latency" ? 18000 : 12000;
+      const monitorGain = this.ctx.createGain();
+      monitorGain.gain.value = t.state.monitorEnabled ? 0.7 : 0;
+
+      const inputTap = this.ctx.createScriptProcessor(1024, 1, 1);
+      const inputTapSink = this.ctx.createGain();
+      inputTapSink.gain.value = 0;
+
+      live.connect(inputGain);
+      inputGain.connect(monitorDelay);
+      monitorDelay.connect(monitorTone);
+      monitorTone.connect(monitorGain);
+      monitorGain.connect(t.fxIn);
+      inputGain.connect(inputTap);
+      inputTap.connect(inputTapSink);
+      inputTapSink.connect(this.ctx.destination);
+
+      t.liveSource = live;
+      t.inputGain = inputGain;
+      t.monitorLatencyDelay = monitorDelay;
+      t.monitorToneFilter = monitorTone;
+      t.monitorGain = monitorGain;
+      t.inputTap = inputTap;
+      t.inputTapSink = inputTapSink;
+      t.preRollChunks = [];
+      t.preRollFrames = 0;
+      t.activeTakeChunks = [];
+
+      inputTap.onaudioprocess = (evt) => {
+        const data = evt.inputBuffer.getChannelData(0);
+        if (!data || data.length === 0) return;
+        const chunk = new Float32Array(data.length);
+        chunk.set(data);
+
+        const maxPreRollFrames = Math.floor(
+          (this.transport.preRollSec || 0) * this.ctx!.sampleRate,
+        );
+        if (maxPreRollFrames > 0 && !t.captureActive) {
+          t.preRollChunks.push(chunk);
+          t.preRollFrames += chunk.length;
+          while (t.preRollFrames > maxPreRollFrames && t.preRollChunks.length > 0) {
+            const removed = t.preRollChunks.shift();
+            t.preRollFrames -= removed?.length ?? 0;
+          }
+        }
+
+        if (t.captureActive) {
+          t.activeTakeChunks.push(chunk);
+          if (t.captureBackend === "webcodecs-opus") {
+            this.encodeWebCodecsChunk(t, chunk);
+          }
+        }
+
+        if (t.state.inputCalibrating) {
+          let localPeak = 0;
+          for (let i = 0; i < chunk.length; i++) {
+            const abs = Math.abs(chunk[i] ?? 0);
+            if (abs > localPeak) localPeak = abs;
+          }
+          if (localPeak > t.inputCalibrationPeak) {
+            t.inputCalibrationPeak = localPeak;
+          }
+        }
+      };
+
+      this.beginInputCalibration(t);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private beginInputCalibration(t: TrackInternal) {
+    t.state.inputCalibrating = true;
+    t.state.inputObservedPeak = 0;
+    t.state.suggestedInputGainDb = null;
+    t.inputCalibrationPeak = 0;
+    t.inputCalibrationStartedAtMs = Date.now();
+    this.notify();
+    window.setTimeout(() => {
+      if (!t.state.inputCalibrating) return;
+      const peak = Math.max(0, Math.min(1, t.inputCalibrationPeak));
+      t.state.inputCalibrating = false;
+      t.state.inputObservedPeak = peak;
+      if (peak > 0) {
+        const target = 0.78;
+        const deltaDb = 20 * Math.log10(target / peak);
+        t.state.suggestedInputGainDb = Math.max(
+          -24,
+          Math.min(12, t.state.inputGainDb + deltaDb),
+        );
+      } else {
+        t.state.suggestedInputGainDb = t.state.inputGainDb;
+      }
+      this.notify();
+    }, 2000);
+  }
+
+  private teardownTrackInputPipeline(t: TrackInternal) {
+    if (t.captureActive) return;
+    t.inputTap && (t.inputTap.onaudioprocess = null);
+    t.inputTap?.disconnect();
+    t.inputTapSink?.disconnect();
+    t.liveSource?.disconnect();
+    t.inputGain?.disconnect();
+    t.monitorLatencyDelay?.disconnect();
+    t.monitorToneFilter?.disconnect();
+    t.monitorGain?.disconnect();
+    t.inputTap = null;
+    t.inputTapSink = null;
+    t.liveSource = null;
+    t.inputGain = null;
+    t.monitorLatencyDelay = null;
+    t.monitorToneFilter = null;
+    t.monitorGain = null;
+    if (t.liveStream) {
+      t.liveStream.getTracks().forEach((s) => s.stop());
+      t.liveStream = null;
+    }
+    t.state.inputCalibrating = false;
+    if (t.webCodecEncoder) {
+      try {
+        t.webCodecEncoder.close();
+      } catch {
+        /* no-op */
+      }
+      t.webCodecEncoder = null;
+      t.webCodecChunks = [];
+      t.webCodecInputFrames = 0;
+      t.webCodecSampleRate = 0;
+    }
+  }
+
+  private async startWebCodecsCapture(t: TrackInternal): Promise<boolean> {
+    if (!this.ctx) return false;
+    const g = globalThis as unknown as {
+      AudioEncoder?: {
+        new (init: {
+          output: (chunk: {
+            byteLength: number;
+            type: "key" | "delta";
+            timestamp: number;
+            duration?: number;
+            copyTo: (dst: Uint8Array) => void;
+          }) => void;
+          error: (error: unknown) => void;
+        }): {
+          configure: (cfg: {
+            codec: string;
+            numberOfChannels: number;
+            sampleRate: number;
+            bitrate: number;
+          }) => void;
+          encode: (data: unknown) => void;
+          flush: () => Promise<void>;
+          close: () => void;
+          state?: string;
+        };
+      };
+    };
+    if (!g.AudioEncoder) return false;
+
+    t.webCodecChunks = [];
+    t.webCodecInputFrames = 0;
+    t.webCodecSampleRate = this.ctx.sampleRate;
+
+    try {
+      const encoder = new g.AudioEncoder({
+        output: (chunk) => {
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data);
+          t.webCodecChunks.push({
+            type: chunk.type,
+            timestamp: chunk.timestamp,
+            duration: chunk.duration ?? 0,
+            data,
+          });
+        },
+        error: (error) => {
+          console.warn("[DawEngine] webcodecs encoder error", error);
+        },
+      });
+      encoder.configure({
+        codec: "opus",
+        numberOfChannels: 1,
+        sampleRate: this.ctx.sampleRate,
+        bitrate: 256_000,
+      });
+      t.webCodecEncoder = encoder;
+      return true;
+    } catch (error) {
+      console.warn("[DawEngine] webcodecs init failed", error);
+      t.webCodecEncoder = null;
+      t.webCodecChunks = [];
+      return false;
+    }
+  }
+
+  private encodeWebCodecsChunk(t: TrackInternal, chunk: Float32Array) {
+    const g = globalThis as unknown as {
+      AudioData?: {
+        new (init: {
+          format: "f32";
+          sampleRate: number;
+          numberOfFrames: number;
+          numberOfChannels: number;
+          timestamp: number;
+          data: Float32Array;
+        }): { close: () => void };
+      };
+    };
+    if (!t.webCodecEncoder || !g.AudioData) return;
+    try {
+      const timestampUs = Math.round((t.webCodecInputFrames / t.webCodecSampleRate) * 1_000_000);
+      const frame = new g.AudioData({
+        format: "f32",
+        sampleRate: t.webCodecSampleRate,
+        numberOfFrames: chunk.length,
+        numberOfChannels: 1,
+        timestamp: timestampUs,
+        data: chunk,
+      });
+      t.webCodecEncoder.encode(frame);
+      frame.close();
+      t.webCodecInputFrames += chunk.length;
+    } catch (error) {
+      console.warn("[DawEngine] webcodecs encode chunk failed", error);
+    }
+  }
+
+  private async stopWebCodecsCapture(t: TrackInternal): Promise<AudioBuffer | null> {
+    const encoder = t.webCodecEncoder;
+    t.webCodecEncoder = null;
+    if (!encoder) return null;
+    try {
+      if (encoder.state !== "closed") {
+        await encoder.flush();
+      }
+    } catch (error) {
+      console.warn("[DawEngine] webcodecs flush failed", error);
+    }
+    try {
+      if (encoder.state !== "closed") {
+        encoder.close();
+      }
+    } catch {
+      /* no-op */
+    }
+    const decoded = await this.decodeWebCodecsChunks(
+      t.webCodecChunks,
+      t.webCodecSampleRate || this.ctx?.sampleRate || 48_000,
+    );
+    t.webCodecChunks = [];
+    t.webCodecInputFrames = 0;
+    t.webCodecSampleRate = 0;
+    return decoded;
+  }
+
+  private async decodeWebCodecsChunks(
+    chunks: Array<{
+      type: "key" | "delta";
+      timestamp: number;
+      duration: number;
+      data: Uint8Array;
+    }>,
+    sampleRate: number,
+  ): Promise<AudioBuffer | null> {
+    if (!this.ctx || chunks.length === 0) return null;
+    const g = globalThis as unknown as {
+      AudioDecoder?: {
+        new (init: {
+          output: (data: {
+            numberOfFrames: number;
+            copyTo: (dst: Float32Array, opts?: { planeIndex?: number }) => void;
+            close: () => void;
+          }) => void;
+          error: (error: unknown) => void;
+        }): {
+          configure: (cfg: {
+            codec: string;
+            numberOfChannels: number;
+            sampleRate: number;
+          }) => void;
+          decode: (chunk: unknown) => void;
+          flush: () => Promise<void>;
+          close: () => void;
+        };
+      };
+      EncodedAudioChunk?: {
+        new (init: {
+          type: "key" | "delta";
+          timestamp: number;
+          duration: number;
+          data: Uint8Array;
+        }): unknown;
+      };
+    };
+    if (!g.AudioDecoder || !g.EncodedAudioChunk) return null;
+
+    const pcm: Float32Array[] = [];
+    try {
+      const decoder = new g.AudioDecoder({
+        output: (data) => {
+          const out = new Float32Array(data.numberOfFrames);
+          try {
+            data.copyTo(out, { planeIndex: 0 });
+          } catch {
+            data.copyTo(out);
+          }
+          pcm.push(out);
+          data.close();
+        },
+        error: (error) => {
+          console.warn("[DawEngine] webcodecs decoder error", error);
+        },
+      });
+      decoder.configure({
+        codec: "opus",
+        numberOfChannels: 1,
+        sampleRate,
+      });
+      for (const chunk of chunks) {
+        const encoded = new g.EncodedAudioChunk({
+          type: chunk.type,
+          timestamp: chunk.timestamp,
+          duration: chunk.duration,
+          data: chunk.data,
+        });
+        decoder.decode(encoded);
+      }
+      await decoder.flush();
+      decoder.close();
+      return this.bufferFromMonoPcm(pcm, sampleRate);
+    } catch (error) {
+      console.warn("[DawEngine] webcodecs decode failed", error);
+      return null;
+    }
   }
 
   /** When ANY track is solo'd, only solo'd tracks should be audible.
@@ -1456,8 +2309,20 @@ export class DawEngine {
   private applySoloMuteRouting() {
     const anySolo = Array.from(this.tracks.values()).some((t) => t.state.solo);
     for (const t of this.tracks.values()) {
-      const audible = anySolo ? t.state.solo : !t.state.muted;
-      t.gainNode.gain.value = audible ? DB_TO_LINEAR(t.state.gainDb) : 0;
+      const baseOn = !t.state.muted;
+      if (!anySolo) {
+        t.gainNode.gain.value = baseOn ? DB_TO_LINEAR(this.effectiveTrackGainDb(t)) : 0;
+        t.monitorOutGain.gain.value = 1;
+        continue;
+      }
+      if (this.transport.soloMode === "sip") {
+        const audible = baseOn && t.state.solo;
+        t.gainNode.gain.value = audible ? DB_TO_LINEAR(this.effectiveTrackGainDb(t)) : 0;
+        t.monitorOutGain.gain.value = 1;
+      } else {
+        t.gainNode.gain.value = baseOn ? DB_TO_LINEAR(this.effectiveTrackGainDb(t)) : 0;
+        t.monitorOutGain.gain.value = t.state.solo ? 1 : 0;
+      }
     }
   }
 
@@ -1482,6 +2347,54 @@ export class DawEngine {
 
   setLatencyMode(mode: TransportState["latencyMode"]) {
     this.transport.latencyMode = mode;
+    this.transport.inputMonitorMode = mode === "recording" ? "low-latency" : "high-quality";
+    this.applyInputMonitorMode();
+    this.notify();
+  }
+
+  setInputMonitorMode(mode: TransportState["inputMonitorMode"]) {
+    this.transport.inputMonitorMode = mode;
+    this.applyInputMonitorMode();
+    this.notify();
+  }
+
+  private applyInputMonitorMode() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const isLowLatency = this.transport.inputMonitorMode === "low-latency";
+    const delaySec = isLowLatency ? 0.004 : 0.042;
+    const toneHz = isLowLatency ? 18000 : 12000;
+    for (const t of this.tracks.values()) {
+      if (t.monitorLatencyDelay) {
+        t.monitorLatencyDelay.delayTime.cancelScheduledValues(now);
+        t.monitorLatencyDelay.delayTime.setValueAtTime(t.monitorLatencyDelay.delayTime.value, now);
+        t.monitorLatencyDelay.delayTime.linearRampToValueAtTime(delaySec, now + 0.03);
+      }
+      if (t.monitorToneFilter) {
+        t.monitorToneFilter.frequency.cancelScheduledValues(now);
+        t.monitorToneFilter.frequency.setValueAtTime(t.monitorToneFilter.frequency.value, now);
+        t.monitorToneFilter.frequency.linearRampToValueAtTime(toneHz, now + 0.03);
+      }
+    }
+  }
+
+  setCountIn(enabled: boolean, bars?: 1 | 2) {
+    this.transport.countInEnabled = enabled;
+    if (bars !== undefined) this.transport.countInBars = bars;
+    this.notify();
+  }
+
+  setPreRoll(seconds: number) {
+    const clamped = Math.max(0, Math.min(2, seconds));
+    this.transport.preRollSec = clamped;
+    this.notify();
+  }
+
+  setLoopRecording(enabled: boolean, maxTakes?: number) {
+    this.transport.loopRecordEnabled = enabled;
+    if (typeof maxTakes === "number" && Number.isFinite(maxTakes)) {
+      this.transport.maxLoopTakes = Math.max(1, Math.min(16, Math.floor(maxTakes)));
+    }
     this.notify();
   }
 
@@ -1542,9 +2455,92 @@ export class DawEngine {
 
   setMonoPreview(on: boolean) {
     this.transport.monoPreviewOn = on;
-    if (this.monitorOutGain) this.monitorOutGain.gain.value = on ? 0 : 1;
+    this.applyReferenceMonitoring();
     if (this.monoOutGain) this.monoOutGain.gain.value = on ? 1 : 0;
     this.notify();
+  }
+
+  async setReferenceTrack(file: Blob): Promise<boolean> {
+    if (!this.ctx) return false;
+    try {
+      const data = await file.arrayBuffer();
+      this.referenceBuffer = await this.ctx.decodeAudioData(data.slice(0));
+      if (this.transport.referenceEnabled) {
+        this.syncReferenceSource();
+      }
+      this.notify();
+      return true;
+    } catch (error) {
+      console.warn("[DawEngine] reference decode failed", error);
+      return false;
+    }
+  }
+
+  clearReferenceTrack() {
+    this.stopReferenceSource();
+    this.referenceBuffer = null;
+    this.transport.referenceEnabled = false;
+    this.applyReferenceMonitoring();
+    this.notify();
+  }
+
+  setReferenceEnabled(on: boolean) {
+    this.transport.referenceEnabled = on && Boolean(this.referenceBuffer);
+    this.applyReferenceMonitoring();
+    if (this.transport.referenceEnabled && this.transport.isPlaying) {
+      this.syncReferenceSource();
+    } else if (!this.transport.referenceEnabled) {
+      this.stopReferenceSource();
+    }
+    this.notify();
+  }
+
+  setReferenceMatchDb(db: number) {
+    this.transport.referenceMatchDb = Math.max(-24, Math.min(12, db));
+    this.applyReferenceMonitoring();
+    this.notify();
+  }
+
+  private applyReferenceMonitoring() {
+    if (this.monitorOutGain) {
+      this.monitorOutGain.gain.value = this.transport.referenceEnabled ? 0 : this.transport.monoPreviewOn ? 0 : 1;
+    }
+    if (this.referenceGain) {
+      this.referenceGain.gain.value = this.transport.referenceEnabled
+        ? DB_TO_LINEAR(this.transport.referenceMatchDb)
+        : 0;
+    }
+  }
+
+  private stopReferenceSource() {
+    if (this.referenceSource) {
+      try {
+        this.referenceSource.stop();
+      } catch {
+        /* no-op */
+      }
+      this.referenceSource.disconnect();
+      this.referenceSource = null;
+    }
+  }
+
+  private syncReferenceSource() {
+    if (!this.ctx || !this.referenceGain || !this.referenceBuffer || !this.transport.referenceEnabled) return;
+    this.stopReferenceSource();
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.referenceBuffer;
+    src.loop = true;
+    src.connect(this.referenceGain);
+    const offset = this.referenceBuffer.duration > 0
+      ? ((this.transport.positionSec % this.referenceBuffer.duration) + this.referenceBuffer.duration) % this.referenceBuffer.duration
+      : 0;
+    const when = this.transport.isPlaying ? this.ctx.currentTime + TRANSPORT_START_LEAD_SEC : this.ctx.currentTime;
+    try {
+      src.start(when, offset);
+      this.referenceSource = src;
+    } catch {
+      this.referenceSource = null;
+    }
   }
 
   /** Set one band of the master EQ in dB. Same shape as track EQ. */
@@ -1561,6 +2557,178 @@ export class DawEngine {
       if (this.masterEqHigh) this.masterEqHigh.gain.value = clamped;
     }
     this.notify();
+  }
+
+  /** Apply a named mastering chain preset. Each preset is a frozen
+   *  EQ + limiter + master-gain config tuned for a delivery target.
+   *  Users hit one button and get a usable master without engineering
+   *  knowledge. They can still tweak the EQ knobs afterward — the
+   *  preset just sets the starting point. */
+  applyMasteringPreset(preset: MasteringPresetId): MasteringPresetConfig {
+    const config = MASTERING_PRESETS[preset];
+    this.setMasterEq("low", config.eqLowDb);
+    this.setMasterEq("mid", config.eqMidDb);
+    this.setMasterEq("high", config.eqHighDb);
+    this.setMasterLimiter(config.limiterOn);
+    this.setMasterDb(config.masterDb);
+    return config;
+  }
+
+  /** Freeze a track: pre-render its FX chain (EQ + comp + vocal bus +
+   *  sends + gain + pan) into an AudioBuffer, swap the live buffer for
+   *  the rendered output, and flatten the FX so playback doesn't
+   *  double-process. Drops CPU dramatically on heavy tracks because the
+   *  live FX chain is no longer running. Reversible via unfreezeTrack. */
+  async freezeTrack(id: TrackId): Promise<boolean> {
+    if (!this.ctx) return false;
+    const t = this.tracks.get(id);
+    if (!t || t.state.frozen || !t.buffer) return false;
+
+    // Render the track's chain offline. We reuse buildOfflineChain so
+    // every FX param matches what the user has dialed in live.
+    const sourceBuffer = t.buffer;
+    const tailSec = 1.0; // headroom for reverb/delay tails
+    const totalSec = sourceBuffer.duration + tailSec;
+    const sampleRate = this.ctx.sampleRate;
+    const offline = new OfflineAudioContext(
+      2,
+      Math.ceil(totalSec * sampleRate),
+      sampleRate,
+    );
+
+    const chain = this.buildOfflineChain(offline, t.state);
+
+    // Build minimal aux returns (same shape as renderMix) so reverb/delay
+    // sends are baked into the frozen buffer.
+    const offReverbIn = offline.createGain();
+    const offReverb = offline.createConvolver();
+    {
+      const len = Math.max(1, Math.floor(offline.sampleRate * this.aux.reverbReturn.decaySec));
+      const ir = offline.createBuffer(2, len, offline.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const data = ir.getChannelData(ch);
+        for (let i = 0; i < len; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+        }
+      }
+      offReverb.buffer = ir;
+    }
+    const offReverbReturn = offline.createGain();
+    offReverbReturn.gain.value = this.aux.reverbReturn.level;
+    offReverbIn.connect(offReverb).connect(offReverbReturn);
+
+    const offDelayIn = offline.createGain();
+    const offDelay = offline.createDelay(4.0);
+    offDelay.delayTime.value = (60 / this.transport.bpm) * this.aux.delayReturn.beats;
+    const offDelayFeedback = offline.createGain();
+    offDelayFeedback.gain.value = this.aux.delayReturn.feedback;
+    const offDelayReturn = offline.createGain();
+    offDelayReturn.gain.value = this.aux.delayReturn.level;
+    offDelayIn.connect(offDelay);
+    offDelay.connect(offDelayFeedback);
+    offDelayFeedback.connect(offDelay);
+    offDelay.connect(offDelayReturn);
+
+    // Sum chain output + aux returns into a frozen-output gain.
+    const out = offline.createGain();
+    chain.outNode.connect(out);
+    chain.reverbSend.connect(offReverbIn);
+    chain.delaySend.connect(offDelayIn);
+    offReverbReturn.connect(out);
+    offDelayReturn.connect(out);
+    out.connect(offline.destination);
+
+    const src = offline.createBufferSource();
+    src.buffer = sourceBuffer;
+    src.connect(chain.inNode);
+    src.start(0);
+
+    let renderedBuffer: AudioBuffer;
+    try {
+      renderedBuffer = await offline.startRendering();
+    } catch {
+      return false;
+    }
+
+    // Stash the originals so unfreeze can fully restore.
+    t.preFreezeBuffer = sourceBuffer;
+    t.preFreezeFx = { ...t.state.fx };
+    t.preFreezeGainDb = t.state.gainDb;
+    t.preFreezePan = t.state.pan;
+
+    // Swap in the rendered buffer + flatten FX so the live chain is
+    // effectively a passthrough on playback.
+    t.buffer = renderedBuffer;
+    t.state.durationSec = renderedBuffer.duration;
+    t.state.frozen = true;
+    t.state.fx = { ...DEFAULT_TRACK_FX };
+    // gainDb + pan stay at unity — the freeze captured them already.
+    t.state.gainDb = 0;
+    t.state.pan = 0;
+
+    // Push the flattened FX values into the live AudioNodes so the
+    // running graph reflects the new (neutral) state immediately.
+    if (t.eqLow) t.eqLow.gain.value = 0;
+    if (t.eqMid) t.eqMid.gain.value = 0;
+    if (t.eqHigh) t.eqHigh.gain.value = 0;
+    if (t.compBypass && t.compMix) {
+      t.compBypass.gain.value = 1;
+      t.compMix.gain.value = 0;
+    }
+    if (t.reverbSendGain) t.reverbSendGain.gain.value = 0;
+    if (t.delaySendGain) t.delaySendGain.gain.value = 0;
+    if (t.gainNode) t.gainNode.gain.value = 1;
+    if (t.panNode) t.panNode.pan.value = 0;
+    // Vocal bus has 5 nodes (drive, saturator curve, presence, air,
+    // dry/crush mix). applyVocalBusState walks all of them off the
+    // current state.fx — which we just reset to DEFAULT_TRACK_FX
+    // (vocalBusEnabled = false → all five nodes flatten to passthrough).
+    // Earlier this only zeroed three nodes, leaving the saturator curve
+    // and crush blend stale on the rendered playback.
+    this.applyVocalBusState(t);
+
+    this.notify();
+    return true;
+  }
+
+  /** Restore a frozen track to its pre-freeze state. Drops the rendered
+   *  buffer, restores the original recording, and rewires the FX values
+   *  the user had before freezing. */
+  unfreezeTrack(id: TrackId): boolean {
+    const t = this.tracks.get(id);
+    if (!t || !t.state.frozen || !t.preFreezeBuffer) return false;
+
+    t.buffer = t.preFreezeBuffer;
+    t.state.durationSec = t.preFreezeBuffer.duration;
+    if (t.preFreezeFx) t.state.fx = { ...t.preFreezeFx };
+    if (t.preFreezeGainDb !== null) t.state.gainDb = t.preFreezeGainDb;
+    if (t.preFreezePan !== null) t.state.pan = t.preFreezePan;
+
+    // Reapply FX values to the running graph.
+    if (t.eqLow) t.eqLow.gain.value = t.state.fx.eqLowDb;
+    if (t.eqMid) t.eqMid.gain.value = t.state.fx.eqMidDb;
+    if (t.eqHigh) t.eqHigh.gain.value = t.state.fx.eqHighDb;
+    if (t.compBypass && t.compMix) {
+      t.compBypass.gain.value = t.state.fx.compEnabled ? 0 : 1;
+      t.compMix.gain.value = t.state.fx.compEnabled ? 1 : 0;
+    }
+    if (t.reverbSendGain) t.reverbSendGain.gain.value = t.state.fx.reverbWet;
+    if (t.delaySendGain) t.delaySendGain.gain.value = t.state.fx.delayWet;
+    if (t.gainNode) t.gainNode.gain.value = DB_TO_LINEAR(t.state.gainDb);
+    if (t.panNode) t.panNode.pan.value = t.state.pan;
+    // Vocal bus chain — drive, saturator curve, presence, air, dry/crush
+    // mix. applyVocalBusState handles all five nodes in one place and
+    // ramps them so the unfreeze isn't a clicky step change.
+    this.applyVocalBusState(t);
+
+    t.preFreezeBuffer = null;
+    t.preFreezeFx = null;
+    t.preFreezeGainDb = null;
+    t.preFreezePan = null;
+    t.state.frozen = false;
+
+    this.notify();
+    return true;
   }
 
   // ── Sidechain ─────────────────────────────────────────────────────────
@@ -1670,6 +2838,9 @@ export class DawEngine {
     this.playStartCtxTime = startAt;
     this.playStartPosition = offset;
     this.transport.isPlaying = true;
+    if (this.transport.referenceEnabled) {
+      this.syncReferenceSource();
+    }
     if (this.transport.metronomeOn) this.scheduleMetronomeTicks();
     if (this.beatMachine.enabled) this.scheduleBeatTicks();
     if (this.midi.clip) this.scheduleMidiClipTicks();
@@ -1687,6 +2858,7 @@ export class DawEngine {
       t.source = null;
     }
     this.transport.isPlaying = false;
+    this.stopReferenceSource();
     this.stopMetronome();
     this.stopBeatScheduler();
     this.stopMidiClipScheduler();
@@ -1707,7 +2879,10 @@ export class DawEngine {
     if (wasPlaying) this.stop();
     this.transport.positionSec = Math.max(0, positionSec);
     if (wasPlaying) void this.play();
-    else this.notify();
+    else {
+      if (this.transport.referenceEnabled) this.syncReferenceSource();
+      this.notify();
+    }
   }
 
   // ── Loop region ───────────────────────────────────────────────────────
@@ -1795,6 +2970,79 @@ export class DawEngine {
     }
   }
 
+  /** Heuristic chord detection over a track's audio. Returns the chord
+   *  progression as a compact list (consecutive duplicates collapsed).
+   *  Empty when the track has no audio. Pure synchronous compute on the
+   *  main thread — runs in ~300ms for a 60s clip. */
+  async detectTrackChords(trackId: TrackId): Promise<ChordHit[]> {
+    const t = this.tracks.get(trackId);
+    if (!t || !t.buffer) return [];
+    const { detectChords, mixToMono } = await import("./chordDetect");
+    const mono = mixToMono(t.buffer);
+    return detectChords(mono, t.buffer.sampleRate, this.transport.bpm);
+  }
+
+  /** Convert an AudioBuffer (e.g. a freshly-captured mic recording) into
+   *  a MIDI clip and write it to the engine. Used by the Voice → MIDI
+   *  button (#4) so users can hum melodies into the synth track without
+   *  having to play piano. */
+  async convertBufferToMidi(buffer: AudioBuffer): Promise<MidiClip | null> {
+    const { audioToMidiNotes } = await import("./voiceToMidi");
+    const { mixToMono } = await import("./chordDetect");
+    const mono = mixToMono(buffer);
+    const { notes, lengthBeats } = audioToMidiNotes(
+      mono,
+      buffer.sampleRate,
+      this.transport.bpm,
+    );
+    if (notes.length === 0) return null;
+    const clip: MidiClip = {
+      notes: notes.map((n) => ({
+        note: n.note,
+        startBeat: n.startBeat,
+        durationBeats: n.durationBeats,
+        velocity: n.velocity,
+      })),
+      lengthBeats,
+    };
+    this.midi = { ...this.midi, clip };
+    if (this.transport.isPlaying) this.scheduleMidiClipTicks();
+    this.notify();
+    return clip;
+  }
+
+  /** Convert a track's audio (typically a vocal take) into a MIDI clip
+   *  using YIN-style pitch tracking. Replaces the engine's current MIDI
+   *  clip — the user can then edit it in the piano roll. Best on solo,
+   *  monophonic vocal lines; choirs and heavy reverb produce noisy
+   *  output that's flagged as a known limitation. */
+  async convertTrackToMidi(trackId: TrackId): Promise<MidiClip | null> {
+    const t = this.tracks.get(trackId);
+    if (!t || !t.buffer) return null;
+    const { audioToMidiNotes } = await import("./voiceToMidi");
+    const { mixToMono } = await import("./chordDetect");
+    const mono = mixToMono(t.buffer);
+    const { notes, lengthBeats } = audioToMidiNotes(
+      mono,
+      t.buffer.sampleRate,
+      this.transport.bpm,
+    );
+    if (notes.length === 0) return null;
+    const clip: MidiClip = {
+      notes: notes.map((n) => ({
+        note: n.note,
+        startBeat: n.startBeat,
+        durationBeats: n.durationBeats,
+        velocity: n.velocity,
+      })),
+      lengthBeats,
+    };
+    this.midi = { ...this.midi, clip };
+    if (this.transport.isPlaying) this.scheduleMidiClipTicks();
+    this.notify();
+    return clip;
+  }
+
   // ── Waveform peaks (UI helper) ─────────────────────────────────────────
 
   /** Return a downsampled peak array for the supplied track, suitable
@@ -1831,13 +3079,6 @@ export class DawEngine {
   async startRecording(trackId?: TrackId): Promise<boolean> {
     if (!this.ctx) return false;
     if (this.transport.isRecording || this.recordingStartInFlight || this.recordingStopInFlight) return false;
-    if (
-      typeof navigator === "undefined" ||
-      !navigator.mediaDevices?.getUserMedia ||
-      typeof MediaRecorder === "undefined"
-    ) {
-      return false;
-    }
 
     const wasPlaying = this.transport.isPlaying;
     const track =
@@ -1847,80 +3088,71 @@ export class DawEngine {
 
     this.recordingStartInFlight = true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          sampleRate: this.ctx.sampleRate,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-      });
-      track.liveStream = stream;
+      const okInput = await this.ensureTrackInputPipeline(track);
+      if (!okInput) return false;
 
-      // Live mic → inputGain → monitorGain → fxIn (top of FX chain).
-      //
-      // inputGain is the channel-strip mic preamp trim, defaulted to -6 dB
-      // so a typical hot consumer mic doesn't slam unity into the FX
-      // chain (which then made the monitor "too loud" in user feedback
-      // even with monitorGain at 1.0). Range -24..+12 dB, surfaced as
-      // a per-track Input knob in the channel strip.
-      //
-      // monitorGain starts at 0 so the performer does NOT hear themselves
-      // through the speakers by default — that's what creates the
-      // recording feedback loop without headphones. The UI flips it via
-      // setTrackMonitor() which fades the gain up over 30ms.
-      //
-      // Recording itself is unaffected by either gain: MediaRecorder
-      // reads the raw mic stream, not this graph path.
-      const live = this.ctx.createMediaStreamSource(stream);
-      const inputGain = this.ctx.createGain();
-      inputGain.gain.value = DB_TO_LINEAR(track.state.inputGainDb);
-      // Monitor at 0.7 (~-3 dB) when enabled. Unity was loud enough to
-      // drive headphones into pain even with input trim — this matches
-      // the headphone-cue level a real console would default to.
-      const monitorGain = this.ctx.createGain();
-      monitorGain.gain.value = track.state.monitorEnabled ? 0.7 : 0;
-      live.connect(inputGain);
-      inputGain.connect(monitorGain);
-      monitorGain.connect(track.fxIn);
-      track.liveSource = live;
-      track.inputGain = inputGain;
-      track.monitorGain = monitorGain;
+      if (!wasPlaying) {
+        void this.play();
+      }
 
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      // 256 kbps keeps Opus compression artifacts well below audible threshold.
-      const recorder = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 256_000 });
+      if (!wasPlaying && this.transport.countInEnabled) {
+        await this.runCountIn();
+      }
+
+      track.activeTakeChunks = [];
+      track.captureActive = true;
       track.recordedChunks = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) track.recordedChunks.push(e.data);
-      };
-      recorder.start(100);
-      track.recorder = recorder;
+      track.blob = null;
+
+      // Seed with pre-roll when not punching, so the artist keeps the
+      // "oops I started right before record" moment.
+      if (!this.transport.punchInEnabled && this.transport.preRollSec > 0) {
+        track.activeTakeChunks.push(...track.preRollChunks);
+      }
+
+      const canWebCodecs = this.canUseWebCodecsCapture();
+      let usingWebCodecs = false;
+      if (canWebCodecs) {
+        usingWebCodecs = await this.startWebCodecsCapture(track);
+      }
+      this.transport.captureBackend = usingWebCodecs ? "webcodecs-opus" : "mediarecorder";
+      track.captureBackend = this.transport.captureBackend;
+
+      if (!usingWebCodecs) {
+        if (typeof MediaRecorder === "undefined" || !track.liveStream) {
+          track.captureActive = false;
+          return false;
+        }
+        const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "audio/webm";
+        const recorder = new MediaRecorder(track.liveStream, {
+          mimeType: mime,
+          audioBitsPerSecond: 256_000,
+        });
+        track.recordedChunks = [];
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) track.recordedChunks.push(e.data);
+        };
+        recorder.start(100);
+        track.recorder = recorder;
+      }
+
+      if (usingWebCodecs && !this.transport.punchInEnabled && this.transport.preRollSec > 0) {
+        for (const chunk of track.preRollChunks) {
+          this.encodeWebCodecsChunk(track, chunk);
+        }
+      }
 
       this.transport.isRecording = true;
       this.recordingAlignmentTrimSec = wasPlaying ? 0 : TRANSPORT_START_LEAD_SEC;
       this.notify();
-      // Fire-and-forget play — recording while transport runs lets the
-      // performer hear backing tracks. If init failed earlier, play() is
-      // a no-op.
-      if (!wasPlaying) void this.play();
       return true;
     } catch (err) {
       console.warn("[DawEngine] recording init failed", err);
       // Clean up any partial state.
-      if (track.liveStream) {
-        track.liveStream.getTracks().forEach((t) => t.stop());
-        track.liveStream = null;
-      }
-      track.liveSource?.disconnect();
-      track.liveSource = null;
-      track.inputGain?.disconnect();
-      track.inputGain = null;
-      track.monitorGain?.disconnect();
-      track.monitorGain = null;
+      track.captureActive = false;
+      this.teardownTrackInputPipeline(track);
       this.transport.isRecording = false;
       this.recordingAlignmentTrimSec = 0;
       this.notify();
@@ -1936,7 +3168,7 @@ export class DawEngine {
     this.recordingStopInFlight = true;
     try {
     const recordingTrack = Array.from(this.tracks.values()).find(
-      (t) => t.recorder,
+      (t) => t.captureActive || t.recorder || t.webCodecEncoder,
     );
     if (!recordingTrack) {
       this.transport.isRecording = false;
@@ -1945,57 +3177,276 @@ export class DawEngine {
     }
     const ctx = this.ctx;
 
-    // Stop the recorder and wait for the final dataavailable.
-    await new Promise<void>((resolve) => {
-      const r = recordingTrack.recorder!;
-      r.onstop = () => resolve();
-      try {
-        r.stop();
-      } catch {
-        resolve();
-      }
-    });
+    // Stop MediaRecorder path and wait for final chunks.
+    if (recordingTrack.recorder) {
+      await new Promise<void>((resolve) => {
+        const r = recordingTrack.recorder!;
+        r.onstop = () => resolve();
+        try {
+          r.stop();
+        } catch {
+          resolve();
+        }
+      });
+    }
 
-    // Tear down live monitor + stream.
-    recordingTrack.liveSource?.disconnect();
-    recordingTrack.liveSource = null;
-    recordingTrack.inputGain?.disconnect();
-    recordingTrack.inputGain = null;
-    recordingTrack.monitorGain?.disconnect();
-    recordingTrack.monitorGain = null;
-    recordingTrack.liveStream?.getTracks().forEach((t) => t.stop());
-    recordingTrack.liveStream = null;
+    recordingTrack.captureActive = false;
     recordingTrack.recorder = null;
 
-    const blob = new Blob(recordingTrack.recordedChunks, {
-      type: "audio/webm",
-    });
-    recordingTrack.blob = blob;
-    try {
-      const arrayBuf = await blob.arrayBuffer();
-      const decoded = await ctx.decodeAudioData(arrayBuf);
+    let takeBuffer: AudioBuffer | null = null;
+    if (recordingTrack.captureBackend === "webcodecs-opus") {
+      takeBuffer = await this.stopWebCodecsCapture(recordingTrack);
+    }
+    if (recordingTrack.activeTakeChunks.length > 0) {
+      takeBuffer =
+        takeBuffer ?? this.bufferFromMonoPcm(recordingTrack.activeTakeChunks, ctx.sampleRate);
+    }
+
+    if (!takeBuffer && recordingTrack.recordedChunks.length > 0) {
+      const blob = new Blob(recordingTrack.recordedChunks, { type: "audio/webm" });
+      recordingTrack.blob = blob;
+      try {
+        const arrayBuf = await blob.arrayBuffer();
+        takeBuffer = await ctx.decodeAudioData(arrayBuf);
+      } catch (err) {
+        console.warn("[DawEngine] decode failed", err);
+      }
+    }
+
+    if (takeBuffer) {
       const onsetTrimSec =
         this.transport.vocalCaptureProfile === "raw"
           ? this.recordingAlignmentTrimSec
-          : this.estimateOnsetTrimSec(decoded, this.recordingAlignmentTrimSec);
-      const aligned = this.trimBufferStart(decoded, onsetTrimSec);
-      recordingTrack.buffer = this.normalizeRecordedBuffer(aligned);
+          : this.estimateOnsetTrimSec(takeBuffer, this.recordingAlignmentTrimSec);
+      const aligned = this.trimBufferStart(takeBuffer, onsetTrimSec);
+      let processed = this.normalizeRecordedBuffer(aligned);
+
+      if (
+        this.transport.punchInEnabled &&
+        recordingTrack.buffer &&
+        this.transport.punchOutSec > this.transport.punchInSec
+      ) {
+        processed = this.mergePunchTake(
+          recordingTrack.buffer,
+          processed,
+          this.transport.punchInSec,
+          this.transport.punchOutSec,
+        );
+      }
+
+      if (this.transport.loopEnabled && this.transport.loopRecordEnabled) {
+        this.appendCompLaneTake(recordingTrack, processed);
+      }
+
+      recordingTrack.buffer = processed;
       recordingTrack.state.hasAudio = true;
       this.waveformCache.delete(recordingTrack.state.id);
       recordingTrack.state.durationSec = recordingTrack.buffer.duration;
-    } catch (err) {
-      console.warn("[DawEngine] decode failed", err);
     }
+
+    recordingTrack.activeTakeChunks = [];
 
     this.transport.isRecording = false;
     this.recordingAlignmentTrimSec = 0;
-    this.stop();
-    this.transport.positionSec = 0;
+    if (this.transport.punchInEnabled || this.transport.loopRecordEnabled) {
+      // Preserve playback for iterative fixes and loop takes.
+      this.notify();
+    } else {
+      this.stop();
+      this.transport.positionSec = 0;
+    }
     this.transport.lastRecordedTrackId = recordingTrack.state.id;
     this.notify();
     } finally {
       this.recordingStopInFlight = false;
     }
+  }
+
+  private async runCountIn(): Promise<void> {
+    if (!this.ctx) return;
+    const beats = Math.max(0, this.transport.countInBars * 4);
+    this.transport.countInRemainingBeats = beats;
+    this.notify();
+    const beatMs = (60 / this.transport.bpm) * 1000;
+    for (let i = beats; i > 0; i--) {
+      this.transport.countInRemainingBeats = i;
+      this.notify();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, beatMs));
+    }
+    this.transport.countInRemainingBeats = 0;
+  }
+
+  private bufferFromMonoPcm(chunks: Float32Array[], sampleRate: number): AudioBuffer {
+    const total = chunks.reduce((sum, c) => sum + c.length, 0);
+    const out = this.ctx!.createBuffer(1, Math.max(1, total), sampleRate);
+    const data = out.getChannelData(0);
+    let offset = 0;
+    for (const chunk of chunks) {
+      data.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return out;
+  }
+
+  private mergePunchTake(
+    original: AudioBuffer,
+    take: AudioBuffer,
+    punchInSec: number,
+    punchOutSec: number,
+  ): AudioBuffer {
+    if (!this.ctx) return take;
+    const sampleRate = original.sampleRate;
+    const outLen = Math.max(original.length, Math.floor(punchOutSec * sampleRate), take.length);
+    const out = this.ctx.createBuffer(original.numberOfChannels, outLen, sampleRate);
+    const inFrame = Math.max(0, Math.floor(punchInSec * sampleRate));
+    const outFrame = Math.max(inFrame + 1, Math.floor(punchOutSec * sampleRate));
+    const fadeFrames = Math.max(1, Math.floor(sampleRate * 0.01));
+
+    for (let ch = 0; ch < out.numberOfChannels; ch++) {
+      const dst = out.getChannelData(ch);
+      const orig = original.getChannelData(Math.min(ch, original.numberOfChannels - 1));
+      const takeData = take.getChannelData(Math.min(ch, take.numberOfChannels - 1));
+      for (let i = 0; i < dst.length; i++) {
+        const o = orig[i] ?? 0;
+        let v = o;
+        if (i >= inFrame && i < outFrame) {
+          const ti = i - inFrame;
+          const tv = takeData[Math.min(takeData.length - 1, Math.max(0, ti))] ?? 0;
+          if (i < inFrame + fadeFrames) {
+            const k = (i - inFrame) / fadeFrames;
+            v = o * (1 - k) + tv * k;
+          } else if (i > outFrame - fadeFrames) {
+            const k = (outFrame - i) / fadeFrames;
+            v = o * (1 - k) + tv * k;
+          } else {
+            v = tv;
+          }
+        }
+        dst[i] = v;
+      }
+    }
+    return out;
+  }
+
+  private appendCompLaneTake(track: TrackInternal, take: AudioBuffer) {
+    const id = `lane_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const createdAt = new Date().toISOString();
+    const name = `Take ${track.compLaneBuffers.length + 1}`;
+    track.compLaneBuffers.push({ id, name, buffer: take, createdAt });
+    while (track.compLaneBuffers.length > this.transport.maxLoopTakes) {
+      track.compLaneBuffers.shift();
+    }
+    track.state.compLanes = track.compLaneBuffers.map((lane) => ({
+      id: lane.id,
+      name: lane.name,
+      durationSec: lane.buffer.duration,
+      createdAt: lane.createdAt,
+      selected: lane.id === id,
+    }));
+    if (track.compSegmentLaneIds.length === 0) {
+      track.compSegmentLaneIds = Array.from({ length: COMP_SEGMENT_COUNT }, () => id);
+    } else {
+      for (let i = 0; i < COMP_SEGMENT_COUNT; i++) {
+        if (!track.compSegmentLaneIds[i]) {
+          track.compSegmentLaneIds[i] = id;
+        }
+      }
+    }
+    track.state.compSegmentLaneIds = [...track.compSegmentLaneIds];
+  }
+
+  setTrackCompLane(trackId: TrackId, laneId: string) {
+    const track = this.tracks.get(trackId);
+    if (!track) return;
+    const lane = track.compLaneBuffers.find((l) => l.id === laneId);
+    if (!lane) return;
+    track.buffer = lane.buffer;
+    track.state.durationSec = lane.buffer.duration;
+    track.state.hasAudio = true;
+    track.state.compLanes = track.compLaneBuffers.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      durationSec: entry.buffer.duration,
+      createdAt: entry.createdAt,
+      selected: entry.id === laneId,
+    }));
+    track.compSegmentLaneIds = Array.from({ length: COMP_SEGMENT_COUNT }, () => laneId);
+    track.state.compSegmentLaneIds = [...track.compSegmentLaneIds];
+    this.waveformCache.delete(trackId);
+    this.notify();
+  }
+
+  setTrackCompSegmentLane(trackId: TrackId, segmentIndex: number, laneId: string) {
+    const track = this.tracks.get(trackId);
+    if (!track) return;
+    const lane = track.compLaneBuffers.find((entry) => entry.id === laneId);
+    if (!lane) return;
+    if (segmentIndex < 0 || segmentIndex >= COMP_SEGMENT_COUNT) return;
+
+    if (track.compSegmentLaneIds.length !== COMP_SEGMENT_COUNT) {
+      const fallback = laneId;
+      track.compSegmentLaneIds = Array.from({ length: COMP_SEGMENT_COUNT }, (_, i) =>
+        track.compSegmentLaneIds[i] || fallback,
+      );
+    }
+    track.compSegmentLaneIds[segmentIndex] = laneId;
+
+    const composed = this.buildCompFromSegments(track);
+    if (!composed) return;
+
+    track.buffer = composed;
+    track.state.durationSec = composed.duration;
+    track.state.hasAudio = true;
+    track.state.compSegmentLaneIds = [...track.compSegmentLaneIds];
+
+    const firstLane = track.compSegmentLaneIds[0] ?? null;
+    const allSame = firstLane
+      ? track.compSegmentLaneIds.every((id) => id === firstLane)
+      : false;
+    track.state.compLanes = track.compLaneBuffers.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      durationSec: entry.buffer.duration,
+      createdAt: entry.createdAt,
+      selected: allSame ? entry.id === firstLane : false,
+    }));
+
+    this.waveformCache.delete(trackId);
+    this.notify();
+  }
+
+  private buildCompFromSegments(track: TrackInternal): AudioBuffer | null {
+    if (!this.ctx || track.compLaneBuffers.length === 0) return null;
+    const maxLen = track.compLaneBuffers.reduce((len, lane) => Math.max(len, lane.buffer.length), 0);
+    if (maxLen <= 0) return null;
+    const sampleRate = track.compLaneBuffers[0]?.buffer.sampleRate ?? this.ctx.sampleRate;
+    const out = this.ctx.createBuffer(1, maxLen, sampleRate);
+    const dst = out.getChannelData(0);
+    const segFrames = Math.floor(maxLen / COMP_SEGMENT_COUNT);
+
+    for (let seg = 0; seg < COMP_SEGMENT_COUNT; seg++) {
+      const start = seg * segFrames;
+      const end = seg === COMP_SEGMENT_COUNT - 1 ? maxLen : (seg + 1) * segFrames;
+      const laneId = track.compSegmentLaneIds[seg] ?? track.compLaneBuffers[0]?.id;
+      const lane = track.compLaneBuffers.find((entry) => entry.id === laneId) ?? track.compLaneBuffers[0];
+      if (!lane) continue;
+      const src = lane.buffer.getChannelData(0);
+      for (let i = start; i < end; i++) {
+        dst[i] = src[Math.min(src.length - 1, i)] ?? 0;
+      }
+      const fade = Math.min(96, Math.max(8, Math.floor(sampleRate * 0.002)));
+      if (seg > 0) {
+        for (let f = 0; f < fade && start + f < end; f++) {
+          const k = f / fade;
+          const idx = start + f;
+          const prev = dst[idx] ?? 0;
+          const cur = src[Math.min(src.length - 1, idx)] ?? 0;
+          dst[idx] = prev * (1 - k) + cur * k;
+        }
+      }
+    }
+
+    return out;
   }
 
   /** Trim N seconds from the front of a buffer, preserving channel count/rate. */
@@ -2876,6 +4327,11 @@ export class DawEngine {
         solo: t.state.solo,
         armed: t.state.armed,
         fx: { ...t.state.fx },
+        vcaGroupId: t.state.vcaGroupId,
+        automation: {
+          gainDb: t.state.automation.gainDb.map((p) => ({ ...p })),
+          pan: t.state.automation.pan.map((p) => ({ ...p })),
+        },
         durationSec: t.state.durationSec,
         audioBlob,
       });
@@ -2904,6 +4360,15 @@ export class DawEngine {
         loopEnabled: this.transport.loopEnabled,
         loopStartSec: this.transport.loopStartSec,
         loopEndSec: this.transport.loopEndSec,
+        inputMonitorMode: this.transport.inputMonitorMode,
+        countInEnabled: this.transport.countInEnabled,
+        countInBars: this.transport.countInBars,
+        preRollSec: this.transport.preRollSec,
+        loopRecordEnabled: this.transport.loopRecordEnabled,
+        maxLoopTakes: this.transport.maxLoopTakes,
+        soloMode: this.transport.soloMode,
+        vcaGroups: this.transport.vcaGroups.map((g) => ({ ...g })),
+        referenceMatchDb: this.transport.referenceMatchDb,
       },
       beat: {
         enabled: this.beatMachine.enabled,
@@ -2956,6 +4421,17 @@ export class DawEngine {
     this.transport.loopEnabled = file.transport.loopEnabled;
     this.transport.loopStartSec = file.transport.loopStartSec;
     this.transport.loopEndSec = file.transport.loopEndSec;
+    this.transport.inputMonitorMode = file.transport.inputMonitorMode ?? "low-latency";
+    this.transport.countInEnabled = file.transport.countInEnabled ?? true;
+    this.transport.countInBars = file.transport.countInBars ?? 1;
+    this.transport.preRollSec = file.transport.preRollSec ?? 1.5;
+    this.transport.loopRecordEnabled = file.transport.loopRecordEnabled ?? false;
+    this.transport.maxLoopTakes = file.transport.maxLoopTakes ?? 6;
+    this.transport.soloMode = file.transport.soloMode ?? "sip";
+    this.transport.vcaGroups = (file.transport.vcaGroups ?? []).map((g) => ({ ...g }));
+    this.transport.referenceEnabled = false;
+    this.transport.referenceMatchDb = file.transport.referenceMatchDb ?? 0;
+    this.applyReferenceMonitoring();
     this.transport.positionSec = 0;
 
     // Restore aux returns.
@@ -3036,6 +4512,13 @@ export class DawEngine {
         beats: fx.delayBeats,
         feedback: fx.delayFeedback,
       });
+      this.setTrackGroup(id, t.vcaGroupId ?? null);
+      for (const p of t.automation?.gainDb ?? []) {
+        this.setTrackAutomationPoint(id, "gainDb", p.timeSec, p.valueDb);
+      }
+      for (const p of t.automation?.pan ?? []) {
+        this.setTrackAutomationPoint(id, "pan", p.timeSec, p.value);
+      }
 
       if (t.audioBlob) {
         try {
@@ -3418,10 +4901,19 @@ export class DawEngine {
    *  notify(). Returns plain objects, not internal handles. */
   getSnapshot(): EngineSnapshot {
     return {
-      transport: { ...this.transport },
+      transport: {
+        ...this.transport,
+        vcaGroups: this.transport.vcaGroups.map((g) => ({ ...g })),
+      },
       tracks: Array.from(this.tracks.values()).map((t) => ({
         ...t.state,
         fx: { ...t.state.fx },
+        automation: {
+          gainDb: t.state.automation.gainDb.map((p) => ({ ...p })),
+          pan: t.state.automation.pan.map((p) => ({ ...p })),
+        },
+        compLanes: t.state.compLanes.map((lane) => ({ ...lane })),
+        compSegmentLaneIds: [...t.state.compSegmentLaneIds],
       })),
       beat: {
         enabled: this.beatMachine.enabled,

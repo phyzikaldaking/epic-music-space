@@ -35,11 +35,13 @@ export default async function StudioIndexPage() {
           </span>
         </div>
         <h1 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
-          Welcome back to the console.
+          Welcome back.
+          <br className="hidden sm:block" />
+          Your studio is ready.
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/60">
-          Create, mix, publish, and run live listening sessions from one
-          control surface.
+          Jump straight back into the DAW, open your public studio, or start
+          a live room without hunting through menus.
         </p>
       </header>
       <StudioHubClient studioUsername={studio?.username ?? null} />
@@ -87,7 +89,7 @@ function PublicStudioLanding() {
             <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/65 sm:text-lg">
               Beat machine, multitrack, mixer, and master chain — all in your
               browser. Publish straight to the EMS marketplace with licensing
-              built in. No installs, no plugins, no gatekeepers.
+              built in. No installs, no plugins, no hidden setup maze.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -103,6 +105,18 @@ function PublicStudioLanding() {
               >
                 Sign in
               </Link>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              {[
+                "No installs",
+                "Autosave ready",
+                "Publish fast",
+              ].map((item) => (
+                <div key={item} className="studio-screen rounded-md p-3">
+                  <p className="studio-label relative z-10 text-white/45">{item}</p>
+                </div>
+              ))}
             </div>
 
             {/* Trust LCD readouts */}

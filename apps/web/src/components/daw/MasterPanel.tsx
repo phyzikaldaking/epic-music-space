@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  MASTERING_PRESET_ORDER,
+  getMasteringPreset,
+  type MasteringPresetId,
+} from "./dawEngine";
+import { LufsMeter } from "../LufsMeter";
+import MixDiagnosticsCallout from "./MixDiagnosticsCallout";
 
 interface Props {
   /** Read-only state straight from the engine snapshot. */
@@ -12,6 +19,8 @@ interface Props {
   eqMidDb: number;
   eqHighDb: number;
   onSetEq: (band: "low" | "mid" | "high", db: number) => void;
+  /** Apply a one-click mastering chain preset (EQ + limiter + gain). */
+  onApplyMasteringPreset: (preset: MasteringPresetId) => void;
 }
 
 /**
@@ -37,6 +46,7 @@ export default function MasterPanel({
   eqMidDb,
   eqHighDb,
   onSetEq,
+  onApplyMasteringPreset,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -118,6 +128,34 @@ export default function MasterPanel({
         </div>
       </header>
 
+      <LufsMeter lufs={lufs} />
+
+      {/* One-click mastering chain presets — sets EQ + limiter + gain
+          to a delivery-target config. Users can still tweak afterwards. */}
+      <div className="mb-3 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300/85">
+            One-click master
+          </span>
+          {MASTERING_PRESET_ORDER.map((id) => {
+            const cfg = getMasteringPreset(id);
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onApplyMasteringPreset(id)}
+                title={cfg.description}
+                className="rounded-md border border-emerald-400/30 bg-black/30 px-2 py-1 text-[11px] font-bold text-emerald-100 hover:bg-emerald-400/15 hover:text-emerald-50 transition"
+              >
+                {cfg.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <MatchReferenceRow onSetEq={onSetEq} />
+
       <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-stretch">
         {/* Spectrum */}
         <div className="relative h-32 overflow-hidden rounded-lg bg-black/40 ring-1 ring-white/5">
@@ -137,6 +175,8 @@ export default function MasterPanel({
           <EqKnob label="High" db={eqHighDb} onChange={(v) => onSetEq("high", v)} />
         </div>
       </div>
+
+      <MixDiagnosticsCallout spectrum={spectrum} lufs={lufs} truePeak={truePeak} />
     </section>
   );
 }
@@ -197,4 +237,88 @@ function EqKnob({
       </span>
     </label>
   );
+}
+
+/** "Match a reference" (#11). User picks a song they want their mix to
+ *  resemble; we run a client-side FFT analysis and apply the resulting
+ *  EQ deltas to the master EQ. Gentle by design (±6 dB clamp) — gives
+ *  the user a starting point, not a finished master. */
+function MatchReferenceRow({
+  onSetEq,
+}: {
+  onSetEq: (band: "low" | "mid" | "high", db: number) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function handleFile(file: File) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const Ctor =
+        typeof window !== "undefined"
+          ? window.AudioContext ??
+            (window as unknown as { webkitAudioContext?: typeof AudioContext })
+              .webkitAudioContext
+          : null;
+      if (!Ctor) {
+        setMessage("AudioContext unavailable in this browser.");
+        return;
+      }
+      const ctx = new Ctor();
+      const { analyseReference } = await import("@/lib/matchering");
+      const result = await analyseReference(ctx, file);
+      void ctx.close();
+      if (!result) {
+        setMessage("Couldn't decode the reference. Try a WAV or MP3.");
+        return;
+      }
+      onSetEq("low", result.eq.low);
+      onSetEq("mid", result.eq.mid);
+      onSetEq("high", result.eq.high);
+      setMessage(
+        `Applied: low ${fmt(result.eq.low)}, mid ${fmt(result.eq.mid)}, high ${fmt(result.eq.high)} dB.`,
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Match failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-3 rounded-lg border border-tube-300/25 bg-tube-300/[0.04] p-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-tube-300">
+          Match a reference
+        </span>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="rounded-md border border-tube-300/35 bg-black/30 px-2 py-1 text-[11px] font-bold text-tube-100 hover:bg-tube-300/15 transition disabled:opacity-50"
+        >
+          {busy ? "Analysing…" : "Pick a song you want to sound like"}
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="audio/*,.wav,.mp3,.m4a,.aif,.aiff,.flac,.ogg"
+          aria-label="Reference song"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleFile(file);
+            e.currentTarget.value = "";
+          }}
+        />
+      </div>
+      {message && <p className="mt-1 text-[11px] text-white/65">{message}</p>}
+    </div>
+  );
+}
+
+function fmt(db: number): string {
+  return db >= 0 ? `+${db.toFixed(1)}` : db.toFixed(1);
 }
