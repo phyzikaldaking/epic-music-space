@@ -373,6 +373,16 @@ model Song {
   // Track pages render this as a "Credits" panel so kit / template authors
   // get visible attribution and ecosystem participants are surfaced.
   credits             Json?
+  // ISRC code for distribution to streaming services (#F35). Format:
+  // CC-XXX-YY-NNNNN (12 chars). Allocated from a pre-purchased pool at
+  // publish time when the artist opts into distribution. NULL = not
+  // distributed yet (no ISRC needed for catalog-only listings).
+  isrcCode            String?  @db.VarChar(15)
+  // Splits sheet (#F36) — royalty / revenue percentages per contributor.
+  // Shape: { contributors: Array<{ userId?: string, name: string,
+  //          role: string, splitPct: number }>, signedAt: string? }.
+  // Sums to <=100. signedAt timestamp set when all contributors approve.
+  splitsSheet         Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   artistId String

@@ -98,6 +98,35 @@ const createSongSchema = z.object({
         .optional(),
     })
     .optional(),
+  // ISRC code for distribution (#F35). Format CC-XXX-YY-NNNNN — the
+  // server validates loose format only; an ISRC pool allocator (separate
+  // flow) is responsible for issuing real codes when the artist opts in.
+  isrcCode: z
+    .string()
+    .regex(/^[A-Z]{2}-?[A-Z0-9]{3}-?\d{2}-?\d{5}$/, "Invalid ISRC format")
+    .max(15)
+    .optional(),
+  // Splits sheet (#F36). Each contributor gets a percentage; the total
+  // must sum to <=100. signedAt empty until all parties approve.
+  splitsSheet: z
+    .object({
+      contributors: z
+        .array(
+          z.object({
+            userId: z.string().max(40).optional(),
+            name: z.string().min(1).max(120),
+            role: z.string().min(1).max(40),
+            splitPct: z.number().min(0).max(100),
+          }),
+        )
+        .max(8),
+      signedAt: z.string().datetime().nullable().optional(),
+    })
+    .refine(
+      (s) => s.contributors.reduce((acc, c) => acc + c.splitPct, 0) <= 100,
+      { message: "Splits must sum to 100% or less." },
+    )
+    .optional(),
 });
 
 /**
@@ -186,7 +215,8 @@ export async function POST(req: NextRequest) {
 
   // Pull scheduledAt out of parsed.data so we can convert string -> Date
   // before handing it to Prisma (the field is DateTime in the schema).
-  const { scheduledAt, licenseVariants, credits, ...restCreate } = parsed.data;
+  const { scheduledAt, licenseVariants, credits, splitsSheet, ...restCreate } =
+    parsed.data;
 
   const song = await prisma.song.create({
     data: {
@@ -199,6 +229,8 @@ export async function POST(req: NextRequest) {
       // Auto-credit JSON — already shape-validated by the zod schema
       // above. Renders on the track page as a "Credits" panel.
       credits: credits ?? undefined,
+      // Splits sheet — same JSON-passthrough pattern (#F36).
+      splitsSheet: splitsSheet ?? undefined,
     },
   });
 

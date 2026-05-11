@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 import { computeMonoCompat, type MonoCompatReport } from "@/lib/monoCompat";
+import { computeLoudnessReport, type LoudnessReport } from "@/lib/loudnessGate";
 
 interface Props {
   limiterOn: boolean;
@@ -70,6 +71,9 @@ export default function MasterPublishBar({
   // Mono-compatibility report computed off the rendered blob. Drives the
   // phase warning in the preview modal. Reset between renders.
   const [monoReport, setMonoReport] = useState<MonoCompatReport | null>(null);
+  const [loudnessReport, setLoudnessReport] = useState<LoudnessReport | null>(
+    null,
+  );
   // AI cover art (#5). Three base64 candidates streamed back from the
   // /api/ai/cover-art endpoint after the user clicks "Generate covers".
   // Selection is staged here and passed to onPublish once the user
@@ -183,9 +187,19 @@ export default function MasterPublishBar({
       // it decodes the full WAV (1–3s for a 3-min track) so it shouldn't
       // gate the preview modal opening. Result lands when ready.
       setMonoReport(null);
+    setLoudnessReport(null);
       void computeMonoCompat(blob)
         .then((report) => setMonoReport(report))
         .catch(() => setMonoReport(null));
+      // Pre-publish loudness gate (#F34). Same async pattern — decodes
+      // the WAV again (cheap, both reads hit the browser's audio
+      // decoder which caches the underlying buffer). Result powers a
+      // warning banner if the master is too quiet / hot / clipping
+      // for the chosen loudness preset.
+      setLoudnessReport(null);
+      void computeLoudnessReport(blob, loudnessPreset)
+        .then((report) => setLoudnessReport(report))
+        .catch(() => setLoudnessReport(null));
     } catch (err) {
       setPhase("error");
       setMessage(err instanceof Error ? err.message : "Render failed.");
@@ -203,6 +217,7 @@ export default function MasterPublishBar({
     setCoverArtOptions(null);
     setCoverArtPick(null);
     setMonoReport(null);
+    setLoudnessReport(null);
     setPhase("uploading");
     setMessage("Uploading to your catalog…");
     try {
@@ -228,6 +243,7 @@ export default function MasterPublishBar({
     setCoverArtPick(null);
     setCoverArtError(null);
     setMonoReport(null);
+    setLoudnessReport(null);
     setPhase("idle");
     setMessage("");
   }
@@ -430,6 +446,7 @@ export default function MasterPublishBar({
         <RenderPreviewModal
           url={pendingPublish.url}
           monoReport={monoReport}
+          loudnessReport={loudnessReport}
           coverArt={{
             busy: coverArtBusy,
             error: coverArtError,
@@ -656,6 +673,7 @@ function ShareLinkRow({
 function RenderPreviewModal({
   url,
   monoReport,
+  loudnessReport,
   coverArt,
   onCancel,
   onRerender,
@@ -666,6 +684,9 @@ function RenderPreviewModal({
    *  (decodes the WAV — a few seconds for long tracks). Drives the
    *  phase-issue warning banner below the player. */
   monoReport: MonoCompatReport | null;
+  /** Loudness gate report (#F34). null while running. Drives the
+   *  too-quiet / too-loud / clipping warning. */
+  loudnessReport: LoudnessReport | null;
   coverArt: {
     busy: boolean;
     error: string | null;
@@ -704,6 +725,7 @@ function RenderPreviewModal({
         </audio>
 
         <MonoCompatWarning report={monoReport} />
+        <LoudnessWarning report={loudnessReport} />
 
         <CoverArtPicker
           busy={coverArt.busy}
@@ -762,6 +784,40 @@ function MonoCompatWarning({ report }: { report: MonoCompatReport | null }) {
         speaker or Bluetooth, it&apos;ll sound gutted. Common culprits: a
         too-wide stereo synth, a dry/wet reverb pulling against itself,
         or a vocal doubler with inverted polarity.
+      </p>
+    </div>
+  );
+}
+
+// Pre-publish loudness gate warning (#F34). Green = good, amber = low/
+// high, red = clipping. Always renders something when the report has
+// landed — producers want positive confirmation that the master is in
+// range before publishing, not just warnings.
+function LoudnessWarning({ report }: { report: LoudnessReport | null }) {
+  if (!report) return null;
+  if (report.verdict === "good") {
+    return (
+      <div className="mt-4 rounded-xl border border-emerald-400/45 bg-emerald-500/[0.08] p-3">
+        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-200">
+          Loudness gate · pass
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-white/75">
+          {report.message}
+        </p>
+      </div>
+    );
+  }
+  const isRed = report.verdict === "clipping" || report.verdict === "silent";
+  const border = isRed ? "border-rose-400/45" : "border-amber-400/45";
+  const bg = isRed ? "bg-rose-500/[0.08]" : "bg-amber-500/[0.08]";
+  const heading = isRed ? "text-rose-200" : "text-amber-200";
+  return (
+    <div className={`mt-4 rounded-xl border ${border} ${bg} p-3`}>
+      <p className={`text-[10px] font-black uppercase tracking-[0.28em] ${heading}`}>
+        Loudness gate · {report.verdict}
+      </p>
+      <p className="mt-1 text-xs leading-relaxed text-white/75">
+        {report.message}
       </p>
     </div>
   );
