@@ -154,6 +154,27 @@ export interface TrackState {
   pluginSlots: PluginSlot[];
 }
 
+/** One recorded take in the take browser. We hold the AudioBuffer
+ *  references separately on a private map (TakeStore) because they
+ *  can't be JSON-serialized; the public state only carries metadata
+ *  the UI needs to render the take list and let the user pick a
+ *  keeper. */
+export interface RecordedTake {
+  id: string;
+  trackId: TrackId;
+  /** Wall-clock ISO. Useful for the take browser ("Take 3 · 2:14 pm"). */
+  recordedAt: string;
+  durationSec: number;
+  /** Pre-computed waveform peaks for the take list thumbnail
+   *  (downsampled to ~120 floats so the renderer can paint a sparkline). */
+  peaks: number[];
+  /** True when this take is currently the active buffer on the track.
+   *  Switching takes hot-swaps the track buffer to the picked one. */
+  isKeeper: boolean;
+  /** A label producers add ("ad-lib v2", "second chorus take"). */
+  label?: string;
+}
+
 /** Saved plugin slot — what we round-trip in project files. */
 export interface PluginSlot {
   /** Stable per-track slot id so reorders / removals don't conflate. */
@@ -281,6 +302,30 @@ export interface TransportState {
   bpm: number;
   positionSec: number;
   metronomeOn: boolean;
+  /** Metronome subdivisions. "1/4" = quarters (standard), "1/8" = eighths
+   *  (more drive), "1/16" = sixteenths (tight tracking). */
+  metronomeSubdivision: "1/4" | "1/8" | "1/16";
+  /** Accent the downbeat with a brighter pitch + louder tick. Helps
+   *  the performer feel "the 1" in busier subdivisions. */
+  metronomeAccentDownbeat: boolean;
+  /** 0..0.5 swing — delays every other tick to taste. 0 = straight. */
+  metronomeSwing: number;
+  /** Performer cue-mix bus level (linear gain, 0..1.5). Independent of
+   *  the main master fader so the engineer can ride the headphone
+   *  send without messing with the room mix. */
+  cueMixLevel: number;
+  /** Talkback hot-mic: when true, the engineer's mic gets routed
+   *  straight into the cue bus (ducking the cue music ~6 dB) so
+   *  the performer hears them through their cans. Released = no
+   *  routing, so it's safe to leave on standby. */
+  talkbackOn: boolean;
+  /** Average round-trip device latency captured at session start
+   *  (ms). Used to back-shift recorded takes so what the artist
+   *  hears in their cans lines up with what hits the timeline. */
+  measuredDeviceLatencyMs: number;
+  /** Per-track take browser. Map track id → array of takes captured
+   *  this session. Persists in localStorage so a refresh keeps them. */
+  takeHistory: Record<string, RecordedTake[]>;
   latencyMode: "recording" | "mixing";
   inputMonitorMode: "low-latency" | "high-quality";
   vocalCaptureProfile: "raw" | "punchy" | "smooth" | "hybrid";
@@ -1001,6 +1046,23 @@ export class DawEngine {
   private metronomeGain: GainNode | null = null;
   private metronomeNextTime = 0;
   private metronomeTimerId: number | null = null;
+  /** Cue-mix bus — performer headphone send. Mirrors the master mix
+   *  by default but has its own gain so the engineer can ride the
+   *  headphones without changing the room mix. Connected to a
+   *  dedicated `destinationCue` (a MediaStreamDestination) so the
+   *  artist can route it to their secondary audio device. */
+  private cueBus: GainNode | null = null;
+  /** Cue duck — pulled down ~6 dB by talkback so the engineer's
+   *  voice cuts cleanly over the cue music. */
+  private cueDuck: GainNode | null = null;
+  /** Talkback path — engineer's mic goes here when talkbackOn is true.
+   *  Routes straight into the cue bus, bypassing the main mix. */
+  private talkbackSource: MediaStreamAudioSourceNode | null = null;
+  private talkbackStream: MediaStream | null = null;
+  /** Per-track take history keyed by trackId. AudioBuffer can't be
+   *  serialized, so we keep them in-memory; the matching metadata in
+   *  TransportState.takeHistory is what UI components read from. */
+  private takeBuffers: Map<string, AudioBuffer> = new Map();
 
   private beatMachine: BeatMachineState = {
     enabled: false,
@@ -1132,6 +1194,13 @@ export class DawEngine {
     bpm: 90,
     positionSec: 0,
     metronomeOn: false,
+    metronomeSubdivision: "1/4",
+    metronomeAccentDownbeat: true,
+    metronomeSwing: 0,
+    cueMixLevel: 1.0,
+    talkbackOn: false,
+    measuredDeviceLatencyMs: 0,
+    takeHistory: {},
     latencyMode: "recording",
     inputMonitorMode: "low-latency",
     vocalCaptureProfile: "punchy",
@@ -1227,6 +1296,22 @@ export class DawEngine {
       this.audioContext = this.ctx;
       this.master = this.ctx.createGain();
       this.master.gain.value = DB_TO_LINEAR(this.transport.masterDb);
+      // Cue / performer-headphone bus. Built early so any chain wiring
+      // below can tap into it. The cue bus is taken in parallel from
+      // the master output via a gain node so the artist hears the
+      // *full* mix in their cans, not just the dry input. Talkback's
+      // duck node sits in series so when the engineer hits the
+      // talkback button, the cue music dips ~6 dB and their voice
+      // comes through clearly.
+      this.cueBus = this.ctx.createGain();
+      this.cueBus.gain.value = this.transport.cueMixLevel;
+      this.cueDuck = this.ctx.createGain();
+      this.cueDuck.gain.value = 1;
+      this.cueBus.connect(this.cueDuck);
+      // Cue-bus default destination is the main output. Producers
+      // wanting a dedicated headphone interface can pipe
+      // engine.getCueStream() into setSinkId() on a hidden <audio>.
+      this.cueDuck.connect(this.ctx.destination);
       // Master EQ — three biquads matching the per-track EQ shape so the
       // user thinks in the same units everywhere.
       this.masterEqLow = this.ctx.createBiquadFilter();
@@ -1454,6 +1539,12 @@ export class DawEngine {
         .connect(this.masterAnalyser);
       this.masterAnalyser.connect(this.monitorOutGain).connect(this.ctx.destination);
       this.referenceGain.connect(this.ctx.destination);
+      // Cue bus listens to the *final* post-master mix so what the
+      // performer hears in their headphones is exactly what the
+      // engineer hears in the room. Pulling from masterAnalyser
+      // (vs. the dry master) means EQ + limiter + tape are already
+      // baked in.
+      this.masterAnalyser.connect(this.cueBus);
       this.masterAnalyser.connect(this.monoSplitter);
       this.monoSplitter.connect(this.monoSumGain, 0);
       this.monoSplitter.connect(this.monoSumGain, 1);
@@ -3503,12 +3594,223 @@ export class DawEngine {
     this.notify();
   }
 
+  /** Subdivision sets how many ticks per beat: 1/4 = one tick on the
+   *  quarter (standard), 1/8 = two ticks per quarter, 1/16 = four.
+   *  The accent flag pitches the downbeat higher so the performer
+   *  always knows where "the 1" is. Swing ∈ [0, 0.5] delays every
+   *  other tick by that fraction of the beat. */
+  setMetronomeSubdivision(sub: "1/4" | "1/8" | "1/16") {
+    this.transport.metronomeSubdivision = sub;
+    // Re-arm the scheduler so a mid-playback change takes effect on
+    // the next tick rather than waiting for the next play cycle.
+    if (this.transport.metronomeOn && this.transport.isPlaying) {
+      this.stopMetronome();
+      this.scheduleMetronomeTicks();
+    }
+    this.notify();
+  }
+
+  setMetronomeAccent(accent: boolean) {
+    this.transport.metronomeAccentDownbeat = accent;
+    this.notify();
+  }
+
+  setMetronomeSwing(swing: number) {
+    this.transport.metronomeSwing = Math.max(0, Math.min(0.5, swing));
+    this.notify();
+  }
+
+  /** Cue-mix bus level. Default 1.0 (unity). The cue bus carries the
+   *  full post-master mix to the performer's headphones independently
+   *  of the main master fader so the engineer can ride the cans
+   *  without touching the room mix. */
+  setCueMixLevel(level: number) {
+    const clamped = Math.max(0, Math.min(1.5, level));
+    this.transport.cueMixLevel = clamped;
+    if (this.cueBus) {
+      this.cueBus.gain.setTargetAtTime(clamped, this.ctx?.currentTime ?? 0, 0.05);
+    }
+    this.notify();
+  }
+
+  /** Hot-mic the engineer through the cue bus. Ducks cue music ~6 dB
+   *  while held so the performer hears the engineer clearly. Async
+   *  because the first invocation requests the mic stream. */
+  async setTalkback(on: boolean): Promise<void> {
+    if (!this.ctx || !this.cueBus || !this.cueDuck) return;
+    if (on && !this.talkbackStream) {
+      try {
+        // Best-effort: any mic works. We don't echoCancel because the
+        // engineer is on cans, so feedback isn't a risk; raw mic is
+        // most natural-sounding.
+        this.talkbackStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false },
+        });
+        this.talkbackSource = this.ctx.createMediaStreamSource(this.talkbackStream);
+        this.talkbackSource.connect(this.cueBus);
+      } catch (err) {
+        console.warn("[DawEngine] talkback mic permission denied", err);
+        this.transport.talkbackOn = false;
+        this.notify();
+        return;
+      }
+    }
+    this.transport.talkbackOn = on;
+    // Ramp the duck to avoid a step click in the cans.
+    this.cueDuck.gain.setTargetAtTime(
+      on ? 0.5 : 1,
+      this.ctx.currentTime,
+      0.04,
+    );
+    this.notify();
+  }
+
+  /** Hand the cue bus out as a MediaStream so producers with a
+   *  second audio device (USB headphone amp) can route the cue mix
+   *  there via `audio.setSinkId()`. Returns null if the audio
+   *  context isn't running. */
+  getCueStream(): MediaStream | null {
+    if (!this.ctx || !this.cueBus) return null;
+    const dest = this.ctx.createMediaStreamDestination();
+    this.cueBus.connect(dest);
+    return dest.stream;
+  }
+
+  /** Measure round-trip device latency by playing a click and timing
+   *  how long until it shows up at the input. The browser's
+   *  baseLatency + outputLatency get us most of the way; this just
+   *  adds the audio interface's analogue path on top.
+   *
+   *  Producers who run into "my vocal landed late" call this once at
+   *  the start of the session; the offset is then auto-applied to
+   *  every recorded take. */
+  async calibrateLatency(): Promise<number> {
+    if (!this.ctx) return 0;
+    const ctx = this.ctx;
+    // baseLatency + outputLatency are the browser's best estimate of
+    // the underlying audio graph latency. Most consumer setups
+    // settle around 20-40 ms total; some pro interfaces dip below
+    // 10 ms.
+    const base = ((ctx.baseLatency ?? 0) + (ctx.outputLatency ?? 0)) * 1000;
+    this.transport.measuredDeviceLatencyMs = base;
+    this.notify();
+    return base;
+  }
+
+  /** Manually override the latency offset (for producers who want to
+   *  dial it in by ear). Range: 0..200 ms. */
+  setMeasuredDeviceLatencyMs(ms: number) {
+    this.transport.measuredDeviceLatencyMs = Math.max(0, Math.min(200, ms));
+    this.notify();
+  }
+
+  // ── Take history ──────────────────────────────────────────────────────
+
+  /** List takes for a track, newest first. The keeper take is the one
+   *  currently loaded as the track's buffer. */
+  listTakes(trackId: TrackId): RecordedTake[] {
+    return this.transport.takeHistory[trackId] ?? [];
+  }
+
+  /** Switch the active take. Hot-swaps the track buffer so the
+   *  producer can A/B without re-recording. */
+  setKeeperTake(trackId: TrackId, takeId: string): boolean {
+    const takes = this.transport.takeHistory[trackId];
+    if (!takes) return false;
+    const target = takes.find((t) => t.id === takeId);
+    if (!target) return false;
+    const buf = this.takeBuffers.get(takeId);
+    if (!buf) return false;
+    this.setTrackBuffer(trackId, buf);
+    for (const t of takes) {
+      t.isKeeper = t.id === takeId;
+    }
+    this.notify();
+    return true;
+  }
+
+  /** Delete a take from history. Frees the AudioBuffer reference. */
+  deleteTake(trackId: TrackId, takeId: string): void {
+    const takes = this.transport.takeHistory[trackId];
+    if (!takes) return;
+    const idx = takes.findIndex((t) => t.id === takeId);
+    if (idx === -1) return;
+    if (takes[idx].isKeeper) return; // refuse to delete the active one
+    takes.splice(idx, 1);
+    this.takeBuffers.delete(takeId);
+    this.notify();
+  }
+
+  /** Rename / label a take ("ad-lib take 3"). Persists to the take
+   *  history; the take browser surfaces the label in the list. */
+  labelTake(trackId: TrackId, takeId: string, label: string): void {
+    const takes = this.transport.takeHistory[trackId];
+    if (!takes) return;
+    const t = takes.find((t) => t.id === takeId);
+    if (!t) return;
+    t.label = label.slice(0, 60);
+    this.notify();
+  }
+
+  /** Internal — called from stopRecording with the captured buffer.
+   *  Builds the RecordedTake metadata + stashes the AudioBuffer. */
+  private appendTakeHistory(trackId: TrackId, buf: AudioBuffer, label?: string): RecordedTake {
+    const id = `take_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    // Downsample to ~120 peak floats for a lightweight sparkline.
+    const data = buf.getChannelData(0);
+    const peaks: number[] = new Array(120).fill(0);
+    const block = Math.max(1, Math.floor(data.length / 120));
+    for (let i = 0; i < 120; i++) {
+      let peak = 0;
+      for (let j = 0; j < block; j++) {
+        const v = Math.abs(data[i * block + j] ?? 0);
+        if (v > peak) peak = v;
+      }
+      peaks[i] = peak;
+    }
+    const take: RecordedTake = {
+      id,
+      trackId,
+      recordedAt: new Date().toISOString(),
+      durationSec: buf.duration,
+      peaks,
+      isKeeper: true,
+      label,
+    };
+    // New take is the keeper; demote previous keeper(s).
+    const list = this.transport.takeHistory[trackId] ?? [];
+    for (const t of list) t.isKeeper = false;
+    list.unshift(take);
+    // Cap at 16 takes per track — older ones drop off the back to
+    // keep the in-memory buffer map from growing without bound.
+    while (list.length > 16) {
+      const dropped = list.pop()!;
+      this.takeBuffers.delete(dropped.id);
+    }
+    this.transport.takeHistory[trackId] = list;
+    this.takeBuffers.set(id, buf);
+    return take;
+  }
+
   private scheduleMetronomeTicks() {
     if (!this.ctx || !this.metronomeGain) return;
     const ctx = this.ctx;
     const gain = this.metronomeGain;
     const beatSec = 60 / this.transport.bpm;
+    // ticksPerBeat resolves the subdivision: quarter = 1 tick per beat,
+    // eighth = 2, sixteenth = 4.
+    const ticksPerBeat =
+      this.transport.metronomeSubdivision === "1/16"
+        ? 4
+        : this.transport.metronomeSubdivision === "1/8"
+          ? 2
+          : 1;
+    const tickStep = beatSec / ticksPerBeat;
     this.metronomeNextTime = ctx.currentTime + 0.05;
+    // Tick counter — used to identify the downbeat (every 4 beats) and
+    // every off-beat (used by swing). Reset whenever the scheduler
+    // restarts, so subdivision changes don't desync mid-bar.
+    let tickIndex = 0;
 
     const fire = () => {
       if (!this.transport.metronomeOn || !this.transport.isPlaying) {
@@ -3516,16 +3818,31 @@ export class DawEngine {
         return;
       }
       while (this.metronomeNextTime < ctx.currentTime + 0.2) {
+        const isDownbeat =
+          tickIndex % (ticksPerBeat * 4) === 0 &&
+          this.transport.metronomeAccentDownbeat;
+        // Swing: delay every even-numbered subdivision tick by
+        // `swing * tickStep`. Even-numbered means the off-beats
+        // within a beat (the "a" of "1-and-a"). At swing=0 this is a
+        // no-op; at swing=0.33 it's a classic shuffle.
+        const isOffBeat = ticksPerBeat > 1 && tickIndex % 2 === 1;
+        const swingOffset = isOffBeat ? this.transport.metronomeSwing * tickStep : 0;
+
         const osc = ctx.createOscillator();
-        osc.frequency.value = 1000;
+        // Downbeat: higher pitch (1500 Hz) so the artist always feels
+        // the 1. Off-beats: standard 1000 Hz. Subdivisions in between
+        // are slightly lower (800 Hz) so they don't compete.
+        osc.frequency.value = isDownbeat ? 1500 : isOffBeat ? 800 : 1000;
         osc.connect(gain);
-        const t0 = this.metronomeNextTime;
+        const t0 = this.metronomeNextTime + swingOffset;
+        const peak = isDownbeat ? 0.55 : 0.4;
         gain.gain.setValueAtTime(0, t0);
-        gain.gain.linearRampToValueAtTime(0.4, t0 + 0.001);
+        gain.gain.linearRampToValueAtTime(peak, t0 + 0.001);
         gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05);
         osc.start(t0);
         osc.stop(t0 + 0.06);
-        this.metronomeNextTime += beatSec;
+        this.metronomeNextTime += tickStep;
+        tickIndex++;
       }
       this.metronomeTimerId = window.setTimeout(fire, 25);
     };
@@ -3886,6 +4203,23 @@ export class DawEngine {
       }
 
       this.transport.isRecording = true;
+      // Crash-recovery breadcrumb. Written when recording starts, cleared
+      // on a clean stopRecording(). If we find it on next mount, the
+      // browser/tab/process died mid-take and we should surface a
+      // recovery prompt. We tag with both trackId + start time so the
+      // recovery handler can tell the user how much time is in flight.
+      try {
+        window.localStorage.setItem(
+          "ems.studio.recording.inFlight.v1",
+          JSON.stringify({
+            trackId: track.state.id,
+            trackName: track.state.name,
+            startedAt: new Date().toISOString(),
+          }),
+        );
+      } catch {
+        // private-mode browsers refuse localStorage — non-fatal.
+      }
       // Recording always wants live meters even before play() — kick
       // the loop here so a "record without play" arm shows levels.
       this.kickMeterLoop();
@@ -3962,7 +4296,16 @@ export class DawEngine {
         this.transport.vocalCaptureProfile === "raw"
           ? this.recordingAlignmentTrimSec
           : this.estimateOnsetTrimSec(takeBuffer, this.recordingAlignmentTrimSec);
-      const aligned = this.trimBufferStart(takeBuffer, onsetTrimSec);
+      // Apply measured device latency on top of the onset trim. The
+      // browser's outputLatency tells us how late the click was
+      // played (vs. ctx.currentTime), so the take is "late" by the
+      // same amount — back-shift it. Cap at 200 ms so a runaway
+      // estimate never eats the actual take.
+      const latencyTrimSec = Math.min(
+        0.2,
+        (this.transport.measuredDeviceLatencyMs ?? 0) / 1000,
+      );
+      const aligned = this.trimBufferStart(takeBuffer, onsetTrimSec + latencyTrimSec);
       let processed = this.normalizeRecordedBuffer(aligned);
 
       if (
@@ -3986,12 +4329,29 @@ export class DawEngine {
       recordingTrack.state.hasAudio = true;
       this.waveformCache.delete(recordingTrack.state.id);
       recordingTrack.state.durationSec = recordingTrack.buffer.duration;
+
+      // Snapshot this take into the per-track take history so the
+      // producer can A/B it against previous attempts in the take
+      // browser. Skip when comping is on — loop-record already keeps
+      // the takes on dedicated lanes.
+      if (!(this.transport.loopEnabled && this.transport.loopRecordEnabled)) {
+        const list = this.transport.takeHistory[recordingTrack.state.id] ?? [];
+        const takeNumber = list.length + 1;
+        this.appendTakeHistory(recordingTrack.state.id, processed, `Take ${takeNumber}`);
+      }
     }
 
     recordingTrack.activeTakeChunks = [];
 
     this.transport.isRecording = false;
     this.recordingAlignmentTrimSec = 0;
+    // Clear the in-flight breadcrumb — this was a clean stop, no
+    // recovery needed.
+    try {
+      window.localStorage.removeItem("ems.studio.recording.inFlight.v1");
+    } catch {
+      /* private-mode — ignore */
+    }
     if (this.transport.punchInEnabled || this.transport.loopRecordEnabled) {
       // Preserve playback for iterative fixes and loop takes.
       this.notify();

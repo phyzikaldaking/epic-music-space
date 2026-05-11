@@ -53,6 +53,12 @@ import {
   setProjectPublic,
 } from "./projectStorage";
 import {
+  readInFlight,
+  clearInFlight,
+  isStale,
+  type RecordingInFlight,
+} from "./recordingRecovery";
+import {
   popUndoSnapshot,
   pushUndoSnapshot,
   restoreUndoSnapshotById,
@@ -92,6 +98,10 @@ const AudioSettingsPanel = dynamic(() => import("./AudioSettingsPanel"), { ssr: 
 const StudioDropOverlay = dynamic(() => import("./StudioDropOverlay"), { ssr: false });
 const ShortcutOverlay = dynamic(() => import("./ShortcutOverlay"), { ssr: false });
 const VoiceToMidiButton = dynamic(() => import("./VoiceToMidiButton"), { ssr: false });
+const RecordingControlPanel = dynamic(() => import("./RecordingControlPanel"), { ssr: false });
+const TakeBrowserModal = dynamic(() => import("./TakeBrowserModal"), { ssr: false });
+const VocalWarmupModal = dynamic(() => import("./VocalWarmupModal"), { ssr: false });
+const VoiceMemoImportButton = dynamic(() => import("./VoiceMemoImportButton"), { ssr: false });
 
 const DEFAULT_TRACKS: Array<{ name: string; color: string; armed: boolean }> = [
   { name: "Vocal", color: "#ec4899", armed: true },
@@ -548,6 +558,12 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [kitMarketplaceOpen, setKitMarketplaceOpen] = useState(false);
+  // Take browser + vocal warmup modals (recording-day tooling).
+  const [takeBrowserOpen, setTakeBrowserOpen] = useState(false);
+  const [warmupOpen, setWarmupOpen] = useState(false);
+  // Crash-recovery prompt. Populated on mount if a previous session
+  // left a recording in-flight breadcrumb behind.
+  const [recoveryPrompt, setRecoveryPrompt] = useState<RecordingInFlight | null>(null);
   const [userTemplates, setUserTemplates] = useState<
     Array<{
       id: string;
@@ -654,6 +670,21 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   useEffect(() => {
     const timer = window.setTimeout(() => setHeavyUiReady(true), 260);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  // Crash-recovery: check for a dangling "recording in-flight"
+  // breadcrumb on mount. If it's there *and* it's older than a few
+  // seconds, the previous tab died mid-take and we surface a notice
+  // so the user knows what happened. (We can't recover the audio —
+  // MediaRecorder buffers live in memory — but the prompt at least
+  // tells the user they're starting fresh.)
+  useEffect(() => {
+    const dangling = readInFlight();
+    if (dangling && isStale(dangling)) {
+      setRecoveryPrompt(dangling);
+    } else if (dangling) {
+      // Breadcrumb is fresh — same session, ignore.
+    }
   }, []);
 
   // Hold the latest focus mode + display name in refs so the presence
@@ -4278,11 +4309,25 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         Space play · R record · L loop · M metronome · T tap · Home rewind · A-W-S-E-D... play synth · Drop audio on a track to import
       </p>
 
-      <div className="mb-6">
+      <div className="mb-6 grid gap-2 lg:grid-cols-2">
         <AudioSettingsPanel
           ctx={engineRef.current?.audioContext ?? null}
           latencyMode={transport?.latencyMode ?? "recording"}
         />
+        {engineRef.current && transport && (
+          <RecordingControlPanel
+            engine={engineRef.current}
+            metronomeOn={transport.metronomeOn}
+            metronomeSubdivision={transport.metronomeSubdivision}
+            metronomeAccentDownbeat={transport.metronomeAccentDownbeat}
+            metronomeSwing={transport.metronomeSwing}
+            cueMixLevel={transport.cueMixLevel}
+            talkbackOn={transport.talkbackOn}
+            measuredDeviceLatencyMs={transport.measuredDeviceLatencyMs}
+            onOpenTakeBrowser={() => setTakeBrowserOpen(true)}
+            onOpenWarmup={() => setWarmupOpen(true)}
+          />
+        )}
       </div>
 
       {!showSplash && (
@@ -4954,8 +4999,46 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       )}
 
       {!showSplash && (showArrangeTools || showRecordTools) && (
-        <div className="mb-6">
+        <div className="mb-6 space-y-3">
           <ProducerKitUploader onImportFiles={importSoundKitFiles} />
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/30 p-2">
+            <span className="text-[10px] uppercase tracking-widest text-white/55">
+              Quick import:
+            </span>
+            <VoiceMemoImportButton
+              onImport={(file) => {
+                if (!ensureInit()) return;
+                const engine = engineRef.current;
+                if (!engine) return;
+                const trackId = engine.addTrack(
+                  file.name.replace(/\.[^.]+$/, "").slice(0, 40) || "Voice memo",
+                  "#a78bfa",
+                );
+                void engine.importAudioFile(trackId, file).then((ok) => {
+                  if (ok) {
+                    setFocusedId(trackId);
+                    setSnapshot(engine.getSnapshot());
+                    pushAuditEvent(
+                      "import",
+                      `Voice memo "${file.name}" imported as new track`,
+                    );
+                    setNotice({
+                      tone: "success",
+                      message: "Voice memo dropped in as a new track.",
+                    });
+                  } else {
+                    setNotice({
+                      tone: "error",
+                      message: "Couldn't decode that voice memo — try another format.",
+                    });
+                  }
+                });
+              }}
+            />
+            <span className="text-[10px] uppercase tracking-widest text-white/40">
+              ⌘V also works
+            </span>
+          </div>
         </div>
       )}
 
@@ -5446,6 +5529,72 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           });
         }}
       />
+
+      {/* Per-track take browser. We resolve the trackName at render
+          time from the currently-focused track — the take history is
+          per-track, so the browser only makes sense in a track
+          context. Falls back to the first armed track if no focus. */}
+      {takeBrowserOpen && engineRef.current && (() => {
+        const targetId =
+          focusedId ?? tracks.find((t) => t.armed)?.id ?? tracks[0]?.id;
+        const target = targetId ? tracks.find((t) => t.id === targetId) : null;
+        if (!target) return null;
+        return (
+          <TakeBrowserModal
+            engine={engineRef.current}
+            trackId={target.id}
+            trackName={target.name}
+            open
+            onClose={() => setTakeBrowserOpen(false)}
+          />
+        );
+      })()}
+
+      {warmupOpen && (
+        <VocalWarmupModal
+          open={warmupOpen}
+          projectKey={null}
+          onClose={() => setWarmupOpen(false)}
+        />
+      )}
+
+      {/* Crash-recovery banner. Surfaces when a previous session left
+          a recording in-flight breadcrumb dangling (tab died mid-take). */}
+      {recoveryPrompt && (
+        <div className="fixed inset-x-0 bottom-4 z-[180] mx-auto max-w-md px-4">
+          <div className="rounded-2xl border border-amber-400/50 bg-amber-500/10 p-4 backdrop-blur">
+            <div className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-200">
+              Recovered from crash
+            </div>
+            <p className="mt-1 text-sm">
+              Looks like a take on <strong>{recoveryPrompt.trackName}</strong>
+              {" "}was cut off. The audio couldn&apos;t be saved, but you can pick
+              up where you left off.
+            </p>
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                onClick={() => {
+                  clearInFlight();
+                  setRecoveryPrompt(null);
+                }}
+                className="rounded-full border border-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10"
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={() => {
+                  clearInFlight();
+                  setRecoveryPrompt(null);
+                  setTakeBrowserOpen(true);
+                }}
+                className="rounded-full bg-amber-400 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-black hover:bg-amber-300"
+              >
+                Open take browser
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </StudioTooltipProvider>
   );
