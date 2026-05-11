@@ -145,6 +145,36 @@ export interface TrackState {
    *  time to keep editing. The original buffer + FX values are stashed
    *  in TrackInternal during freeze so unfreeze fully restores them. */
   frozen: boolean;
+  /** External plugin chain (VST3/AU/AAX via the EMS Plugin Host
+   *  bridge). Each slot references a host-side instance handle + the
+   *  catalog id it was instantiated from + the latest known parameter
+   *  values. Order = chain order. Empty when no plugins are attached
+   *  or the host isn't running. The host owns the actual DSP; the
+   *  browser only persists handles + params so projects round-trip. */
+  pluginSlots: PluginSlot[];
+}
+
+/** Saved plugin slot — what we round-trip in project files. */
+export interface PluginSlot {
+  /** Stable per-track slot id so reorders / removals don't conflate. */
+  slotId: string;
+  /** Catalog id ("Waves:CLA-76:VST3") so we can re-instantiate on
+   *  another machine that has the same plugin installed. */
+  pluginId: string;
+  /** Vendor + display name pulled from the catalog at instantiation,
+   *  cached on the slot so we can render a friendly label even when
+   *  the host isn't currently connected. */
+  vendor: string;
+  name: string;
+  /** Live host-side handle. Null when not currently instantiated (host
+   *  is offline / plugin missing on this machine). */
+  instanceHandle: string | null;
+  /** Last-known parameter values: id → value. Persisted so the slot
+   *  recreates with the same dial positions even if the host drops
+   *  and reconnects. */
+  parameterValues: Record<string, number>;
+  /** Bypass toggle. Persists; reapplied to host on reconnect. */
+  bypassed: boolean;
 }
 
 interface TrackInternal {
@@ -1908,6 +1938,7 @@ export class DawEngine {
         compLanes: [],
         compSegmentLaneIds: [],
         frozen: false,
+        pluginSlots: [],
       },
       fxIn,
       sidechainDuck,
@@ -4154,6 +4185,81 @@ export class DawEngine {
     this.notify();
   }
 
+  // ── External plugin slots (#bridge) ────────────────────────────────
+  //
+  // These methods are storage-only. The actual VST3/AU DSP runs in
+  // the EMS Plugin Host desktop app; the browser keeps the slot list
+  // for round-tripping projects + drives the UI. When the host is
+  // online, the UI calls into the bridge client (lib/pluginBridge)
+  // directly to instantiate / param-update; the host emits
+  // notifications the engine listens to and mirrors back here.
+
+  /** Append a plugin slot to a track's chain. The slot starts in a
+   *  pending state (instanceHandle = null); the UI calls the bridge to
+   *  instantiate the plugin host-side and then calls
+   *  setTrackPluginInstance to bind the live handle. */
+  addTrackPluginSlot(
+    trackId: TrackId,
+    slot: Omit<PluginSlot, "slotId"> & { slotId?: string },
+  ): string {
+    const t = this.tracks.get(trackId);
+    if (!t) return "";
+    const slotId = slot.slotId ?? `slot_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const next: PluginSlot = {
+      slotId,
+      pluginId: slot.pluginId,
+      vendor: slot.vendor,
+      name: slot.name,
+      instanceHandle: slot.instanceHandle ?? null,
+      parameterValues: slot.parameterValues ?? {},
+      bypassed: slot.bypassed ?? false,
+    };
+    t.state.pluginSlots = [...t.state.pluginSlots, next];
+    this.notify();
+    return slotId;
+  }
+
+  /** Update an existing slot — used after the bridge instantiates a
+   *  pending plugin (we get an instanceHandle to bind) or when the
+   *  user reorders / bypasses. */
+  updateTrackPluginSlot(
+    trackId: TrackId,
+    slotId: string,
+    patch: Partial<PluginSlot>,
+  ): void {
+    const t = this.tracks.get(trackId);
+    if (!t) return;
+    t.state.pluginSlots = t.state.pluginSlots.map((s) =>
+      s.slotId === slotId ? { ...s, ...patch } : s,
+    );
+    this.notify();
+  }
+
+  /** Remove a slot. Caller is responsible for telling the bridge to
+   *  destroy the host-side instance before calling this. */
+  removeTrackPluginSlot(trackId: TrackId, slotId: string): void {
+    const t = this.tracks.get(trackId);
+    if (!t) return;
+    t.state.pluginSlots = t.state.pluginSlots.filter((s) => s.slotId !== slotId);
+    this.notify();
+  }
+
+  /** Reorder a slot within the chain. -1 = move up, +1 = move down. */
+  moveTrackPluginSlot(trackId: TrackId, slotId: string, delta: -1 | 1): void {
+    const t = this.tracks.get(trackId);
+    if (!t) return;
+    const slots = [...t.state.pluginSlots];
+    const idx = slots.findIndex((s) => s.slotId === slotId);
+    if (idx < 0) return;
+    const target = idx + delta;
+    if (target < 0 || target >= slots.length) return;
+    const [moved] = slots.splice(idx, 1);
+    if (!moved) return;
+    slots.splice(target, 0, moved);
+    t.state.pluginSlots = slots;
+    this.notify();
+  }
+
   setTrackCompSegmentLane(trackId: TrackId, segmentIndex: number, laneId: string) {
     const track = this.tracks.get(trackId);
     if (!track) return;
@@ -6111,6 +6217,10 @@ export class DawEngine {
         },
         compLanes: t.state.compLanes.map((lane) => ({ ...lane })),
         compSegmentLaneIds: [...t.state.compSegmentLaneIds],
+        pluginSlots: t.state.pluginSlots.map((s) => ({
+          ...s,
+          parameterValues: { ...s.parameterValues },
+        })),
       })),
       beat: {
         enabled: this.beatMachine.enabled,

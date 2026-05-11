@@ -59,6 +59,9 @@ import {
 } from "./undoStorage";
 import UndoTimelinePanel from "./UndoTimelinePanel";
 import TakeLanesStrip from "./TakeLanesStrip";
+import PluginChain from "./PluginChain";
+import type { PluginSlot } from "./dawEngine";
+import { connectBridge, usePluginBridge } from "@/lib/pluginBridge/client";
 import CollaboratorCursors from "./CollaboratorCursors";
 import VersionHistoryModal from "./VersionHistoryModal";
 import TemplatePicker from "./TemplatePicker";
@@ -636,6 +639,11 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     const unsub = engine.subscribe(() => {
       setSnapshot(engine.getSnapshot());
     });
+    // Lazy-connect the desktop plugin bridge. If the EMS Plugin Host
+    // helper app is running on localhost:5544, this opens a WebSocket
+    // and the UI shows a connected status pill. If not, it silently
+    // schedules a retry every 10s — no error noise.
+    connectBridge();
     return () => {
       unsub();
       engine.destroy();
@@ -3468,6 +3476,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               }}
             />
             <HealthBadge health={browserHealth} />
+            <PluginHostStatusPill />
           </div>
         </div>
       </div>
@@ -4571,6 +4580,18 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                 }
                 onRenameCompLane={(laneId, name) =>
                   engineRef.current?.renameCompLane(track.id, laneId, name)
+                }
+                onAddPluginSlot={(tid, slot) =>
+                  engineRef.current?.addTrackPluginSlot(tid, slot) ?? ""
+                }
+                onUpdatePluginSlot={(tid, slotId, patch) =>
+                  engineRef.current?.updateTrackPluginSlot(tid, slotId, patch)
+                }
+                onRemovePluginSlot={(tid, slotId) =>
+                  engineRef.current?.removeTrackPluginSlot(tid, slotId)
+                }
+                onMovePluginSlot={(tid, slotId, delta) =>
+                  engineRef.current?.moveTrackPluginSlot(tid, slotId, delta)
                 }
                 takeLanes={
                   track.compLanes.length > 0
@@ -6489,6 +6510,41 @@ function SyncBadge({
   );
 }
 
+function PluginHostStatusPill() {
+  const bridge = usePluginBridge();
+  if (bridge.status === "disconnected") {
+    // Don't render anything in disconnected state — the user almost
+    // certainly doesn't have the helper installed, and a "host offline"
+    // pill at all times would be noise. They'll see the prompt inside
+    // a TrackStrip's plugin panel when they go looking.
+    return null;
+  }
+  const tone =
+    bridge.status === "connected"
+      ? "border-violet-400/40 bg-violet-500/15 text-violet-100"
+      : "border-amber-400/30 bg-amber-400/10 text-amber-100";
+  const label =
+    bridge.status === "connected"
+      ? `Plugins · ${bridge.catalog.length}`
+      : bridge.status === "connecting"
+        ? "Plugins…"
+        : bridge.status === "rejected"
+          ? "Plugins · update host"
+          : "Plugins · unsupported";
+  return (
+    <div
+      className={`rounded-xl border px-3 py-2 text-xs font-bold uppercase tracking-widest ${tone}`}
+      title={
+        bridge.status === "connected"
+          ? `Connected to EMS Plugin Host${bridge.hostVersion ? " v" + bridge.hostVersion : ""}. ${bridge.catalog.length} plugins detected.`
+          : bridge.error ?? "Plugin host status"
+      }
+    >
+      {label}
+    </div>
+  );
+}
+
 function HealthBadge({ health }: { health: BrowserHealth | null }) {
   if (!health) {
     return (
@@ -7383,6 +7439,10 @@ function TrackStrip({
   onSetCompSegment,
   onSetCompSegmentRange,
   onRenameCompLane,
+  onAddPluginSlot,
+  onUpdatePluginSlot,
+  onRemovePluginSlot,
+  onMovePluginSlot,
   takeLanes,
   vcaGroups,
   soloMode,
@@ -7448,6 +7508,15 @@ function TrackStrip({
   onSetCompSegmentRange: (startIdx: number, endIdx: number, laneId: string) => void;
   /** Rename a take lane so the take strip reads like a notebook. */
   onRenameCompLane: (laneId: string, name: string) => void;
+  /** Plugin chain mutations — engine-backed, persisted with the project. */
+  onAddPluginSlot: (trackId: string, slot: Omit<PluginSlot, "slotId">) => string;
+  onUpdatePluginSlot: (
+    trackId: string,
+    slotId: string,
+    patch: Partial<PluginSlot>,
+  ) => void;
+  onRemovePluginSlot: (trackId: string, slotId: string) => void;
+  onMovePluginSlot: (trackId: string, slotId: string, delta: -1 | 1) => void;
   /** Pre-computed per-take mini-waveforms for the TakeLanesStrip. Null
    *  when no takes exist; cheap to compute lazily via engine.getCompLanePeaks. */
   takeLanes: Array<{
@@ -7901,6 +7970,15 @@ function TrackStrip({
             onRenameLane={(laneId, name) => onRenameCompLane(laneId, name)}
           />
         )}
+
+        <PluginChain
+          trackId={track.id}
+          slots={track.pluginSlots ?? []}
+          onAddSlot={(slot) => onAddPluginSlot(track.id, slot)}
+          onUpdateSlot={(slotId, patch) => onUpdatePluginSlot(track.id, slotId, patch)}
+          onRemoveSlot={(slotId) => onRemovePluginSlot(track.id, slotId)}
+          onMoveSlot={(slotId, delta) => onMovePluginSlot(track.id, slotId, delta)}
+        />
 
         {track.compLanes.length > 0 && (
           <div className="rounded-md border border-cyan-400/20 bg-cyan-500/5 px-2.5 py-2 text-[11px] text-cyan-50/90">
