@@ -2574,11 +2574,23 @@ export class DawEngine {
   }
 
   private canUseWebCodecsCapture(): boolean {
+    // Temporarily disabled. The WebCodecs Opus path was producing
+    // robot-voice playback on contexts where ctx.sampleRate isn't a
+    // native Opus rate (Opus only natively supports 8/12/16/24/48
+    // kHz; 44.1 kHz Mac devices were the worst). The
+    // MediaRecorder → decodeAudioData fallback is rock-solid because
+    // the browser handles sample-rate alignment automatically, so we
+    // route every capture through it until WebCodecs is hardened
+    // (resample at the encoder boundary, force 48k input, etc.).
+    //
+    // The classes are still detected so re-enabling is one-line:
+    // flip this gate to `Boolean(g.AudioEncoder && g.AudioData)`.
     const g = globalThis as unknown as {
       AudioEncoder?: unknown;
       AudioData?: unknown;
     };
-    return Boolean(g.AudioEncoder && g.AudioData);
+    void g;
+    return false;
   }
 
   private canAccessMicrophone(): boolean {

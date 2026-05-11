@@ -3771,51 +3771,65 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           </div>
         </div>
 
-        <div className="flex items-center gap-2 rounded-xl border border-white/12 bg-black/25 p-2">
-          <button
-            type="button"
-            onClick={() => nudgeTransport(-5)}
-            className="rounded-md border border-white/20 bg-white/[0.03] px-3 py-2 text-xs font-black tracking-wider text-white/90 transition hover:bg-white/[0.1]"
-            title="Rewind 5 seconds"
-          >
-            REW
-          </button>
+        {/* Pro-Tools-style transport pill. Icon-first, play in the
+            middle, rewind / return-to-zero on the left, stop / FF on
+            the right — same shape every DAW user has been using since
+            the 70s. Bigger Play button (h-12 vs h-10) is the visual
+            anchor so the eye lands there immediately. */}
+        <div className="flex items-center gap-1 rounded-full border border-white/15 bg-black/40 p-1.5 shadow-inner shadow-black/40">
           <button
             type="button"
             onClick={handleReturnToZero}
-            className="rounded-md border border-white/20 bg-white/[0.03] px-3 py-2 text-xs font-black tracking-wider text-white/90 transition hover:bg-white/[0.1]"
+            className="grid h-10 w-10 place-items-center rounded-full text-white/80 transition hover:bg-white/10"
+            aria-label="Return to start"
             title="Return to start"
           >
-            RTZ
+            <span aria-hidden className="text-base">⏮</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => nudgeTransport(-5)}
+            className="grid h-10 w-10 place-items-center rounded-full text-white/80 transition hover:bg-white/10"
+            aria-label="Rewind 5 seconds"
+            title="Rewind 5 seconds (Shift + ←)"
+          >
+            <span aria-hidden className="text-base">⏪</span>
           </button>
           <StudioTooltip label={tooltips.transportPlay} shortcut="Space">
             <button
               type="button"
               onClick={handlePlayStopTransport}
-              className="rounded-md bg-emerald-500 px-4 py-2 text-xs font-black tracking-[0.14em] text-black transition hover:bg-emerald-400"
-              aria-label="Play"
+              className={`grid h-12 w-12 place-items-center rounded-full text-base font-black shadow-lg transition ${
+                transport?.isPlaying
+                  ? "bg-amber-400 text-black shadow-amber-400/40 hover:bg-amber-300"
+                  : "bg-emerald-500 text-black shadow-emerald-500/40 hover:bg-emerald-400"
+              }`}
+              aria-label={transport?.isPlaying ? "Pause" : "Play"}
               data-tour="play-button"
             >
-              PLAY
+              <span aria-hidden className="text-lg">
+                {transport?.isPlaying ? "⏸" : "▶"}
+              </span>
             </button>
           </StudioTooltip>
           <StudioTooltip label={stopBehavior === "return-to-zero" ? "Stop and return to start." : "Stop and hold current cursor position."}>
             <button
               type="button"
               onClick={handleStopTransport}
-              className="rounded-md border border-white/20 bg-white/[0.03] px-4 py-2 text-xs font-black tracking-[0.14em] text-white transition hover:bg-white/[0.1]"
+              className="grid h-10 w-10 place-items-center rounded-full text-white/80 transition hover:bg-white/10"
               aria-label="Stop"
             >
-              STOP
+              <span aria-hidden className="text-base">⏹</span>
             </button>
           </StudioTooltip>
           <button
             type="button"
             onClick={() => nudgeTransport(5)}
-            className="rounded-md border border-white/20 bg-white/[0.03] px-3 py-2 text-xs font-black tracking-wider text-white/90 transition hover:bg-white/[0.1]"
-            title="Fast-forward 5 seconds"
+            className="grid h-10 w-10 place-items-center rounded-full text-white/80 transition hover:bg-white/10"
+            aria-label="Fast-forward 5 seconds"
+            title="Fast-forward 5 seconds (Shift + →)"
           >
-            FF
+            <span aria-hidden className="text-base">⏩</span>
           </button>
         </div>
 

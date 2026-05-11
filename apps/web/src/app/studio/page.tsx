@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import StudioHubClient from "./StudioHubClient";
 
 export const metadata: Metadata = {
   title: "Studio · Make beats, mix, publish",
@@ -10,57 +9,21 @@ export const metadata: Metadata = {
     "Open the in-browser DAW, upload a track in 90 seconds, or jump into a live session. Free to start.",
 };
 
+// /studio routing rule, per user feedback:
+//   Authenticated → go straight to /studio/board (the actual DAW).
+//                   No hub, no preamble. The studio IS the studio page.
+//   Anonymous     → show the marketing landing below so they get the
+//                   pitch + sign-in path.
+//
+// The old hub (StudioHubClient with "Recent Sessions" etc.) lives on
+// at /studio/dashboard for users who want the rail view; the
+// dashboard link is reachable from the in-app account menu.
 export default async function StudioIndexPage() {
   const session = await auth();
-
-  if (!session?.user?.id) {
-    return <PublicStudioLanding />;
+  if (session?.user?.id) {
+    redirect("/studio/board");
   }
-
-  const studio = await prisma.studio.findFirst({
-    where: { userId: session.user.id },
-    select: { username: true },
-  }).catch(() => null);
-
-  return (
-    <div className="relative min-h-[calc(100vh-65px)]">
-      <header className="relative z-[1] mx-auto max-w-6xl px-4 pt-10 sm:pt-14">
-        <div className="flex items-center gap-2">
-          <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
-          <p className="studio-label text-tube-300">
-            EMS Studio · Console Online
-          </p>
-          <span className="studio-label ml-auto text-white/35">
-            STU-01 · Master
-          </span>
-        </div>
-        <h1 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
-          Welcome back.
-          <br className="hidden sm:block" />
-          Your studio is ready.
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/60">
-          Jump straight back into the DAW, open your public studio, or start
-          a live room without hunting through menus.
-        </p>
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Link
-            href="/studio/ultra"
-            className="inline-flex items-center rounded-md border border-cyan-300/35 bg-cyan-500/20 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-cyan-100"
-          >
-            Studio Ultra Upgrades
-          </Link>
-          <Link
-            href="/studio/try?force-desktop=1"
-            className="inline-flex items-center rounded-md border border-white/20 bg-black/35 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-white/85"
-          >
-            Open Full Desktop Studio
-          </Link>
-        </div>
-      </header>
-      <StudioHubClient studioUsername={studio?.username ?? null} />
-    </div>
-  );
+  return <PublicStudioLanding />;
 }
 
 function PublicStudioLanding() {
