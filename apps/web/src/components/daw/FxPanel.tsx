@@ -20,7 +20,12 @@ interface Props {
   /** Tracks selectable as sidechain sources (excludes self in caller). */
   sidechainOptions: SidechainOption[];
   onSetEq: (band: "low" | "mid" | "high", db: number) => void;
-  onSetComp: (params: { threshDb?: number; ratio?: number; enabled?: boolean }) => void;
+  onSetComp: (params: {
+    threshDb?: number;
+    ratio?: number;
+    enabled?: boolean;
+    parallelBlend?: number;
+  }) => void;
   onSetVocalBus: (params: {
     enabled?: boolean;
     driveDb?: number;
@@ -139,6 +144,15 @@ export default function FxPanel({
               value={fx.compRatio}
               suffix=":1"
               onChange={(v) => onSetComp({ ratio: v })}
+            />
+            <Slider
+              label="Parallel"
+              min={0}
+              max={1}
+              step={0.01}
+              value={fx.compParallelBlend ?? 0}
+              suffix=""
+              onChange={(v) => onSetComp({ parallelBlend: v })}
             />
           </FxBlock>
 

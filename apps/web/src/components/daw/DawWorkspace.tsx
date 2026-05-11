@@ -4613,6 +4613,11 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               engineRef.current?.setBeatLaneReversed(lane, reversed);
               touchDirty();
             }}
+            laneResonator={beat.laneResonator ?? {}}
+            onSetLaneResonator={(lane, amount) => {
+              engineRef.current?.setBeatLaneResonator(lane, amount);
+              touchDirty();
+            }}
             laneNames={beat.laneNames ?? {}}
             onSetLaneName={(lane, name) => {
               engineRef.current?.setBeatLaneName(lane, name);
@@ -4897,6 +4902,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             spectrum={transport.masterSpectrum}
             lufs={transport.masterLufs}
             truePeak={transport.masterTruePeak}
+            phaseCorrelation={transport.masterPhaseCorrelation}
             eqLowDb={transport.masterEqLowDb}
             eqMidDb={transport.masterEqMidDb}
             eqHighDb={transport.masterEqHighDb}

@@ -68,6 +68,9 @@ interface Props {
   /** Per-lane reverse-sample toggle. Synth-only lanes ignore it. */
   laneReversed: Partial<Record<DrumKind, boolean>>;
   onSetLaneReversed: (lane: DrumKind, reversed: boolean) => void;
+  /** Per-lane resonator amount (0..1). Adds harmonic body. */
+  laneResonator: Partial<Record<DrumKind, number>>;
+  onSetLaneResonator: (lane: DrumKind, amount: number) => void;
   /** Per-lane display name override (max 12 chars). Empty/unset =
    *  canonical label. Lets producers rename lanes for percussion-only
    *  kits or hybrid stems. */
@@ -173,6 +176,8 @@ export default function BeatMachineGrid({
   onSetLaneSemis,
   laneReversed,
   onSetLaneReversed,
+  laneResonator,
+  onSetLaneResonator,
   laneNames,
   onSetLaneName,
   onSetSwing,
@@ -754,11 +759,32 @@ export default function BeatMachineGrid({
                       ? "Playing this lane's sample reversed — click to disable"
                       : "Reverse this lane's sample (no effect on synth-only lanes)"
                   }
-                  aria-pressed={laneReversed[lane] ? "true" : "false"}
-                  aria-label={`Reverse ${LANE_LABELS[lane]} sample`}
+                  aria-label={`Reverse ${LANE_LABELS[lane]} sample · ${laneReversed[lane] ? "on" : "off"}`}
                 >
                   ⏪
                 </button>
+              </div>
+              <div className="mt-0.5 flex items-center gap-1">
+                <span
+                  className="text-[8px] font-bold uppercase tracking-widest text-white/40"
+                  title="Resonator — adds a pitched sine tail to each hit for tonal body"
+                >
+                  Reso
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={laneResonator[lane] ?? 0}
+                  onChange={(e) => onSetLaneResonator(lane, Number(e.target.value))}
+                  aria-label={`${LANE_LABELS[lane]} resonator amount`}
+                  className="flex-1 accent-accent-500"
+                  title={`Resonator (${Math.round((laneResonator[lane] ?? 0) * 100)}%)`}
+                />
+                <span className="w-7 text-right font-mono text-[8px] tabular-nums text-white/70">
+                  {Math.round((laneResonator[lane] ?? 0) * 100)}
+                </span>
               </div>
             </div>
             <div className="flex flex-1 gap-[3px]">
@@ -1058,7 +1084,6 @@ function KitPickerStrip({
                   : "text-white/65 hover:bg-white/10"
               }`}
               title={`${k.label} — hover to audition`}
-              aria-pressed={active ? "true" : "false"}
               aria-label={`${k.label} kit${active ? " (active)" : ""}`}
             >
               {k.label}

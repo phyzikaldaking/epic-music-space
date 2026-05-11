@@ -58,6 +58,11 @@ export interface TrackFx {
   compEnabled: boolean;
   compThreshDb: number; // -60..0
   compRatio: number; // 1..20
+  /** New York / parallel compression blend (#11). 0 = serial (full
+   *  compression, current behavior), 1 = fully parallel (dry + smashed
+   *  in equal blend). When 0 we behave exactly like before for
+   *  backwards compat; >0 mixes the unprocessed dry signal back in. */
+  compParallelBlend: number; // 0..1
   /** EMS vocal bus — console-style drive/tone/parallel crush + de-esser. */
   vocalBusEnabled: boolean;
   vocalBusDriveDb: number; // 0..18
@@ -370,6 +375,12 @@ export interface BeatMachineState {
    *  only kit can rename "kick → shaker" without losing the lane's
    *  underlying DrumKind routing. */
   laneNames: Partial<Record<DrumKind, string>>;
+  /** Per-lane resonator amount (0..1). When >0, each hit also fires a
+   *  short pitched sine tail tuned to the lane's center frequency.
+   *  Producers use this to add tonal richness to flat-sounding drum
+   *  one-shots — kicks become more "musical," snares get a slight body
+   *  ring. 0 = bypass (default). */
+  laneResonator: Partial<Record<DrumKind, number>>;
   /** Round-robin variant file names per lane. The primary sample stays
    *  in laneSampleNames; up to 3 additional samples are listed here and
    *  the scheduler cycles through them on consecutive hits for realism. */
@@ -649,6 +660,7 @@ const DEFAULT_TRACK_FX: TrackFx = {
   compEnabled: true,
   compThreshDb: -18,
   compRatio: 3,
+  compParallelBlend: 0,
   vocalBusEnabled: false,
   vocalBusDriveDb: 0,
   vocalBusPresenceDb: 0,
@@ -916,6 +928,7 @@ export class DawEngine {
     laneSemis: {},
     laneReversed: {},
     laneNames: {},
+    laneResonator: {},
     laneSampleNames: emptyBeatLaneSampleNames(),
     laneVariantNames: DRUM_LANES.reduce((acc, lane) => {
       acc[lane] = [];
@@ -1777,7 +1790,15 @@ export class DawEngine {
     this.notify();
   }
 
-  setTrackComp(id: TrackId, params: { threshDb?: number; ratio?: number; enabled?: boolean }) {
+  setTrackComp(
+    id: TrackId,
+    params: {
+      threshDb?: number;
+      ratio?: number;
+      enabled?: boolean;
+      parallelBlend?: number;
+    },
+  ) {
     const t = this.tracks.get(id);
     if (!t) return;
     if (params.threshDb !== undefined) {
@@ -1791,6 +1812,12 @@ export class DawEngine {
     if (params.enabled !== undefined) {
       t.state.fx.compEnabled = params.enabled;
     }
+    if (params.parallelBlend !== undefined) {
+      t.state.fx.compParallelBlend = Math.max(
+        0,
+        Math.min(1, params.parallelBlend),
+      );
+    }
     const now = this.ctx!.currentTime;
     const targetThreshold = t.state.fx.compEnabled ? t.state.fx.compThreshDb : 0;
     const targetRatio = t.state.fx.compEnabled ? t.state.fx.compRatio : 1;
@@ -1800,9 +1827,21 @@ export class DawEngine {
     t.comp.ratio.cancelScheduledValues(now);
     t.comp.ratio.setValueAtTime(t.comp.ratio.value, now);
     t.comp.ratio.linearRampToValueAtTime(targetRatio, now + 0.02);
+    // Parallel comp blend: when blend=0 we behave exactly as before
+    // (comp on → all comp, comp off → all dry). When blend>0 we mix
+    // some unprocessed dry signal back in even while compressing —
+    // classic NY-style "punch on top of dry" sound. The blend is only
+    // meaningful when comp is enabled; with comp off the dry path is
+    // 100% already.
+    const blend = t.state.fx.compEnabled ? t.state.fx.compParallelBlend : 0;
+    const compLevel = t.state.fx.compEnabled ? 1 - blend * 0.5 : 0;
+    const dryLevel = t.state.fx.compEnabled ? blend : 1;
     t.compBypass.gain.cancelScheduledValues(now);
     t.compBypass.gain.setValueAtTime(t.compBypass.gain.value, now);
-    t.compBypass.gain.linearRampToValueAtTime(0, now + 0.02);
+    t.compBypass.gain.linearRampToValueAtTime(dryLevel, now + 0.02);
+    t.compMix.gain.cancelScheduledValues(now);
+    t.compMix.gain.setValueAtTime(t.compMix.gain.value, now);
+    t.compMix.gain.linearRampToValueAtTime(compLevel, now + 0.02);
     this.notify();
   }
 
@@ -4154,6 +4193,18 @@ export class DawEngine {
     this.notify();
   }
 
+  /** Per-lane resonator amount (#19). 0 clears. >0 layers a pitched
+   *  sine tail on each hit through scheduleResonatorTail. */
+  setBeatLaneResonator(lane: DrumKind, amount: number) {
+    const clamped = Math.max(0, Math.min(1, amount));
+    if (clamped === 0) {
+      delete this.beatMachine.laneResonator[lane];
+    } else {
+      this.beatMachine.laneResonator[lane] = clamped;
+    }
+    this.notify();
+  }
+
   /** Lazy-build and cache a reversed copy of an AudioBuffer. The cache
    *  is a WeakMap keyed by source buffer, so swapping a lane's primary
    *  sample drops the reversed copy automatically (no manual cleanup). */
@@ -4763,8 +4814,54 @@ export class DawEngine {
             laneEq,
           });
         }
+        // Resonator tail (#19) — short pitched sine layer tuned to the
+        // lane's center frequency. Scaled by both the resonator amount
+        // and the hit velocity so soft hits get a soft tail. Skipped
+        // when resonator is 0 (the default).
+        const resAmount = this.beatMachine.laneResonator[lane] ?? 0;
+        if (resAmount > 0) {
+          this.scheduleResonatorTail(
+            ctx,
+            dest,
+            lane,
+            repeatWhen,
+            repeatVel * resAmount,
+            laneSemis,
+          );
+        }
       }
     }
+  }
+
+  /** Fire a short pitched sine tail tuned to the lane's synth-center
+   *  frequency. Adds harmonic "body" to flat one-shots. Voice is
+   *  intentionally minimal — one oscillator, one envelope — so we can
+   *  layer it on top of every drum hit without CPU concerns. */
+  private scheduleResonatorTail(
+    ctx: BaseAudioContext,
+    dest: AudioNode,
+    lane: DrumKind,
+    when: number,
+    amount: number,
+    pitchSemis: number,
+  ) {
+    const centerHz = SYNTH_LANE_CENTERS_HZ[lane] ?? 220;
+    const freq = centerHz * Math.pow(2, pitchSemis / 12);
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, when);
+    // Slight downward sweep adds "pluck" feel rather than a static tone.
+    osc.frequency.exponentialRampToValueAtTime(
+      Math.max(40, freq * 0.7),
+      when + 0.18,
+    );
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0, when);
+    amp.gain.linearRampToValueAtTime(amount * 0.18, when + 0.005);
+    amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
+    osc.connect(amp).connect(dest);
+    osc.start(when);
+    osc.stop(when + 0.25);
   }
 
   private stopBeatScheduler() {
@@ -5202,6 +5299,7 @@ export class DawEngine {
         threshDb: fx.compThreshDb,
         ratio: fx.compRatio,
         enabled: fx.compEnabled,
+        parallelBlend: fx.compParallelBlend ?? 0,
       });
       this.setTrackVocalBus(id, {
         enabled: fx.vocalBusEnabled,
@@ -5661,6 +5759,7 @@ export class DawEngine {
         laneSemis: { ...this.beatMachine.laneSemis },
         laneReversed: { ...this.beatMachine.laneReversed },
         laneNames: { ...this.beatMachine.laneNames },
+        laneResonator: { ...this.beatMachine.laneResonator },
         laneSampleNames: { ...this.beatMachine.laneSampleNames },
         laneVariantNames: DRUM_LANES.reduce((acc, lane) => {
           acc[lane] = [...this.beatMachine.laneVariantNames[lane]];

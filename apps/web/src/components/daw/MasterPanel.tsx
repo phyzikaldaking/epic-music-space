@@ -15,6 +15,9 @@ interface Props {
   spectrum: number[];
   lufs: number;
   truePeak: number;
+  /** Stereo phase correlation -1 (out of phase) .. +1 (mono). Drives a
+   *  small correlation needle on the master panel. */
+  phaseCorrelation?: number;
   /** Master EQ values. */
   eqLowDb: number;
   eqMidDb: number;
@@ -46,6 +49,7 @@ export default function MasterPanel({
   spectrum,
   lufs,
   truePeak,
+  phaseCorrelation,
   eqLowDb,
   eqMidDb,
   eqHighDb,
@@ -220,8 +224,59 @@ export default function MasterPanel({
         )}
       </div>
 
+      {typeof phaseCorrelation === "number" && (
+        <PhaseCorrelationMeter correlation={phaseCorrelation} />
+      )}
+
       <MixDiagnosticsCallout spectrum={spectrum} lufs={lufs} truePeak={truePeak} />
     </section>
+  );
+}
+
+// -1..+1 phase correlation needle (#12). +1 = mono-coherent, 0 = wide
+// stereo, -1 = anti-phase (mono kills the signal). The needle is a
+// thin vertical bar over a colored gradient: red on the left (danger),
+// amber middle, green right (safe). Producers glance at this before
+// publishing to catch a stereo widener gone wrong.
+function PhaseCorrelationMeter({ correlation }: { correlation: number }) {
+  const clamped = Math.max(-1, Math.min(1, correlation));
+  // Map -1..+1 to 0..100% along the bar.
+  const leftPct = ((clamped + 1) / 2) * 100;
+  // Risk band — red below 0 (anti-phase territory), amber 0..0.5,
+  // green above. Drives the badge color so the meter reads "good /
+  // watch / problem" at a glance.
+  const tone =
+    clamped < 0
+      ? { label: "Anti-phase", color: "text-rose-200", bg: "bg-rose-500/15" }
+      : clamped < 0.5
+        ? { label: "Wide", color: "text-amber-200", bg: "bg-amber-500/15" }
+        : { label: "Mono-safe", color: "text-emerald-200", bg: "bg-emerald-500/15" };
+  return (
+    <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3">
+      <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/55">
+        <span>Stereo correlation</span>
+        <span
+          className={`rounded-full px-1.5 py-0.5 ${tone.bg} ${tone.color} font-black`}
+        >
+          {clamped.toFixed(2)} · {tone.label}
+        </span>
+      </div>
+      <div className="relative h-2 overflow-hidden rounded-full border border-white/10">
+        {/* Three-zone background. Red ←  middle → green. */}
+        <div className="absolute inset-0 bg-gradient-to-r from-rose-500/60 via-amber-400/55 to-emerald-500/60" />
+        {/* Center tick at 0 (wide stereo). */}
+        <div className="pointer-events-none absolute top-0 bottom-0 left-1/2 w-px bg-white/30" />
+        {/* Live needle. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_6px_rgba(255,255,255,0.7)]"
+          style={{ left: `calc(${leftPct}% - 1px)` }}
+        />
+      </div>
+      <p className="mt-1 text-[10px] text-white/45">
+        +1 = mono-safe · 0 = wide stereo · &lt; 0 = phase cancellation on mono playback
+      </p>
+    </div>
   );
 }
 
