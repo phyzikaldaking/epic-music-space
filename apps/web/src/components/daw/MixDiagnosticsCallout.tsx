@@ -1,7 +1,85 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { getStudioContext } from "@/lib/studioContextStore";
+
+// Proactive mix coach (#23 in the 30-item audit). The free-text "Check
+// my mix" button below is reactive; this surfaces specific issues +
+// one-click fixes at all times so producers don't have to ask. Each
+// rule reads the current spectrum + LUFS + true peak, decides whether
+// it has a strong recommendation, and emits a payload the parent can
+// dispatch as a studio:execute-tool event for one-click apply.
+interface ProactiveRule {
+  id: string;
+  /** Short headline. */
+  title: string;
+  /** One-line plain-English explanation. */
+  why: string;
+  /** Action button label. */
+  applyLabel: string;
+  /** The studio:execute-tool payload — same shape the AI coach uses. */
+  toolCall: {
+    name: string;
+    args: Record<string, unknown>;
+  };
+}
+
+function computeProactiveSuggestions(
+  bands: Band[],
+  lufs: number,
+  truePeak: number,
+): ProactiveRule[] {
+  const out: ProactiveRule[] = [];
+  // Rule 1: master too quiet (LUFS < -22) → suggest streaming preset.
+  if (Number.isFinite(lufs) && lufs < -22) {
+    out.push({
+      id: "loud-streaming",
+      title: "Mix is quiet for streaming",
+      why: `Master reads ${lufs.toFixed(1)} LUFS — Spotify / Apple normalize to about -14. Push it.`,
+      applyLabel: "Apply streaming master",
+      toolCall: { name: "applyMasteringPreset", args: { preset: "streamReady" } },
+    });
+  }
+  // Rule 2: clipping risk (true peak > -1 dBTP) → enable limiter.
+  if (truePeak > 0) {
+    const truePeakDb = 20 * Math.log10(Math.max(0.0001, truePeak));
+    if (truePeakDb > -1) {
+      out.push({
+        id: "limit-peaks",
+        title: "True peak nearing 0 dBTP",
+        why: `Hitting ${truePeakDb.toFixed(1)} dBTP — flip the limiter on to keep streaming codecs happy.`,
+        applyLabel: "Turn on limiter",
+        toolCall: { name: "setLimiter", args: { on: true } },
+      });
+    }
+  }
+  // Rule 3: bass-heavy mix (sub-bass + bass >> mid). 60% rule of thumb.
+  const subBass = bands.find((b) => b.label === "Sub-bass")?.energy ?? 0;
+  const bass = bands.find((b) => b.label === "Bass")?.energy ?? 0;
+  const mid = bands.find((b) => b.label === "Mid")?.energy ?? 0;
+  if (subBass + bass > 1.3 && mid < 0.4) {
+    out.push({
+      id: "tame-bass",
+      title: "Bass is masking the mids",
+      why: "Sub + bass energy is dominating; the mid range (vocals, snare body) gets buried. Cut the master low.",
+      applyLabel: "Cut master low -3 dB",
+      toolCall: { name: "setMasterEq", args: { band: "low", db: -3 } },
+    });
+  }
+  // Rule 4: harsh top end. High-mid + air both > 0.7 → cut high.
+  const highMid = bands.find((b) => b.label === "High-mid")?.energy ?? 0;
+  const air = bands.find((b) => b.label === "Air")?.energy ?? 0;
+  if (highMid > 0.7 && air > 0.6) {
+    out.push({
+      id: "tame-highs",
+      title: "Top end is harsh",
+      why: "High-mid and air are both hot — fatigues ears on long listens. Pull the master high down.",
+      applyLabel: "Cut master high -2 dB",
+      toolCall: { name: "setMasterEq", args: { band: "high", db: -2 } },
+    });
+  }
+  return out;
+}
 
 interface Props {
   spectrum: number[];
@@ -52,6 +130,27 @@ export default function MixDiagnosticsCallout({ spectrum, lufs, truePeak }: Prop
   const [diagnosis, setDiagnosis] = useState<string>("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dismissedRuleIds, setDismissedRuleIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  // Recompute proactive suggestions whenever the spectrum / LUFS / peak
+  // changes. Memoised on the inputs so the callout doesn't thrash on
+  // every render — only when actual measurements shift do we
+  // re-evaluate the rules.
+  const proactiveSuggestions = useMemo(() => {
+    const bands = summarizeBands(spectrum);
+    return computeProactiveSuggestions(bands, lufs, truePeak).filter(
+      (r) => !dismissedRuleIds.has(r.id),
+    );
+  }, [spectrum, lufs, truePeak, dismissedRuleIds]);
+
+  function applyToolCall(toolCall: ProactiveRule["toolCall"]) {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("studio:execute-tool", { detail: toolCall }),
+    );
+  }
 
   async function checkMyMix() {
     if (streaming) return;
@@ -136,6 +235,47 @@ export default function MixDiagnosticsCallout({ spectrum, lufs, truePeak }: Prop
 
   return (
     <div className="mt-3 rounded-xl border border-tube-300/30 bg-gradient-to-br from-tube-300/10 via-amber-500/5 to-rose-500/5 p-3">
+      {proactiveSuggestions.length > 0 && (
+        <div className="mb-3 space-y-1.5">
+          {proactiveSuggestions.map((rule) => (
+            <div
+              key={rule.id}
+              className="flex flex-wrap items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-500/[0.08] p-2.5"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-black uppercase tracking-widest text-amber-200">
+                  {rule.title}
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed text-white/75">
+                  {rule.why}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => applyToolCall(rule.toolCall)}
+                className="rounded-md border border-amber-300/50 bg-amber-400/20 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-amber-100 transition hover:bg-amber-400/30"
+              >
+                {rule.applyLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setDismissedRuleIds((s) => {
+                    const next = new Set(s);
+                    next.add(rule.id);
+                    return next;
+                  })
+                }
+                className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-white/45 hover:bg-white/10"
+                aria-label={`Dismiss "${rule.title}" suggestion`}
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.32em] text-tube-300">

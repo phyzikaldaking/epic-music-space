@@ -1610,8 +1610,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             touchDirty();
             setNotice({ tone: "success", message: `Coach switched kit to ${args.kit}.` });
             break;
-          }
-          case "armTrack": {
+          }          case "armTrack": {
             const args = parsed.data as { trackName: string; armed?: boolean };
             const target = tracks.find(
               (t) => t.name.toLowerCase() === args.trackName.toLowerCase(),
@@ -1629,6 +1628,27 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             setNotice({
               tone: "success",
               message: `Coach ${armed ? "armed" : "disarmed"} "${target.name}".`,
+            });
+            break;
+          }
+          case "setMasterEq": {
+            const args = parsed.data as { band: EqBand; db: number };
+            engine.setMasterEq(args.band, args.db);
+            touchDirty();
+            const sign = args.db >= 0 ? "+" : "";
+            setNotice({
+              tone: "success",
+              message: `Master ${args.band} EQ set to ${sign}${args.db.toFixed(1)} dB.`,
+            });
+            break;
+          }
+          case "setLimiter": {
+            const args = parsed.data as { on: boolean };
+            engine.setMasterLimiter(args.on);
+            touchDirty();
+            setNotice({
+              tone: "success",
+              message: `Master limiter ${args.on ? "on" : "off"}.`,
             });
             break;
           }

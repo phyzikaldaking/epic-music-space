@@ -41,6 +41,13 @@ export const aiToolSchemas = {
     trackName: z.string().min(1).max(80),
     armed: z.boolean().default(true),
   }),
+  setMasterEq: z.object({
+    band: z.enum(["low", "mid", "high"]),
+    db: z.number().min(-12).max(12),
+  }),
+  setLimiter: z.object({
+    on: z.boolean(),
+  }),
 } as const;
 
 export type AiToolName = keyof typeof aiToolSchemas;
@@ -168,6 +175,36 @@ export const openAiTools: OpenAiToolDescriptor[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "setMasterEq",
+      description:
+        "Adjust master EQ band by N dB. Use to fix tonal balance on the master bus.",
+      parameters: {
+        type: "object",
+        properties: {
+          band: { type: "string", enum: ["low", "mid", "high"] },
+          db: { type: "number", minimum: -12, maximum: 12 },
+        },
+        required: ["band", "db"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "setLimiter",
+      description: "Toggle the master limiter on or off.",
+      parameters: {
+        type: "object",
+        properties: {
+          on: { type: "boolean" },
+        },
+        required: ["on"],
+      },
+    },
+  },
 ];
 
 /** Strip C0/C1 controls, zero-width and bidi-override characters,
@@ -220,5 +257,14 @@ export function describeToolCall(name: AiToolName, args: unknown): string {
         ? `Disarm "${safeName}"`
         : `Arm "${safeName}" for recording`;
     }
+    case "setMasterEq": {
+      const a = args as { band: EqBand; db: number };
+      const sign = a.db >= 0 ? "+" : "";
+      return `Master ${a.band} EQ → ${sign}${a.db.toFixed(1)} dB`;
+    }
+    case "setLimiter":
+      return (args as { on: boolean }).on
+        ? "Turn the master limiter on"
+        : "Turn the master limiter off";
   }
 }
