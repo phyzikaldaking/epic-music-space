@@ -36,6 +36,7 @@ export async function POST(req: Request) {
     title?: string;
     description?: string;
     songId?: string;
+    studioProjectId?: string;
   };
 
   const title = body.title?.trim();
@@ -48,6 +49,12 @@ export async function POST(req: Request) {
   // songId must be a cuid-ish opaque string if provided
   if (body.songId && (typeof body.songId !== "string" || body.songId.length > 64)) {
     return NextResponse.json({ error: "Invalid songId" }, { status: 400 });
+  }
+  if (
+    body.studioProjectId &&
+    (typeof body.studioProjectId !== "string" || body.studioProjectId.length > 64)
+  ) {
+    return NextResponse.json({ error: "Invalid studioProjectId" }, { status: 400 });
   }
   const description = body.description?.trim() || null;
 
@@ -79,6 +86,24 @@ export async function POST(req: Request) {
             return { kind: "invalid-song" as const };
           }
         }
+        // Linking a studio project to the live room turns this into a
+        // "studio session" — stage seats edit the Yjs doc; audience
+        // watches the beat materialize. We refuse to link a project
+        // that the caller doesn't own (no hijacking someone else's
+        // session). One live room per project at a time (unique
+        // index on Room.studioProjectId).
+        if (body.studioProjectId) {
+          const project = await tx.studioProject.findUnique({
+            where: { id: body.studioProjectId },
+            select: { userId: true, liveRoom: { select: { id: true } } },
+          });
+          if (!project || project.userId !== host.id) {
+            return { kind: "invalid-project" as const };
+          }
+          if (project.liveRoom) {
+            return { kind: "project-busy" as const };
+          }
+        }
 
         const room = await tx.room.create({
           data: {
@@ -86,7 +111,9 @@ export async function POST(req: Request) {
             title,
             description,
             currentSongId: body.songId ?? null,
+            studioProjectId: body.studioProjectId ?? null,
             maxCapacity: limits.maxCapacity,
+            stageLimit: limits.stageLimit,
             participants: {
               create: {
                 userId: host.id,
@@ -114,13 +141,29 @@ export async function POST(req: Request) {
         { status: 403 },
       );
     }
+    if (result.kind === "invalid-project") {
+      return NextResponse.json(
+        { error: "Linked project must be one of yours." },
+        { status: 403 },
+      );
+    }
+    if (result.kind === "project-busy") {
+      return NextResponse.json(
+        { error: "That project is already live in another room." },
+        { status: 409 },
+      );
+    }
 
     // Fire-and-forget: notify followers that the host went live.
+    // Studio sessions get a distinct notification kind so push
+    // routing can show "🎛️ producing live" vs the generic listen
+    // party copy.
     void notifyFollowersOfNewRoom({
       roomId: result.id,
       hostId: host.id,
       hostName: host.name ?? "An artist",
       title,
+      kind: body.studioProjectId ? "studio_session" : "listen_party",
     });
 
     return NextResponse.json({ id: result.id }, { status: 201 });

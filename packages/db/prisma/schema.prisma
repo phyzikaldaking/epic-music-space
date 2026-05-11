@@ -137,6 +137,11 @@ model User {
   roomTimelineNotes  RoomTimelineNote[]
   roomBans           RoomBan[]           @relation("RoomBanned")
   roomBansIssued     RoomBan[]           @relation("RoomBannedBy")
+  roomReactions      RoomReaction[]
+  roomPollsAuthored  RoomPoll[]          @relation("RoomPollAuthor")
+  roomPollVotes      RoomPollVote[]
+  roomTipsSent       RoomTip[]           @relation("RoomTipTipper")
+  roomTipsReceived   RoomTip[]           @relation("RoomTipRecipient")
   revenueSplits      RevenueSplit[]      @relation("RevenueSplits")
   splitSheetEntries  SplitSheetEntry[]   @relation("SplitSheetEntries")
   serviceListings    ServiceListing[]    @relation("ServiceProvider")
@@ -663,6 +668,9 @@ model StudioProject {
   templatePriceUsd Decimal?    @db.Decimal(10, 2)
   tracks         StudioTrack[]
   versions       StudioProjectVersion[] @relation("ProjectVersions")
+  // Back-relation for the live room currently broadcasting this
+  // project. Null when the project isn't being collab'd live.
+  liveRoom       Room?         @relation("RoomStudioProject")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   @@index([userId, updatedAt])
@@ -1430,6 +1438,16 @@ model Room {
   description   String?    @db.Text
   status        RoomStatus @default(LIVE)
   maxCapacity   Int        // resolved at create time from host's tier
+  // Clubhouse-style "stage" seat cap. Resolved at create time from the
+  // host's tier (see roomTier.ts). HOST + SPEAKER participants count
+  // toward this; the host is always seat 1. Audience (LISTENER) is
+  // bounded by `maxCapacity` instead.
+  stageLimit    Int        @default(2)
+  // Optional studio collab linkage. When set, the room represents a
+  // live producer session and the people on stage have edit rights on
+  // the linked StudioProject's Yjs doc.
+  studioProjectId String?  @unique
+  studioProject StudioProject? @relation("RoomStudioProject", fields: [studioProjectId], references: [id], onDelete: SetNull)
   currentSongId String?    // optional: track currently playing
   sessionMode   RoomSessionMode @default(PLAYBACK)
   studioVibe    RoomStudioVibe  @default(NEON)
@@ -1453,9 +1471,13 @@ model Room {
   recordings      RoomRecording[]
   podcastEpisodes PodcastEpisode[]
   bans            RoomBan[]
+  reactions       RoomReaction[]
+  polls           RoomPoll[]
+  tips            RoomTip[]
 
   @@index([status, startedAt])
   @@index([hostId, status])
+  @@index([studioProjectId])
 }
 
 enum RoomSessionMode {
@@ -1640,6 +1662,103 @@ model RoomMessage {
 
   @@index([roomId, createdAt])
   @@index([userId, createdAt])
+}
+
+// Audience reaction taps (🔥 ❤️ 👏). Persisted both for
+// (a) leaderboards / heat-history when the session ends and (b) the
+// "tipper retro" highlight rail. Realtime delivery uses Supabase
+// broadcast — the DB write is best-effort and happens out-of-band.
+model RoomReaction {
+  id        String   @id @default(cuid())
+  roomId    String
+  userId    String
+  // Free-form short emoji string. Validated server-side against an
+  // allow-list ("🔥" | "❤️" | "👏" | "😮" | "🎧" | "💯") so we never store arbitrary
+  // unicode from the broadcast channel.
+  kind      String   @db.VarChar(8)
+  createdAt DateTime @default(now())
+
+  room      Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}
+
+// Poll the host (or co-host) drops mid-session. "Which kick?" /
+// "Keep this verse?" — audience + stage all vote. Results stream
+// live via Supabase broadcast.
+model RoomPoll {
+  id         String   @id @default(cuid())
+  roomId     String
+  authorId   String
+  question   String   @db.VarChar(140)
+  // Up to ~6 short options. Stored as JSON array of {id, label}.
+  options    Json
+  // Closes automatically after closesAt; null = open until host closes.
+  closesAt   DateTime?
+  closedAt   DateTime?
+  createdAt  DateTime @default(now())
+
+  room       Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  author     User          @relation("RoomPollAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  votes      RoomPollVote[]
+
+  @@index([roomId, createdAt])
+}
+
+model RoomPollVote {
+  id        String   @id @default(cuid())
+  pollId    String
+  userId    String
+  // Option id from the poll's options array.
+  optionId  String   @db.VarChar(40)
+  createdAt DateTime @default(now())
+
+  poll      RoomPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // One vote per user per poll. Re-voting overwrites via upsert.
+  @@unique([pollId, userId])
+  @@index([pollId])
+}
+
+// Money thrown on stage. Mirrors VersusTip but scoped to a room +
+// optional target (a specific person on stage). Flow:
+//   1. POST /api/rooms/:id/tip → creates a PENDING row + Stripe
+//      Checkout session
+//   2. Stripe webhook flips to PAID + emits a `tip.paid` broadcast
+//      on the room channel
+//   3. Browser animates a bill arcing from tipper → stage seat
+model RoomTip {
+  id                    String         @id @default(cuid())
+  roomId                String
+  tipperId              String
+  // Who the tip is "for". Null = whole stage (split equally between
+  // host + speakers when payouts run).
+  recipientId           String?
+  amountUsd             Decimal        @db.Decimal(10, 2)
+  // Optional note the tipper attaches ("🔥 that snare!").
+  note                  String?        @db.VarChar(140)
+  status                RoomTipStatus  @default(PENDING)
+  stripeSessionId       String?        @unique
+  stripePaymentIntentId String?        @unique
+  createdAt             DateTime       @default(now())
+  paidAt                DateTime?
+
+  room                  Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  tipper                User  @relation("RoomTipTipper", fields: [tipperId], references: [id], onDelete: Cascade)
+  recipient             User? @relation("RoomTipRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
+
+  @@index([roomId, status])
+  @@index([tipperId])
+  @@index([recipientId])
+}
+
+enum RoomTipStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
 }
 
 model RoomTimelineNote {

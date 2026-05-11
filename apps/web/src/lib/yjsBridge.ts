@@ -75,10 +75,17 @@ export function startYjsCollab(projectId: string): YjsCollabHandle {
     });
   }
 
+  // Whether the server greenlit our edits going out. Read-only viewers
+  // (audience in a Clubhouse-style room) get writable=false and we
+  // never broadcast their local doc deltas. They still receive remote
+  // updates so the view stays live.
+  let writable = false;
+
   // Local writes are buffered until the channel is open. Once auth
   // passes, we drain the buffer in order so peers see every edit.
   doc.on("update", (update: Uint8Array, _origin: unknown) => {
     if (suppressLocal) return;
+    if (!writable) return;
     if (!channel) {
       pendingLocalUpdates.push(update);
       return;
@@ -100,8 +107,13 @@ export function startYjsCollab(projectId: string): YjsCollabHandle {
         { credentials: "include" },
       );
       if (!res.ok) return;
-      const data = (await res.json()) as { channel?: string; ok?: boolean };
+      const data = (await res.json()) as {
+        channel?: string;
+        ok?: boolean;
+        writable?: boolean;
+      };
       if (!data.ok || !data.channel || cancelled) return;
+      writable = data.writable !== false;
 
       channel = supabase.channel(data.channel, {
         config: { broadcast: { self: false } },

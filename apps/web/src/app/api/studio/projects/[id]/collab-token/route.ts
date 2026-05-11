@@ -7,11 +7,20 @@ import { getRequestId, jsonWithRequestId } from "@/lib/requestTracing";
 // be trusted to enforce who joins a project's CRDT broadcast — anyone with
 // a Supabase anon JWT can technically subscribe to any channel. This
 // endpoint is the server-side check the client calls before mounting the
-// provider. It returns 200 only when the caller owns the project (or, in
-// future, is on the collaborator list). The actual broadcast is still
-// open — Supabase realtime channels aren't authoritative — but the client
-// won't subscribe without a green light, and a future Supabase RLS
-// policy can mirror this check at the transport layer.
+// provider. It returns 200 only when the caller is allowed to *edit*; the
+// actual broadcast is still open — Supabase realtime channels aren't
+// authoritative — but the client won't subscribe-with-write without a
+// green light, and a future Supabase RLS policy can mirror this check at
+// the transport layer.
+//
+// Three paths to write access:
+//   1. The caller owns the project.
+//   2. The project has an active linked live Room AND the caller is a
+//      HOST or SPEAKER in that room (Clubhouse-style "stage seats edit").
+//   3. (Future) Caller is on a per-project collaborator list.
+//
+// Audience (LISTENER) members of a linked room get `ok: true` with
+// `writable: false`, so the client can mount a read-only spectator view.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -23,12 +32,35 @@ export async function GET(
   }
 
   const { id } = await params;
-  const owner = await prisma.studioProject.findUnique({
+  const project = await prisma.studioProject.findUnique({
     where: { id },
-    select: { userId: true },
+    select: {
+      userId: true,
+      liveRoom: {
+        select: {
+          id: true,
+          status: true,
+          participants: {
+            where: { userId: session.user.id, leftAt: null },
+            select: { role: true },
+          },
+        },
+      },
+    },
   });
-  if (!owner || owner.userId !== session.user.id) {
+  if (!project) {
     // Don't leak existence — same 404 for "missing" and "not yours."
+    return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
+  }
+
+  const isOwner = project.userId === session.user.id;
+  const roomRole = project.liveRoom?.status === "LIVE"
+    ? project.liveRoom.participants[0]?.role ?? null
+    : null;
+  const isOnStage = roomRole === "HOST" || roomRole === "SPEAKER";
+  const isAudience = roomRole === "LISTENER";
+
+  if (!isOwner && !isOnStage && !isAudience) {
     return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
   }
 
@@ -38,5 +70,8 @@ export async function GET(
   return jsonWithRequestId(requestId, {
     channel: `ems:studio:project:${id}`,
     ok: true,
+    // Stage seats + owner can write. Audience can only observe.
+    writable: isOwner || isOnStage,
+    role: isOwner ? "OWNER" : roomRole,
   });
 }

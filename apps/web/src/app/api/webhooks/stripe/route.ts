@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
             else if (sessionType === "boost") await handleBoostCheckoutCompleted(session);
             else if (sessionType === "tip") await handleTipCheckoutCompleted(session);
             else if (sessionType === "versus_tip") await handleVersusTipCompleted(session);
+            else if (sessionType === "room_tip") await handleRoomTipCompleted(session);
             else if (sessionType === "auction_win") await handleAuctionWinCheckoutCompleted(session);
             else if (sessionType === "AD_PURCHASE") await handleAdPurchaseCompleted(session);
             else if (sessionType === "service_purchase") await handleServicePurchaseCompleted(session);
@@ -1339,6 +1340,117 @@ async function handleVersusTipCompleted(session: Stripe.Checkout.Session) {
       metadata: { matchId: tip.matchId, tipId },
     }),
   ]);
+}
+
+// "Money thrown on stage" payout handler. Flow:
+//   1. Flip the RoomTip row to PAID.
+//   2. Transfer funds — to a specific recipient if set, or split
+//      across the current stage (HOST + SPEAKER) at webhook-receipt
+//      time.
+//   3. Broadcast `tip.paid` on the room channel so the browser can
+//      animate a bill arc from the tipper to the stage seat.
+//   4. Enqueue a notification for the recipient(s).
+async function handleRoomTipCompleted(session: Stripe.Checkout.Session) {
+  const tipId = session.metadata?.tipId;
+  const roomId = session.metadata?.roomId;
+  if (!tipId || !roomId) {
+    console.error("[stripe-webhook] room_tip missing metadata", session.id);
+    return;
+  }
+
+  const tip = await prisma.roomTip.findUnique({ where: { id: tipId } });
+  if (!tip || tip.status === "PAID") return;
+
+  await prisma.roomTip.update({
+    where: { id: tip.id },
+    data: {
+      status: "PAID",
+      paidAt: new Date(),
+      stripePaymentIntentId: session.payment_intent as string | undefined,
+    },
+  });
+
+  const totalCents = Math.round(Number(tip.amountUsd) * 100);
+
+  // Resolve who's getting paid. Either the named recipient (if they
+  // were on stage when the checkout was opened — we don't re-check
+  // here because the tipper picked a person who *was* on stage at
+  // that moment), or the current stage seats split equally.
+  let recipients: Array<{ userId: string; stripeConnectId: string | null }> = [];
+  if (tip.recipientId) {
+    const u = await prisma.user.findUnique({
+      where: { id: tip.recipientId },
+      select: { id: true, stripeConnectId: true },
+    });
+    if (u) recipients = [{ userId: u.id, stripeConnectId: u.stripeConnectId }];
+  } else {
+    const stage = await prisma.roomParticipant.findMany({
+      where: { roomId, leftAt: null, role: { in: ["HOST", "SPEAKER"] } },
+      select: {
+        user: { select: { id: true, stripeConnectId: true } },
+      },
+    });
+    recipients = stage.map((p) => ({
+      userId: p.user.id,
+      stripeConnectId: p.user.stripeConnectId,
+    }));
+  }
+
+  if (recipients.length > 0) {
+    const shareCents = Math.floor(totalCents / recipients.length);
+    await Promise.allSettled(
+      recipients.map((r, i) =>
+        r.stripeConnectId
+          ? stripe.transfers.create(
+              {
+                amount: shareCents,
+                currency: "usd",
+                destination: r.stripeConnectId,
+                metadata: { kind: "room_tip", tipId, roomId },
+              },
+              { idempotencyKey: `room-tip-transfer-${tipId}-${i}` },
+            )
+          : Promise.resolve(null),
+      ),
+    );
+  }
+
+  // Broadcast — the browser uses this to start the bill-throw
+  // animation. `tipperId` lets the audience-side renderer locate
+  // the source seat for the arc.
+  const supabase = createServerSupabaseClient();
+  if (supabase) {
+    void supabase
+      .channel(CHANNELS.room(roomId))
+      .send({
+        type: "broadcast",
+        event: "tip.paid",
+        payload: {
+          tipId,
+          tipperId: tip.tipperId,
+          recipientId: tip.recipientId,
+          amountUsd: Number(tip.amountUsd),
+          note: tip.note,
+          at: Date.now(),
+        },
+      })
+      .catch(() => {});
+  }
+
+  // Notify the recipient(s).
+  await Promise.allSettled(
+    recipients.map((r) =>
+      enqueueNotification({
+        userId: r.userId,
+        type: "ROOM_TIP",
+        title: `💸 Stage tip — $${(Number(tip.amountUsd) / Math.max(1, recipients.length)).toFixed(2)}`,
+        body: tip.note
+          ? `"${tip.note}" — money thrown on stage in your live room.`
+          : "Someone threw money on stage in your live room.",
+        metadata: { roomId, tipId, fromUserId: tip.tipperId },
+      }),
+    ),
+  );
 }
 
 async function handleIdentityVerificationEvent(

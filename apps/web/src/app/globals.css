@@ -2517,3 +2517,36 @@ select:-moz-autofill {
   );
 }
 
+/* Stage + audience: floating reaction emojis (🔥 ❤️ 👏) drift up
+   from the bottom of the screen when someone in the room taps a
+   reaction. Used by StageAndAudience.tsx's ReactionLayer. */
+@keyframes ems-floatUp {
+  0% {
+    transform: translateY(0) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-50vh) scale(1.2);
+    opacity: 0;
+  }
+}
+
+/* Stage tip flash — a green pulse on the recipient seat when a
+   "money thrown on stage" bill lands. Used by MoneyThrowLayer.tsx. */
+@keyframes ems-tipFlash {
+  0% { opacity: 0; r: 4; }
+  50% { opacity: 1; }
+  100% { opacity: 0; r: 36; }
+}
+
+/* Floating "+$5" label that pops near the recipient seat. */
+@keyframes ems-tipLabel {
+  0% { opacity: 0; transform: translateY(0); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-30px); }
+}
+
+

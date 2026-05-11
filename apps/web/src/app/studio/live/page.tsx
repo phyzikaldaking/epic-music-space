@@ -69,14 +69,22 @@ export default async function VirtualStudioPage({
       }).catch(() => null)
     : null;
 
-  // Active live rooms (LiveKit-backed listening sessions)
+  // Active live rooms (LiveKit-backed listening sessions). We pull a
+  // few extra columns so we can split rooms with a linked studio
+  // project ("Studio Sessions") from generic playback rooms.
   const liveRoomRows = await prisma.room.findMany({
     where: { status: "LIVE" },
     orderBy: { startedAt: "desc" },
-    take: 12,
+    take: 24,
     include: {
       host: { select: { id: true, name: true, image: true, username: true, subscriptionTier: true } },
       currentSong: { select: { title: true, artist: true, coverUrl: true } },
+      studioProject: { select: { id: true, name: true, bpm: true } },
+      participants: {
+        where: { leftAt: null, role: { in: ["HOST", "SPEAKER"] } },
+        select: { user: { select: { id: true, name: true, image: true } } },
+        take: 6,
+      },
       _count: { select: { participants: { where: { leftAt: null } } } },
     },
   }).catch(() => []);
@@ -91,6 +99,13 @@ export default async function VirtualStudioPage({
     }).catch(() => undefined);
   }
   const liveRooms = liveRoomRows.filter((room) => !expiredRoomIds.includes(room.id));
+
+  // Studio sessions vs. playback rooms. Studio sessions have a linked
+  // StudioProject and route through /studio/live/edit/[roomId] for
+  // the stage-and-audience view; playback rooms stay on the legacy
+  // /rooms/[id] page.
+  const studioSessions = liveRooms.filter((r) => r.studioProjectId);
+  const playbackRooms = liveRooms.filter((r) => !r.studioProjectId);
 
   // Fetch studios with recently active songs — these are the "live sessions"
   const studios = await prisma.studio.findMany({
@@ -202,14 +217,90 @@ export default async function VirtualStudioPage({
           </div>
         </div>
 
+        {/* ── Studio sessions (producer + collaborators on stage) ───────── */}
+        {studioSessions.length > 0 && (
+          <div className="mb-10">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white/80">
+                🎛️ Live Producer Sessions
+                <span className="ml-2 text-sm font-normal text-white/30">
+                  {studioSessions.length} on stage
+                </span>
+              </h2>
+              <Link href="/studio" className="text-sm font-bold text-amber-300 hover:text-amber-200">
+                Open your studio →
+              </Link>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {studioSessions.map((r) => (
+                <Link
+                  key={r.id}
+                  href={`/studio/live/edit/${r.id}`}
+                  className="group flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-gradient-to-b from-amber-500/[0.08] to-transparent p-4 transition hover:border-amber-400/60 hover:from-amber-500/[0.14]"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-400/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-200">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-300 animate-pulse" />
+                      ON STAGE
+                    </span>
+                    <span className="text-[10px] uppercase tracking-widest text-white/45">
+                      {r._count.participants} listening
+                    </span>
+                  </div>
+                  <div>
+                    <p className="line-clamp-1 text-sm font-bold">{r.title}</p>
+                    <p className="line-clamp-1 text-xs text-white/55">
+                      {r.studioProject?.name
+                        ? `Producing ${r.studioProject.name} · ${r.studioProject.bpm ?? 120} BPM`
+                        : "Open producer jam"}
+                    </p>
+                  </div>
+                  <div className="flex -space-x-2">
+                    {r.participants.slice(0, 5).map((p) => (
+                      <div
+                        key={p.user.id}
+                        className="relative h-7 w-7 overflow-hidden rounded-full border-2 border-black bg-white/10"
+                        title={p.user.name ?? ""}
+                      >
+                        {p.user.image ? (
+                          <Image
+                            src={p.user.image}
+                            alt={p.user.name ?? ""}
+                            fill
+                            sizes="28px"
+                            className="object-cover"
+                          />
+                        ) : (
+                          <span className="grid h-full w-full place-items-center text-[10px] font-black text-white/70">
+                            {(p.user.name ?? "?")[0]?.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {r.participants.length > 5 && (
+                      <div className="grid h-7 w-7 place-items-center rounded-full border-2 border-black bg-white/15 text-[10px] font-black text-white">
+                        +{r.participants.length - 5}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-amber-300">
+                    <span>Drop in as audience</span>
+                    <span className="font-bold">→</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Live rooms (LiveKit-backed) ─────────────────────────────────── */}
-        {liveRooms.length > 0 && (
+        {playbackRooms.length > 0 && (
           <div className="mb-10">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold text-white/80">
                 🔴 Live Right Now
                 <span className="ml-2 text-sm font-normal text-white/30">
-                  {liveRooms.length} room{liveRooms.length === 1 ? "" : "s"} open
+                  {playbackRooms.length} room{playbackRooms.length === 1 ? "" : "s"} open
                 </span>
               </h2>
               <Link href="/rooms/new" className="text-sm font-bold text-brand-300 hover:text-brand-200">
@@ -217,7 +308,7 @@ export default async function VirtualStudioPage({
               </Link>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {liveRooms.map((r) => (
+              {playbackRooms.map((r) => (
                 <Link
                   key={r.id}
                   href={`/rooms/${r.id}`}
