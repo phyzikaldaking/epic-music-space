@@ -15,6 +15,8 @@ interface Props {
   spectrum: number[];
   lufs: number;
   truePeak: number;
+  /** Optional project genre — tunes the mix-diagnostics rules. */
+  projectGenre?: string | null;
   /** Stereo phase correlation -1 (out of phase) .. +1 (mono). Drives a
    *  small correlation needle on the master panel. */
   phaseCorrelation?: number;
@@ -68,6 +70,7 @@ export default function MasterPanel({
   spectrum,
   lufs,
   truePeak,
+  projectGenre,
   phaseCorrelation,
   eqLowDb,
   eqMidDb,
@@ -320,7 +323,12 @@ export default function MasterPanel({
         />
       )}
 
-      <MixDiagnosticsCallout spectrum={spectrum} lufs={lufs} truePeak={truePeak} />
+      <MixDiagnosticsCallout
+        spectrum={spectrum}
+        lufs={lufs}
+        truePeak={truePeak}
+        projectGenre={projectGenre}
+      />
     </section>
   );
 }

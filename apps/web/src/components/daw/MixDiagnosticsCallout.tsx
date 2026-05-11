@@ -24,12 +24,48 @@ interface ProactiveRule {
   };
 }
 
+// Per-genre threshold + tone adjustments. Trap is *expected* to be
+// sub-heavy so we relax the "mids are buried" rule; jazz is supposed
+// to be wide and dynamic so we'd flag a hot limiter even when stream
+// targets are fine. The defaults below apply when no genre is set.
+const GENRE_RULES: Record<
+  string,
+  {
+    // The "bass too heavy" rule threshold — trap mixes can run much
+    // hotter on the low end before it counts as a problem.
+    bassDominanceLimit: number;
+    // The "harsh highs" sensitivity. Pop wants brighter highs than
+    // hip-hop, so we relax this rule for pop.
+    highHeat: number;
+    // Per-genre note appended to bass/high suggestions.
+    bassHint?: string;
+    highHint?: string;
+  }
+> = {
+  trap: { bassDominanceLimit: 1.8, highHeat: 0.7, bassHint: "Trap loves sub — but check mono compatibility before pushing further." },
+  drill: { bassDominanceLimit: 1.7, highHeat: 0.7 },
+  "hip-hop": { bassDominanceLimit: 1.5, highHeat: 0.7 },
+  "r&b": { bassDominanceLimit: 1.2, highHeat: 0.55, highHint: "R&B vocals live in the air band — be gentle here." },
+  pop: { bassDominanceLimit: 1.2, highHeat: 0.8 },
+  rock: { bassDominanceLimit: 1.3, highHeat: 0.75 },
+  jazz: { bassDominanceLimit: 1.1, highHeat: 0.65, bassHint: "Jazz wants the bass natural — don't over-compress it." },
+  "lo-fi": { bassDominanceLimit: 1.6, highHeat: 0.55 },
+  electronic: { bassDominanceLimit: 1.7, highHeat: 0.75 },
+};
+
 function computeProactiveSuggestions(
   bands: Band[],
   lufs: number,
   truePeak: number,
+  genre: string | null,
 ): ProactiveRule[] {
   const out: ProactiveRule[] = [];
+  const rule = (genre && GENRE_RULES[genre.toLowerCase()]) || {
+    bassDominanceLimit: 1.3,
+    highHeat: 0.7,
+    bassHint: undefined,
+    highHint: undefined,
+  };
   // Rule 1: master too quiet (LUFS < -22) → suggest streaming preset.
   if (Number.isFinite(lufs) && lufs < -22) {
     out.push({
@@ -38,6 +74,17 @@ function computeProactiveSuggestions(
       why: `Master reads ${lufs.toFixed(1)} LUFS — Spotify / Apple normalize to about -14. Push it.`,
       applyLabel: "Apply streaming master",
       toolCall: { name: "applyMasteringPreset", args: { preset: "streamReady" } },
+    });
+  }
+  // Genre-specific over-loud guardrail. Jazz / classical mastering
+  // wants the dynamics intact — flag if LUFS climbs above -10.
+  if ((genre === "jazz" || genre === "classical") && lufs > -10) {
+    out.push({
+      id: "preserve-dynamics",
+      title: "Mix is too compressed for this genre",
+      why: `${lufs.toFixed(1)} LUFS is broadcast-loud — jazz / classical streaming targets ~-16 LUFS to preserve breath.`,
+      applyLabel: "Pull master back -3 dB",
+      toolCall: { name: "setMasterGain", args: { db: -3 } },
     });
   }
   // Rule 2: clipping risk (true peak > -1 dBTP) → enable limiter.
@@ -53,27 +100,28 @@ function computeProactiveSuggestions(
       });
     }
   }
-  // Rule 3: bass-heavy mix (sub-bass + bass >> mid). 60% rule of thumb.
+  // Rule 3: bass-heavy mix (sub-bass + bass >> mid). Threshold scales
+  // with the genre rule above.
   const subBass = bands.find((b) => b.label === "Sub-bass")?.energy ?? 0;
   const bass = bands.find((b) => b.label === "Bass")?.energy ?? 0;
   const mid = bands.find((b) => b.label === "Mid")?.energy ?? 0;
-  if (subBass + bass > 1.3 && mid < 0.4) {
+  if (subBass + bass > rule.bassDominanceLimit && mid < 0.4) {
     out.push({
       id: "tame-bass",
       title: "Bass is masking the mids",
-      why: "Sub + bass energy is dominating; the mid range (vocals, snare body) gets buried. Cut the master low.",
+      why: `Sub + bass energy is dominating; the mid range (vocals, snare body) gets buried. Cut the master low.${rule.bassHint ? ` ${rule.bassHint}` : ""}`,
       applyLabel: "Cut master low -3 dB",
       toolCall: { name: "setMasterEq", args: { band: "low", db: -3 } },
     });
   }
-  // Rule 4: harsh top end. High-mid + air both > 0.7 → cut high.
+  // Rule 4: harsh top end. Sensitivity adjusted per genre.
   const highMid = bands.find((b) => b.label === "High-mid")?.energy ?? 0;
   const air = bands.find((b) => b.label === "Air")?.energy ?? 0;
-  if (highMid > 0.7 && air > 0.6) {
+  if (highMid > rule.highHeat && air > rule.highHeat - 0.1) {
     out.push({
       id: "tame-highs",
       title: "Top end is harsh",
-      why: "High-mid and air are both hot — fatigues ears on long listens. Pull the master high down.",
+      why: `High-mid and air are both hot — fatigues ears on long listens.${rule.highHint ? ` ${rule.highHint}` : " Pull the master high down."}`,
       applyLabel: "Cut master high -2 dB",
       toolCall: { name: "setMasterEq", args: { band: "high", db: -2 } },
     });
@@ -85,6 +133,9 @@ interface Props {
   spectrum: number[];
   lufs: number;
   truePeak: number;
+  /** Optional project genre. Tunes the rule thresholds — see
+   *  GENRE_RULES above. Null → generic defaults. */
+  projectGenre?: string | null;
 }
 
 interface Band {
@@ -126,7 +177,7 @@ function summarizeBands(spectrum: number[]): Band[] {
 
 /** "Check my mix" — sends LUFS, true-peak, and per-band energy to the AI
  *  Coach via the streaming endpoint, renders the diagnosis live. */
-export default function MixDiagnosticsCallout({ spectrum, lufs, truePeak }: Props) {
+export default function MixDiagnosticsCallout({ spectrum, lufs, truePeak, projectGenre }: Props) {
   const [diagnosis, setDiagnosis] = useState<string>("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,13 +188,15 @@ export default function MixDiagnosticsCallout({ spectrum, lufs, truePeak }: Prop
   // Recompute proactive suggestions whenever the spectrum / LUFS / peak
   // changes. Memoised on the inputs so the callout doesn't thrash on
   // every render — only when actual measurements shift do we
-  // re-evaluate the rules.
+  // re-evaluate the rules. Genre tunes the rule thresholds — trap can
+  // run hotter on the low end before it's "too bassy", jazz wants
+  // dynamics preserved, etc.
   const proactiveSuggestions = useMemo(() => {
     const bands = summarizeBands(spectrum);
-    return computeProactiveSuggestions(bands, lufs, truePeak).filter(
+    return computeProactiveSuggestions(bands, lufs, truePeak, projectGenre ?? null).filter(
       (r) => !dismissedRuleIds.has(r.id),
     );
-  }, [spectrum, lufs, truePeak, dismissedRuleIds]);
+  }, [spectrum, lufs, truePeak, projectGenre, dismissedRuleIds]);
 
   function applyToolCall(toolCall: ProactiveRule["toolCall"]) {
     if (typeof window === "undefined") return;

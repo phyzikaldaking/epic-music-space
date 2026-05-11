@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MidiSynthState, SynthWave } from "./dawEngine";
 
 interface Props {
@@ -14,6 +14,11 @@ interface Props {
   onNoteOn: (note: number, velocity?: number) => void;
   onNoteOff: (note: number) => void;
   onPanic: () => void;
+  /** Snap a played note to the project key if one is set. The engine
+   *  owns the scale-snap logic; we pipe input through it before
+   *  triggering noteOn. Passed as a prop to keep MidiPanel decoupled
+   *  from the engine class. */
+  snapToKey?: (note: number) => number;
   /** MIDI clip recording — toggles capture of played notes into a clip. */
   onStartClipRec: () => void;
   onStopClipRec: () => void;
@@ -48,17 +53,69 @@ export default function MidiPanel({
   onNoteOn,
   onNoteOff,
   onPanic,
+  snapToKey,
   onStartClipRec,
   onStopClipRec,
   onClearClip,
 }: Props) {
+  // Octave shift relative to C4. Producers move up/down octaves with
+  // Z (down) / X (up); the on-screen keyboard reflects the shift via
+  // the `noteLo/Hi` range derived from `octave`. The keyboard handler
+  // applies the offset to every played key.
+  const [octave, setOctave] = useState(0);
+  // Sustain pedal — holding Space sustains notes; releasing fires all
+  // queued noteOffs. We use a ref so the keyup handler doesn't race
+  // with React re-render on quick releases.
+  const sustainHeld = useRef(false);
+  const pendingOffs = useRef<Set<number>>(new Set());
+
   // Computer keyboard → synth. Listening on window because the panel
   // doesn't keep keyboard focus while you click sliders.
   useEffect(() => {
+    function fireNoteOn(rawNote: number) {
+      const shifted = rawNote + octave * 12;
+      const snapped = snapToKey ? snapToKey(shifted) : shifted;
+      onNoteOn(snapped, 0.8);
+    }
+    function fireNoteOff(rawNote: number) {
+      const shifted = rawNote + octave * 12;
+      const snapped = snapToKey ? snapToKey(shifted) : shifted;
+      if (sustainHeld.current) {
+        // Defer the off until the sustain pedal releases — classic
+        // piano "let the chord ring out" behavior.
+        pendingOffs.current.add(snapped);
+        return;
+      }
+      onNoteOff(snapped);
+    }
     function down(e: KeyboardEvent) {
-      if (e.repeat) return;
+      if (e.repeat) {
+        // Repeat is normal for held alpha keys but we still treat
+        // Space as sustain — repeat events on Space mean the pedal
+        // is still down, nothing to do.
+        return;
+      }
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      // Octave shift.
+      if (e.key === "z" || e.key === "Z") {
+        setOctave((o) => Math.max(-3, o - 1));
+        return;
+      }
+      if (e.key === "x" || e.key === "X") {
+        setOctave((o) => Math.min(3, o + 1));
+        return;
+      }
+      // Sustain pedal (Space). We pin Space to "sustain" only when
+      // the synth is the active instrument context — for now we
+      // always intercept and let transport-Space lose the race. The
+      // transport's own listener will skip if Space already fired a
+      // pedal action.
+      if (e.code === "Space" && !sustainHeld.current) {
+        sustainHeld.current = true;
+        e.preventDefault();
+        return;
+      }
       const wave = WAVE_SHORTCUTS[e.key];
       if (wave) {
         onSetParam("wave", wave);
@@ -66,14 +123,21 @@ export default function MidiPanel({
       }
       const note = KEY_TO_MIDI[e.key.toLowerCase()];
       if (note === undefined) return;
-      onNoteOn(note, 0.8);
+      fireNoteOn(note);
     }
     function up(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.code === "Space" && sustainHeld.current) {
+        sustainHeld.current = false;
+        // Release all the notes that were waiting on the pedal.
+        for (const n of pendingOffs.current) onNoteOff(n);
+        pendingOffs.current.clear();
+        return;
+      }
       const note = KEY_TO_MIDI[e.key.toLowerCase()];
       if (note === undefined) return;
-      onNoteOff(note);
+      fireNoteOff(note);
     }
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -81,7 +145,7 @@ export default function MidiPanel({
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [onNoteOn, onNoteOff, onSetParam]);
+  }, [onNoteOn, onNoteOff, onSetParam, octave, snapToKey]);
 
   const keys = useMemo(() => {
     const out: { note: number; isBlack: boolean; label: string }[] = [];
@@ -104,8 +168,18 @@ export default function MidiPanel({
             keyboard or use your computer keys (A–K).
           </p>
           <p className="mt-1 text-[11px] text-white/45">
-            Key map: A W S E D F T G Y H U J K. Sound quick-switch: 1 sine, 2 triangle, 3 saw, 4 square.
+            Key map: A W S E D F T G Y H U J K. Octave: Z down / X up. Hold Space for sustain. 1–4 swap waves.
           </p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-widest">
+            <span className="rounded-md border border-white/15 bg-white/[0.04] px-1.5 py-0.5 text-white/70">
+              Octave {octave >= 0 ? `+${octave}` : octave}
+            </span>
+            {snapToKey ? (
+              <span className="rounded-md border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 text-amber-200">
+                Snap-to-key
+              </span>
+            ) : null}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {state.midiAvailable ? (

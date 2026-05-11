@@ -173,6 +173,16 @@ export interface RecordedTake {
   isKeeper: boolean;
   /** A label producers add ("ad-lib v2", "second chorus take"). */
   label?: string;
+  /** Free-form per-take note ("nailed the second hook", "out of breath
+   *  at the end"). Persists with the take in the take-browser side
+   *  panel. Capped to 280 chars so the UI stays compact. */
+  note?: string;
+  /** Peak amplitude observed during the take. Used by the take browser
+   *  to flag clipping (>=0.99) so the producer knows to re-record. */
+  peakAmplitude: number;
+  /** True when the take peaked at or near digital ceiling. Surfaces
+   *  a red ⚠ chip in the take browser. */
+  clipped: boolean;
 }
 
 /** Saved plugin slot — what we round-trip in project files. */
@@ -310,6 +320,19 @@ export interface TransportState {
   metronomeAccentDownbeat: boolean;
   /** 0..0.5 swing — delays every other tick to taste. 0 = straight. */
   metronomeSwing: number;
+  /** Tempo map: BPM changes over time. When empty, the project runs
+   *  at a single static `bpm`. When non-empty, the transport eases
+   *  between successive entries — quarter-note timing for the
+   *  metronome, beat machine, and any MIDI clip lookups all read
+   *  from `bpmAtSec()` so the whole graph follows the curve. */
+  tempoMap: Array<{ atSec: number; bpm: number }>;
+  /** Project key for snap-to-scale on synth/keyboard input. When set,
+   *  played MIDI notes get rounded to the nearest in-scale pitch. */
+  projectKey: string | null;
+  /** Genre tag used by the AI mix diagnostics to pick rules. Trap is
+   *  expected to be sub-heavy; jazz is expected to be dynamic. Without
+   *  a genre the diagnostics fall back to generic rules. */
+  projectGenre: string | null;
   /** Performer cue-mix bus level (linear gain, 0..1.5). Independent of
    *  the main master fader so the engineer can ride the headphone
    *  send without messing with the room mix. */
@@ -1020,6 +1043,15 @@ export class DawEngine {
   private referenceGain: GainNode | null = null;
   private referenceBuffer: AudioBuffer | null = null;
   private referenceSource: AudioBufferSourceNode | null = null;
+  /** Spectrum analyser tapping the reference source so the
+   *  ReferenceSpectrumOverlay can render the reference's frequency
+   *  signature next to the user's mix. Allocated lazily in
+   *  syncReferenceSource. */
+  private referenceAnalyser: AnalyserNode | null = null;
+  private referenceSpectrumBuf: Uint8Array | null = null;
+  /** Snapshot of the reference spectrum, downsampled to 32 bins so the
+   *  overlay matches the mix spectrum's shape exactly. */
+  private referenceSpectrum: number[] = new Array(32).fill(0);
   private monoOutGain: GainNode | null = null;
   private monoSplitter: ChannelSplitterNode | null = null;
   private monoMerger: ChannelMergerNode | null = null;
@@ -1197,6 +1229,9 @@ export class DawEngine {
     metronomeSubdivision: "1/4",
     metronomeAccentDownbeat: true,
     metronomeSwing: 0,
+    tempoMap: [],
+    projectKey: null,
+    projectGenre: null,
     cueMixLevel: 1.0,
     talkbackOn: false,
     measuredDeviceLatencyMs: 0,
@@ -3277,7 +3312,16 @@ export class DawEngine {
     const src = this.ctx.createBufferSource();
     src.buffer = this.referenceBuffer;
     src.loop = true;
+    // Wire a parallel analyser so the overlay can render the
+    // reference's spectrum alongside the mix's. Lazily create the
+    // analyser so we don't spend cycles when reference is off.
+    if (!this.referenceAnalyser) {
+      this.referenceAnalyser = this.ctx.createAnalyser();
+      this.referenceAnalyser.fftSize = 256;
+      this.referenceSpectrumBuf = new Uint8Array(this.referenceAnalyser.frequencyBinCount);
+    }
     src.connect(this.referenceGain);
+    src.connect(this.referenceAnalyser);
     const offset = this.referenceBuffer.duration > 0
       ? ((this.transport.positionSec % this.referenceBuffer.duration) + this.referenceBuffer.duration) % this.referenceBuffer.duration
       : 0;
@@ -3288,6 +3332,54 @@ export class DawEngine {
     } catch {
       this.referenceSource = null;
     }
+  }
+
+  /** Read the reference spectrum, downsampled to 32 bins so it lines
+   *  up exactly with the mix spectrum bands. Returns zeros when
+   *  reference isn't playing. */
+  getReferenceSpectrum(): number[] {
+    const analyser = this.referenceAnalyser;
+    const buf = this.referenceSpectrumBuf;
+    if (!analyser || !buf || !this.transport.referenceEnabled) {
+      return new Array(32).fill(0);
+    }
+    analyser.getByteFrequencyData(buf as unknown as Uint8Array<ArrayBuffer>);
+    const bins = 32;
+    const binSize = Math.floor(buf.length / bins);
+    for (let i = 0; i < bins; i++) {
+      let sum = 0;
+      for (let j = 0; j < binSize; j++) {
+        sum += buf[i * binSize + j] ?? 0;
+      }
+      this.referenceSpectrum[i] = sum / binSize / 255;
+    }
+    return this.referenceSpectrum;
+  }
+
+  /** Sidechain envelope reader for the visual envelope overlay. Returns
+   *  a snapshot of the *source* track's recent amplitude history at
+   *  ~10 ms resolution, so the UI can paint a "what kicks the duck"
+   *  curve over the receiver track's waveform. */
+  getSidechainEnvelope(sourceTrackId: TrackId, windowSec = 4): number[] {
+    const src = this.tracks.get(sourceTrackId);
+    if (!src || !src.buffer) return [];
+    const sr = src.buffer.sampleRate;
+    const data = src.buffer.getChannelData(0);
+    const samplesPerBin = Math.floor(sr * 0.01);
+    const bins = Math.min(
+      Math.floor(data.length / samplesPerBin),
+      Math.floor(windowSec / 0.01),
+    );
+    const env: number[] = new Array(bins).fill(0);
+    for (let i = 0; i < bins; i++) {
+      let peak = 0;
+      for (let j = 0; j < samplesPerBin; j++) {
+        const v = Math.abs(data[i * samplesPerBin + j] ?? 0);
+        if (v > peak) peak = v;
+      }
+      env[i] = peak;
+    }
+    return env;
   }
 
   /** Set one band of the master EQ in dB. Same shape as track EQ. */
@@ -3752,14 +3844,342 @@ export class DawEngine {
     this.notify();
   }
 
+  /** Attach a free-form note to a take ("breath control got better on
+   *  this one"). Surfaces in the take browser side panel. */
+  noteTake(trackId: TrackId, takeId: string, note: string): void {
+    const takes = this.transport.takeHistory[trackId];
+    if (!takes) return;
+    const t = takes.find((t) => t.id === takeId);
+    if (!t) return;
+    t.note = note.slice(0, 280);
+    this.notify();
+  }
+
+  // ── Tempo map ─────────────────────────────────────────────────────────
+
+  /** Read the current tempo at a given playhead position. Linear
+   *  interpolation between adjacent entries; falls back to the static
+   *  `bpm` when the map is empty. Used internally so the metronome,
+   *  beat machine, and any MIDI clip lookup all follow the tempo
+   *  curve. Public so the UI can render an "actual BPM" badge. */
+  bpmAtSec(sec: number): number {
+    const map = this.transport.tempoMap;
+    if (map.length === 0) return this.transport.bpm;
+    if (sec <= map[0].atSec) return map[0].bpm;
+    for (let i = 0; i < map.length - 1; i++) {
+      const a = map[i];
+      const b = map[i + 1];
+      if (sec >= a.atSec && sec <= b.atSec) {
+        const t = (sec - a.atSec) / Math.max(0.0001, b.atSec - a.atSec);
+        return a.bpm + (b.bpm - a.bpm) * t;
+      }
+    }
+    return map[map.length - 1].bpm;
+  }
+
+  setTempoMap(map: Array<{ atSec: number; bpm: number }>) {
+    // Validate + sort. We don't store negative BPMs or impossible
+    // negative time stamps — the UI shouldn't be able to produce them,
+    // but a paranoid sanitize keeps a malformed import from breaking
+    // the transport.
+    const cleaned = map
+      .filter((p) => Number.isFinite(p.atSec) && p.atSec >= 0)
+      .filter((p) => Number.isFinite(p.bpm) && p.bpm >= 40 && p.bpm <= 220)
+      .sort((a, b) => a.atSec - b.atSec);
+    this.transport.tempoMap = cleaned;
+    this.notify();
+  }
+
+  setProjectKey(key: string | null) {
+    this.transport.projectKey = key;
+    this.notify();
+  }
+
+  setProjectGenre(genre: string | null) {
+    this.transport.projectGenre = genre;
+    this.notify();
+  }
+
+  // ── Audio reverse + stutter on a track buffer ────────────────────────
+
+  /** Reverse the audio currently on a track. Used for the classic
+   *  "reverse swell into the drop" effect or sound-design moments.
+   *  Mutates the active buffer in place; the previous buffer is
+   *  preserved by undo if a snapshot was taken right before the call. */
+  reverseTrackAudio(trackId: TrackId): boolean {
+    const t = this.tracks.get(trackId);
+    if (!t || !t.buffer || !this.ctx) return false;
+    const src = t.buffer;
+    const out = this.ctx.createBuffer(
+      src.numberOfChannels,
+      src.length,
+      src.sampleRate,
+    );
+    for (let ch = 0; ch < src.numberOfChannels; ch++) {
+      const inData = src.getChannelData(ch);
+      const outData = out.getChannelData(ch);
+      for (let i = 0; i < inData.length; i++) {
+        outData[i] = inData[inData.length - 1 - i] ?? 0;
+      }
+    }
+    t.buffer = out;
+    this.waveformCache.delete(trackId);
+    this.notify();
+    return true;
+  }
+
+  /** Stutter / beat-repeat: take the last `repeatBeats` of the buffer
+   *  and tile it for `tileCount` repetitions, dropping the original
+   *  trailing material. Classic Premier / Just Blaze move. */
+  stutterTrackAudio(
+    trackId: TrackId,
+    repeatBeats: number,
+    tileCount: number,
+  ): boolean {
+    const t = this.tracks.get(trackId);
+    if (!t || !t.buffer || !this.ctx) return false;
+    const src = t.buffer;
+    const beatSec = 60 / this.transport.bpm;
+    const sliceLen = Math.max(
+      1,
+      Math.floor(repeatBeats * beatSec * src.sampleRate),
+    );
+    if (sliceLen >= src.length) return false;
+    const sliceStart = src.length - sliceLen;
+    const newLen = sliceStart + sliceLen * tileCount;
+    const out = this.ctx.createBuffer(src.numberOfChannels, newLen, src.sampleRate);
+    for (let ch = 0; ch < src.numberOfChannels; ch++) {
+      const inData = src.getChannelData(ch);
+      const outData = out.getChannelData(ch);
+      // Copy the pre-stutter intact.
+      for (let i = 0; i < sliceStart; i++) outData[i] = inData[i] ?? 0;
+      // Tile the last slice tileCount times.
+      for (let n = 0; n < tileCount; n++) {
+        for (let i = 0; i < sliceLen; i++) {
+          outData[sliceStart + n * sliceLen + i] = inData[sliceStart + i] ?? 0;
+        }
+      }
+    }
+    t.buffer = out;
+    this.waveformCache.delete(trackId);
+    t.state.durationSec = out.duration;
+    this.notify();
+    return true;
+  }
+
+  /** Crossfade between the tail of one track and the head of another,
+   *  rendered into the second track's buffer. Producers use this for
+   *  smooth "intro track → drop track" transitions when chaining
+   *  bounces. `crossfadeSec` is the total overlap window. */
+  crossfadeTracks(
+    fromTrackId: TrackId,
+    toTrackId: TrackId,
+    crossfadeSec: number,
+  ): boolean {
+    const from = this.tracks.get(fromTrackId);
+    const to = this.tracks.get(toTrackId);
+    if (!from || !to || !from.buffer || !to.buffer || !this.ctx) return false;
+    const sampleRate = to.buffer.sampleRate;
+    const fadeFrames = Math.max(64, Math.floor(crossfadeSec * sampleRate));
+    const fromTailStart = Math.max(0, from.buffer.length - fadeFrames);
+    const channels = Math.max(from.buffer.numberOfChannels, to.buffer.numberOfChannels);
+    const newLen = fadeFrames + to.buffer.length;
+    const out = this.ctx.createBuffer(channels, newLen, sampleRate);
+    for (let ch = 0; ch < channels; ch++) {
+      const fromData = from.buffer.getChannelData(
+        Math.min(ch, from.buffer.numberOfChannels - 1),
+      );
+      const toData = to.buffer.getChannelData(
+        Math.min(ch, to.buffer.numberOfChannels - 1),
+      );
+      const outData = out.getChannelData(ch);
+      // Equal-power crossfade — sin/cos curves keep the perceived
+      // loudness flat through the overlap.
+      for (let i = 0; i < fadeFrames; i++) {
+        const k = i / fadeFrames;
+        const fromGain = Math.cos((k * Math.PI) / 2);
+        const toGain = Math.sin((k * Math.PI) / 2);
+        outData[i] =
+          (fromData[fromTailStart + i] ?? 0) * fromGain +
+          (toData[i] ?? 0) * toGain;
+      }
+      // Tail of the new track after the fade.
+      for (let i = fadeFrames; i < newLen; i++) {
+        outData[i] = toData[i] ?? 0;
+      }
+    }
+    to.buffer = out;
+    this.waveformCache.delete(toTrackId);
+    to.state.durationSec = out.duration;
+    this.notify();
+    return true;
+  }
+
+  /** Auto-chop a sample buffer on transients. Returns slice boundaries
+   *  in seconds — the caller (typically the sample-chop UI) takes care
+   *  of slicing into per-pad buffers. The detection uses a moving RMS
+   *  threshold relative to the rolling average; works well for drum
+   *  loops where transients punch above ambient material. */
+  detectTransients(buffer: AudioBuffer, maxSlices = 16): number[] {
+    const data = buffer.getChannelData(0);
+    const sr = buffer.sampleRate;
+    // 10 ms windows ≈ 480 samples @ 48k.
+    const winLen = Math.floor(sr * 0.01);
+    const energies: number[] = [];
+    for (let i = 0; i < data.length; i += winLen) {
+      let sum = 0;
+      for (let j = 0; j < winLen && i + j < data.length; j++) {
+        const v = data[i + j] ?? 0;
+        sum += v * v;
+      }
+      energies.push(Math.sqrt(sum / winLen));
+    }
+    // Find peaks where energy[i] > avg(neighborhood) * 1.6.
+    const slices: number[] = [];
+    const lookback = 8;
+    for (let i = 1; i < energies.length - 1; i++) {
+      let avg = 0;
+      let n = 0;
+      for (let k = Math.max(0, i - lookback); k < i; k++) {
+        avg += energies[k];
+        n++;
+      }
+      avg = n > 0 ? avg / n : energies[i];
+      if (energies[i] > avg * 1.6 && energies[i] > 0.04) {
+        const atSec = (i * winLen) / sr;
+        // Require >= 80 ms between slices to avoid double-trigger on
+        // a single transient's decay tail.
+        if (
+          slices.length === 0 ||
+          atSec - slices[slices.length - 1] > 0.08
+        ) {
+          slices.push(atSec);
+        }
+      }
+      if (slices.length >= maxSlices) break;
+    }
+    return slices;
+  }
+
+  /** Apply a 4-voice vocal stack to a track buffer: a clean unison, a
+   *  +5 cents detuned shimmer, a +12 semitones octave-up whisper, and
+   *  a -7 cents stabilizer. Doubled vocals sit wider and richer in
+   *  the mix; this is the "throw it on and ship" version. */
+  applyVocalStack(trackId: TrackId, mixDb = -6): boolean {
+    const t = this.tracks.get(trackId);
+    if (!t || !t.buffer || !this.ctx) return false;
+    const src = t.buffer;
+    const sr = src.sampleRate;
+    const ctx = this.ctx;
+    // Voice configs: detune in cents and pan offset.
+    const voices = [
+      { detune: 0, pan: 0, gain: 1.0 },
+      { detune: 5, pan: -0.4, gain: 0.55 },
+      { detune: -7, pan: 0.4, gain: 0.55 },
+      { detune: 1200, pan: 0, gain: 0.18 }, // octave up, quiet whisper
+    ];
+    const out = ctx.createBuffer(2, src.length, sr);
+    const outL = out.getChannelData(0);
+    const outR = out.getChannelData(1);
+    for (const v of voices) {
+      // Convert cents to a playback rate multiplier.
+      const rate = Math.pow(2, v.detune / 1200);
+      const inData = src.getChannelData(0);
+      for (let i = 0; i < src.length; i++) {
+        const srcIdx = i * rate;
+        const idx = Math.floor(srcIdx);
+        const frac = srcIdx - idx;
+        const s0 = inData[idx] ?? 0;
+        const s1 = inData[idx + 1] ?? 0;
+        const sample = (s0 * (1 - frac) + s1 * frac) * v.gain;
+        // Equal-power pan.
+        const panL = Math.cos(((v.pan + 1) * Math.PI) / 4);
+        const panR = Math.sin(((v.pan + 1) * Math.PI) / 4);
+        outL[i] = (outL[i] ?? 0) + sample * panL;
+        outR[i] = (outR[i] ?? 0) + sample * panR;
+      }
+    }
+    // Mix the stack back in at `mixDb` against the dry buffer so the
+    // stack reads as harmony, not replacement.
+    const stackGain = Math.pow(10, mixDb / 20);
+    const drySrc = src.getChannelData(0);
+    for (let i = 0; i < out.length; i++) {
+      outL[i] = drySrc[i] + outL[i] * stackGain;
+      outR[i] = drySrc[i] + outR[i] * stackGain;
+    }
+    t.buffer = out;
+    this.waveformCache.delete(trackId);
+    this.notify();
+    return true;
+  }
+
+  /** Stem export: returns one Blob per track that has audio. Producers
+   *  send these straight to a mix engineer or upload to their DSP for
+   *  remix kits. Each blob is a 24-bit PCM WAV at the project sample
+   *  rate so it's drag-droppable into any DAW.
+   *
+   *  Tracks marked `frozen` use their pre-rendered buffer (already
+   *  contains FX); unfrozen tracks return the raw buffer + a hint
+   *  that the FX chain wasn't baked in. */
+  exportStems(): Array<{ trackId: TrackId; name: string; blob: Blob; frozen: boolean }> {
+    const out: Array<{ trackId: TrackId; name: string; blob: Blob; frozen: boolean }> = [];
+    for (const t of this.tracks.values()) {
+      if (!t.buffer || !t.state.hasAudio) continue;
+      const blob = audioBufferToWav(t.buffer);
+      out.push({
+        trackId: t.state.id,
+        name: t.state.name,
+        blob,
+        frozen: t.state.frozen,
+      });
+    }
+    return out;
+  }
+
+  /** Snap a played MIDI note to the project key, if one is set. Used
+   *  by the synth-piano keyboard handler so jam sessions stay in
+   *  key. Returns the input note unchanged when projectKey is null. */
+  snapMidiToKey(noteMidi: number): number {
+    const key = this.transport.projectKey;
+    if (!key) return noteMidi;
+    // Major-scale offsets from the tonic.
+    const major = [0, 2, 4, 5, 7, 9, 11];
+    const NOTE = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const ENHARM: Record<string, string> = {
+      Db: "C#", Eb: "D#", Gb: "F#", Ab: "G#", Bb: "A#",
+    };
+    const tonicName = ENHARM[key] ?? key;
+    const tonicIdx = NOTE.indexOf(tonicName);
+    if (tonicIdx < 0) return noteMidi;
+    const noteInOctave = ((noteMidi - tonicIdx) % 12 + 12) % 12;
+    // Find the closest in-scale offset.
+    let bestOffset = noteInOctave;
+    let bestDist = Infinity;
+    for (const m of major) {
+      const d = Math.min(
+        Math.abs(noteInOctave - m),
+        Math.abs(noteInOctave - m - 12),
+        Math.abs(noteInOctave - m + 12),
+      );
+      if (d < bestDist) {
+        bestDist = d;
+        bestOffset = m;
+      }
+    }
+    return noteMidi - noteInOctave + bestOffset;
+  }
+
   /** Internal — called from stopRecording with the captured buffer.
    *  Builds the RecordedTake metadata + stashes the AudioBuffer. */
   private appendTakeHistory(trackId: TrackId, buf: AudioBuffer, label?: string): RecordedTake {
     const id = `take_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    // Downsample to ~120 peak floats for a lightweight sparkline.
+    // Downsample to ~120 peak floats for a lightweight sparkline. We
+    // also accumulate the global peak so the take browser can flag
+    // clipped takes — anything >= 0.99 is functionally distorted.
     const data = buf.getChannelData(0);
     const peaks: number[] = new Array(120).fill(0);
     const block = Math.max(1, Math.floor(data.length / 120));
+    let globalPeak = 0;
     for (let i = 0; i < 120; i++) {
       let peak = 0;
       for (let j = 0; j < block; j++) {
@@ -3767,6 +4187,7 @@ export class DawEngine {
         if (v > peak) peak = v;
       }
       peaks[i] = peak;
+      if (peak > globalPeak) globalPeak = peak;
     }
     const take: RecordedTake = {
       id,
@@ -3776,6 +4197,8 @@ export class DawEngine {
       peaks,
       isKeeper: true,
       label,
+      peakAmplitude: globalPeak,
+      clipped: globalPeak >= 0.99,
     };
     // New take is the keeper; demote previous keeper(s).
     const list = this.transport.takeHistory[trackId] ?? [];
@@ -3796,7 +4219,6 @@ export class DawEngine {
     if (!this.ctx || !this.metronomeGain) return;
     const ctx = this.ctx;
     const gain = this.metronomeGain;
-    const beatSec = 60 / this.transport.bpm;
     // ticksPerBeat resolves the subdivision: quarter = 1 tick per beat,
     // eighth = 2, sixteenth = 4.
     const ticksPerBeat =
@@ -3805,11 +4227,12 @@ export class DawEngine {
         : this.transport.metronomeSubdivision === "1/8"
           ? 2
           : 1;
-    const tickStep = beatSec / ticksPerBeat;
     this.metronomeNextTime = ctx.currentTime + 0.05;
-    // Tick counter — used to identify the downbeat (every 4 beats) and
-    // every off-beat (used by swing). Reset whenever the scheduler
-    // restarts, so subdivision changes don't desync mid-bar.
+    // Track playhead-relative position so we can look up the tempo
+    // map per-tick. This is what makes a BPM ramp (80 → 140 over the
+    // intro) actually accelerate the clicks instead of running at a
+    // single static BPM.
+    let songPosSec = this.transport.positionSec;
     let tickIndex = 0;
 
     const fire = () => {
@@ -3818,13 +4241,15 @@ export class DawEngine {
         return;
       }
       while (this.metronomeNextTime < ctx.currentTime + 0.2) {
+        // Per-tick BPM from the tempo map. Empty map falls back to
+        // the static transport.bpm via bpmAtSec.
+        const currentBpm = this.bpmAtSec(songPosSec);
+        const beatSec = 60 / currentBpm;
+        const tickStep = beatSec / ticksPerBeat;
+
         const isDownbeat =
           tickIndex % (ticksPerBeat * 4) === 0 &&
           this.transport.metronomeAccentDownbeat;
-        // Swing: delay every even-numbered subdivision tick by
-        // `swing * tickStep`. Even-numbered means the off-beats
-        // within a beat (the "a" of "1-and-a"). At swing=0 this is a
-        // no-op; at swing=0.33 it's a classic shuffle.
         const isOffBeat = ticksPerBeat > 1 && tickIndex % 2 === 1;
         const swingOffset = isOffBeat ? this.transport.metronomeSwing * tickStep : 0;
 
@@ -3842,6 +4267,7 @@ export class DawEngine {
         osc.start(t0);
         osc.stop(t0 + 0.06);
         this.metronomeNextTime += tickStep;
+        songPosSec += tickStep;
         tickIndex++;
       }
       this.metronomeTimerId = window.setTimeout(fire, 25);

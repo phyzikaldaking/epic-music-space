@@ -102,6 +102,12 @@ const RecordingControlPanel = dynamic(() => import("./RecordingControlPanel"), {
 const TakeBrowserModal = dynamic(() => import("./TakeBrowserModal"), { ssr: false });
 const VocalWarmupModal = dynamic(() => import("./VocalWarmupModal"), { ssr: false });
 const VoiceMemoImportButton = dynamic(() => import("./VoiceMemoImportButton"), { ssr: false });
+const StudioToolsPanel = dynamic(() => import("./StudioToolsPanel"), { ssr: false });
+const TempoMapEditor = dynamic(() => import("./TempoMapEditor"), { ssr: false });
+const SampleChopperModal = dynamic(() => import("./SampleChopperModal"), { ssr: false });
+const ReferenceSpectrumOverlay = dynamic(() => import("./ReferenceSpectrumOverlay"), { ssr: false });
+const SessionReceiptCard = dynamic(() => import("./SessionReceiptCard"), { ssr: false });
+const SendClipToDmButton = dynamic(() => import("./SendClipToDmButton"), { ssr: false });
 
 const DEFAULT_TRACKS: Array<{ name: string; color: string; armed: boolean }> = [
   { name: "Vocal", color: "#ec4899", armed: true },
@@ -561,6 +567,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   // Take browser + vocal warmup modals (recording-day tooling).
   const [takeBrowserOpen, setTakeBrowserOpen] = useState(false);
   const [warmupOpen, setWarmupOpen] = useState(false);
+  const [sampleChopperOpen, setSampleChopperOpen] = useState(false);
   // Crash-recovery prompt. Populated on mount if a previous session
   // left a recording in-flight breadcrumb behind.
   const [recoveryPrompt, setRecoveryPrompt] = useState<RecordingInFlight | null>(null);
@@ -4330,6 +4337,53 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         )}
       </div>
 
+      {/* Production utilities panel — reverse, vocal stack, stem
+          export, reference loader, stutter. Targets the focused track. */}
+      {engineRef.current && (
+        <div className="mb-6">
+          <StudioToolsPanel
+            engine={engineRef.current}
+            focusedTrack={focusedTrack ?? null}
+            onNotice={(tone, message) => setNotice({ tone, message })}
+            onAfterMutate={() => {
+              const eng = engineRef.current;
+              if (eng) setSnapshot(eng.getSnapshot());
+            }}
+          />
+        </div>
+      )}
+
+      {/* Tempo map editor + sample-chopper opener. Tempo map is the
+          "BPM ramp" tool; the sample chopper is one-tap to drop a
+          breakbeat as N sliced tracks. */}
+      {engineRef.current && transport && (
+        <div className="mb-6 grid gap-2 lg:grid-cols-2">
+          <TempoMapEditor
+            engine={engineRef.current}
+            tempoMap={transport.tempoMap}
+            staticBpm={transport.bpm}
+          />
+          <button
+            type="button"
+            onClick={() => setSampleChopperOpen(true)}
+            className="rounded-2xl border border-violet-500/25 bg-black/40 p-3 text-left transition hover:border-violet-400/50"
+          >
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-violet-400/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.28em] text-violet-200">
+                Chopper
+              </span>
+              <span className="text-[10px] uppercase tracking-widest text-white/55">
+                Auto-slice a loop on transients → per-slice tracks
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-white/65">
+              Drop a breakbeat or vocal phrase. Pick the punchy points,
+              get one track per slice — instant kit.
+            </p>
+          </button>
+        </div>
+      )}
+
       {!showSplash && (
         <div className="mb-5 grid gap-2 sm:grid-cols-5">
           <StatusPill
@@ -5038,6 +5092,15 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             <span className="text-[10px] uppercase tracking-widest text-white/40">
               ⌘V also works
             </span>
+            {/* DM the focused track to a follower as a sharable clip. */}
+            {engineRef.current && focusedTrack && (
+              <SendClipToDmButton
+                engine={engineRef.current}
+                trackId={focusedTrack.id}
+                trackName={focusedTrack.name}
+                onNotice={(tone, message) => setNotice({ tone, message })}
+              />
+            )}
           </div>
         </div>
       )}
@@ -5119,6 +5182,11 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             onNoteOn={(note, velocity) => engineRef.current?.synthNoteOn(note, velocity)}
             onNoteOff={(note) => engineRef.current?.synthNoteOff(note)}
             onPanic={() => engineRef.current?.synthAllNotesOff()}
+            snapToKey={
+              transport?.projectKey
+                ? (n: number) => engineRef.current?.snapMidiToKey(n) ?? n
+                : undefined
+            }
             onStartClipRec={() => engineRef.current?.startMidiClipRec()}
             onStopClipRec={() => engineRef.current?.stopMidiClipRec()}
             onClearClip={() => engineRef.current?.clearMidiClip()}
@@ -5133,6 +5201,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             spectrum={transport.masterSpectrum}
             lufs={transport.masterLufs}
             truePeak={transport.masterTruePeak}
+            projectGenre={transport.projectGenre}
             phaseCorrelation={transport.masterPhaseCorrelation}
             eqLowDb={transport.masterEqLowDb}
             eqMidDb={transport.masterEqMidDb}
@@ -5164,6 +5233,17 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             onSetMultibandLow={(p) => engineRef.current?.setMasterMultibandLow(p)}
             onSetMultibandHigh={(p) => engineRef.current?.setMasterMultibandHigh(p)}
           />
+          {/* Reference spectrum overlay — only renders when a
+              reference track has been loaded. The engine reads its
+              built-in analyser per-frame so this is cheap. */}
+          {transport.referenceEnabled && engineRef.current && (
+            <div className="mt-3">
+              <ReferenceSpectrumOverlay
+                engine={engineRef.current}
+                masterSpectrum={transport.masterSpectrum}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -5290,6 +5370,27 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             }
           }}
         />
+      )}
+
+      {/* Shareable session receipt — generates a 1080×1080 PNG with
+          project name, track / take counts, session minutes, and the
+          "Tracked at EMS Studio" watermark. Producers post it to
+          Stories / Twitter to flex the work. */}
+      {!showSplash && showPublishTools && transport && (
+        <div className="mb-6 max-w-md">
+          <SessionReceiptCard
+            projectName={projectName}
+            trackCount={tracks.length}
+            takeCount={Object.values(transport.takeHistory ?? {}).reduce(
+              (sum, list) => sum + (list?.length ?? 0),
+              0,
+            )}
+            sessionMinutes={Math.max(
+              0,
+              (Date.now() - sessionStartedAt.current) / 60_000,
+            )}
+          />
+        </div>
       )}
 
       {!showSplash && showPublishTools && heavyUiReady && (
@@ -5555,6 +5656,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           open={warmupOpen}
           projectKey={null}
           onClose={() => setWarmupOpen(false)}
+        />
+      )}
+
+      {/* Sample chopper — transient-detected slices → per-slice tracks. */}
+      {sampleChopperOpen && engineRef.current && (
+        <SampleChopperModal
+          engine={engineRef.current}
+          open={sampleChopperOpen}
+          onClose={() => setSampleChopperOpen(false)}
+          onNotice={(tone, message) => setNotice({ tone, message })}
         />
       )}
 
