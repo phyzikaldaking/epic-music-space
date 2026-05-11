@@ -14,6 +14,10 @@ type CoverArtResponse = {
 
 const MOODS = ["cinematic", "luxury", "street", "dark", "emotional", "triumphant", "futuristic", "minimal"];
 
+function safeSlug(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "ems-cover-art";
+}
+
 export default function CoverArtPage() {
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
@@ -22,6 +26,7 @@ export default function CoverArtPage() {
   const [description, setDescription] = useState("");
   const [uploadedPreview, setUploadedPreview] = useState<string | null>(null);
   const [uploadedName, setUploadedName] = useState<string | null>(null);
+  const [selectedCover, setSelectedCover] = useState<"uploaded" | "generated" | null>(null);
   const [generated, setGenerated] = useState<CoverArtResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -31,13 +36,19 @@ export default function CoverArtPage() {
     return generated.imageUrl ?? null;
   }, [generated]);
 
+  const activeCoverSrc = selectedCover === "generated" ? generatedSrc : selectedCover === "uploaded" ? uploadedPreview : null;
+  const publishHref = `/studio/publish?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&genre=${encodeURIComponent(genre)}&cover=${selectedCover ?? "none"}`;
+
   function onUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
     setUploadedName(file.name);
     const reader = new FileReader();
-    reader.onload = () => setUploadedPreview(String(reader.result));
+    reader.onload = () => {
+      setUploadedPreview(String(reader.result));
+      setSelectedCover("uploaded");
+    };
     reader.readAsDataURL(file);
   }
 
@@ -53,11 +64,26 @@ export default function CoverArtPage() {
       });
       const data = (await response.json()) as CoverArtResponse;
       setGenerated(data);
+      if (data.ok && (data.imageBase64 || data.imageUrl)) setSelectedCover("generated");
     } catch (error) {
       setGenerated({ ok: false, error: error instanceof Error ? error.message : "Could not generate cover art." });
     } finally {
       setLoading(false);
     }
+  }
+
+  async function downloadGenerated() {
+    if (!generatedSrc) return;
+    const response = await fetch(generatedSrc);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${safeSlug(title || artist)}-cover-art.png`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -95,13 +121,28 @@ export default function CoverArtPage() {
             {uploadedPreview ? (
               <div className="mt-5 space-y-3">
                 <img src={uploadedPreview} alt="Uploaded cover art preview" className="aspect-square w-full rounded-3xl border border-white/10 object-cover" />
-                <p className="text-xs text-white/50">Selected: <span className="text-white/80">{uploadedName}</span></p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-white/50">Selected: <span className="text-white/80">{uploadedName}</span></p>
+                  <button type="button" onClick={() => setSelectedCover("uploaded")} className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest ${selectedCover === "uploaded" ? "bg-fuchsia-300 text-black" : "border border-white/10 text-white/70 hover:bg-white/10"}`}>Use uploaded</button>
+                </div>
               </div>
             ) : (
               <div className="mt-5 aspect-square rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-900 to-black p-5 text-sm text-white/40">
                 Artwork preview appears here.
               </div>
             )}
+
+            <div className="mt-5 rounded-3xl border border-white/10 bg-black/35 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.32em] text-white/40">Selected release cover</p>
+              {activeCoverSrc ? (
+                <img src={activeCoverSrc} alt="Selected cover art" className="mt-3 aspect-square w-full rounded-2xl border border-fuchsia-300/25 object-cover" />
+              ) : (
+                <p className="mt-3 text-sm text-white/45">Choose uploaded art or generate a cover before publishing.</p>
+              )}
+              <Link href={publishHref} className={`mt-4 inline-flex rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-[0.2em] ${activeCoverSrc ? "bg-white text-black hover:bg-fuchsia-100" : "pointer-events-none border border-white/10 text-white/30"}`}>
+                Continue to publishing
+              </Link>
+            </div>
           </section>
 
           <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
@@ -140,7 +181,13 @@ export default function CoverArtPage() {
             <div className="mt-6 rounded-3xl border border-white/10 bg-black/35 p-4">
               <p className="text-[10px] font-black uppercase tracking-[0.32em] text-white/40">Result</p>
               {generatedSrc ? (
-                <img src={generatedSrc} alt="Generated cover art" className="mt-4 aspect-square max-w-md rounded-3xl border border-white/10 object-cover" />
+                <div className="mt-4 space-y-3">
+                  <img src={generatedSrc} alt="Generated cover art" className="aspect-square max-w-md rounded-3xl border border-white/10 object-cover" />
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setSelectedCover("generated")} className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest ${selectedCover === "generated" ? "bg-fuchsia-300 text-black" : "border border-white/10 text-white/70 hover:bg-white/10"}`}>Use generated</button>
+                    <button type="button" onClick={downloadGenerated} className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-fuchsia-100 hover:bg-fuchsia-300/20">Download PNG</button>
+                  </div>
+                </div>
               ) : generated ? (
                 <div className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
                   <p className="font-black">{generated.unavailable ? "AI generation unavailable" : "Generation did not complete"}</p>
