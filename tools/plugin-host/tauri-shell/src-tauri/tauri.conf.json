@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "EMS Plugin Host",
+  "version": "0.1.0",
+  "identifier": "com.epicmusicspace.pluginhost",
+  "build": {
+    "frontendDist": "../src",
+    "beforeBuildCommand": "",
+    "beforeDevCommand": ""
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": []
+  },
+  "bundle": {
+    "active": true,
+    "category": "Music",
+    "shortDescription": "Bridges your installed VST3/AU plugins into Epic Music Space.",
+    "longDescription": "Runs in the menu bar / system tray. Once installed, the in-browser Studio at epicmusicspace.com sees your installed plugins and can route audio through them.",
+    "icon": ["icons/icon.png"],
+    "targets": ["dmg", "msi", "deb", "appimage"]
+  }
+}

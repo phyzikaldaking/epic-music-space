@@ -1,0 +1,39 @@
+# Core plugin-host daemon. Runs the WebSocket server, scans installed
+# plugins, and (when the audio channel + VST3 SDK linkage land) hosts
+# the actual DSP.
+#
+# This crate is split into:
+#   src/main.rs      — binary entrypoint, dev/standalone use
+#   src/server.rs    — control + audio WebSocket servers
+#   src/scanner.rs   — plugin directory scan (cross-platform)
+#   src/registry.rs  — instance lifecycle + parameter state
+#   src/state.rs     — shared host state behind an Arc<Mutex<>>
+
+[package]
+name = "ems-plugin-host"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "ems-plugin-host"
+path = "src/main.rs"
+
+[dependencies]
+ems-bridge-protocol = { path = "../ems-bridge-protocol" }
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+dirs.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+uuid.workspace = true

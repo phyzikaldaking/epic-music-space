@@ -1,0 +1,61 @@
+# EMS Plugin Host — workspace root.
+#
+# This is the desktop companion app that bridges the in-browser Studio
+# to the producer's installed VST3 / AU / AAX plugins. The browser
+# can't load native plugins (Web Audio runs in a sandbox); this host
+# does, exposes them over localhost WebSocket, and runs the actual
+# DSP.
+#
+# Workspace layout:
+#   crates/ems-bridge-protocol  — message types shared with the browser
+#   crates/ems-plugin-host      — WS server + plugin scanner + DSP host
+#   tauri-shell                 — system-tray UI wrapper (Tauri)
+#
+# Build:  `cargo build --release` from this directory.
+# Run:    `cargo run -p ems-plugin-host` for headless dev.
+# Ship:   `cd tauri-shell && pnpm tauri build` for signed installers.
+
+[workspace]
+resolver = "2"
+members = [
+  "crates/ems-bridge-protocol",
+  "crates/ems-plugin-host",
+  "tauri-shell/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Epic Music Space"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/phyzikaldaking/epic-music-space"
+
+[workspace.dependencies]
+# Async runtime + WebSocket server. tokio-tungstenite handles the
+# wire protocol; tokio drives everything else.
+tokio = { version = "1.42", features = ["full"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+# JSON serde for the control channel. The audio channel uses a custom
+# binary frame format defined in ems-bridge-protocol.
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Cross-platform OS audio + plugin paths.
+dirs = "5.0"
+# Logging.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Error handling.
+thiserror = "2.0"
+anyhow = "1.0"
+# UUID for instance handles. Browser-side handles are opaque strings;
+# UUID v4 fits the bill without dragging a crypto dep in.
+uuid = { version = "1.11", features = ["v4"] }
+
+[profile.release]
+# LTO + codegen-units=1 shaves ~30% off the binary for what's
+# effectively a single-process daemon. Build time goes up but ship
+# size matters more for a download the user has to install.
+lto = true
+codegen-units = 1
+strip = "symbols"

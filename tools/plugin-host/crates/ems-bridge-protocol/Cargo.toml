@@ -1,0 +1,20 @@
+# Wire protocol shared with the browser side.
+#
+# Mirror of apps/web/src/lib/pluginBridge/protocol.ts. When the schema
+# changes, BOTH files bump PROTOCOL_VERSION together; the host's hello
+# reply gives the browser a clean rejection path on mismatch.
+
+[package]
+name = "ems-bridge-protocol"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

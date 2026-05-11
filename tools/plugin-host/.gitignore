@@ -1,0 +1,12 @@
+# Rust build output. The release binaries are shipped via the GitHub
+# release pipeline (signed installers); local dev builds aren't.
+target/
+Cargo.lock
+# Tauri-generated icon binaries (regenerated from a source PNG on
+# every release build).
+tauri-shell/src-tauri/icons/*.icns
+tauri-shell/src-tauri/icons/*.ico
+tauri-shell/src-tauri/icons/icon.png
+# IDE noise.
+.vscode/
+.idea/

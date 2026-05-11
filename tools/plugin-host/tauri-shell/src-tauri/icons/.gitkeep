@@ -1,0 +1,4 @@
+Drop a 512x512 PNG named `icon.png` here, plus the platform-specific
+.icns (macOS) and .ico (Windows) renders, before shipping a release
+build. `cargo tauri icon path/to/source.png` generates them all at
+once.
