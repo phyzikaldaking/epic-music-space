@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import type { MidiSynthState, SynthWave } from "./dawEngine";
+import { INSTRUMENT_PRESETS, applyInstrumentPreset, findInstrumentPresetByShortcut } from "./instrumentPresets";
 
 interface Props {
   state: MidiSynthState;
@@ -58,10 +59,15 @@ export default function MidiPanel({
     function down(e: KeyboardEvent) {
       if (e.repeat) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       const wave = WAVE_SHORTCUTS[e.key];
       if (wave) {
         onSetParam("wave", wave);
+        return;
+      }
+      const preset = findInstrumentPresetByShortcut(e.key);
+      if (preset) {
+        applyInstrumentPreset(preset, onSetParam);
         return;
       }
       const note = KEY_TO_MIDI[e.key.toLowerCase()];
@@ -70,7 +76,7 @@ export default function MidiPanel({
     }
     function up(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       const note = KEY_TO_MIDI[e.key.toLowerCase()];
       if (note === undefined) return;
       onNoteOff(note);
@@ -97,14 +103,14 @@ export default function MidiPanel({
       <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.32em] text-violet-300/85">
-            Synth · MIDI
+            Instruments · MIDI
           </p>
           <p className="mt-0.5 text-xs text-white/55">
             Polyphonic synth routed through the Synth track. Connect a MIDI
             keyboard or use your computer keys (A–K).
           </p>
           <p className="mt-1 text-[11px] text-white/45">
-            Key map: A W S E D F T G Y H U J K. Sound quick-switch: 1 sine, 2 triangle, 3 saw, 4 square.
+            Key map: A W S E D F T G Y H U J K. Waves: 1–4. Instruments: 5–0, - and =.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -164,6 +170,28 @@ export default function MidiPanel({
           </button>
         </div>
       </header>
+
+      <div className="mb-4 rounded-xl border border-violet-400/20 bg-violet-500/10 p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-violet-200">Instrument presets</p>
+          <span className="text-[10px] uppercase tracking-widest text-white/40">One-click keyboard sounds</span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {INSTRUMENT_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => applyInstrumentPreset(preset, onSetParam)}
+              className="rounded-xl border border-white/10 bg-black/30 p-3 text-left transition hover:border-violet-300/60 hover:bg-violet-500/15"
+              title={`Press ${preset.shortcut} for ${preset.name}`}
+            >
+              <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-white/35">{preset.shortcut} · {preset.family}</span>
+              <span className="mt-1 block text-sm font-black text-white">{preset.name}</span>
+              <span className="mt-1 block text-[11px] leading-4 text-white/50">{preset.description}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Voice controls */}
       <div className="mb-4 grid gap-3 sm:grid-cols-4">
@@ -309,7 +337,7 @@ export default function MidiPanel({
       </div>
 
       <p className="mt-2 text-[10px] text-white/35">
-        Computer keys: A W S E D F T G Y H U J K → C4 to C5
+        Computer keys: A W S E D F T G Y H U J K → C4 to C5. Presets: 5–0, -, =.
       </p>
     </section>
   );
