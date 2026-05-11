@@ -67,6 +67,30 @@
     {
       "path": "/api/cron/rap-stock-snapshot",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/feedback-extract",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/feedback-rollup",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/beat-embeddings",
+      "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/cron/marketing-plan",
+      "schedule": "0 14 * * 1"
+    },
+    {
+      "path": "/api/cron/marketing-execute",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/community-engage",
+      "schedule": "30 10 * * *"
     }
   ]
 }

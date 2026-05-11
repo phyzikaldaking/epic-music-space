@@ -148,6 +148,7 @@ model User {
   sessionBookingsBought SessionBooking[]     @relation("SessionBookingsBought")
   sessionBookingsSold  SessionBooking[]      @relation("SessionBookingsSold")
   stockSnapshots       ArtistStockSnapshot[] @relation("ArtistStockSnapshots")
+  feedbackEntries      FeedbackEntry[]       @relation("FeedbackAuthor")
   revenueSplits      RevenueSplit[]      @relation("RevenueSplits")
   splitSheetEntries  SplitSheetEntry[]   @relation("SplitSheetEntries")
   serviceListings    ServiceListing[]    @relation("ServiceProvider")
@@ -2361,8 +2362,206 @@ model ArtistStockSnapshot {
   @@index([capturedAt])
 }
 
-// ─────────────────────────────────────────
-// EMAIL OUTBOX — guaranteed delivery
+// ─────────────────────────────────────────────────────────────────
+// AI BRAIN — feedback, marketing engine, beat learning
+// ─────────────────────────────────────────────────────────────────
+//
+// Three intertwined systems that share one Postgres home so the
+// platform can introspect itself end-to-end:
+//
+//   FeedbackEntry      — raw + LLM-extracted user feedback
+//   AiInsight          — rolled-up themes across many entries
+//                        (the "what the platform knows" brain)
+//   MarketingPlan      — weekly self-written growth plan
+//   MarketingPost      — concrete output (SEO page, social post,
+//                        community comment, email)
+//   BeatEmbedding      — vector index of every published beat for
+//                        similar-pattern suggestions; foundation
+//                        for an eventual custom diffusion model.
+//
+// All five use the existing User row for authorship / actor refs.
+// Embeddings use pgvector (added via raw SQL in the migration since
+// Prisma doesn't have a native vector column yet) — we read/write
+// via Prisma's $queryRaw / $executeRaw.
+
+enum FeedbackSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  BUG
+  FEATURE_REQUEST
+}
+
+model FeedbackEntry {
+  id              String              @id @default(cuid())
+  // Null when feedback comes from an anonymous visitor.
+  userId          String?
+  user            User?               @relation("FeedbackAuthor", fields: [userId], references: [id], onDelete: SetNull)
+  // Raw user-typed text. Capped at ~4k chars; longer = truncated
+  // server-side.
+  body            String              @db.Text
+  // LLM-extracted fields. Populated asynchronously after insert by
+  // /api/cron/feedback-extract — the user's submit doesn't block on
+  // an LLM call.
+  sentiment       FeedbackSentiment?
+  // Free-form short tag the LLM picks: "recording", "beat-machine",
+  // "stock-market", "pricing", etc. Drives the admin theme rollups.
+  feature         String?             @db.VarChar(60)
+  // One-sentence summary of what the user wants. Easier to scan in
+  // the admin dashboard than the raw paragraph.
+  summary         String?             @db.VarChar(280)
+  // Page path where the feedback was submitted. Useful for "the
+  // /studio page gets the most bug reports" rollups.
+  pagePath        String?             @db.VarChar(200)
+  // Contextual signal: was this a chat-widget submission or an
+  // inline micro-survey (post-record / post-purchase)?
+  channel         String?             @db.VarChar(40)
+  // Set when the LLM has processed this row.
+  extractedAt     DateTime?
+  // Admin / engineering action — set when someone files a ticket
+  // for this, ships a fix, etc.
+  actionedAt      DateTime?
+  actionedNote    String?             @db.Text
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([sentiment, createdAt])
+  @@index([feature, createdAt])
+  @@index([extractedAt])
+}
+
+// Rolled-up themes the AI noticed across many FeedbackEntry rows.
+// The weekly insight cron clusters recent entries and writes one
+// row per theme ("plugin host crashes for Windows users",
+// "producers want vocal pitch correction faster"). The admin
+// dashboard surfaces these so the team can prioritise.
+model AiInsight {
+  id              String              @id @default(cuid())
+  kind            String              @db.VarChar(40)   // "feedback-theme" | "growth-signal" | "abuse-pattern"
+  title           String              @db.VarChar(200)
+  body            String              @db.Text
+  // 0..1 confidence the LLM assigned to the theme. Surface ordering.
+  confidence      Decimal             @db.Decimal(5, 4)
+  // Source rows that contributed (FeedbackEntry ids).
+  evidenceIds     String[]            @default([])
+  // Suggested action ("add a Windows installer page", "promote vocal
+  // warmup feature to homepage"). Recommendations only — no auto-
+  // exec without admin signoff.
+  recommendation  String?             @db.Text
+  resolvedAt      DateTime?
+  resolvedNote    String?             @db.Text
+  createdAt       DateTime            @default(now())
+
+  @@index([kind, createdAt])
+  @@index([resolvedAt])
+}
+
+enum MarketingPostKind {
+  SEO_PAGE
+  SOCIAL_TWITTER
+  SOCIAL_INSTAGRAM
+  SOCIAL_TIKTOK
+  COMMUNITY_COMMENT
+  EMAIL_BLAST
+}
+
+enum MarketingPostStatus {
+  DRAFT             // generated, awaiting auto-publish or human review
+  SCHEDULED         // queued for a future publish time
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+model MarketingPlan {
+  id              String              @id @default(cuid())
+  // The cron writes one plan per week. Title is human-friendly so
+  // the admin can scan ("Week of May 12 · Pivot to producer tools").
+  title           String              @db.VarChar(200)
+  // Plan summary, ~500 chars, written by the LLM after reading
+  // platform analytics + recent feedback insights.
+  summary         String              @db.Text
+  // Structured plan rows the executor can act on ({kind, target,
+  // copy, scheduledAt}). Validated server-side before each
+  // MarketingPost row is created.
+  actions         Json
+  // Reflects whether any of the plan's actions actually shipped.
+  executedAt      DateTime?
+  // Roll-up KPIs the cron reads next week to evaluate this plan
+  // ("how did the spotlight artist perform after we ran the SEO
+  // page on them?").
+  resultMetrics   Json?
+  createdAt       DateTime            @default(now())
+
+  posts           MarketingPost[]
+
+  @@index([createdAt])
+}
+
+model MarketingPost {
+  id              String                @id @default(cuid())
+  planId          String?
+  plan            MarketingPlan?        @relation(fields: [planId], references: [id], onDelete: SetNull)
+  kind            MarketingPostKind
+  status          MarketingPostStatus   @default(DRAFT)
+  // What this is *about* — usually a Song / VerseListing / DrumKitPack
+  // / User. We don't FK to keep it polymorphic; the row carries
+  // {model, id} in the targetRef JSON.
+  targetRef       Json?
+  // The actual creative output. For SEO_PAGE: { slug, html, meta }.
+  // For SOCIAL_*: { caption, mediaUrl, hashtags }. For
+  // COMMUNITY_COMMENT: { commentBody, targetUrl }.
+  payload         Json
+  // External id from the destination platform (tweet id, post id,
+  // etc) — populated on publish success.
+  externalId      String?
+  // For SCHEDULED posts.
+  scheduledFor    DateTime?
+  publishedAt     DateTime?
+  failedReason    String?               @db.Text
+  // Performance the cron reads back later to feed AiInsight.
+  impressions     Int                   @default(0)
+  clicks          Int                   @default(0)
+  engagements     Int                   @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([kind, publishedAt])
+  @@index([planId])
+}
+
+// Vector index of every published song's beat pattern + genre + BPM
+// + kit. Used by the studio's "similar-pattern" suggestion endpoint
+// and as the dataset foundation for an eventual custom diffusion
+// model (see docs/beat-diffusion-roadmap.md).
+//
+// The actual vector column is declared in the SQL migration via
+// `vector(384)` (pgvector). Prisma doesn't have a native vector
+// type, so we store one in raw SQL and read it via $queryRaw. This
+// model row carries the structured *metadata* alongside.
+model BeatEmbedding {
+  id              String              @id @default(cuid())
+  // Source song. If the song is deleted the embedding becomes
+  // orphan trivia — clear it.
+  songId          String              @unique
+  // Tagged fields, all extractable from the song row at index time.
+  bpm             Int
+  genre           String?             @db.VarChar(40)
+  kit             String?             @db.VarChar(40)
+  // Hex-encoded 16-step pattern across the 8 lanes — same shape the
+  // studio context store uses. Saves us re-parsing the JSON when we
+  // want to render the matched pattern in suggestions.
+  patternHex      String              @db.VarChar(80)
+  // Embedding dim — 384 fits MiniLM / OpenAI-small embeddings.
+  // The actual vector column is added via raw SQL.
+  createdAt       DateTime            @default(now())
+
+  @@index([bpm])
+  @@index([genre])
+  @@index([kit])
+}
 // Written BEFORE the Resend API call. A cron flushes PENDING rows that
 // weren't confirmed sent within 5 min (delivery gap). Idempotent on
 // messageId — prevents duplicates on retry.

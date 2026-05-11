@@ -1,9 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
+import dynamic from "next/dynamic";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
 import Providers from "@/components/Providers";
 import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
+
+// Feedback bot widget — floats bottom-right on every page so users
+// can drop a thought without leaving what they're doing. Lazy-imported
+// so the initial layout shell stays light.
+const FeedbackBotWidget = dynamic(() => import("@/components/FeedbackBotWidget"), { ssr: false });
 
 const bebasNeue = Bebas_Neue({
   weight: "400",
@@ -164,6 +170,7 @@ export default async function RootLayout({
         />
         <Providers>
           {children}
+          <FeedbackBotWidget />
         </Providers>
       </body>
     </html>
