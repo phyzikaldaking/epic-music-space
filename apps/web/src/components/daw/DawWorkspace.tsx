@@ -99,6 +99,9 @@ const StudioDropOverlay = dynamic(() => import("./StudioDropOverlay"), { ssr: fa
 const ShortcutOverlay = dynamic(() => import("./ShortcutOverlay"), { ssr: false });
 const VoiceToMidiButton = dynamic(() => import("./VoiceToMidiButton"), { ssr: false });
 const RecordingControlPanel = dynamic(() => import("./RecordingControlPanel"), { ssr: false });
+const StudioTopBar = dynamic(() => import("./StudioTopBar"), { ssr: false });
+const EditWindowTrackLane = dynamic(() => import("./EditWindowTrackLane"), { ssr: false });
+const StudioSideDrawer = dynamic(() => import("./StudioSideDrawer"), { ssr: false });
 const TakeBrowserModal = dynamic(() => import("./TakeBrowserModal"), { ssr: false });
 const VocalWarmupModal = dynamic(() => import("./VocalWarmupModal"), { ssr: false });
 const VoiceMemoImportButton = dynamic(() => import("./VoiceMemoImportButton"), { ssr: false });
@@ -552,6 +555,17 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [beatTrackId, setBeatTrackId] = useState<TrackId | null>(null);
   const [renderingBeat, setRenderingBeat] = useState(false);
   const [focusMode, setFocusMode] = useState<FocusMode>("all");
+  // Pro Tools-style edit window. On by default per user feedback —
+  // thin top toolbar + horizontal track lanes + everything-else-in-a-
+  // drawer. The legacy stacked-card layout still works if a producer
+  // toggles this off from the drawer.
+  const [proMode, setProMode] = useState(true);
+  // Which main pane the edit window shows: edit (track lanes),
+  // mix (track strips with faders), beat (beat machine), or publish
+  // (master + publish bar). Top toolbar drives this; the legacy
+  // focusMode still wires through for backward compat.
+  const [mainMode, setMainMode] = useState<"edit" | "mix" | "beat" | "publish">("edit");
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [browserHealth, setBrowserHealth] = useState<BrowserHealth | null>(null);
   /** Project save/load — id is generated lazily on first save. */
@@ -3406,6 +3420,192 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
   return (
     <StudioTooltipProvider delayDuration={250} skipDelayDuration={500}>
+    {/* ── Pro Tools edit window (default) ─────────────────────────
+        Thin top toolbar + horizontal track lanes + everything-else
+        in a right-side drawer. Producers asked for this to be the
+        primary view; the legacy stacked layout below stays for
+        anyone who toggles proMode off in the drawer. */}
+    {proMode && transport && engineRef.current && (
+      <div className="relative mx-auto max-w-[1400px] px-2 pt-2 pb-[calc(env(safe-area-inset-bottom)+5rem)]">
+        <StudioTopBar
+          isPlaying={transport.isPlaying}
+          isRecording={transport.isRecording}
+          positionSec={transport.positionSec}
+          bpm={transport.bpm}
+          mode={mainMode}
+          drawerOpen={drawerOpen}
+          onPlayPause={handlePlayStopTransport}
+          onStop={handleStopTransport}
+          onRecord={() => {
+            if (!ensureInit()) return;
+            void toggleRecording();
+          }}
+          onReturnToZero={handleReturnToZero}
+          onNudge={nudgeTransport}
+          onBpmChange={(bpm) => engineRef.current?.setBpm(bpm)}
+          onModeChange={setMainMode}
+          onToggleDrawer={() => setDrawerOpen((v) => !v)}
+        />
+
+        {/* Main pane swaps on mainMode */}
+        <main className="mt-3">
+          {mainMode === "edit" && (
+            <section
+              className="rounded-md border border-white/10 bg-black/40"
+              aria-label="Edit window"
+            >
+              <div className="border-b border-white/10 bg-white/[0.02] px-3 py-2 text-[10px] font-black uppercase tracking-[0.32em] text-white/55">
+                Edit · {tracks.length} track{tracks.length === 1 ? "" : "s"}
+              </div>
+              <div>
+                {tracks.map((track) => (
+                  <EditWindowTrackLane
+                    key={track.id}
+                    track={track}
+                    peaks={
+                      track.hasAudio
+                        ? engineRef.current?.getWaveformPeaks(track.id, 320) ?? []
+                        : []
+                    }
+                    progress={
+                      track.durationSec > 0
+                        ? Math.min(1, transport.positionSec / track.durationSec)
+                        : 0
+                    }
+                    bpm={transport.bpm}
+                    isFocused={track.id === focusedId}
+                    onFocus={() => setFocusedId(track.id)}
+                    onToggleArm={() => engineRef.current?.setTrackArmed(track.id, !track.armed)}
+                    onToggleMute={() => engineRef.current?.setTrackMute(track.id, !track.muted)}
+                    onToggleSolo={() => engineRef.current?.setTrackSolo(track.id, !track.solo)}
+                    onSeek={(sec) => engineRef.current?.seek(sec)}
+                  />
+                ))}
+                {tracks.length === 0 && (
+                  <p className="px-4 py-8 text-center text-sm text-white/45">
+                    No tracks yet. Open the drawer (⚙) to spin up a template,
+                    or drop audio anywhere on the page to import as a new track.
+                  </p>
+                )}
+              </div>
+              <div className="border-t border-white/10 bg-white/[0.02] px-3 py-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!ensureInit()) return;
+                    const engine = engineRef.current;
+                    if (!engine) return;
+                    const id = engine.addTrack(
+                      `Track ${tracks.length + 1}`,
+                      ["#ec4899", "#22d3ee", "#a78bfa", "#f59e0b", "#34d399"][tracks.length % 5]!,
+                    );
+                    setFocusedId(id);
+                    setSnapshot(engine.getSnapshot());
+                  }}
+                  className="rounded border border-white/15 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white/80 hover:bg-white/10"
+                >
+                  + Add track
+                </button>
+              </div>
+            </section>
+          )}
+
+          {mainMode === "beat" && (
+            <section
+              className="rounded-md border border-white/10 bg-black/40 p-3"
+              aria-label="Beat machine"
+            >
+              <div className="text-[10px] font-black uppercase tracking-[0.32em] text-amber-300">
+                Beat machine
+              </div>
+              <p className="mt-1 text-[11px] text-white/55">
+                Scroll down for the full grid (kit, swing, fills, stutter).
+                Switching to Edit returns you to the track lanes.
+              </p>
+            </section>
+          )}
+
+          {mainMode === "mix" && (
+            <section
+              className="rounded-md border border-white/10 bg-black/40 p-3"
+              aria-label="Mixer"
+            >
+              <div className="text-[10px] font-black uppercase tracking-[0.32em] text-cyan-300">
+                Mix
+              </div>
+              <p className="mt-1 text-[11px] text-white/55">
+                Track strip faders + EQ + master live below. Switch back to
+                Edit for the recording window.
+              </p>
+            </section>
+          )}
+
+          {mainMode === "publish" && (
+            <section
+              className="rounded-md border border-white/10 bg-black/40 p-3"
+              aria-label="Publish"
+            >
+              <div className="text-[10px] font-black uppercase tracking-[0.32em] text-emerald-300">
+                Publish
+              </div>
+              <p className="mt-1 text-[11px] text-white/55">
+                Master metering + the publish bar live below.
+              </p>
+            </section>
+          )}
+        </main>
+
+        <StudioSideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+          <div className="space-y-4 text-xs text-white/80">
+            <p className="rounded-md border border-white/10 bg-white/[0.03] p-2 text-[11px]">
+              Everything that used to clutter the workspace lives here now —
+              audio settings, recording controls, tempo map, sample chopper,
+              mix tools, master metering. Scroll the page beneath this
+              drawer to find each panel; this drawer is a quick-access
+              index.
+            </p>
+            {[
+              { section: "audio-settings", label: "⚙ Audio engine settings" },
+              { section: "recording-controls", label: "🎙 Recording controls (cue, talkback, click)" },
+              { section: "studio-tools", label: "🔧 Studio tools (reverse, stack, stem export)" },
+            ].map((item) => (
+              <button
+                key={item.section}
+                type="button"
+                onClick={() => {
+                  setDrawerOpen(false);
+                  // Scroll the legacy panel into view. Each panel
+                  // already carries data-studio-section.
+                  window.setTimeout(() => {
+                    const el = document.querySelector(`[data-studio-section="${item.section}"]`);
+                    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }, 50);
+                }}
+                className="block w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-left hover:bg-white/[0.06]"
+              >
+                {item.label} →
+              </button>
+            ))}
+            <label className="mt-4 flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] p-2 text-[11px]">
+              <input
+                type="checkbox"
+                checked={proMode}
+                onChange={(e) => setProMode(e.target.checked)}
+                className="accent-cyan-400"
+              />
+              <span>
+                Pro Tools edit window <span className="text-white/45">(off = legacy stacked cards)</span>
+              </span>
+            </label>
+          </div>
+        </StudioSideDrawer>
+      </div>
+    )}
+    {/* Legacy panels live below the Pro Tools view. The user can
+        scroll for the full surface (mix tools, beat grid, master);
+        the edit window above covers 90% of the recording workflow.
+        Toggle off in the drawer to fall back to the old stacked
+        layout. */}
     <div data-studio-content className="relative mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8">
       <div
         aria-hidden
@@ -3519,10 +3719,13 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </div>
       </div>
 
-      <BlueprintStatusPanel ready={!showSplash} />
-
-      <FocusModeBar value={focusMode} onChange={setFocusMode} />
-      {!showSplash && (
+      {/* These three banners are the "Next Gen Recording Board"
+          callouts the user wanted gone in Pro Tools mode. Kept for
+          the legacy layout because they also surface the focus-mode
+          tabs the legacy layout uses to filter panels. */}
+      {!proMode && <BlueprintStatusPanel ready={!showSplash} />}
+      {!proMode && <FocusModeBar value={focusMode} onChange={setFocusMode} />}
+      {!proMode && !showSplash && (
         <StudioExecutionBar
           onTemplate={(preset) => {
             if (!ensureInit()) return;
@@ -3683,8 +3886,13 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           UndoTimelinePanel z-50) consistently render *above* it. Earlier
           this was z-30 which collided with ProjectMenu's own z-30 and
           made the dropdown clip behind the transport on long pages — the
-          "slides up and down weird" sensation. */}
-      <div className="sticky top-[64px] z-20 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
+          "slides up and down weird" sensation.
+
+          Hidden in Pro Tools mode — StudioTopBar replaces it. The
+          rich legacy panel is still useful for the legacy layout
+          and contains controls (BPM, loop region, marker grid, etc)
+          that the Pro Tools view doesn't expose. */}
+      <div className={`sticky top-[64px] z-20 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0 ${proMode ? "hidden" : ""}`}>
       <div
         className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 shadow-2xl shadow-black/40 backdrop-blur-md transition ${
           transport?.isRecording
