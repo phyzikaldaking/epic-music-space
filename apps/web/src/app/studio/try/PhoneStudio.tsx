@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { scheduleDrumHit, type DrumKind, type DrumKitId } from "@/components/daw/beatMachine";
+import { haptic, useHapticIntensity } from "@/lib/haptics";
 import { stashGuestMix, GUEST_RESUME_FLAG } from "@/lib/guestStash";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
@@ -55,12 +56,17 @@ interface RecordedHit {
 }
 
 export default function PhoneStudio() {
+  const [hapticIntensity, setHapticIntensity] = useHapticIntensity();
   const router = useRouter();
   const ctxRef = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const [bpm, setBpm] = useState(DEFAULT_BPM);
   const [recording, setRecording] = useState(false);
   const [hasRecording, setHasRecording] = useState(false);
+  // Tiny inline notice for the handoff button feedback (#C24). Lives
+  // here rather than as a toast — phone real estate is tight and a
+  // brief string under the button is more useful than a floating chip.
+  const [notice, setNotice] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [activePad, setActivePad] = useState<DrumKind | null>(null);
   const recordStartRef = useRef<number>(0);
@@ -95,6 +101,9 @@ export default function PhoneStudio() {
       kit: DEFAULT_KIT,
       velocity: Math.max(0.4, Math.min(1, velocity)),
     });
+    // Tactile feedback (#C26). Honors the user's haptic-intensity
+    // preference — off / soft / strong.
+    haptic("tap");
 
     if (recording) {
       recordedHitsRef.current.push({
@@ -132,6 +141,55 @@ export default function PhoneStudio() {
     }
     setRecording(false);
     setHasRecording(recordedHitsRef.current.length > 0);
+  }
+
+  // Mobile → desktop handoff (#C24). Quantize the recorded hits to a
+  // 16-step pattern based on the project BPM, stash it in localStorage,
+  // and surface the success notice. When the user opens the full DAW,
+  // it'll find the slot and offer to import (see DawWorkspace.useEffect
+  // checking "ems.phone.handoff.v1"). 7-day TTL there guards stale data.
+  function handoffToDesktop() {
+    const hits = recordedHitsRef.current;
+    if (hits.length === 0) {
+      setNotice("Record at least one hit first.");
+      return;
+    }
+    const stepSec = 60 / bpm / 4; // 16th note duration
+    const lanes: DrumKind[] = [
+      "kick",
+      "snare",
+      "clap",
+      "hat",
+      "openHat",
+      "perc",
+      "bass808",
+      "crash",
+    ];
+    const pattern: Record<string, boolean[]> = {};
+    for (const lane of lanes) pattern[lane] = new Array(16).fill(false);
+    for (const hit of hits) {
+      const step = Math.round(hit.offsetSec / stepSec) % 16;
+      if (step < 0 || step >= 16) continue;
+      const laneArr = pattern[hit.kind];
+      if (laneArr) laneArr[step] = true;
+    }
+    try {
+      window.localStorage.setItem(
+        "ems.phone.handoff.v1",
+        JSON.stringify({
+          bpm,
+          kit: DEFAULT_KIT,
+          pattern,
+          savedAt: new Date().toISOString(),
+        }),
+      );
+      setNotice(
+        "Beat saved. Open the full Studio on your computer — we'll auto-load it.",
+      );
+      haptic("confirm");
+    } catch {
+      setNotice("Couldn't save the handoff. Try saving as audio instead.");
+    }
   }
 
   function playRecording() {
@@ -266,6 +324,24 @@ export default function PhoneStudio() {
         <p className="mt-1 text-xs text-white/55">
           Hit a pad to play. Hit Record, then play your pads. We&apos;ll save what you make.
         </p>
+        <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-1.5 py-0.5 text-[9px] uppercase tracking-widest">
+          <span className="text-white/40">Haptics</span>
+          {(["off", "soft", "strong"] as const).map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => setHapticIntensity(opt)}
+              className={`rounded-full px-2 py-0.5 font-bold transition ${
+                hapticIntensity === opt
+                  ? "bg-amber-400 text-black"
+                  : "text-white/55 hover:bg-white/10"
+              }`}
+              aria-label={`Set haptics to ${opt}`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
       </header>
 
       {/* Tempo + transport */}
@@ -373,6 +449,17 @@ export default function PhoneStudio() {
       >
         {phase === "sharing" ? "Making link…" : "🔗 Get a shareable link (no signup)"}
       </button>
+      <button
+        type="button"
+        onClick={handoffToDesktop}
+        disabled={!hasRecording}
+        className="mt-2 w-full rounded-xl border border-amber-300/40 bg-amber-400/10 py-3 text-sm font-bold text-amber-100 transition disabled:opacity-40"
+      >
+        📱→💻 Save pattern for desktop Studio
+      </button>
+      {notice && (
+        <p className="mt-2 text-center text-[11px] text-white/65">{notice}</p>
+      )}
       {shareUrl && (
         <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/5 p-3 text-xs">
           <p className="text-white/70">

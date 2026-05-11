@@ -1442,6 +1442,70 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  // Mobile → desktop handoff (#C24). PhoneStudio writes its pattern +
+  // BPM + kit to localStorage when the user taps "Save & open on
+  // desktop." When the full DAW loads, this effect checks for that
+  // payload, offers a one-click import, and clears the slot to avoid
+  // re-prompting on subsequent visits.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let payload: {
+      bpm?: number;
+      kit?: string;
+      pattern?: Record<string, boolean[]>;
+      savedAt?: string;
+    } | null = null;
+    try {
+      const raw = window.localStorage.getItem("ems.phone.handoff.v1");
+      if (raw) payload = JSON.parse(raw);
+    } catch {
+      payload = null;
+    }
+    if (!payload || !payload.pattern) return;
+    // Stale guard — drop handoffs older than 7 days.
+    if (
+      payload.savedAt &&
+      Date.now() - new Date(payload.savedAt).getTime() > 7 * 24 * 60 * 60 * 1000
+    ) {
+      try {
+        window.localStorage.removeItem("ems.phone.handoff.v1");
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    setNotice({
+      tone: "info",
+      message: `We found a beat you started on your phone — open it?`,
+      action: {
+        label: "Load phone beat",
+        onAction: () => {
+          if (!ensureInit() || !payload) return;
+          const engine = engineRef.current;
+          if (!engine) return;
+          if (typeof payload.bpm === "number") engine.setBpm(payload.bpm);
+          if (payload.kit) {
+            engine.setBeatKit(
+              payload.kit as Parameters<typeof engine.setBeatKit>[0],
+            );
+          }
+          if (payload.pattern) {
+            engine.setBeatPattern(
+              payload.pattern as Parameters<typeof engine.setBeatPattern>[0],
+            );
+            engine.setBeatEnabled(true);
+          }
+          try {
+            window.localStorage.removeItem("ems.phone.handoff.v1");
+          } catch {
+            /* ignore */
+          }
+        },
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Demo-session loader. The DemoSessionOverlay (rendered in StudioTryClient)
   // dispatches studio:load-demo with detail.kind = "curated" | "random". We
   // listen here because the engine instance lives in this component.
@@ -2389,10 +2453,32 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
   useEffect(() => {
     if (!autosaveOn) return;
+    // Mobile devices kill backgrounded tabs aggressively (especially
+    // iOS). Save more often (30s vs 45s) and also pin to visibility
+    // changes so tab-switching while moving between apps doesn't lose
+    // work (#C27). Desktop keeps the easier 45s cadence.
+    const isMobile =
+      typeof navigator !== "undefined" &&
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    const interval = isMobile ? 30000 : 45000;
     const timer = window.setInterval(() => {
       void createAutosaveVersion();
-    }, 45000);
-    return () => window.clearInterval(timer);
+    }, interval);
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        // Flush before the OS hibernates the tab.
+        void createAutosaveVersion();
+      }
+    }
+    if (isMobile) {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+    return () => {
+      window.clearInterval(timer);
+      if (isMobile) {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
+    };
   }, [autosaveOn, createAutosaveVersion]);
 
   const laneSampleSignature = useMemo(() => {
