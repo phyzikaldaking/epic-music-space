@@ -70,7 +70,7 @@ async function llmInsight(rows: Array<{ summary: string | null; body: string }>)
 
 export async function GET(req: NextRequest) {
   const cronGate = requireCronRequest(req);
-  if (cronGate) return cronGate;
+  if (!cronGate.ok) return cronGate.response;
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
   const entries = await prisma.feedbackEntry.findMany({

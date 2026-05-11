@@ -14,7 +14,7 @@ export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   const cronGate = requireCronRequest(req);
-  if (cronGate) return cronGate;
+  if (!cronGate.ok) return cronGate.response;
 
   // Signal 1: top artists by latest stock snapshot.
   const topSnapshots = await prisma.artistStockSnapshot.findMany({

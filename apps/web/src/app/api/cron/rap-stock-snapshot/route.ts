@@ -18,7 +18,7 @@ export const maxDuration = 60;
 // ~2160 rows per active artist — fine at 10k artists, ~22M total.
 export async function GET(req: NextRequest) {
   const cronGate = requireCronRequest(req);
-  if (cronGate) return cronGate;
+  if (!cronGate.ok) return cronGate.response;
 
   const eligible = await prisma.user.findMany({
     where: {

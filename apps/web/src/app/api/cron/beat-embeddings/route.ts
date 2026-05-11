@@ -37,7 +37,7 @@ function patternToHex(pattern: PatternJson | null | undefined): string | null {
 
 export async function GET(req: NextRequest) {
   const cronGate = requireCronRequest(req);
-  if (cronGate) return cronGate;
+  if (!cronGate.ok) return cronGate.response;
 
   // Find songs with no embedding row. We use a left-join via raw
   // SQL to avoid pulling all embeddings + filtering in JS.

@@ -70,7 +70,7 @@ async function extractOne(body: string): Promise<Extracted | null> {
 
 export async function GET(req: NextRequest) {
   const cronGate = requireCronRequest(req);
-  if (cronGate) return cronGate;
+  if (!cronGate.ok) return cronGate.response;
 
   const pending = await prisma.feedbackEntry.findMany({
     where: { extractedAt: null },

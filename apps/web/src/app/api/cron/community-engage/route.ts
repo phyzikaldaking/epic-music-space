@@ -17,7 +17,7 @@ export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   const cronGate = requireCronRequest(req);
-  if (cronGate) return cronGate;
+  if (!cronGate.ok) return cronGate.response;
   if (process.env.COMMUNITY_AI_ENABLED !== "1") {
     return NextResponse.json({ ok: true, disabled: true });
   }

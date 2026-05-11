@@ -43,7 +43,7 @@ function subjectFromTargetRef(ref: unknown): SeoSubject | null {
 
 export async function GET(req: NextRequest) {
   const cronGate = requireCronRequest(req);
-  if (cronGate) return cronGate;
+  if (!cronGate.ok) return cronGate.response;
 
   const pending = await prisma.marketingPost.findMany({
     where: { status: "DRAFT" },
