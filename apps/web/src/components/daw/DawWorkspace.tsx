@@ -62,6 +62,7 @@ import TakeLanesStrip from "./TakeLanesStrip";
 import CollaboratorCursors from "./CollaboratorCursors";
 import VersionHistoryModal from "./VersionHistoryModal";
 import TemplatePicker from "./TemplatePicker";
+import KitMarketplaceModal from "./KitMarketplaceModal";
 import type { StudioTemplate } from "./studioTemplates";
 import { CHANNELS, createBrowserSupabaseClient } from "@/lib/supabase";
 import { useSession } from "next-auth/react";
@@ -543,6 +544,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const [undoRefreshKey, setUndoRefreshKey] = useState(0);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [kitMarketplaceOpen, setKitMarketplaceOpen] = useState(false);
   const [userTemplates, setUserTemplates] = useState<
     Array<{
       id: string;
@@ -1223,6 +1225,23 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       }
       return best;
     })();
+    // Encode the current beat pattern as a compact lane→hex16 string
+    // (#E32). Each lane becomes "lane:XXXX" where the hex digits read
+    // step 0 → step 15 (LSB first). The AI Coach reads this so its
+    // drum suggestions reference what's actually playing.
+    let beatPatternHex: string | null = null;
+    if (snapshot?.beat?.pattern) {
+      const parts: string[] = [];
+      for (const [lane, steps] of Object.entries(snapshot.beat.pattern)) {
+        if (!Array.isArray(steps) || steps.length === 0) continue;
+        let mask = 0;
+        for (let i = 0; i < Math.min(16, steps.length); i++) {
+          if (steps[i]) mask |= 1 << i;
+        }
+        if (mask !== 0) parts.push(`${lane}:${mask.toString(16).padStart(4, "0")}`);
+      }
+      if (parts.length > 0) beatPatternHex = parts.join(" ");
+    }
     setStudioContext({
       route: typeof window !== "undefined" ? window.location.pathname : "",
       bpm: transport?.bpm ?? null,
@@ -1235,6 +1254,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       lastAction,
       guestMode: isGuest,
       projectKey: inferredKey,
+      beatPatternHex,
     });
     return () => {
       // Only clear when this component unmounts — leaves the snapshot in
@@ -4810,6 +4830,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               });
             }}
             onSelectKit={(kit) => engineRef.current?.setBeatKit(kit)}
+            onBrowseKitPacks={() => setKitMarketplaceOpen(true)}
             onAssignLaneSample={assignBeatLaneSample}
             onClearLaneSample={clearBeatLaneSample}
             onFillLane={(lane, on) => {
@@ -5022,6 +5043,22 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             }}
             tapeDrive={transport.masterTapeDrive ?? 0}
             onSetTapeDrive={(drive) => engineRef.current?.setMasterTapeDrive(drive)}
+            midSideMode={transport.masterMidSideMode ?? false}
+            onSetMidSideMode={(on) => engineRef.current?.setMasterMidSideMode(on)}
+            sideEqLowDb={transport.masterSideEqLowDb ?? 0}
+            sideEqMidDb={transport.masterSideEqMidDb ?? 0}
+            sideEqHighDb={transport.masterSideEqHighDb ?? 0}
+            onSetSideEq={(band, db) => engineRef.current?.setMasterSideEq(band, db)}
+            multibandEnabled={transport.masterMultibandEnabled ?? false}
+            multibandCrossoverHz={transport.masterMultibandCrossoverHz ?? 200}
+            multibandLowThreshDb={transport.masterMultibandLowThreshDb ?? -18}
+            multibandLowRatio={transport.masterMultibandLowRatio ?? 3}
+            multibandHighThreshDb={transport.masterMultibandHighThreshDb ?? -18}
+            multibandHighRatio={transport.masterMultibandHighRatio ?? 2}
+            onSetMultibandEnabled={(on) => engineRef.current?.setMasterMultibandEnabled(on)}
+            onSetMultibandCrossover={(hz) => engineRef.current?.setMasterMultibandCrossover(hz)}
+            onSetMultibandLow={(p) => engineRef.current?.setMasterMultibandLow(p)}
+            onSetMultibandHigh={(p) => engineRef.current?.setMasterMultibandHigh(p)}
           />
         </div>
       )}
@@ -5349,6 +5386,45 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           }}
         />
       )}
+      <KitMarketplaceModal
+        open={kitMarketplaceOpen}
+        onClose={() => setKitMarketplaceOpen(false)}
+        onLoadPack={async (samples, packName) => {
+          // Fetch each sample URL → convert to File → assign to the
+          // matching lane. The studio's existing setBeatLaneSample
+          // handles decode + normalize + lane EQ shaping.
+          if (!ensureInit()) return;
+          const engine = engineRef.current;
+          if (!engine) return;
+          let loaded = 0;
+          for (const [lane, url] of Object.entries(samples)) {
+            try {
+              const res = await fetch(url);
+              if (!res.ok) continue;
+              const blob = await res.blob();
+              const filename = url.split("/").pop() || `${lane}.wav`;
+              const file = new File([blob], filename, {
+                type: blob.type || "audio/wav",
+              });
+              const ok = await engine.setBeatLaneSample(
+                lane as Parameters<typeof engine.setBeatLaneSample>[0],
+                file,
+              );
+              if (ok) loaded++;
+            } catch {
+              // Skip any individual lane that fails — the rest of the
+              // pack still lands.
+            }
+          }
+          setNotice({
+            tone: loaded > 0 ? "success" : "error",
+            message:
+              loaded > 0
+                ? `Loaded ${loaded} lanes from "${packName}".`
+                : `Couldn't load any samples from "${packName}".`,
+          });
+        }}
+      />
     </div>
     </StudioTooltipProvider>
   );

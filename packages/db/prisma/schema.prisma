@@ -111,6 +111,7 @@ model User {
   payouts      Payout[]
   studio           Studio?
   studioProjects   StudioProject[]
+  drumKitPacks     DrumKitPack[]    @relation("DrumKitPacks")
   podcastShows     PodcastShow[]    @relation("PodcastShowOwner")
   podcastEpisodes  PodcastEpisode[] @relation("PodcastEpisodeCreator")
   ownedLabel       Label?         @relation("LabelOwner")
@@ -710,6 +711,39 @@ model StudioProjectVersion {
   label       String?  @db.VarChar(80)
   createdAt   DateTime @default(now())
   @@index([projectId, createdAt])
+}
+
+// Producer-uploaded drum kit pack (#29). Each pack is a JSON manifest
+// of lane → public sample URL pairs the studio loads in one click.
+// Authors publish for promo (free) or set a price (marketplace listing).
+model DrumKitPack {
+  id           String   @id @default(cuid())
+  authorId     String
+  author       User     @relation("DrumKitPacks", fields: [authorId], references: [id], onDelete: Cascade)
+  name         String   @db.VarChar(120)
+  description  String?  @db.Text
+  // Genre tag for filtering: "trap" | "drill" | "afro" | "house" | etc.
+  genre        String?  @db.VarChar(40)
+  // BPM range the kit was tuned at (informational; doesn't gate use).
+  bpm          Int?
+  // Cover-art image URL (Vercel Blob). Optional.
+  coverUrl     String?
+  // Lane → sample URL map: { kick: "https://...wav", snare: "..." }.
+  // Validated server-side against DRUM_LANES.
+  samples      Json
+  // 0 = free download, >0 = paid pack. NULL = not listed yet (draft).
+  priceUsd     Decimal? @db.Decimal(10, 2)
+  // True when the author has flipped the pack public. False = draft.
+  isPublic     Boolean  @default(false)
+  // Featured packs surface at the top of the marketplace browse modal.
+  // Editor-set, not user-controllable.
+  isFeatured   Boolean  @default(false)
+  downloadCount Int     @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@index([isPublic, isFeatured])
+  @@index([authorId])
+  @@index([genre])
 }
 
 model VersusMatch {

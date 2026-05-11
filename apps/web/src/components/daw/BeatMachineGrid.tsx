@@ -59,6 +59,9 @@ interface Props {
    *  Shift+click on a bank tab — pattern + step options copy together. */
   onCopyPatternToBank: (target: PatternBank) => void;
   onSelectKit: (kit: DrumKitId) => void;
+  /** Open the community kit marketplace modal (#29). Null when the
+   *  marketplace surface should stay hidden (guest mode etc). */
+  onBrowseKitPacks?: () => void;
   onSetLaneLayerKit: (lane: DrumKind, kit: DrumKitId | null) => void;
   /** Per-lane pitch (-12..+12 semitones). 0 = unity. Affects the synth
    *  kit and any loaded sample. The single most-requested move for
@@ -171,6 +174,7 @@ export default function BeatMachineGrid({
   onSelectBank,
   onCopyPatternToBank,
   onSelectKit,
+  onBrowseKitPacks,
   onSetLaneLayerKit,
   laneSemis,
   onSetLaneSemis,
@@ -378,6 +382,16 @@ export default function BeatMachineGrid({
           </div>
 
           <KitPickerStrip kit={kit} onSelect={onSelectKit} />
+          {onBrowseKitPacks && (
+            <button
+              type="button"
+              onClick={onBrowseKitPacks}
+              className="rounded-lg border border-cyan-300/40 bg-cyan-400/10 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-100 transition hover:bg-cyan-400/20"
+              title="Browse community-uploaded drum kit packs"
+            >
+              🏪 Browse packs
+            </button>
+          )}
           <BulkDropZone onAssignLaneSample={onAssignLaneSample} />
         </div>
         <div className="flex flex-wrap items-center gap-2">

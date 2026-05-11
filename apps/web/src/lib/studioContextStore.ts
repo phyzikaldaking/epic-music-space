@@ -23,6 +23,11 @@ export interface StudioContext {
    *  with confidence. Sample library reads this to highlight matching
    *  loops. */
   projectKey: string | null;
+  /** Compact beat-pattern fingerprint (#E32). "kick:9001 snare:1010
+   *  hat:5555" etc — 16-bit hex per lane. AI Coach reads this so its
+   *  drum suggestions reference the actual pattern producers are
+   *  working with. */
+  beatPatternHex: string | null;
 }
 
 const initialContext: StudioContext = {
@@ -37,6 +42,7 @@ const initialContext: StudioContext = {
   lastAction: null,
   guestMode: false,
   projectKey: null,
+  beatPatternHex: null,
 };
 
 let current: StudioContext = initialContext;

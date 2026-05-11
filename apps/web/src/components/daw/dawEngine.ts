@@ -267,6 +267,16 @@ export interface TransportState {
   masterEqLowDb: number; // -12..+12 @ 200 Hz
   masterEqMidDb: number; // -12..+12 @ 1000 Hz
   masterEqHighDb: number; // -12..+12 @ 5000 Hz
+  /** Mid-Side EQ mode (#9). false = stereo (standard L/R EQ),
+   *  true = M/S where the masterEq*Db values shape the *mid* bus and
+   *  the masterSideEq*Db values shape the *side* bus independently.
+   *  Producers widen a mix by boosting side highs without smearing the
+   *  mid. Default false so existing projects round-trip unchanged. */
+  masterMidSideMode: boolean;
+  /** Side-bus EQ values (only meaningful when masterMidSideMode=true). */
+  masterSideEqLowDb: number; // -12..+12
+  masterSideEqMidDb: number; // -12..+12
+  masterSideEqHighDb: number; // -12..+12
   /** Spectrum analyzer — 32 frequency bin amplitudes 0..1, log-frequency. */
   masterSpectrum: number[];
   /** Approximate short-term LUFS (K-weighted). Negative scale; -14 is the
@@ -280,6 +290,19 @@ export interface TransportState {
    *  transients and adds even harmonics that fatten without obvious
    *  distortion until ~0.5+. */
   masterTapeDrive: number;
+  /** Master multiband compressor (#13). Splits the post-EQ signal at
+   *  the crossover frequency, compresses each band independently, then
+   *  sums. Tames boomy 808s without flattening the snare. Off by
+   *  default so existing projects don't change tone. */
+  masterMultibandEnabled: boolean;
+  /** Crossover frequency in Hz, 80..600. Default 200. */
+  masterMultibandCrossoverHz: number;
+  /** Low-band compressor params. */
+  masterMultibandLowThreshDb: number;
+  masterMultibandLowRatio: number;
+  /** High-band compressor params. */
+  masterMultibandHighThreshDb: number;
+  masterMultibandHighRatio: number;
   /** Gain reduction from the master limiter, in dB. 0 means no clamping;
    *  -3 means the limiter is pulling 3 dB out of the signal. Sourced from
    *  DynamicsCompressorNode.reduction each frame. UI inverts this into a
@@ -878,6 +901,43 @@ export class DawEngine {
   private masterEqHigh: BiquadFilterNode | null = null;
   private masterLimiter: DynamicsCompressorNode | null = null;
   private masterTape: WaveShaperNode | null = null;
+  // Mid-Side EQ branch (#9). Built in init() and routed in parallel to
+  // the standard stereo EQ; a crossfade pair (msBusGain ↔ stereoBusGain)
+  // selects which branch the chain hears so toggling is glitch-free.
+  private msSplitter: ChannelSplitterNode | null = null;
+  private msMidGain: GainNode | null = null;
+  private msSideLPlus: GainNode | null = null;
+  private msSideRInvert: GainNode | null = null;
+  private msSideSum: GainNode | null = null;
+  private msMidEqLow: BiquadFilterNode | null = null;
+  private msMidEqMid: BiquadFilterNode | null = null;
+  private msMidEqHigh: BiquadFilterNode | null = null;
+  private msSideEqLow: BiquadFilterNode | null = null;
+  private msSideEqMid: BiquadFilterNode | null = null;
+  private msSideEqHigh: BiquadFilterNode | null = null;
+  // Encoder: L = M + S, R = M − S (sqrt(2) scaling baked into the
+  // decode side so we don't lose level on the round-trip).
+  private msEncodeMerger: ChannelMergerNode | null = null;
+  private msEncodeMidToL: GainNode | null = null;
+  private msEncodeMidToR: GainNode | null = null;
+  private msEncodeSideToL: GainNode | null = null;
+  private msEncodeSideToRInvert: GainNode | null = null;
+  // Crossfade between stereo EQ branch and M/S branch. Sum into the
+  // shared tape→limiter tail of the chain.
+  private stereoBusGain: GainNode | null = null;
+  private msBusGain: GainNode | null = null;
+  private eqSumGain: GainNode | null = null;
+  // Multiband compressor branch (#13). Sits between eqSumGain and the
+  // tape saturator. Built in init() and routed parallel to a bypass
+  // path so toggling is glitch-free.
+  private mbLowFilter: BiquadFilterNode | null = null;
+  private mbHighFilter: BiquadFilterNode | null = null;
+  private mbLowComp: DynamicsCompressorNode | null = null;
+  private mbHighComp: DynamicsCompressorNode | null = null;
+  private mbSum: GainNode | null = null;
+  private mbBranchGain: GainNode | null = null; // multiband output
+  private mbBypassGain: GainNode | null = null; // dry passthrough
+  private mbOutSum: GainNode | null = null; // sum into masterTape
   private masterAnalyser: AnalyserNode | null = null;
   private aflBusAnalyser: AnalyserNode | null = null;
   private aflBusBuf: Uint8Array | null = null;
@@ -965,6 +1025,14 @@ export class DawEngine {
    *  the lane sample changes. WeakMap so swapping the primary sample
    *  releases the old reversed copy without us tracking lifecycles. */
   private reversedBufferCache: WeakMap<AudioBuffer, AudioBuffer> = new WeakMap();
+  /** Original (un-stretched) lane buffers, keyed by lane. Captured when
+   *  the sample is first assigned; re-stretched into beatLaneSamples
+   *  whenever the project BPM changes. Lets users tempo-match loops
+   *  without retriggering at the wrong pitch (#18). */
+  private originalLaneSamples: Partial<Record<DrumKind, AudioBuffer>> = {};
+  /** Source BPM declared by the producer when assigning a lane loop.
+   *  null/undefined = treat as one-shot (no stretch). */
+  private laneSampleSourceBpm: Partial<Record<DrumKind, number>> = {};
   /** Beat track ID that drum hits route into. Created in init() so the
    *  user sees it as a real strip in the mixer. */
   private beatTrackId: TrackId | null = null;
@@ -1046,10 +1114,20 @@ export class DawEngine {
     masterEqLowDb: 0,
     masterEqMidDb: 0,
     masterEqHighDb: 0,
+    masterMidSideMode: false,
+    masterSideEqLowDb: 0,
+    masterSideEqMidDb: 0,
+    masterSideEqHighDb: 0,
     masterSpectrum: new Array(32).fill(0),
     masterLufs: -Infinity,
     masterTruePeak: 0,
     masterTapeDrive: 0,
+    masterMultibandEnabled: false,
+    masterMultibandCrossoverHz: 200,
+    masterMultibandLowThreshDb: -18,
+    masterMultibandLowRatio: 3,
+    masterMultibandHighThreshDb: -18,
+    masterMultibandHighRatio: 2,
     masterLimiterReduction: 0,
     masterPhaseCorrelation: 1,
     soloMode: "sip",
@@ -1194,15 +1272,153 @@ export class DawEngine {
       this.lufsAnalyser = this.ctx.createAnalyser();
       this.lufsAnalyser.fftSize = 2048;
       this.lufsBuf = new Float32Array(this.lufsAnalyser.fftSize);
+      // Build the Mid-Side EQ branch (#9). The graph:
+      //   master → splitter (L on ch0, R on ch1)
+      //   mid path:  L gain 0.5 + R gain 0.5  → msMidEq chain
+      //   side path: L gain 0.5 + R gain -0.5 → msSideEq chain
+      //   encode:    L = M + S,  R = M − S    → merger (stereo)
+      // The 0.5/0.5 mid + 0.5/−0.5 side keeps unity gain on a
+      // perfectly centered signal (M = (L+R)/2; reconstructed L = M+S =
+      // (L+R)/2 + (L−R)/2 = L). We sum back into eqSumGain through a
+      // crossfade so toggling M/S mode is glitch-free.
+      this.msSplitter = this.ctx.createChannelSplitter(2);
+      this.msMidGain = this.ctx.createGain();
+      this.msMidGain.gain.value = 1; // mid bus carrier — feeds two 0.5 sources
+      this.msSideLPlus = this.ctx.createGain();
+      this.msSideLPlus.gain.value = 0.5;
+      this.msSideRInvert = this.ctx.createGain();
+      this.msSideRInvert.gain.value = -0.5;
+      this.msSideSum = this.ctx.createGain();
+      this.msSideSum.gain.value = 1;
+      this.msMidEqLow = this.ctx.createBiquadFilter();
+      this.msMidEqLow.type = "lowshelf";
+      this.msMidEqLow.frequency.value = 200;
+      this.msMidEqMid = this.ctx.createBiquadFilter();
+      this.msMidEqMid.type = "peaking";
+      this.msMidEqMid.frequency.value = 1000;
+      this.msMidEqMid.Q.value = 1;
+      this.msMidEqHigh = this.ctx.createBiquadFilter();
+      this.msMidEqHigh.type = "highshelf";
+      this.msMidEqHigh.frequency.value = 5000;
+      this.msSideEqLow = this.ctx.createBiquadFilter();
+      this.msSideEqLow.type = "lowshelf";
+      this.msSideEqLow.frequency.value = 200;
+      this.msSideEqMid = this.ctx.createBiquadFilter();
+      this.msSideEqMid.type = "peaking";
+      this.msSideEqMid.frequency.value = 1000;
+      this.msSideEqMid.Q.value = 1;
+      this.msSideEqHigh = this.ctx.createBiquadFilter();
+      this.msSideEqHigh.type = "highshelf";
+      this.msSideEqHigh.frequency.value = 5000;
+      // Encoder: separate mid+side back into L/R via a merger.
+      this.msEncodeMerger = this.ctx.createChannelMerger(2);
+      this.msEncodeMidToL = this.ctx.createGain();
+      this.msEncodeMidToL.gain.value = 1;
+      this.msEncodeMidToR = this.ctx.createGain();
+      this.msEncodeMidToR.gain.value = 1;
+      this.msEncodeSideToL = this.ctx.createGain();
+      this.msEncodeSideToL.gain.value = 1;
+      this.msEncodeSideToRInvert = this.ctx.createGain();
+      this.msEncodeSideToRInvert.gain.value = -1;
+      // Crossfade between stereo EQ and M/S EQ branches.
+      this.stereoBusGain = this.ctx.createGain();
+      this.stereoBusGain.gain.value = 1; // default stereo mode
+      this.msBusGain = this.ctx.createGain();
+      this.msBusGain.gain.value = 0;
+      this.eqSumGain = this.ctx.createGain();
+      this.eqSumGain.gain.value = 1;
+
       // Wire master chain. Tape saturator sits between the EQ tap and
       // the limiter so the user can hit the limiter with a saturated
       // mix (a key "glue" trick). EQ analysers tap the EQ output —
       // before tape — so the spectrum + LUFS readings stay tonally
       // accurate regardless of saturation drive.
+      // Stereo EQ branch (default routing).
       this.master
         .connect(this.masterEqLow)
         .connect(this.masterEqMid)
         .connect(this.masterEqHigh)
+        .connect(this.stereoBusGain)
+        .connect(this.eqSumGain);
+      // M/S branch — runs in parallel; gated by msBusGain (0 by default).
+      this.master.connect(this.msSplitter);
+      // Mid bus: L*0.5 + R*0.5 → msMidGain → EQ chain.
+      const midFromL = this.ctx.createGain();
+      midFromL.gain.value = 0.5;
+      const midFromR = this.ctx.createGain();
+      midFromR.gain.value = 0.5;
+      this.msSplitter.connect(midFromL, 0);
+      this.msSplitter.connect(midFromR, 1);
+      midFromL.connect(this.msMidGain);
+      midFromR.connect(this.msMidGain);
+      this.msMidGain
+        .connect(this.msMidEqLow)
+        .connect(this.msMidEqMid)
+        .connect(this.msMidEqHigh);
+      // Side bus: L*0.5 + R*(-0.5) → msSideSum → EQ chain.
+      this.msSplitter.connect(this.msSideLPlus, 0);
+      this.msSplitter.connect(this.msSideRInvert, 1);
+      this.msSideLPlus.connect(this.msSideSum);
+      this.msSideRInvert.connect(this.msSideSum);
+      this.msSideSum
+        .connect(this.msSideEqLow)
+        .connect(this.msSideEqMid)
+        .connect(this.msSideEqHigh);
+      // Re-encode: L = M + S, R = M − S into the stereo merger.
+      this.msMidEqHigh.connect(this.msEncodeMidToL);
+      this.msMidEqHigh.connect(this.msEncodeMidToR);
+      this.msSideEqHigh.connect(this.msEncodeSideToL);
+      this.msSideEqHigh.connect(this.msEncodeSideToRInvert);
+      this.msEncodeMidToL.connect(this.msEncodeMerger, 0, 0);
+      this.msEncodeSideToL.connect(this.msEncodeMerger, 0, 0);
+      this.msEncodeMidToR.connect(this.msEncodeMerger, 0, 1);
+      this.msEncodeSideToRInvert.connect(this.msEncodeMerger, 0, 1);
+      this.msEncodeMerger.connect(this.msBusGain).connect(this.eqSumGain);
+
+      // Multiband compressor branch (#13). eqSumGain feeds two paths:
+      //   - parallel low/high band split via biquad crossover, each
+      //     compressed independently, summed; gain controlled by
+      //     mbBranchGain (0 when disabled).
+      //   - direct bypass via mbBypassGain (1 when disabled).
+      // Both sum into mbOutSum which feeds masterTape. Toggling the
+      // multiband ramps the two gains in opposite directions so the
+      // transition is glitch-free.
+      this.mbLowFilter = this.ctx.createBiquadFilter();
+      this.mbLowFilter.type = "lowpass";
+      this.mbLowFilter.frequency.value = 200;
+      this.mbLowFilter.Q.value = 0.707;
+      this.mbHighFilter = this.ctx.createBiquadFilter();
+      this.mbHighFilter.type = "highpass";
+      this.mbHighFilter.frequency.value = 200;
+      this.mbHighFilter.Q.value = 0.707;
+      this.mbLowComp = this.ctx.createDynamicsCompressor();
+      this.mbLowComp.threshold.value = -18;
+      this.mbLowComp.ratio.value = 3;
+      this.mbLowComp.knee.value = 6;
+      this.mbLowComp.attack.value = 0.01;
+      this.mbLowComp.release.value = 0.18;
+      this.mbHighComp = this.ctx.createDynamicsCompressor();
+      this.mbHighComp.threshold.value = -18;
+      this.mbHighComp.ratio.value = 2;
+      this.mbHighComp.knee.value = 6;
+      this.mbHighComp.attack.value = 0.003;
+      this.mbHighComp.release.value = 0.08;
+      this.mbSum = this.ctx.createGain();
+      this.mbSum.gain.value = 1;
+      this.mbBranchGain = this.ctx.createGain();
+      this.mbBranchGain.gain.value = 0; // disabled by default
+      this.mbBypassGain = this.ctx.createGain();
+      this.mbBypassGain.gain.value = 1; // dry path by default
+      this.mbOutSum = this.ctx.createGain();
+      this.mbOutSum.gain.value = 1;
+      // Low + high band routing.
+      this.eqSumGain.connect(this.mbLowFilter).connect(this.mbLowComp).connect(this.mbSum);
+      this.eqSumGain.connect(this.mbHighFilter).connect(this.mbHighComp).connect(this.mbSum);
+      this.mbSum.connect(this.mbBranchGain).connect(this.mbOutSum);
+      // Dry bypass.
+      this.eqSumGain.connect(this.mbBypassGain).connect(this.mbOutSum);
+      // Tail → tape → limiter → analyser.
+      this.mbOutSum
         .connect(this.masterTape)
         .connect(this.masterLimiter)
         .connect(this.masterAnalyser);
@@ -1216,10 +1432,12 @@ export class DawEngine {
       this.monoMerger.connect(this.monoOutGain).connect(this.ctx.destination);
       this.monoSplitter.connect(this.phaseLeftAnalyser, 0);
       this.monoSplitter.connect(this.phaseRightAnalyser, 1);
-      // Side branches — both tap the post-EQ signal so their readings
-      // reflect what we route to the speakers.
-      this.masterEqHigh.connect(this.masterSpectrumAnalyser);
-      this.masterEqHigh.connect(lufsHpf).connect(lufsShelf).connect(this.lufsAnalyser);
+      // Side branches — both tap the post-EQ summing point so their
+      // readings stay accurate whether the user is in stereo or M/S
+      // mode. Earlier we tapped masterEqHigh directly, which would
+      // read silence when M/S mode was on.
+      this.eqSumGain.connect(this.masterSpectrumAnalyser);
+      this.eqSumGain.connect(lufsHpf).connect(lufsShelf).connect(this.lufsAnalyser);
       // Shared aux returns. Tracks send into these busses instead of
       // instantiating a reverb/delay processor per track.
       this.reverbReturnIn = this.ctx.createGain();
@@ -2631,11 +2849,54 @@ export class DawEngine {
   }
 
   setBpm(bpm: number) {
-    this.transport.bpm = Math.max(40, Math.min(240, Math.round(bpm)));
+    const next = Math.max(40, Math.min(240, Math.round(bpm)));
+    this.transport.bpm = next;
     // Re-derive shared delay return time from the new BPM so beat-locked
     // delay stays locked. Reverb and EQ are tempo-independent, no change.
     if (this.delay) {
       this.delay.delayTime.value = (60 / this.transport.bpm) * this.aux.delayReturn.beats;
+    }
+    // Auto time-stretch any lane sample that declared a source BPM.
+    // Loops stay the right length at the new tempo without changing
+    // pitch. Synced asynchronously so a quick drag of the BPM slider
+    // doesn't lock the UI thread on a heavy stretch.
+    void this.retimeAllLaneSamples();
+    this.notify();
+  }
+
+  /** Re-stretch every lane sample that has a declared source BPM,
+   *  matching the current project BPM. Safe to call repeatedly — a
+   *  no-op when factor ≈ 1. */
+  private async retimeAllLaneSamples(): Promise<void> {
+    if (!this.ctx) return;
+    for (const lane of DRUM_LANES) {
+      const srcBpm = this.laneSampleSourceBpm[lane];
+      const original = this.originalLaneSamples[lane];
+      if (!srcBpm || !original) continue;
+      const factor = srcBpm / this.transport.bpm;
+      // Lazy import to avoid a hot-path require on every engine load.
+      const { timeStretchBuffer } = await import("@/lib/timeStretch");
+      const stretched = timeStretchBuffer(original, this.ctx, factor);
+      this.beatLaneSamples[lane] = stretched;
+      // Invalidate the reversed cache for this lane; the reversal needs
+      // to re-derive from the new stretched buffer.
+      this.reversedBufferCache = new WeakMap();
+    }
+    this.notify();
+  }
+
+  /** Declare a lane sample's source BPM. When set, BPM changes auto-
+   *  stretch the buffer so loops stay tempo-matched. Pass null to
+   *  treat the sample as a one-shot (no stretch). */
+  setBeatLaneSourceBpm(lane: DrumKind, sourceBpm: number | null) {
+    if (sourceBpm === null || sourceBpm <= 0) {
+      delete this.laneSampleSourceBpm[lane];
+      // Restore the un-stretched original to the playback slot.
+      const original = this.originalLaneSamples[lane];
+      if (original) this.beatLaneSamples[lane] = original;
+    } else {
+      this.laneSampleSourceBpm[lane] = sourceBpm;
+      void this.retimeAllLaneSamples();
     }
     this.notify();
   }
@@ -2767,6 +3028,63 @@ export class DawEngine {
     this.notify();
   }
 
+  /** Toggle the master multiband compressor (#13). Crossfades the
+   *  branch into the chain over 20ms so the transition isn't audible
+   *  as a click. */
+  setMasterMultibandEnabled(on: boolean) {
+    this.transport.masterMultibandEnabled = on;
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (this.mbBranchGain) {
+      this.mbBranchGain.gain.cancelScheduledValues(now);
+      this.mbBranchGain.gain.setValueAtTime(this.mbBranchGain.gain.value, now);
+      this.mbBranchGain.gain.linearRampToValueAtTime(on ? 1 : 0, now + 0.02);
+    }
+    if (this.mbBypassGain) {
+      this.mbBypassGain.gain.cancelScheduledValues(now);
+      this.mbBypassGain.gain.setValueAtTime(this.mbBypassGain.gain.value, now);
+      this.mbBypassGain.gain.linearRampToValueAtTime(on ? 0 : 1, now + 0.02);
+    }
+    this.notify();
+  }
+
+  setMasterMultibandCrossover(hz: number) {
+    const clamped = Math.max(80, Math.min(600, hz));
+    this.transport.masterMultibandCrossoverHz = clamped;
+    if (this.mbLowFilter) this.mbLowFilter.frequency.value = clamped;
+    if (this.mbHighFilter) this.mbHighFilter.frequency.value = clamped;
+    this.notify();
+  }
+
+  /** Adjust low-band compressor params. Threshold -60..0, ratio 1..20. */
+  setMasterMultibandLow(params: { threshDb?: number; ratio?: number }) {
+    if (params.threshDb !== undefined) {
+      const t = Math.max(-60, Math.min(0, params.threshDb));
+      this.transport.masterMultibandLowThreshDb = t;
+      if (this.mbLowComp) this.mbLowComp.threshold.value = t;
+    }
+    if (params.ratio !== undefined) {
+      const r = Math.max(1, Math.min(20, params.ratio));
+      this.transport.masterMultibandLowRatio = r;
+      if (this.mbLowComp) this.mbLowComp.ratio.value = r;
+    }
+    this.notify();
+  }
+
+  setMasterMultibandHigh(params: { threshDb?: number; ratio?: number }) {
+    if (params.threshDb !== undefined) {
+      const t = Math.max(-60, Math.min(0, params.threshDb));
+      this.transport.masterMultibandHighThreshDb = t;
+      if (this.mbHighComp) this.mbHighComp.threshold.value = t;
+    }
+    if (params.ratio !== undefined) {
+      const r = Math.max(1, Math.min(20, params.ratio));
+      this.transport.masterMultibandHighRatio = r;
+      if (this.mbHighComp) this.mbHighComp.ratio.value = r;
+    }
+    this.notify();
+  }
+
   async setReferenceTrack(file: Blob): Promise<boolean> {
     if (!this.ctx) return false;
     try {
@@ -2856,12 +3174,56 @@ export class DawEngine {
     if (band === "low") {
       this.transport.masterEqLowDb = clamped;
       if (this.masterEqLow) this.masterEqLow.gain.value = clamped;
+      // Mirror into the mid bus EQ so the same dB readouts apply in M/S
+      // mode without the user having to dial twice. The side bus keeps
+      // its own values; "Master EQ" implicitly means "mid EQ" when M/S
+      // is on.
+      if (this.msMidEqLow) this.msMidEqLow.gain.value = clamped;
     } else if (band === "mid") {
       this.transport.masterEqMidDb = clamped;
       if (this.masterEqMid) this.masterEqMid.gain.value = clamped;
+      if (this.msMidEqMid) this.msMidEqMid.gain.value = clamped;
     } else {
       this.transport.masterEqHighDb = clamped;
       if (this.masterEqHigh) this.masterEqHigh.gain.value = clamped;
+      if (this.msMidEqHigh) this.msMidEqHigh.gain.value = clamped;
+    }
+    this.notify();
+  }
+
+  /** Side-bus EQ band setter (#9). Only audible when masterMidSideMode
+   *  is true — in stereo mode the side EQ is dormant. */
+  setMasterSideEq(band: EqBand, db: number) {
+    const clamped = Math.max(-12, Math.min(12, db));
+    if (band === "low") {
+      this.transport.masterSideEqLowDb = clamped;
+      if (this.msSideEqLow) this.msSideEqLow.gain.value = clamped;
+    } else if (band === "mid") {
+      this.transport.masterSideEqMidDb = clamped;
+      if (this.msSideEqMid) this.msSideEqMid.gain.value = clamped;
+    } else {
+      this.transport.masterSideEqHighDb = clamped;
+      if (this.msSideEqHigh) this.msSideEqHigh.gain.value = clamped;
+    }
+    this.notify();
+  }
+
+  /** Toggle Mid-Side EQ mode (#9). Crossfades between the stereo EQ
+   *  branch and the parallel M/S branch via a 20ms ramp so the
+   *  transition is glitch-free. */
+  setMasterMidSideMode(on: boolean) {
+    this.transport.masterMidSideMode = on;
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (this.stereoBusGain) {
+      this.stereoBusGain.gain.cancelScheduledValues(now);
+      this.stereoBusGain.gain.setValueAtTime(this.stereoBusGain.gain.value, now);
+      this.stereoBusGain.gain.linearRampToValueAtTime(on ? 0 : 1, now + 0.02);
+    }
+    if (this.msBusGain) {
+      this.msBusGain.gain.cancelScheduledValues(now);
+      this.msBusGain.gain.setValueAtTime(this.msBusGain.gain.value, now);
+      this.msBusGain.gain.linearRampToValueAtTime(on ? 1 : 0, now + 0.02);
     }
     this.notify();
   }
@@ -4435,6 +4797,11 @@ export class DawEngine {
       const decoded = await this.ctx.decodeAudioData(data.slice(0));
       const buffer = this.prepareBeatLaneSample(decoded);
       this.beatLaneSamples[lane] = buffer;
+      // Stash the un-stretched original so future BPM changes can
+      // re-stretch from a clean source (#18).
+      this.originalLaneSamples[lane] = buffer;
+      // Drop any prior source-BPM declaration — new sample, blank slate.
+      delete this.laneSampleSourceBpm[lane];
       this.beatMachine.laneSampleNames[lane] = file.name;
       this.refreshBeatLaneFrequencyProfiles();
       this.notify();
@@ -4451,6 +4818,8 @@ export class DawEngine {
     this.beatLaneVariants[lane] = [];
     this.beatMachine.laneVariantNames[lane] = [];
     this.beatLaneVariantCursor[lane] = 0;
+    delete this.originalLaneSamples[lane];
+    delete this.laneSampleSourceBpm[lane];
     this.refreshBeatLaneFrequencyProfiles();
     this.notify();
   }

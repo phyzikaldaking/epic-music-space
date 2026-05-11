@@ -23,11 +23,30 @@ interface Props {
   eqMidDb: number;
   eqHighDb: number;
   onSetEq: (band: EqBand, db: number) => void;
+  /** Mid-Side EQ mode toggle (#9). When on, eq[Low/Mid/High]Db shape
+   *  the *mid* bus and sideEq[Low/Mid/High]Db shape the *side*. */
+  midSideMode?: boolean;
+  onSetMidSideMode?: (on: boolean) => void;
+  sideEqLowDb?: number;
+  sideEqMidDb?: number;
+  sideEqHighDb?: number;
+  onSetSideEq?: (band: EqBand, db: number) => void;
   /** Apply a one-click mastering chain preset (EQ + limiter + gain). */
   onApplyMasteringPreset: (preset: MasteringPresetId) => void;
   /** Master tape saturation drive 0..1 (#15). */
   tapeDrive?: number;
   onSetTapeDrive?: (drive: number) => void;
+  /** Multiband comp (#13). */
+  multibandEnabled?: boolean;
+  multibandCrossoverHz?: number;
+  multibandLowThreshDb?: number;
+  multibandLowRatio?: number;
+  multibandHighThreshDb?: number;
+  multibandHighRatio?: number;
+  onSetMultibandEnabled?: (on: boolean) => void;
+  onSetMultibandCrossover?: (hz: number) => void;
+  onSetMultibandLow?: (params: { threshDb?: number; ratio?: number }) => void;
+  onSetMultibandHigh?: (params: { threshDb?: number; ratio?: number }) => void;
 }
 
 /**
@@ -55,8 +74,24 @@ export default function MasterPanel({
   eqHighDb,
   onSetEq,
   onApplyMasteringPreset,
+  midSideMode = false,
+  onSetMidSideMode,
+  sideEqLowDb = 0,
+  sideEqMidDb = 0,
+  sideEqHighDb = 0,
+  onSetSideEq,
   tapeDrive,
   onSetTapeDrive,
+  multibandEnabled = false,
+  multibandCrossoverHz = 200,
+  multibandLowThreshDb = -18,
+  multibandLowRatio = 3,
+  multibandHighThreshDb = -18,
+  multibandHighRatio = 2,
+  onSetMultibandEnabled,
+  onSetMultibandCrossover,
+  onSetMultibandLow,
+  onSetMultibandHigh,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Throttle spectrum repaints to ~15Hz. The engine updates the
@@ -191,12 +226,54 @@ export default function MasterPanel({
           </div>
         </div>
 
-        {/* Master EQ */}
-        <div className="grid grid-cols-3 gap-3 rounded-lg border border-white/10 bg-black/30 p-3 sm:w-[260px]">
-          <EqKnob label="Low" db={eqLowDb} onChange={(v) => onSetEq("low", v)} />
-          <EqKnob label="Mid" db={eqMidDb} onChange={(v) => onSetEq("mid", v)} />
-          <EqKnob label="High" db={eqHighDb} onChange={(v) => onSetEq("high", v)} />
+        {/* Master EQ. M/S mode (#9) splits the EQ into Mid + Side
+            chains; in stereo mode the side panel is hidden so casual
+            users see the familiar 3-knob layout. */}
+        <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-black/30 p-3 sm:w-[260px]">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/55">
+              {midSideMode ? "Mid EQ" : "Master EQ"}
+            </p>
+            {onSetMidSideMode && (
+              <button
+                type="button"
+                onClick={() => onSetMidSideMode(!midSideMode)}
+                className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest transition ${
+                  midSideMode
+                    ? "bg-cyan-400 text-black"
+                    : "border border-white/15 text-white/55 hover:bg-white/10"
+                }`}
+                title={
+                  midSideMode
+                    ? "M/S mode on — side panel shapes the stereo image separately"
+                    : "Stereo mode (single L+R EQ). Click for Mid-Side."
+                }
+              >
+                M/S
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <EqKnob label="Low" db={eqLowDb} onChange={(v) => onSetEq("low", v)} />
+            <EqKnob label="Mid" db={eqMidDb} onChange={(v) => onSetEq("mid", v)} />
+            <EqKnob label="High" db={eqHighDb} onChange={(v) => onSetEq("high", v)} />
+          </div>
         </div>
+        {midSideMode && onSetSideEq && (
+          <div className="flex flex-col gap-2 rounded-lg border border-cyan-400/30 bg-cyan-500/[0.04] p-3 sm:w-[260px]">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-200">
+              Side EQ
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <EqKnob label="Low" db={sideEqLowDb} onChange={(v) => onSetSideEq("low", v)} />
+              <EqKnob label="Mid" db={sideEqMidDb} onChange={(v) => onSetSideEq("mid", v)} />
+              <EqKnob label="High" db={sideEqHighDb} onChange={(v) => onSetSideEq("high", v)} />
+            </div>
+            <p className="text-[9px] text-white/45">
+              Boost side highs to widen; cut side lows to tighten bass.
+            </p>
+          </div>
+        )}
 
         {/* Master tape saturation (#15) — sits between EQ and limiter.
             Subtle 0..0.3 = mix glue; 0.3..0.7 = analog warmth; >0.7 =
@@ -228,8 +305,165 @@ export default function MasterPanel({
         <PhaseCorrelationMeter correlation={phaseCorrelation} />
       )}
 
+      {onSetMultibandEnabled && (
+        <MultibandPanel
+          enabled={multibandEnabled}
+          crossoverHz={multibandCrossoverHz}
+          lowThreshDb={multibandLowThreshDb}
+          lowRatio={multibandLowRatio}
+          highThreshDb={multibandHighThreshDb}
+          highRatio={multibandHighRatio}
+          onSetEnabled={onSetMultibandEnabled}
+          onSetCrossover={onSetMultibandCrossover}
+          onSetLow={onSetMultibandLow}
+          onSetHigh={onSetMultibandHigh}
+        />
+      )}
+
       <MixDiagnosticsCallout spectrum={spectrum} lufs={lufs} truePeak={truePeak} />
     </section>
+  );
+}
+
+// Master multiband compressor controls (#13). Two compressors with a
+// shared crossover. Lives inside MasterPanel because it's part of the
+// master chain, but is collapsible so it doesn't clutter the panel for
+// producers who don't need it.
+function MultibandPanel({
+  enabled,
+  crossoverHz,
+  lowThreshDb,
+  lowRatio,
+  highThreshDb,
+  highRatio,
+  onSetEnabled,
+  onSetCrossover,
+  onSetLow,
+  onSetHigh,
+}: {
+  enabled: boolean;
+  crossoverHz: number;
+  lowThreshDb: number;
+  lowRatio: number;
+  highThreshDb: number;
+  highRatio: number;
+  onSetEnabled: (on: boolean) => void;
+  onSetCrossover?: (hz: number) => void;
+  onSetLow?: (params: { threshDb?: number; ratio?: number }) => void;
+  onSetHigh?: (params: { threshDb?: number; ratio?: number }) => void;
+}) {
+  return (
+    <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.32em] text-cyan-300/85">
+            Multiband
+          </p>
+          <p className="mt-0.5 text-[11px] text-white/55">
+            Compress low + high bands independently. Tames boomy 808s
+            without flattening the snare.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onSetEnabled(!enabled)}
+          className={`rounded-md px-3 py-1 text-[11px] font-black uppercase tracking-widest transition ${
+            enabled
+              ? "bg-cyan-400 text-black"
+              : "border border-white/15 text-white/55 hover:bg-white/10"
+          }`}
+          aria-label={`Master multiband compressor ${enabled ? "on" : "off"}`}
+        >
+          {enabled ? "On" : "Off"}
+        </button>
+      </div>
+      {enabled && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <MultibandKnobs
+            label={`Low <${crossoverHz}Hz`}
+            threshDb={lowThreshDb}
+            ratio={lowRatio}
+            onChange={(p) => onSetLow?.(p)}
+          />
+          <MultibandKnobs
+            label={`High ≥${crossoverHz}Hz`}
+            threshDb={highThreshDb}
+            ratio={highRatio}
+            onChange={(p) => onSetHigh?.(p)}
+          />
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-white/55">
+              Crossover
+            </p>
+            <input
+              type="range"
+              min={80}
+              max={600}
+              step={10}
+              value={crossoverHz}
+              onChange={(e) => onSetCrossover?.(Number(e.target.value))}
+              aria-label="Multiband crossover frequency"
+              className="accent-cyan-400"
+            />
+            <p className="font-mono text-[10px] tabular-nums text-white/70">
+              {crossoverHz} Hz
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MultibandKnobs({
+  label,
+  threshDb,
+  ratio,
+  onChange,
+}: {
+  label: string;
+  threshDb: number;
+  ratio: number;
+  onChange: (params: { threshDb?: number; ratio?: number }) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded border border-white/10 bg-black/20 p-2">
+      <p className="text-[9px] font-bold uppercase tracking-widest text-white/55">
+        {label}
+      </p>
+      <label className="text-[9px] uppercase tracking-widest text-white/45">
+        Thresh
+        <input
+          type="range"
+          min={-60}
+          max={0}
+          step={0.5}
+          value={threshDb}
+          onChange={(e) => onChange({ threshDb: Number(e.target.value) })}
+          className="w-full accent-cyan-400"
+          aria-label={`${label} threshold`}
+        />
+      </label>
+      <p className="-mt-1 font-mono text-[10px] tabular-nums text-white/70">
+        {threshDb.toFixed(1)} dB
+      </p>
+      <label className="text-[9px] uppercase tracking-widest text-white/45">
+        Ratio
+        <input
+          type="range"
+          min={1}
+          max={20}
+          step={0.5}
+          value={ratio}
+          onChange={(e) => onChange({ ratio: Number(e.target.value) })}
+          className="w-full accent-cyan-400"
+          aria-label={`${label} ratio`}
+        />
+      </label>
+      <p className="-mt-1 font-mono text-[10px] tabular-nums text-white/70">
+        {ratio.toFixed(1)}:1
+      </p>
+    </div>
   );
 }
 
