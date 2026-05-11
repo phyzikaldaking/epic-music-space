@@ -39,6 +39,11 @@ interface Props {
     isPublic: boolean;
     onToggle: (next: boolean) => Promise<boolean>;
   };
+  /** Build a remix-kit manifest as a JSON blob (#27). Includes the
+   *  beat pattern, BPM, kit, plus a per-track listing with names +
+   *  duration + (when available) public audio URLs. Remixers download
+   *  the JSON, grab stems, and rebuild the session in their own DAW. */
+  onExportRemixKit?: () => Promise<Blob>;
 }
 
 type Phase = "idle" | "rendering" | "uploading" | "mastering" | "sharing" | "done" | "error";
@@ -57,6 +62,7 @@ export default function MasterPublishBar({
   onPublish,
   onAiMaster,
   onSharePreview,
+  onExportRemixKit,
 }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string>("");
@@ -361,6 +367,26 @@ export default function MasterPublishBar({
           title={canExport ? "AI master this mix to a streaming-target loudness curve" : emptyReason}
         >
           {phase === "mastering" ? "Mastering…" : "✨ AI Master"}
+        </button>
+      )}
+
+      {onExportRemixKit && (
+        <button
+          type="button"
+          onClick={async () => {
+            const blob = await onExportRemixKit();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `remix-kit-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+          disabled={!canExport}
+          className="rounded-lg border border-violet-400/40 bg-violet-500/10 px-4 py-2 text-sm font-bold text-violet-100 hover:bg-violet-500/20 disabled:opacity-50 transition"
+          title="Download a remix-kit manifest — pattern, BPM, kit, per-track stem refs"
+        >
+          🎁 Remix kit
         </button>
       )}
 

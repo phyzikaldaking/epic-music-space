@@ -5090,6 +5090,40 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           onSetTruePeakTarget={setExportTruePeakTarget}
           onPublish={publishMix}
           onAiMaster={aiMasterMix}
+          onExportRemixKit={async () => {
+            // Build a remix-kit manifest (#27). Includes the beat
+            // pattern, BPM, kit, per-track listing + duration. Doesn't
+            // currently include audio blob URLs because tracks live in
+            // IndexedDB; the recipient gets the structural data and
+            // can request stems separately when those are uploaded.
+            const engine = engineRef.current;
+            if (!engine) throw new Error("Engine not initialized");
+            const snap = engine.getSnapshot();
+            const manifest = {
+              version: 1,
+              generatedAt: new Date().toISOString(),
+              bpm: snap.transport.bpm,
+              kit: snap.beat.kit,
+              layerKitB: snap.beat.layerKitB ?? {},
+              swing: snap.beat.swing,
+              humanizeMs: snap.beat.humanizeMs,
+              pattern: snap.beat.pattern,
+              stepOptions: snap.beat.stepOptions ?? {},
+              tracks: snap.tracks.map((t) => ({
+                id: t.id,
+                name: t.name,
+                color: t.color,
+                gainDb: t.gainDb,
+                pan: t.pan,
+                durationSec: t.durationSec,
+                hasAudio: t.hasAudio,
+                fx: t.fx,
+              })),
+            };
+            return new Blob([JSON.stringify(manifest, null, 2)], {
+              type: "application/json",
+            });
+          }}
           onSharePreview={async (wav) => {
             try {
               const fd = new FormData();
