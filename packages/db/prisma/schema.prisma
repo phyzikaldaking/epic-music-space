@@ -142,6 +142,12 @@ model User {
   roomPollVotes      RoomPollVote[]
   roomTipsSent       RoomTip[]           @relation("RoomTipTipper")
   roomTipsReceived   RoomTip[]           @relation("RoomTipRecipient")
+  // Rap stock market: verse listings, session bookings, and the
+  // hourly snapshot history that drives the ticker / sparkline.
+  verseListings        VerseListing[]        @relation("VerseListings")
+  sessionBookingsBought SessionBooking[]     @relation("SessionBookingsBought")
+  sessionBookingsSold  SessionBooking[]      @relation("SessionBookingsSold")
+  stockSnapshots       ArtistStockSnapshot[] @relation("ArtistStockSnapshots")
   revenueSplits      RevenueSplit[]      @relation("RevenueSplits")
   splitSheetEntries  SplitSheetEntry[]   @relation("SplitSheetEntries")
   serviceListings    ServiceListing[]    @relation("ServiceProvider")
@@ -2211,6 +2217,148 @@ model Message {
   createdAt      DateTime @default(now())
   @@index([conversationId, createdAt])
   @@index([senderId])
+}
+
+// ─────────────────────────────────────────────────────────────────
+// RAP STOCK MARKET — verse marketplace + joint-session booking
+// ─────────────────────────────────────────────────────────────────
+//
+// Three pieces hung off the existing User row:
+//   1. VerseListing — an artist offers verses for sale. Two SKUs:
+//      live joint session (calendar slot, Stripe escrow) or async
+//      delivery (WAV in N days).
+//   2. SessionBooking — a buyer reserves a time slot on a live
+//      listing. Drives both calendar logic + the joint-room
+//      handoff at session time.
+//   3. ArtistStockSnapshot — daily / hourly snapshot of the
+//      composite "stock price" computed from verse revenue, avg
+//      verse price, repeat buyers, bookings, follower growth.
+//      Drives the /market big board + per-artist sparklines.
+//
+// PRO+ tier-gating is enforced server-side at listing creation.
+// Stock price is informational only — no share trading, no
+// securities-law exposure. Verses are the only thing money flows
+// through, via Stripe Connect with a 10% platform fee.
+
+enum VerseListingKind {
+  LIVE_SESSION
+  ASYNC_DELIVERY
+}
+
+enum VerseListingStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model VerseListing {
+  id              String              @id @default(cuid())
+  sellerId        String
+  seller          User                @relation("VerseListings", fields: [sellerId], references: [id], onDelete: Cascade)
+  kind            VerseListingKind    @default(LIVE_SESSION)
+  status          VerseListingStatus  @default(ACTIVE)
+  title           String              @db.VarChar(120)
+  description     String?             @db.Text
+  // Listed price in USD. The composite stock price reads this as one
+  // signal, but the artist's actual ask is what buyers pay.
+  priceUsd        Decimal             @db.Decimal(10, 2)
+  // For LIVE_SESSION: session duration in minutes. Buyer's calendar
+  // slot is this wide. Ignored for ASYNC_DELIVERY.
+  sessionMinutes  Int                 @default(60)
+  // For ASYNC_DELIVERY: delivery SLA in days.
+  deliveryDays    Int                 @default(3)
+  // Optional preview track (artist's existing Song) buyers can hear
+  // before committing.
+  previewSongId   String?
+  // Tags for filtering / search ("trap", "drill", "hook", "feature").
+  tags            String[]            @default([])
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  bookings        SessionBooking[]
+
+  @@index([sellerId, status])
+  @@index([status, createdAt])
+  @@index([kind])
+}
+
+enum SessionBookingStatus {
+  PENDING_PAYMENT   // checkout opened, awaiting webhook
+  CONFIRMED         // payment cleared, escrow held
+  IN_PROGRESS       // live room is live
+  COMPLETED         // both parties signed off, funds released
+  CANCELLED         // refunded
+  DISPUTED          // buyer raised a dispute, admin review
+}
+
+model SessionBooking {
+  id                    String                @id @default(cuid())
+  listingId             String
+  listing               VerseListing          @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyerId               String
+  buyer                 User                  @relation("SessionBookingsBought", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId              String
+  seller                User                  @relation("SessionBookingsSold", fields: [sellerId], references: [id], onDelete: Cascade)
+  // For LIVE_SESSION: the booked start time. Null for async.
+  startAt               DateTime?
+  // Live joint room created at session start. Reuses the existing
+  // Room model so the buyer + seller can just join the Clubhouse
+  // stage view we already built.
+  roomId                String?               @unique
+  status                SessionBookingStatus  @default(PENDING_PAYMENT)
+  // Snapshot of the listing price at checkout time so a later price
+  // change on the listing doesn't retroactively alter the contract.
+  agreedPriceUsd        Decimal               @db.Decimal(10, 2)
+  // For ASYNC_DELIVERY: when the seller uploads the WAV.
+  deliveredAt           DateTime?
+  deliveredAudioUrl     String?
+  // Buyer signs off → funds release.
+  buyerSignedOffAt      DateTime?
+  sellerSignedOffAt     DateTime?
+  // Stripe references.
+  stripeSessionId       String?               @unique
+  stripePaymentIntentId String?               @unique
+  // Optional brief from the buyer ("16-bar verse on themes of X,
+  // dark trap energy, mention the city Atlanta").
+  brief                 String?               @db.Text
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([startAt])
+  @@index([status, startAt])
+}
+
+// Snapshot of an artist's composite "stock price" at a point in
+// time. Computed hourly by /api/cron/rap-stock-snapshot, persisted
+// here so the /market page can paint sparklines without recomputing
+// the whole history on every page load.
+//
+// The price is intentionally bounded 0..500 — it's a *ranking*
+// signal, not a dollar value. Buyers pay the artist's listed verse
+// price; the ticker just tells them who's hot.
+model ArtistStockSnapshot {
+  id              String   @id @default(cuid())
+  artistId        String
+  artist          User     @relation("ArtistStockSnapshots", fields: [artistId], references: [id], onDelete: Cascade)
+  // Normalized 0..500 price at this snapshot moment. See
+  // computeStockPrice() in rapStock.ts for the formula.
+  price           Decimal  @db.Decimal(10, 4)
+  // Component breakdown — useful for tooltips on the artist page
+  // ("price up 12% on verse revenue, flat on bookings").
+  verseRevenue30d Decimal  @db.Decimal(10, 2)
+  avgVersePrice   Decimal  @db.Decimal(10, 2)
+  repeatBuyerRate Decimal  @db.Decimal(5, 4)   // 0..1
+  bookings30d     Int
+  followerGrowth30d Int
+  // Snapshot time. Hourly resolution; we keep at most 90 days per
+  // artist (older rows pruned by the cron job).
+  capturedAt      DateTime @default(now())
+
+  @@unique([artistId, capturedAt])
+  @@index([artistId, capturedAt])
+  @@index([capturedAt])
 }
 
 // ─────────────────────────────────────────

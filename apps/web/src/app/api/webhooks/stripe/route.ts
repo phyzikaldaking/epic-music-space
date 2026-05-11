@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
             else if (sessionType === "tip") await handleTipCheckoutCompleted(session);
             else if (sessionType === "versus_tip") await handleVersusTipCompleted(session);
             else if (sessionType === "room_tip") await handleRoomTipCompleted(session);
+            else if (sessionType === "session_booking") await handleSessionBookingCompleted(session);
             else if (sessionType === "auction_win") await handleAuctionWinCheckoutCompleted(session);
             else if (sessionType === "AD_PURCHASE") await handleAdPurchaseCompleted(session);
             else if (sessionType === "service_purchase") await handleServicePurchaseCompleted(session);
@@ -1451,6 +1452,55 @@ async function handleRoomTipCompleted(session: Stripe.Checkout.Session) {
       }),
     ),
   );
+}
+
+// Rap stock market — a verse-listing session booking cleared. We flip
+// the booking to CONFIRMED so the calendar shows it as held; the
+// transfer to the seller happens later when both parties sign off
+// (handled in /api/market/bookings/[id]/signoff). Holding the funds
+// on the platform Stripe account means we can refund cleanly if a
+// session never happens.
+async function handleSessionBookingCompleted(session: Stripe.Checkout.Session) {
+  const bookingId = session.metadata?.bookingId;
+  if (!bookingId) {
+    console.error("[stripe-webhook] session_booking missing bookingId", session.id);
+    return;
+  }
+  const booking = await prisma.sessionBooking.findUnique({
+    where: { id: bookingId },
+  });
+  if (!booking || booking.status !== "PENDING_PAYMENT") return;
+
+  await prisma.sessionBooking.update({
+    where: { id: bookingId },
+    data: {
+      status: "CONFIRMED",
+      stripePaymentIntentId: session.payment_intent as string | undefined,
+    },
+  });
+
+  // Notify both sides. The buyer needs the calendar invite hint; the
+  // seller needs to know there's a booked session on their plate.
+  await Promise.allSettled([
+    enqueueNotification({
+      userId: booking.buyerId,
+      type: "BOOKING_CONFIRMED",
+      title: "🎤 Session booked",
+      body: booking.startAt
+        ? `Your session is locked in for ${booking.startAt.toLocaleString()}. We'll open the live room 15 min before.`
+        : `Booked — the artist will deliver your verse shortly.`,
+      metadata: { bookingId },
+    }),
+    enqueueNotification({
+      userId: booking.sellerId,
+      type: "BOOKING_NEW",
+      title: "💸 New booking",
+      body: booking.startAt
+        ? `Someone booked you for a session at ${booking.startAt.toLocaleString()}.`
+        : `New verse delivery booked — check your dashboard for the brief.`,
+      metadata: { bookingId },
+    }),
+  ]);
 }
 
 async function handleIdentityVerificationEvent(
