@@ -102,6 +102,7 @@ const RecordingControlPanel = dynamic(() => import("./RecordingControlPanel"), {
 const StudioTopBar = dynamic(() => import("./StudioTopBar"), { ssr: false });
 const EditWindowTrackLane = dynamic(() => import("./EditWindowTrackLane"), { ssr: false });
 const StudioSideDrawer = dynamic(() => import("./StudioSideDrawer"), { ssr: false });
+const RecoverableTakesModal = dynamic(() => import("./RecoverableTakesModal"), { ssr: false });
 const TakeBrowserModal = dynamic(() => import("./TakeBrowserModal"), { ssr: false });
 const VocalWarmupModal = dynamic(() => import("./VocalWarmupModal"), { ssr: false });
 const VoiceMemoImportButton = dynamic(() => import("./VoiceMemoImportButton"), { ssr: false });
@@ -585,6 +586,11 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   // Crash-recovery prompt. Populated on mount if a previous session
   // left a recording in-flight breadcrumb behind.
   const [recoveryPrompt, setRecoveryPrompt] = useState<RecordingInFlight | null>(null);
+  /** Recoverable-takes modal — surfaces every IDB-persisted take so
+   *  the producer can restore audio after a tab crash. Opened from
+   *  the crash-recovery banner (in lieu of the old "open take
+   *  browser" handoff, which showed in-memory takes only). */
+  const [recoverModalOpen, setRecoverModalOpen] = useState(false);
   const [userTemplates, setUserTemplates] = useState<
     Array<{
       id: string;
@@ -2898,6 +2904,23 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         case "6":
         case "7":
         case "8": {
+          // Cmd/Ctrl + Alt + 1..4 swaps the main pane (Edit / Mix /
+          // Beat / Publish). Held alongside the marker shortcuts so
+          // we don't collide with Cmd+N range either.
+          if ((e.metaKey || e.ctrlKey) && e.altKey) {
+            const map: Record<string, "edit" | "mix" | "beat" | "publish"> = {
+              "1": "edit",
+              "2": "mix",
+              "3": "beat",
+              "4": "publish",
+            };
+            const next = map[e.key];
+            if (next) {
+              e.preventDefault();
+              setMainMode(next);
+              return;
+            }
+          }
           const slot = Number(e.key);
           if (e.shiftKey) {
             e.preventDefault();
@@ -3479,6 +3502,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                     onToggleMute={() => engineRef.current?.setTrackMute(track.id, !track.muted)}
                     onToggleSolo={() => engineRef.current?.setTrackSolo(track.id, !track.solo)}
                     onSeek={(sec) => engineRef.current?.seek(sec)}
+                    onSetColor={(color) => engineRef.current?.setTrackColor(track.id, color)}
+                    onSetName={(name) => engineRef.current?.setTrackName(track.id, name)}
                   />
                 ))}
                 {tracks.length === 0 && (
@@ -4836,6 +4861,13 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                 onSetSidechain={(sourceId, amount) =>
                   engineRef.current?.setTrackSidechain(track.id, sourceId, amount)
                 }
+                onSetTrackHpf={(hz) => engineRef.current?.setTrackHpf(track.id, hz)}
+                onSetSidechainLookahead={(ms) =>
+                  engineRef.current?.setTrackSidechainLookaheadMs(track.id, ms)
+                }
+                onSetSendPosition={(pos) =>
+                  engineRef.current?.setTrackSendPosition(track.id, pos)
+                }
                 onImportFile={async (file) => {
                   const ok = await engineRef.current?.importAudioFile(track.id, file);
                   if (ok) {
@@ -5438,6 +5470,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             }}
             tapeDrive={transport.masterTapeDrive ?? 0}
             onSetTapeDrive={(drive) => engineRef.current?.setMasterTapeDrive(drive)}
+            lookaheadMs={transport.masterLookaheadMs ?? 5}
+            onSetLookaheadMs={(ms) => engineRef.current?.setMasterLookaheadMs(ms)}
+            softClipCeiling={transport.masterSoftClipCeiling ?? 0.94}
+            onSetSoftClipCeiling={(c) => engineRef.current?.setMasterSoftClipCeiling(c)}
+            dimOn={transport.masterDimOn ?? false}
+            onSetDim={(on) => engineRef.current?.setMasterDim(on)}
+            referenceLoaded={transport.referenceEnabled}
+            onMatchReferenceLoudness={() =>
+              engineRef.current?.autoMatchReferenceLoudness(-14) ?? 0
+            }
             midSideMode={transport.masterMidSideMode ?? false}
             onSetMidSideMode={(on) => engineRef.current?.setMasterMidSideMode(on)}
             sideEqLowDb={transport.masterSideEqLowDb ?? 0}
@@ -5515,15 +5557,47 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             const finalDb = Math.max(-24, Math.min(6, originalDb + correction + extraTrimDb));
             engine.setMasterDb(finalDb);
             let wav: Blob;
+            let clipReport: {
+              truePeakDbtp: number;
+              clippedSamples: number;
+              clippedRuns: number;
+            } | null = null;
             try {
-              wav = await engine.exportWav({ truePeakCeilingDbtp: exportTruePeakTarget });
+              // exportWavWithReport runs the same render but also
+              // returns a clip-detect summary so we can warn the
+              // user when the master pinned the wall instead of
+              // silently shipping a smashed mix.
+              const result = await engine.exportWavWithReport({
+                truePeakCeilingDbtp: exportTruePeakTarget,
+              });
+              wav = result.blob;
+              clipReport = {
+                truePeakDbtp: result.truePeakDbtp,
+                clippedSamples: result.clippedSamples,
+                clippedRuns: result.clippedRuns,
+              };
             } finally {
               engine.setMasterDb(originalDb);
             }
             setStats((s) => ({ ...s, exports: s.exports + 1 }));
+            // Two-tier warning. Hard clip (consecutive sample runs at
+            // ≥0.999) is a problem worth interrupting for; a single
+            // peak at the ceiling is normal limiter behaviour and
+            // doesn't warrant a notice.
+            if (clipReport && clipReport.clippedRuns > 4) {
+              setNotice({
+                tone: "warning",
+                message: `⚠ Master peaked at ${clipReport.truePeakDbtp.toFixed(1)} dBTP with ${clipReport.clippedRuns} clipping runs. Pull the master down a couple dB and re-export for cleaner sound.`,
+              });
+            } else if (clipReport && clipReport.truePeakDbtp > -0.5) {
+              setNotice({
+                tone: "info",
+                message: `Master pinned the wall at ${clipReport.truePeakDbtp.toFixed(1)} dBTP — survived the soft-clip but watch lossy codecs.`,
+              });
+            }
             pushAuditEvent(
               "export",
-              `Exported WAV mixdown (${exportLoudnessPreset}, ceiling ${exportTruePeakTarget.toFixed(1)} dBTP${extraTrimDb < 0 ? `, trim ${extraTrimDb.toFixed(1)} dB` : ""})`,
+              `Exported WAV mixdown (${exportLoudnessPreset}, ceiling ${exportTruePeakTarget.toFixed(1)} dBTP${extraTrimDb < 0 ? `, trim ${extraTrimDb.toFixed(1)} dB` : ""}${clipReport ? `, peak ${clipReport.truePeakDbtp.toFixed(1)} dBTP, ${clipReport.clippedRuns} clip runs` : ""})`,
             );
             return wav;
           }}
@@ -5881,6 +5955,18 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         />
       )}
 
+      {/* Recoverable takes modal — opened from the crash-recovery
+          banner. Reads IDB and lets the producer restore each
+          persisted take onto its original track. */}
+      {recoverModalOpen && engineRef.current && (
+        <RecoverableTakesModal
+          engine={engineRef.current}
+          open={recoverModalOpen}
+          onClose={() => setRecoverModalOpen(false)}
+          onNotice={(tone, message) => setNotice({ tone, message })}
+        />
+      )}
+
       {/* Sample chopper — transient-detected slices → per-slice tracks. */}
       {sampleChopperOpen && engineRef.current && (
         <SampleChopperModal
@@ -5901,8 +5987,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             </div>
             <p className="mt-1 text-sm">
               Looks like a take on <strong>{recoveryPrompt.trackName}</strong>
-              {" "}was cut off. The audio couldn&apos;t be saved, but you can pick
-              up where you left off.
+              {" "}got cut off. Your in-progress audio is in cold storage —
+              recover it or wipe the slate.
             </p>
             <div className="mt-3 flex items-center justify-end gap-2">
               <button
@@ -5918,11 +6004,11 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                 onClick={() => {
                   clearInFlight();
                   setRecoveryPrompt(null);
-                  setTakeBrowserOpen(true);
+                  setRecoverModalOpen(true);
                 }}
                 className="rounded-full bg-amber-400 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-black hover:bg-amber-300"
               >
-                Open take browser
+                Recover takes
               </button>
             </div>
           </div>
@@ -7911,6 +7997,9 @@ function TrackStrip({
   onSetReverb,
   onSetDelay,
   onSetSidechain,
+  onSetTrackHpf,
+  onSetSidechainLookahead,
+  onSetSendPosition,
   onImportFile,
   onDeleteTake,
   onPreviewTake,
@@ -7975,6 +8064,11 @@ function TrackStrip({
   onSetReverb: (params: { wet?: number; decaySec?: number }) => void;
   onSetDelay: (params: { wet?: number; beats?: number; feedback?: number }) => void;
   onSetSidechain: (sourceId: TrackId | null, amount?: number) => void;
+  /** New audio-quality callbacks: per-track HPF, sidechain lookahead,
+   *  pre/post-fader send position. */
+  onSetTrackHpf?: (hz: number) => void;
+  onSetSidechainLookahead?: (ms: number) => void;
+  onSetSendPosition?: (position: "pre" | "post") => void;
   onImportFile: (file: Blob) => void;
   onDeleteTake: (() => void) | null;
   onPreviewTake: (() => void) | null;
@@ -8566,12 +8660,18 @@ function TrackStrip({
           sidechainFromId={track.sidechainFromId}
           sidechainAmount={track.sidechainAmount}
           sidechainOptions={sidechainOptions}
+          trackHpfHz={track.trackHpfHz ?? 30}
+          sidechainLookaheadMs={track.sidechainLookaheadMs ?? 0}
+          sendsPreFader={track.sendsPreFader ?? false}
           onSetEq={onSetEq}
           onSetComp={onSetComp}
           onSetVocalBus={onSetVocalBus}
           onSetReverb={onSetReverb}
           onSetDelay={onSetDelay}
           onSetSidechain={onSetSidechain}
+          onSetTrackHpf={onSetTrackHpf}
+          onSetSidechainLookahead={onSetSidechainLookahead}
+          onSetSendPosition={onSetSendPosition}
         />
       )}
     </div>

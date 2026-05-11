@@ -19,6 +19,12 @@ interface Props {
   sidechainAmount: number;
   /** Tracks selectable as sidechain sources (excludes self in caller). */
   sidechainOptions: SidechainOption[];
+  /** Current track HPF corner in Hz. 20 = effectively disabled. */
+  trackHpfHz?: number;
+  /** Current sidechain lookahead in milliseconds. */
+  sidechainLookaheadMs?: number;
+  /** Whether reverb + delay sends are pre-fader on this track. */
+  sendsPreFader?: boolean;
   onSetEq: (band: "low" | "mid" | "high", db: number) => void;
   onSetComp: (params: {
     threshDb?: number;
@@ -37,6 +43,12 @@ interface Props {
   onSetReverb: (params: { wet?: number; decaySec?: number }) => void;
   onSetDelay: (params: { wet?: number; beats?: number; feedback?: number }) => void;
   onSetSidechain: (sourceId: TrackId | null, amount?: number) => void;
+  /** Track HPF corner (Hz). Engine clamps to 20..500. */
+  onSetTrackHpf?: (hz: number) => void;
+  /** Sidechain lookahead in ms. Engine clamps to 0..15. */
+  onSetSidechainLookahead?: (ms: number) => void;
+  /** Toggle pre/post-fader sends. */
+  onSetSendPosition?: (position: "pre" | "post") => void;
 }
 
 export default function FxPanel({
@@ -46,12 +58,18 @@ export default function FxPanel({
   sidechainFromId,
   sidechainAmount,
   sidechainOptions,
+  trackHpfHz,
+  sidechainLookaheadMs,
+  sendsPreFader,
   onSetEq,
   onSetComp,
   onSetVocalBus,
   onSetReverb,
   onSetDelay,
   onSetSidechain,
+  onSetTrackHpf,
+  onSetSidechainLookahead,
+  onSetSendPosition,
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -230,7 +248,67 @@ export default function FxPanel({
             />
           </FxBlock>
 
-          <FxBlock title="Reverb send" subtitle="shared aux">
+          {/* Track HPF — head-of-chain. 20 Hz ≈ disabled (audible only
+              on infrasonic content); 80 Hz is the standard vocal
+              default. Common-use chips for one-tap presets. */}
+          {onSetTrackHpf && (
+            <FxBlock
+              title="Track HPF"
+              subtitle={`${(trackHpfHz ?? 30).toFixed(0)} Hz`}
+            >
+              <div className="flex flex-wrap items-center gap-1">
+                {[20, 30, 60, 80, 120].map((hz) => {
+                  const active = Math.abs((trackHpfHz ?? 30) - hz) < 1;
+                  return (
+                    <button
+                      key={hz}
+                      type="button"
+                      onClick={() => onSetTrackHpf(hz)}
+                      className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest transition ${
+                        active
+                          ? "bg-amber-400/30 text-amber-100"
+                          : "border border-white/15 text-white/60 hover:bg-white/10"
+                      }`}
+                    >
+                      {hz === 20 ? "Off" : `${hz}`}
+                    </button>
+                  );
+                })}
+              </div>
+              <Slider
+                label="Corner"
+                min={20}
+                max={300}
+                step={1}
+                value={trackHpfHz ?? 30}
+                suffix=" Hz"
+                onChange={(v) => onSetTrackHpf(v)}
+                accent="brand"
+              />
+            </FxBlock>
+          )}
+
+          <FxBlock
+            title="Reverb send"
+            subtitle={sendsPreFader ? "pre · shared aux" : "post · shared aux"}
+            toggle={
+              onSetSendPosition ? (
+                <button
+                  type="button"
+                  onClick={() => onSetSendPosition(sendsPreFader ? "post" : "pre")}
+                  className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest transition ${
+                    sendsPreFader
+                      ? "bg-cyan-400/30 text-cyan-100"
+                      : "border border-white/15 text-white/55 hover:bg-white/10"
+                  }`}
+                  title="Toggle send between pre-fader (independent of channel level) and post-fader (rides the fader)"
+                  aria-label={sendsPreFader ? "Switch to post-fader" : "Switch to pre-fader"}
+                >
+                  {sendsPreFader ? "Pre" : "Post"}
+                </button>
+              ) : undefined
+            }
+          >
             <Slider
               label="Send"
               min={0}
@@ -283,9 +361,43 @@ export default function FxPanel({
               onChange={(v) => onSetSidechain(sidechainFromId, v)}
               accent="cyan"
             />
+            {/* Lookahead — predictive duck. 5 ms feels tight without
+                being audible as latency on monitoring. */}
+            {onSetSidechainLookahead && (
+              <Slider
+                label="Lookahead"
+                min={0}
+                max={15}
+                step={0.5}
+                value={sidechainLookaheadMs ?? 0}
+                suffix=" ms"
+                onChange={(v) => onSetSidechainLookahead(v)}
+                accent="cyan"
+              />
+            )}
           </FxBlock>
 
-          <FxBlock title="Delay send" subtitle="shared aux">
+          <FxBlock
+            title="Delay send"
+            subtitle={sendsPreFader ? "pre · shared aux" : "post · shared aux"}
+            toggle={
+              onSetSendPosition ? (
+                <button
+                  type="button"
+                  onClick={() => onSetSendPosition(sendsPreFader ? "post" : "pre")}
+                  className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest transition ${
+                    sendsPreFader
+                      ? "bg-cyan-400/30 text-cyan-100"
+                      : "border border-white/15 text-white/55 hover:bg-white/10"
+                  }`}
+                  title="Toggle send between pre-fader and post-fader"
+                  aria-label={sendsPreFader ? "Switch to post-fader" : "Switch to pre-fader"}
+                >
+                  {sendsPreFader ? "Pre" : "Post"}
+                </button>
+              ) : undefined
+            }
+          >
             <Slider
               label="Send"
               min={0}

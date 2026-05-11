@@ -38,6 +38,18 @@ interface Props {
   /** Master tape saturation drive 0..1 (#15). */
   tapeDrive?: number;
   onSetTapeDrive?: (drive: number) => void;
+  /** Master limiter lookahead in milliseconds (0..15). Default 5. */
+  lookaheadMs?: number;
+  onSetLookaheadMs?: (ms: number) => void;
+  /** Post-limiter soft-clip ceiling 0.5..0.99. */
+  softClipCeiling?: number;
+  onSetSoftClipCeiling?: (ceiling: number) => void;
+  /** Master dim (momentary -20 dB). */
+  dimOn?: boolean;
+  onSetDim?: (on: boolean) => void;
+  /** Reference loudness match. Returns the dB applied. */
+  referenceLoaded?: boolean;
+  onMatchReferenceLoudness?: () => number;
   /** Multiband comp (#13). */
   multibandEnabled?: boolean;
   multibandCrossoverHz?: number;
@@ -85,6 +97,14 @@ export default function MasterPanel({
   onSetSideEq,
   tapeDrive,
   onSetTapeDrive,
+  lookaheadMs,
+  onSetLookaheadMs,
+  softClipCeiling,
+  onSetSoftClipCeiling,
+  dimOn,
+  onSetDim,
+  referenceLoaded,
+  onMatchReferenceLoudness,
   multibandEnabled = false,
   multibandCrossoverHz = 200,
   multibandLowThreshDb = -18,
@@ -300,6 +320,104 @@ export default function MasterPanel({
             <p className="text-center font-mono text-[10px] tabular-nums text-white/70">
               {Math.round((tapeDrive ?? 0) * 100)}%
             </p>
+          </div>
+        )}
+
+        {/* Lookahead — how far the limiter peeks ahead. 5 ms is the
+            mastering default; 0 ms drops it for live tracking when
+            latency matters more than transient preservation. */}
+        {onSetLookaheadMs && (
+          <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-black/30 p-3 sm:w-[120px]">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/55">
+              Lookahead
+            </p>
+            <input
+              type="range"
+              min={0}
+              max={15}
+              step={0.5}
+              value={lookaheadMs ?? 5}
+              onChange={(e) => onSetLookaheadMs(Number(e.target.value))}
+              aria-label="Master limiter lookahead in milliseconds"
+              className="accent-cyan-400"
+            />
+            <p className="text-center font-mono text-[10px] tabular-nums text-white/70">
+              {(lookaheadMs ?? 5).toFixed(1)} ms
+            </p>
+          </div>
+        )}
+
+        {/* Soft-clip ceiling — post-limiter shoulder. 0.94 ≈ -0.5 dBFS
+            knee. Lower = earlier rolloff, gentler insurance. */}
+        {onSetSoftClipCeiling && (
+          <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-black/30 p-3 sm:w-[120px]">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/55">
+              Soft clip
+            </p>
+            <input
+              type="range"
+              min={0.5}
+              max={0.99}
+              step={0.01}
+              value={softClipCeiling ?? 0.94}
+              onChange={(e) => onSetSoftClipCeiling(Number(e.target.value))}
+              aria-label="Master soft-clip ceiling"
+              title="Post-limiter soft-clip shoulder. Lower = gentler. Insurance against inter-sample peaks."
+              className="accent-amber-400"
+            />
+            <p className="text-center font-mono text-[10px] tabular-nums text-white/70">
+              {(20 * Math.log10(softClipCeiling ?? 0.94)).toFixed(1)} dBFS
+            </p>
+          </div>
+        )}
+
+        {/* Dim + reference-match button cluster. Dim is push-and-hold
+            so engineer can talk over playback without touching the
+            fader. Match calls autoMatchReferenceLoudness which lands
+            on the streaming-normalized version of the reference. */}
+        {(onSetDim || onMatchReferenceLoudness) && (
+          <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-black/30 p-3 sm:w-[140px]">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/55">
+              Monitor
+            </p>
+            {onSetDim && (
+              <button
+                type="button"
+                onMouseDown={() => onSetDim(true)}
+                onMouseUp={() => onSetDim(false)}
+                onMouseLeave={() => dimOn && onSetDim(false)}
+                onTouchStart={() => onSetDim(true)}
+                onTouchEnd={() => onSetDim(false)}
+                className={`rounded px-2 py-1.5 text-[10px] font-black uppercase tracking-widest transition ${
+                  dimOn
+                    ? "bg-amber-400 text-black shadow-lg shadow-amber-400/40"
+                    : "border border-white/15 text-white/70 hover:bg-white/10"
+                }`}
+                title="Hold to dim monitor -20 dB"
+                aria-label="Dim monitor while held"
+              >
+                {dimOn ? "🔇 DIM" : "DIM"}
+              </button>
+            )}
+            {onMatchReferenceLoudness && (
+              <button
+                type="button"
+                onClick={() => onMatchReferenceLoudness()}
+                disabled={!referenceLoaded}
+                className={`rounded px-2 py-1.5 text-[10px] font-black uppercase tracking-widest transition ${
+                  referenceLoaded
+                    ? "border border-cyan-400/40 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25"
+                    : "border border-white/10 text-white/30 cursor-not-allowed"
+                }`}
+                title={
+                  referenceLoaded
+                    ? "Match reference to -14 LUFS streaming target"
+                    : "Load a reference track first"
+                }
+              >
+                ⇄ Match -14 LUFS
+              </button>
+            )}
           </div>
         )}
       </div>

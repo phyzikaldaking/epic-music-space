@@ -162,6 +162,11 @@ export interface TrackState {
    *  track because vocal sends usually post, reverb-only stems
    *  often pre. */
   sendsPreFader?: boolean;
+  /** Current per-track HPF corner frequency in Hz. Mirrors the engine
+   *  trackHpf node's frequency so UI can render the active value. */
+  trackHpfHz?: number;
+  /** Current sidechain lookahead delay in ms. */
+  sidechainLookaheadMs?: number;
 }
 
 /** One recorded take in the take browser. We hold the AudioBuffer
@@ -2220,6 +2225,9 @@ export class DawEngine {
         compSegmentLaneIds: [],
         frozen: false,
         pluginSlots: [],
+        trackHpfHz: 30,
+        sidechainLookaheadMs: 5,
+        sendsPreFader: false,
       },
       fxIn,
       trackHpf,
@@ -3436,6 +3444,24 @@ export class DawEngine {
     this.notify();
   }
 
+  /** Rename a track. Cap at 40 chars to keep the strip layout
+   *  predictable; longer names get truncated. */
+  setTrackName(id: TrackId, name: string) {
+    const t = this.tracks.get(id);
+    if (!t) return;
+    t.state.name = name.slice(0, 40);
+    this.notify();
+  }
+
+  /** Recolor a track. Accepts any CSS color string the strip's
+   *  border + accent rendering can read (we use hex throughout). */
+  setTrackColor(id: TrackId, color: string) {
+    const t = this.tracks.get(id);
+    if (!t) return;
+    t.state.color = color;
+    this.notify();
+  }
+
   /** Per-track HPF corner frequency. 20 Hz ≈ disabled (audible only
    *  on infrasonic content). 80 Hz is the typical vocal default. */
   setTrackHpf(id: TrackId, hz: number) {
@@ -3443,6 +3469,7 @@ export class DawEngine {
     if (!t || !this.ctx) return;
     const clamped = Math.max(20, Math.min(500, hz));
     t.trackHpf.frequency.setTargetAtTime(clamped, this.ctx.currentTime, 0.02);
+    t.state.trackHpfHz = clamped;
     this.notify();
   }
 
@@ -3473,6 +3500,7 @@ export class DawEngine {
       this.ctx.currentTime,
       0.02,
     );
+    t.state.sidechainLookaheadMs = clamped;
     this.notify();
   }
 

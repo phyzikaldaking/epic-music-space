@@ -63,7 +63,7 @@ export default function StudioTopBar({
 }: Props) {
   return (
     <header
-      className="sticky top-[64px] z-30 flex items-center gap-3 border-b border-white/10 bg-black/85 px-3 py-2 backdrop-blur"
+      className="sticky top-[64px] z-30 flex flex-wrap items-center gap-2 border-b border-white/10 bg-black/85 px-2 py-2 backdrop-blur sm:flex-nowrap sm:gap-3 sm:px-3"
       data-studio-topbar
     >
       {/* Transport pill */}
@@ -137,8 +137,9 @@ export default function StudioTopBar({
         </StudioTooltip>
       </div>
 
-      {/* Time + BPM */}
-      <div className="flex items-center gap-3 rounded-md border border-white/10 bg-black/50 px-3 py-1 font-mono text-sm">
+      {/* Time + BPM. Hidden on the smallest screens (xs) where the
+          transport pill already takes the full row; reappears at sm. */}
+      <div className="hidden items-center gap-3 rounded-md border border-white/10 bg-black/50 px-3 py-1 font-mono text-sm sm:flex">
         <span
           className={`tabular-nums ${
             isRecording ? "text-red-300" : isPlaying ? "text-emerald-300" : "text-white/85"
@@ -164,9 +165,11 @@ export default function StudioTopBar({
         </label>
       </div>
 
-      {/* Mode tabs — the whole point of this bar */}
+      {/* Mode tabs — the whole point of this bar. On phones we let it
+          wrap to a second row by removing the auto-margin; on tablet+
+          it pins to the right edge. */}
       <nav
-        className="ml-auto flex items-center gap-0.5 rounded-md border border-white/10 bg-black/40 p-0.5"
+        className="order-3 flex w-full items-center gap-0.5 rounded-md border border-white/10 bg-black/40 p-0.5 sm:order-none sm:ml-auto sm:w-auto"
         aria-label="Studio main view"
       >
         {MODE_TABS.map((tab) => {
