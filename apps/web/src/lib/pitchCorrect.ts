@@ -199,6 +199,199 @@ export function applyPitchCorrection(
   return out;
 }
 
+// ─── AI Melodyne: note-level pitch editing ────────────────────────────
+//
+// `extractPitchContour` runs autocorrelation on every HOP and returns the
+// per-frame pitch + RMS, mapped to a frame index that the MelodyneEditor
+// uses to draw a piano-roll-of-audio.
+//
+// `segmentNotes` walks the contour, groups consecutive frames whose pitch
+// is within ~50 cents of each other into a single Note. Each note has a
+// detected midi (median) and an editable `targetMidi` (defaults to the
+// nearest scale snap). The editor lets the singer drag `targetMidi`
+// vertically to retune individual notes.
+//
+// `applyMelodyne` does the inverse of `applyPitchCorrection`: instead of
+// re-snapping every frame, each frame gets the ratio implied by the
+// containing note's `(targetMidi / detectedMidi)` so a single note moves
+// as a unit. Naive linear resampler again — same soft-mode quality bar.
+
+export interface PitchedFrame {
+  /** Sample index of the frame start. */
+  startSample: number;
+  /** Detected pitch in Hz, or 0 if the frame is silent / pitchless. */
+  hz: number;
+  /** RMS amplitude of the frame, 0..1. */
+  rms: number;
+}
+
+export interface MelodyneNote {
+  /** Sample index where this note starts. */
+  startSample: number;
+  /** Sample index where this note ends (exclusive). */
+  endSample: number;
+  /** Median detected MIDI note across this segment. */
+  detectedMidi: number;
+  /** Editable target MIDI — what we tune the note to. */
+  targetMidi: number;
+  /** Average RMS across this note (for editor visualization). */
+  rms: number;
+}
+
+export function extractPitchContour(
+  buffer: AudioBuffer,
+  options: { hop?: number } = {},
+): PitchedFrame[] {
+  const hop = options.hop ?? HOP;
+  const sampleRate = buffer.sampleRate;
+  const length = buffer.length;
+  const channels = buffer.numberOfChannels;
+
+  // Mono mix for analysis. Float32 sum scaled by 1/numChannels.
+  const mono = new Float32Array(length);
+  for (let c = 0; c < channels; c++) {
+    const data = buffer.getChannelData(c);
+    for (let i = 0; i < length; i++) mono[i] += data[i] / channels;
+  }
+
+  const frame = new Float32Array(FRAME_SIZE);
+  const frames: PitchedFrame[] = [];
+  for (let start = 0; start + FRAME_SIZE < length; start += hop) {
+    for (let i = 0; i < FRAME_SIZE; i++) frame[i] = mono[start + i];
+    let energy = 0;
+    for (let i = 0; i < FRAME_SIZE; i++) energy += frame[i] * frame[i];
+    const rms = Math.sqrt(energy / FRAME_SIZE);
+    const hz = detectPitchHz(frame, sampleRate);
+    frames.push({ startSample: start, hz, rms });
+  }
+  return frames;
+}
+
+export function segmentNotes(
+  contour: PitchedFrame[],
+  options: { key?: ScaleKey; minNoteFrames?: number; centsTolerance?: number } = {},
+): MelodyneNote[] {
+  const key = options.key ?? "C";
+  const minNoteFrames = options.minNoteFrames ?? 3;
+  const centsTol = options.centsTolerance ?? 60;
+  const notes: MelodyneNote[] = [];
+
+  let runStart = -1;
+  let runFrames: PitchedFrame[] = [];
+  let runMidiSum = 0;
+
+  const flush = (endIdx: number) => {
+    if (runStart < 0 || runFrames.length < minNoteFrames) {
+      runStart = -1;
+      runFrames = [];
+      runMidiSum = 0;
+      return;
+    }
+    const midis = runFrames.map((f) => hzToMidi(f.hz)).sort((a, b) => a - b);
+    const median = midis[Math.floor(midis.length / 2)];
+    const startSample = runFrames[0].startSample;
+    const endSample =
+      endIdx >= 0 && endIdx < contour.length
+        ? contour[endIdx].startSample
+        : runFrames[runFrames.length - 1].startSample + FRAME_SIZE;
+    const rmsAvg =
+      runFrames.reduce((acc, f) => acc + f.rms, 0) / runFrames.length;
+    notes.push({
+      startSample,
+      endSample,
+      detectedMidi: median,
+      targetMidi: snapToScale(median, key),
+      rms: rmsAvg,
+    });
+    runStart = -1;
+    runFrames = [];
+    runMidiSum = 0;
+  };
+
+  for (let i = 0; i < contour.length; i++) {
+    const f = contour[i];
+    if (f.hz <= 0 || f.rms < 0.01) {
+      flush(i);
+      continue;
+    }
+    const midi = hzToMidi(f.hz);
+    if (runStart < 0) {
+      runStart = i;
+      runFrames = [f];
+      runMidiSum = midi;
+      continue;
+    }
+    const avgMidi = runMidiSum / runFrames.length;
+    const cents = Math.abs(midi - avgMidi) * 100;
+    if (cents > centsTol) {
+      flush(i);
+      runStart = i;
+      runFrames = [f];
+      runMidiSum = midi;
+    } else {
+      runFrames.push(f);
+      runMidiSum += midi;
+    }
+  }
+  flush(contour.length);
+  return notes;
+}
+
+export function applyMelodyne(
+  buffer: AudioBuffer,
+  ctx: AudioContext,
+  notes: MelodyneNote[],
+  options: { amount?: number } = {},
+): AudioBuffer {
+  const amount = Math.max(0, Math.min(1, options.amount ?? 1));
+  const channels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const length = buffer.length;
+  const out = ctx.createBuffer(channels, length, sampleRate);
+
+  // Build a lookup of sample → ratio. Outside any note, ratio = 1
+  // (dry). Inside a note, ratio = targetHz / detectedHz. Clamped to
+  // ±2 semitones because anything wider sounds robotic with naive
+  // resampling (Melodyne-grade would need WORLD or RubberBand).
+  const ratioBySample = new Float32Array(length);
+  ratioBySample.fill(1);
+  for (const n of notes) {
+    if (n.targetMidi === n.detectedMidi) continue;
+    const tHz = midiToHz(n.targetMidi);
+    const dHz = midiToHz(n.detectedMidi);
+    let r = tHz / dHz;
+    r = Math.max(Math.pow(2, -2 / 12), Math.min(Math.pow(2, 2 / 12), r));
+    const from = Math.max(0, n.startSample);
+    const to = Math.min(length, n.endSample);
+    for (let i = from; i < to; i++) ratioBySample[i] = r;
+  }
+
+  // Per-channel pass. Linear interp; this matches the soft-correction
+  // quality bar.
+  for (let c = 0; c < channels; c++) {
+    const input = buffer.getChannelData(c);
+    const output = out.getChannelData(c);
+    let srcCursor = 0; // accumulated source position
+    for (let i = 0; i < length; i++) {
+      const ratio = ratioBySample[i];
+      const j0 = Math.floor(srcCursor);
+      const j1 = Math.min(length - 1, j0 + 1);
+      const t = srcCursor - j0;
+      const wet =
+        (j0 >= 0 && j0 < length ? input[j0] : 0) * (1 - t) +
+        (j1 >= 0 && j1 < length ? input[j1] : 0) * t;
+      const dry = input[i];
+      output[i] = dry * (1 - amount) + wet * amount;
+      // Source cursor walks at 1/ratio so the *output* sample i lands
+      // on the right place in the input.
+      srcCursor += 1 / ratio;
+      if (srcCursor < 0) srcCursor = 0;
+      if (srcCursor >= length - 1) srcCursor = length - 1;
+    }
+  }
+  return out;
+}
+
 function makeHannWindow(n: number): Float32Array {
   const w = new Float32Array(n);
   for (let i = 0; i < n; i++) {

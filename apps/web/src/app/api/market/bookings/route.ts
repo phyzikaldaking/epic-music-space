@@ -75,7 +75,11 @@ export async function POST(req: NextRequest) {
   if (listing.sellerId === session.user.id) {
     return NextResponse.json({ error: "You can't book your own verse." }, { status: 400 });
   }
-  if (listing.kind === "LIVE_SESSION") {
+  // LIVE_SESSION + ENGINEER_MIX both put two humans in a studio room
+  // at the same time, so they share the timeslot rules.
+  const isLiveKind =
+    listing.kind === "LIVE_SESSION" || listing.kind === "ENGINEER_MIX";
+  if (isLiveKind) {
     if (!startAt) {
       return NextResponse.json(
         { error: "Pick a session start time." },
@@ -147,12 +151,18 @@ export async function POST(req: NextRequest) {
                 unit_amount: amountCents,
                 product_data: {
                   name:
-                    listing.kind === "LIVE_SESSION"
-                      ? `🎤 Live session — ${listing.title}`
-                      : `📼 Verse delivery — ${listing.title}`,
-                  description: listing.kind === "LIVE_SESSION"
-                    ? `${listing.sessionMinutes}-minute joint studio session with ${listing.seller.name ?? listing.seller.username ?? "artist"}.`
-                    : `Custom verse delivered within ${listing.deliveryDays} days.`,
+                    listing.kind === "ENGINEER_MIX"
+                      ? `🎚️ Mix session — ${listing.title}`
+                      : listing.kind === "ENGINEER_MASTER"
+                        ? `📡 Mastering delivery — ${listing.title}`
+                        : isLiveKind
+                          ? `🎤 Live session — ${listing.title}`
+                          : `📼 Verse delivery — ${listing.title}`,
+                  description: isLiveKind
+                    ? `${listing.sessionMinutes}-minute live studio session with ${listing.seller.name ?? listing.seller.username ?? "engineer"}.`
+                    : listing.kind === "ENGINEER_MASTER"
+                      ? `Mastered stems delivered within ${listing.deliveryDays} days.`
+                      : `Custom verse delivered within ${listing.deliveryDays} days.`,
                 },
               },
               quantity: 1,

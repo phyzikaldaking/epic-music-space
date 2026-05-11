@@ -7,7 +7,7 @@ import { rateLimit } from "@/lib/rateLimitInline";
 export const runtime = "nodejs";
 
 const createSchema = z.object({
-  kind: z.enum(["LIVE_SESSION", "ASYNC_DELIVERY"]),
+  kind: z.enum(["LIVE_SESSION", "ASYNC_DELIVERY", "ENGINEER_MIX", "ENGINEER_MASTER"]),
   title: z.string().min(3).max(120),
   description: z.string().max(2000).optional(),
   priceUsd: z.number().min(5).max(50_000),
@@ -16,6 +16,8 @@ const createSchema = z.object({
   previewSongId: z.string().max(64).optional(),
   tags: z.array(z.string().max(30)).max(8).optional(),
 });
+
+const ENGINEER_KINDS = new Set(["ENGINEER_MIX", "ENGINEER_MASTER"]);
 
 // GET /api/market/verses — list active verse listings, filterable by
 // kind / tag. Powers the marketplace browse view.
@@ -28,7 +30,11 @@ export async function GET(req: NextRequest) {
   const listings = await prisma.verseListing.findMany({
     where: {
       status: "ACTIVE",
-      ...(kind && (kind === "LIVE_SESSION" || kind === "ASYNC_DELIVERY")
+      ...(kind &&
+      (kind === "LIVE_SESSION" ||
+        kind === "ASYNC_DELIVERY" ||
+        kind === "ENGINEER_MIX" ||
+        kind === "ENGINEER_MASTER")
         ? { kind }
         : {}),
       ...(tag ? { tags: { has: tag } } : {}),
@@ -98,6 +104,34 @@ export async function POST(req: NextRequest) {
     );
   }
   const data = parsed.data;
+  // ENGINEER_MIX / ENGINEER_MASTER listings require a verified
+  // EngineerProfile. The verifiedAt timestamp is admin-stamped via
+  // /api/engineers/[id]/verify.
+  if (ENGINEER_KINDS.has(data.kind)) {
+    const eng = await prisma.engineerProfile.findUnique({
+      where: { userId: session.user.id },
+      select: { verifiedAt: true, isAcceptingWork: true },
+    });
+    if (!eng?.verifiedAt) {
+      return NextResponse.json(
+        {
+          error:
+            "Engineer listings require a verified Engineer Profile. Submit your profile at /engineers/list — an admin will verify within 48h.",
+          engineerVerifyHint: true,
+        },
+        { status: 403 },
+      );
+    }
+    if (!eng.isAcceptingWork) {
+      return NextResponse.json(
+        {
+          error:
+            "Your engineer profile is currently paused. Toggle 'Accepting work' on /engineers/list to publish listings.",
+        },
+        { status: 403 },
+      );
+    }
+  }
   // Verify previewSongId if provided is one of the seller's own
   // tracks — we don't let an artist preview someone else's song.
   if (data.previewSongId) {
@@ -120,8 +154,14 @@ export async function POST(req: NextRequest) {
       title: data.title,
       description: data.description ?? null,
       priceUsd: data.priceUsd,
-      sessionMinutes: data.kind === "LIVE_SESSION" ? data.sessionMinutes ?? 60 : 60,
-      deliveryDays: data.kind === "ASYNC_DELIVERY" ? data.deliveryDays ?? 3 : 3,
+      sessionMinutes:
+        data.kind === "LIVE_SESSION" || data.kind === "ENGINEER_MIX"
+          ? data.sessionMinutes ?? 60
+          : 60,
+      deliveryDays:
+        data.kind === "ASYNC_DELIVERY" || data.kind === "ENGINEER_MASTER"
+          ? data.deliveryDays ?? 3
+          : 3,
       previewSongId: data.previewSongId ?? null,
       tags: data.tags ?? [],
     },

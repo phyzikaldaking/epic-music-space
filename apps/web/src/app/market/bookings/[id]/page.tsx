@@ -92,9 +92,16 @@ export default async function BookingDetailPage({
             ${Number(booking.agreedPriceUsd).toFixed(0)}
           </div>
           <div className="text-[10px] uppercase tracking-widest text-white/40">
-            {booking.listing.kind === "LIVE_SESSION"
-              ? `${booking.listing.sessionMinutes} min live`
-              : `≤ ${booking.listing.deliveryDays}d delivery`}
+            {booking.listing.kind === "LIVE_SESSION" ||
+            booking.listing.kind === "ENGINEER_MIX"
+              ? `${booking.listing.sessionMinutes} min ${
+                  booking.listing.kind === "ENGINEER_MIX" ? "mix" : "live"
+                }`
+              : `≤ ${booking.listing.deliveryDays}d ${
+                  booking.listing.kind === "ENGINEER_MASTER"
+                    ? "master"
+                    : "delivery"
+                }`}
           </div>
         </div>
       </section>

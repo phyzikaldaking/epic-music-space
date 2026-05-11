@@ -24,6 +24,47 @@ export default async function EngineersPage({
 }) {
   const { q, specialty } = await searchParams;
 
+  // Engineer Mode — verified EngineerProfile rows with active
+  // ENGINEER_MIX / ENGINEER_MASTER VerseListings. Surfaced above the
+  // legacy ServiceListing grid so the live virtual-studio sessions
+  // headline the page.
+  const engineerProfiles = await prisma.engineerProfile.findMany({
+    where: { verifiedAt: { not: null }, isAcceptingWork: true },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          image: true,
+          coverImage: true,
+          headline: true,
+          isVerified: true,
+          verseListings: {
+            where: {
+              status: "ACTIVE",
+              kind: { in: ["ENGINEER_MIX", "ENGINEER_MASTER"] },
+            },
+            select: {
+              id: true,
+              kind: true,
+              title: true,
+              priceUsd: true,
+              sessionMinutes: true,
+              deliveryDays: true,
+            },
+            take: 4,
+          },
+        },
+      },
+    },
+    orderBy: { verifiedAt: "desc" },
+    take: 12,
+  });
+  const studioCards = engineerProfiles.filter(
+    (p) => p.user.verseListings.length > 0,
+  );
+
   const engineers = await prisma.user.findMany({
     where: {
       role: "ENGINEER",
@@ -119,6 +160,133 @@ export default async function EngineersPage({
           Are you an engineer? → Set up your profile
         </Link>
       </div>
+
+      {/* Engineer Mode — live virtual-studio sessions. */}
+      {studioCards.length > 0 && (
+        <section className="mb-12 rounded-3xl border border-cyan-400/25 bg-gradient-to-br from-cyan-500/[0.08] via-violet-500/[0.04] to-transparent p-6 shadow-2xl shadow-cyan-500/10">
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.35em] text-cyan-300">
+                Engineer Mode · Live virtual studio
+              </p>
+              <h2 className="mt-1 text-2xl font-extrabold">
+                Book a 1-hour mix session with a verified pro
+              </h2>
+              <p className="mt-1 max-w-xl text-sm text-white/60">
+                Pay through Stripe escrow. Both parties meet in a live studio
+                room — the engineer mixes your track on screen, you sign off
+                when it sounds right, funds release.
+              </p>
+            </div>
+            <Link
+              href="/engineers/list"
+              className="rounded-full border border-cyan-400/50 bg-cyan-500/15 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-500/25"
+            >
+              List as engineer
+            </Link>
+          </div>
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {studioCards.map((p) => (
+              <li
+                key={p.id}
+                className="overflow-hidden rounded-2xl border border-white/10 bg-black/40"
+              >
+                <div className="relative h-20">
+                  {p.user.coverImage ? (
+                    <Image
+                      src={p.user.coverImage}
+                      alt=""
+                      fill
+                      sizes="400px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/30 via-violet-500/15 to-transparent" />
+                  )}
+                </div>
+                <div className="-mt-7 px-4 pb-4">
+                  <div className="flex items-end gap-3">
+                    {p.user.image ? (
+                      <Image
+                        src={p.user.image}
+                        alt={p.user.name ?? ""}
+                        width={56}
+                        height={56}
+                        className="rounded-xl border-2 border-black object-cover"
+                      />
+                    ) : (
+                      <div className="grid h-14 w-14 place-items-center rounded-xl border-2 border-black bg-gradient-to-br from-cyan-600 to-violet-600 text-lg font-extrabold">
+                        {(p.user.name ?? "?")[0]?.toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1 pb-1">
+                      <p className="truncate font-bold">
+                        {p.user.name ?? p.user.username}
+                        {p.user.isVerified && (
+                          <span className="ml-1 text-cyan-300">✓</span>
+                        )}
+                      </p>
+                      <p className="truncate text-[11px] text-white/55">
+                        {p.tagline ?? p.user.headline ?? "Pro audio engineer"}
+                      </p>
+                    </div>
+                  </div>
+                  {p.specialties.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1 text-[10px]">
+                      {p.specialties.slice(0, 4).map((s) => (
+                        <span
+                          key={s}
+                          className="rounded border border-white/10 bg-black/50 px-1.5 py-0.5 text-white/65"
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <ul className="mt-3 space-y-1.5">
+                    {p.user.verseListings.map((v) => (
+                      <li key={v.id}>
+                        <Link
+                          href={`/market/listing/${v.id}`}
+                          className="flex items-center justify-between rounded-md border border-white/10 bg-black/50 px-3 py-2 text-xs transition hover:border-cyan-400/40 hover:bg-cyan-500/10"
+                        >
+                          <span className="flex items-center gap-2 truncate">
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                                v.kind === "ENGINEER_MIX"
+                                  ? "bg-cyan-500/20 text-cyan-200"
+                                  : "bg-violet-500/20 text-violet-200"
+                              }`}
+                            >
+                              {v.kind === "ENGINEER_MIX" ? "Mix" : "Master"}
+                            </span>
+                            <span className="truncate">{v.title}</span>
+                          </span>
+                          <span className="ml-2 font-extrabold tabular-nums text-emerald-300">
+                            ${Number(v.priceUsd).toFixed(0)}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                    <div className="rounded-md bg-black/40 px-2 py-1">
+                      <p className="text-white/40">Turnaround</p>
+                      <p className="font-black">{p.turnaroundHours}h</p>
+                    </div>
+                    <div className="rounded-md bg-black/40 px-2 py-1">
+                      <p className="text-white/40">Max rate</p>
+                      <p className="font-black">
+                        {Math.round(p.maxSampleRate / 1000)}k
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Search + specialty filter */}
       <form method="GET" className="mb-8 flex flex-wrap items-center gap-3">

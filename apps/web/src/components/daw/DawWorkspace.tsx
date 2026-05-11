@@ -101,6 +101,7 @@ const VoiceToMidiButton = dynamic(() => import("./VoiceToMidiButton"), { ssr: fa
 const RecordingControlPanel = dynamic(() => import("./RecordingControlPanel"), { ssr: false });
 const StudioTopBar = dynamic(() => import("./StudioTopBar"), { ssr: false });
 const EditWindowTrackLane = dynamic(() => import("./EditWindowTrackLane"), { ssr: false });
+const MelodyneEditor = dynamic(() => import("./MelodyneEditor"), { ssr: false });
 const StudioSideDrawer = dynamic(() => import("./StudioSideDrawer"), { ssr: false });
 const RecoverableTakesModal = dynamic(() => import("./RecoverableTakesModal"), { ssr: false });
 const TakeBrowserModal = dynamic(() => import("./TakeBrowserModal"), { ssr: false });
@@ -591,6 +592,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
    *  the crash-recovery banner (in lieu of the old "open take
    *  browser" handoff, which showed in-memory takes only). */
   const [recoverModalOpen, setRecoverModalOpen] = useState(false);
+  // AI Melodyne — when set, opens the note-level pitch editor for
+  // the track id stored here. Closed by setting back to null.
+  const [melodyneTrackId, setMelodyneTrackId] = useState<TrackId | null>(null);
   const [userTemplates, setUserTemplates] = useState<
     Array<{
       id: string;
@@ -3504,6 +3508,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                     onSeek={(sec) => engineRef.current?.seek(sec)}
                     onSetColor={(color) => engineRef.current?.setTrackColor(track.id, color)}
                     onSetName={(name) => engineRef.current?.setTrackName(track.id, name)}
+                    onOpenMelodyne={
+                      track.hasAudio ? () => setMelodyneTrackId(track.id) : undefined
+                    }
                   />
                 ))}
                 {tracks.length === 0 && (
@@ -5964,6 +5971,23 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           open={recoverModalOpen}
           onClose={() => setRecoverModalOpen(false)}
           onNotice={(tone, message) => setNotice({ tone, message })}
+        />
+      )}
+
+      {/* AI Melodyne — note-level pitch editor. Opens from the track
+          lane's Tune button. On Apply we swap the corrected buffer
+          back into the engine via setTrackBuffer. */}
+      {melodyneTrackId && engineRef.current && (
+        <MelodyneEditor
+          buffer={engineRef.current.getTrackBuffer(melodyneTrackId)}
+          ctx={engineRef.current.audioContext}
+          onApply={(corrected) => {
+            engineRef.current?.setTrackBuffer(melodyneTrackId, corrected);
+            setMelodyneTrackId(null);
+            setNotice({ tone: "success", message: "Melodyne applied" });
+            setSnapshot(engineRef.current?.getSnapshot() ?? null);
+          }}
+          onClose={() => setMelodyneTrackId(null)}
         />
       )}
 

@@ -45,6 +45,9 @@ type Props = {
   onSetColor?: (color: string) => void;
   /** Rename handler. When omitted, the name is read-only. */
   onSetName?: (name: string) => void;
+  /** Open the AI Melodyne note-level pitch editor for this track.
+   *  Omitted when the track has no audio. */
+  onOpenMelodyne?: () => void;
 };
 
 export default function EditWindowTrackLane({
@@ -60,6 +63,7 @@ export default function EditWindowTrackLane({
   onSeek,
   onSetColor,
   onSetName,
+  onOpenMelodyne,
 }: Props) {
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -237,6 +241,19 @@ export default function EditWindowTrackLane({
 
       {/* Waveform lane — fills the rest of the row */}
       <div className="relative flex-1 overflow-hidden">
+        {onOpenMelodyne && track.hasAudio && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenMelodyne();
+            }}
+            className="absolute right-2 top-2 z-10 rounded-md border border-cyan-400/40 bg-black/70 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-cyan-200 backdrop-blur transition hover:bg-cyan-500/20"
+            title="Open AI Melodyne — note-level pitch editor"
+          >
+            🎵 Tune
+          </button>
+        )}
         {peaks.length > 0 ? (
           <WaveformView
             peaks={peaks}

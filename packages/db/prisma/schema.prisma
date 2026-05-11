@@ -213,6 +213,11 @@ model User {
   // off for legacy users; engineers/producers can flip it on once they've
   // populated headline + cover + at least 3 credits.
   proProfilePublished Boolean @default(false)
+
+  // Engineer Mode — pro audio sellers. The EngineerProfile row carries
+  // the verification flag + service metadata that gates ENGINEER_MIX /
+  // ENGINEER_MASTER VerseListings.
+  engineerProfile EngineerProfile?
 }
 
 enum Role {
@@ -2244,6 +2249,14 @@ model Message {
 enum VerseListingKind {
   LIVE_SESSION
   ASYNC_DELIVERY
+  // Engineer offerings. Same booking + escrow + signoff flow as the
+  // verse SKUs above; the difference is that the SELLER is a verified
+  // audio engineer and the DELIVERABLE is a mixed or mastered track
+  // instead of a rapped verse. The /engineers discovery page filters
+  // listings to these two kinds so engineer browse stays separate
+  // from the verse marketplace.
+  ENGINEER_MIX
+  ENGINEER_MASTER
 }
 
 enum VerseListingStatus {
@@ -2339,6 +2352,63 @@ model SessionBooking {
 // The price is intentionally bounded 0..500 — it's a *ranking*
 // signal, not a dollar value. Buyers pay the artist's listed verse
 // price; the ticker just tells them who's hot.
+
+// Engineer profile — sits next to the User row and carries every
+// piece of metadata the booking marketplace needs to surface a pro:
+// verification flag, specialties (trap mixing, rock mastering, etc),
+// preferred sample rate, average turnaround time, gear chain
+// description, sample work URLs, and the LUFS targets the engineer
+// is comfortable hitting.
+//
+// One profile per User. Presence of a row + verifiedAt being non-null
+// is what gates ENGINEER_MIX / ENGINEER_MASTER VerseListings on the
+// create endpoint — random artists can't list themselves as
+// engineers without going through verification.
+model EngineerProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Free-form tagline shown on the engineer card. ~120 chars.
+  tagline         String?   @db.VarChar(160)
+  // Long-form bio, optional. Renders on the engineer profile page.
+  bio             String?   @db.Text
+  // What this engineer ships. Array tags: "trap", "rock", "vocal-tuning",
+  // "stems-only", "mastering", etc. Filters the discovery grid.
+  specialties     String[]  @default([])
+  // Plugin / hardware chain the engineer is known for. Public so
+  // artists can pick someone running the gear they want on their
+  // mix. ~600 chars.
+  gearChain       String?   @db.Text
+  // 24-bit / 48 kHz minimum is the modern pro default; this lets the
+  // engineer advertise willingness to work at higher rates (96 kHz)
+  // for clients who need it.
+  maxSampleRate   Int       @default(48000)
+  // Stream-target LUFS the engineer is comfortable hitting. Buyers
+  // shopping a -14 LUFS Spotify-ready master can filter.
+  lufsTargets     Float[]   @default([])
+  // Average turnaround on async deliveries, in hours. Surfaces in
+  // the listing card so the buyer knows what they're committing to.
+  turnaroundHours Int       @default(48)
+  // Sample work — public Vercel Blob URLs to before/after stems
+  // the engineer wants to show off. Capped client-side at 6.
+  sampleWorkUrls  String[]  @default([])
+  // Pro audio verification. An admin flips verifiedAt after
+  // reviewing the engineer's portfolio + Stripe Connect KYC. Until
+  // then, the engineer can still BUY services / browse, but can't
+  // LIST ENGINEER_* SKUs.
+  verifiedAt      DateTime?
+  // Internal admin note on the verification decision. Not shown
+  // publicly.
+  verificationNote String?  @db.Text
+  // Active toggle. Lets a verified engineer pause listings without
+  // losing their badge or having to archive each listing manually.
+  isAcceptingWork  Boolean  @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([verifiedAt, isAcceptingWork])
+}
+
 model ArtistStockSnapshot {
   id              String   @id @default(cuid())
   artistId        String

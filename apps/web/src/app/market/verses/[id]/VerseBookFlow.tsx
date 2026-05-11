@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 type Props = {
   listingId: string;
   sellerId: string;
-  kind: "LIVE_SESSION" | "ASYNC_DELIVERY";
+  kind: "LIVE_SESSION" | "ASYNC_DELIVERY" | "ENGINEER_MIX" | "ENGINEER_MASTER";
   sessionMinutes: number;
   priceUsd: number;
 };
@@ -78,8 +78,13 @@ export default function VerseBookFlow({
     return false;
   }
 
+  // LIVE_SESSION and ENGINEER_MIX both put two humans in a studio room
+  // at a specific time — they share the calendar-driven flow. The
+  // async kinds (ASYNC_DELIVERY, ENGINEER_MASTER) skip the calendar.
+  const isLiveKind = kind === "LIVE_SESSION" || kind === "ENGINEER_MIX";
+
   async function submit() {
-    if (kind === "LIVE_SESSION" && !slot) {
+    if (isLiveKind && !slot) {
       setError("Pick a session time first.");
       return;
     }
@@ -92,7 +97,7 @@ export default function VerseBookFlow({
         credentials: "include",
         body: JSON.stringify({
           listingId,
-          startAt: kind === "LIVE_SESSION" && slot ? slot.toISOString() : undefined,
+          startAt: isLiveKind && slot ? slot.toISOString() : undefined,
           brief: brief || undefined,
         }),
       });
@@ -133,7 +138,7 @@ export default function VerseBookFlow({
 
   return (
     <div className="space-y-4">
-      {kind === "LIVE_SESSION" && (
+      {isLiveKind && (
         <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
           <div className="mb-2 text-[10px] font-black uppercase tracking-[0.28em] text-white/55">
             Pick a session time · {sessionMinutes}-min slot
@@ -201,7 +206,7 @@ export default function VerseBookFlow({
       <button
         type="button"
         onClick={submit}
-        disabled={busy || (kind === "LIVE_SESSION" && !slot)}
+        disabled={busy || (isLiveKind && !slot)}
         className="block w-full rounded-2xl bg-amber-400 px-4 py-3 text-center text-sm font-black uppercase tracking-widest text-black hover:bg-amber-300 disabled:opacity-50"
       >
         {busy ? "Opening checkout…" : `Pay $${priceUsd.toFixed(0)} & lock it in`}

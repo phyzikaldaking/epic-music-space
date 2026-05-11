@@ -2,12 +2,15 @@
 
 import { useMemo, useState } from "react";
 import type { DawEngine, TrackId, RecordedTake } from "./dawEngine";
+import MelodyneEditor from "./MelodyneEditor";
+import type { ScaleKey } from "@/lib/pitchCorrect";
 
 // Per-track take browser. Lists every recording captured this session,
 // renders each as a tiny sparkline (peaks pre-computed by the engine),
 // and lets the producer A/B between them. Picking a keeper hot-swaps
 // the track buffer without re-recording, so a "I liked take 2 better"
-// moment is a single click.
+// moment is a single click. Each take also has a "Tune" button to open
+// AI Melodyne for note-level pitch editing.
 
 type Props = {
   engine: DawEngine;
@@ -15,6 +18,7 @@ type Props = {
   trackName: string;
   open: boolean;
   onClose: () => void;
+  scaleKey?: ScaleKey;
 };
 
 export default function TakeBrowserModal({
@@ -23,11 +27,13 @@ export default function TakeBrowserModal({
   trackName,
   open,
   onClose,
+  scaleKey = "C",
 }: Props) {
   // Snapshot the take list when the modal opens. We re-read on each
   // user action below rather than subscribing to the whole engine
   // because the take list rarely changes mid-browse.
   const [tick, setTick] = useState(0);
+  const [melodyneBuffer, setMelodyneBuffer] = useState<AudioBuffer | null>(null);
   const takes = useMemo(
     () => engine.listTakes(trackId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,6 +75,9 @@ export default function TakeBrowserModal({
                 key={take.id}
                 take={take}
                 index={takes.length - idx}
+                engine={engine}
+                trackId={trackId}
+                scaleKey={scaleKey}
                 onPick={() => {
                   engine.setKeeperTake(trackId, take.id);
                   setTick((t) => t + 1);
@@ -85,6 +94,7 @@ export default function TakeBrowserModal({
                   engine.noteTake(trackId, take.id, note);
                   setTick((t) => t + 1);
                 }}
+                onMelodyne={(buf) => setMelodyneBuffer(buf)}
               />
             ))}
           </ul>
@@ -94,6 +104,17 @@ export default function TakeBrowserModal({
           Up to 16 takes per track · oldest drop off automatically
         </p>
       </div>
+      <MelodyneEditor
+        buffer={melodyneBuffer}
+        scaleKey={scaleKey}
+        ctx={engine.audioContext}
+        onApply={(corrected) => {
+          engine.setTrackBuffer(trackId, corrected);
+          setMelodyneBuffer(null);
+          setTick((t) => t + 1);
+        }}
+        onClose={() => setMelodyneBuffer(null)}
+      />
     </div>
   );
 }
@@ -101,17 +122,25 @@ export default function TakeBrowserModal({
 function TakeRow({
   take,
   index,
+  engine,
+  trackId,
+  scaleKey,
   onPick,
   onDelete,
   onLabel,
   onNote,
+  onMelodyne,
 }: {
   take: RecordedTake;
   index: number;
+  engine: DawEngine;
+  trackId: TrackId;
+  scaleKey: ScaleKey;
   onPick: () => void;
   onDelete: () => void;
   onLabel: (label: string) => void;
   onNote: (note: string) => void;
+  onMelodyne: (buf: AudioBuffer) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(take.label ?? `Take ${index}`);
@@ -122,6 +151,11 @@ function TakeRow({
     hour: "numeric",
     minute: "2-digit",
   });
+
+  const openMelodyne = async () => {
+    const buf = engine.getTakeBuffer(take.id);
+    if (buf) onMelodyne(buf);
+  };
 
   return (
     <li
@@ -199,6 +233,15 @@ function TakeRow({
             aria-label="Toggle take note"
           >
             📝
+          </button>
+          <button
+            type="button"
+            onClick={openMelodyne}
+            className="rounded-md border border-purple-400/40 bg-purple-500/15 px-2 py-1 text-[10px] uppercase tracking-widest text-purple-300 hover:bg-purple-500/25"
+            title="Open AI Melodyne for note-level pitch editing"
+            aria-label="Tune this take"
+          >
+            🎵 Tune
           </button>
           {!take.isKeeper && (
             <button

@@ -4190,6 +4190,11 @@ export class DawEngine {
     return this.transport.takeHistory[trackId] ?? [];
   }
 
+  /** Retrieve a specific take's AudioBuffer for editing (e.g., Melodyne). */
+  getTakeBuffer(takeId: string): AudioBuffer | undefined {
+    return this.takeBuffers.get(takeId);
+  }
+
   /** Switch the active take. Hot-swaps the track buffer so the
    *  producer can A/B without re-recording. */
   setKeeperTake(trackId: TrackId, takeId: string): boolean {
