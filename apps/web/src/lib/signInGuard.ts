@@ -25,6 +25,17 @@ function isBlocked(res: RateLimiterRes | null): boolean {
   return res.remainingPoints <= 0 && res.msBeforeNext > 0;
 }
 
+function isRateLimiterRes(err: unknown): err is RateLimiterRes {
+  if (!err || typeof err !== "object") return false;
+  const candidate = err as { msBeforeNext?: unknown; remainingPoints?: unknown };
+  return (
+    typeof candidate.msBeforeNext === "number" &&
+    Number.isFinite(candidate.msBeforeNext) &&
+    typeof candidate.remainingPoints === "number" &&
+    Number.isFinite(candidate.remainingPoints)
+  );
+}
+
 async function safeGet(
   limiter: { get: (key: string) => Promise<RateLimiterRes | null> },
   key: string,
@@ -49,7 +60,7 @@ export async function assertSignInAllowed(email: string, ip: string) {
     // Connection/infrastructure errors from Redis must fail open —
     // returning allowed:false here would lock every user out whenever
     // Redis is unreachable or REDIS_URL is not configured.
-    if (err instanceof RateLimiterRes) {
+    if (isRateLimiterRes(err)) {
       return {
         allowed: false as const,
         retryAfterSeconds: retryAfterSecondsFrom(err),
@@ -62,7 +73,7 @@ export async function assertSignInAllowed(email: string, ip: string) {
     get: (key: string) => Promise<RateLimiterRes | null>;
   };
 
-  // We deliberately do NOT apply a per-IP failure ceiling â that punishes
+  // We deliberately do NOT apply a per-IP failure ceiling -- that punishes
   // every legitimate user behind a shared NAT for one attacker's bad
   // password attempts. Per-email and per-(email,IP) ceilings still apply.
   const [emailState, emailIpState] = await Promise.all([
