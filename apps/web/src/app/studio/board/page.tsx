@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export default async function StudioBoardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ futuristic?: string; prototype?: string }>;
+  searchParams?: Promise<{ legacy?: string }>;
 }) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -25,15 +25,15 @@ export default async function StudioBoardPage({
   }
 
   const params = await searchParams;
-  const showFuturisticPrototype = params?.futuristic === "1" || params?.prototype === "1";
+  const showLegacyStudio = params?.legacy === "1";
 
-  if (showFuturisticPrototype) {
-    return <FuturisticStudioPrototype />;
+  if (showLegacyStudio) {
+    return (
+      <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
+        <DawWorkspace />
+      </div>
+    );
   }
 
-  return (
-    <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
-      <DawWorkspace />
-    </div>
-  );
+  return <FuturisticStudioPrototype />;
 }
