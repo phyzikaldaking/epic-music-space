@@ -60,7 +60,6 @@ export async function uploadVideoBlob(
     const blob = await put(filename, file, {
       access: "public",
       contentType: format === "mp4" ? "video/mp4" : "video/webm",
-      contentDisposition: `attachment; filename="${projectId}-export.${format}"`,
     });
     return blob.url;
   } catch (err) {
