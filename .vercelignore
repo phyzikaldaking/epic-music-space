@@ -1,5 +1,21 @@
 # Never upload local Vercel metadata or pulled env artifacts.
 .vercel
+**/.turbo
+**/node_modules
+**/.next
+**/test-results
+**/coverage
+**/playwright-report
+**/*.tsbuildinfo
+**/lhreport.json
+docs
+scripts
+tools
+EMS_CORE
+.claude
+.qodo
+.sixth
+loadtest
 
 # Never upload local dotenv files from this workspace.
 .env*
