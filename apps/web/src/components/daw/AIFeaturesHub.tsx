@@ -33,8 +33,29 @@ type TabId =
   | "dna"
   | "effects";
 
-export default function AIFeaturesHub() {
+type Props = {
+  projectName: string;
+  projectId: string | null;
+  userId: string | null;
+  userName: string | null;
+  focusedTrackId: string | null;
+  projectKey: string | null;
+  projectBpm: number | null;
+};
+
+export default function AIFeaturesHub({
+  projectName,
+  projectId,
+  userId,
+  userName,
+  focusedTrackId,
+  projectKey,
+  projectBpm,
+}: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("tiktok");
+  const safeProjectName = projectName?.trim() ? projectName.trim() : "Untitled session";
+  const safeProjectKey = projectKey?.trim() ? projectKey.trim() : "C";
+  const safeProjectBpm = typeof projectBpm === "number" && Number.isFinite(projectBpm) ? projectBpm : 120;
 
   const tabs: { id: TabId; label: string; icon: string }[] = [
     { id: "tiktok", label: "TikTok Sync", icon: "🎵" },
@@ -73,13 +94,43 @@ export default function AIFeaturesHub() {
       <div className="flex-1 overflow-y-auto p-3">
         {activeTab === "tiktok" && <TikTokSyncPanel />}
         {activeTab === "battle" && <ProducerBattleMode />}
-        {activeTab === "remix" && <RemixGenerator />}
+        {activeTab === "remix" && <RemixGenerator projectName={safeProjectName} />}
         {activeTab === "vibe" && <VibeMatchBrowser />}
-        {activeTab === "harmonies" && <VocalHarmonyStacker />}
-        {activeTab === "key-detect" && <VocalKeyDetection />}
-        {activeTab === "jam" && <LiveJamSessions />}
-        {activeTab === "collab" && <CollaborationDrafts />}
-        {activeTab === "loops" && <SmartLoopSuggestions />}
+        {activeTab === "harmonies" &&
+          (focusedTrackId ? (
+            <VocalHarmonyStacker trackId={focusedTrackId} />
+          ) : (
+            <div className="rounded-lg border border-white/10 bg-[#0c0c12] p-4 text-sm text-white/60">
+              Select a track first to generate harmonies.
+            </div>
+          ))}
+        {activeTab === "key-detect" &&
+          (focusedTrackId ? (
+            <VocalKeyDetection trackId={focusedTrackId} currentKey={safeProjectKey} />
+          ) : (
+            <div className="rounded-lg border border-white/10 bg-[#0c0c12] p-4 text-sm text-white/60">
+              Select a track first to detect its key.
+            </div>
+          ))}
+        {activeTab === "jam" &&
+          (projectId && userId && userName ? (
+            <LiveJamSessions projectId={projectId} userId={userId} userName={userName} />
+          ) : (
+            <div className="rounded-lg border border-white/10 bg-[#0c0c12] p-4 text-sm text-white/60">
+              Sign in and save your project to start a jam session.
+            </div>
+          ))}
+        {activeTab === "collab" &&
+          (projectId && userId ? (
+            <CollaborationDrafts projectId={projectId} userId={userId} />
+          ) : (
+            <div className="rounded-lg border border-white/10 bg-[#0c0c12] p-4 text-sm text-white/60">
+              Sign in and save your project to leave comments.
+            </div>
+          ))}
+        {activeTab === "loops" && (
+          <SmartLoopSuggestions projectKey={safeProjectKey} projectBpm={safeProjectBpm} />
+        )}
         {activeTab === "dna" && <DrumPatternDNAMixer />}
         {activeTab === "effects" && (
           <div className="space-y-3">

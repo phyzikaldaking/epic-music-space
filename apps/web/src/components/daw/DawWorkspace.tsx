@@ -6182,7 +6182,15 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           >
             Close ×
           </button>
-          <AIFeaturesHub />
+          <AIFeaturesHub
+            projectName={projectName}
+            projectId={projectId}
+            userId={session?.user?.id ?? null}
+            userName={session?.user?.name?.trim() || null}
+            focusedTrackId={focusedId}
+            projectKey={transport?.projectKey ?? null}
+            projectBpm={typeof transport?.bpm === "number" ? transport.bpm : null}
+          />
         </div>
       </div>
     )}
