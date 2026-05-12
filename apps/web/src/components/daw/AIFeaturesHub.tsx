@@ -2,6 +2,12 @@
 
 import dynamic from "next/dynamic";
 import { useState } from "react";
+import {
+  AIMasteringSlider,
+  GenreEffectChains,
+  SocialListeningRoom,
+  TrendingSamplePacks,
+} from "./PhaseFFeaturesComponents";
 
 const TikTokSyncPanel = dynamic(() => import("./TikTokSyncPanel"), { ssr: false });
 const ProducerBattleMode = dynamic(() => import("./ProducerBattleMode"), { ssr: false });
@@ -13,7 +19,6 @@ const LiveJamSessions = dynamic(() => import("./LiveJamSessions"), { ssr: false 
 const CollaborationDrafts = dynamic(() => import("./CollaborationDrafts"), { ssr: false });
 const SmartLoopSuggestions = dynamic(() => import("./SmartLoopSuggestions"), { ssr: false });
 const DrumPatternDNAMixer = dynamic(() => import("./DrumPatternDNAMixer"), { ssr: false });
-const PhaseFFeaturesComponents = dynamic(() => import("./PhaseFFeaturesComponents"), { ssr: false });
 
 type TabId = 
   | "tiktok"
@@ -78,10 +83,10 @@ export default function AIFeaturesHub() {
         {activeTab === "dna" && <DrumPatternDNAMixer />}
         {activeTab === "effects" && (
           <div className="space-y-3">
-            <PhaseFFeaturesComponents.GenreEffectChains genre="trap" />
-            <PhaseFFeaturesComponents.AIMasteringSlider />
-            <PhaseFFeaturesComponents.TrendingSamplePacks />
-            <PhaseFFeaturesComponents.SocialListeningRoom />
+            <GenreEffectChains genre="trap" />
+            <AIMasteringSlider />
+            <TrendingSamplePacks />
+            <SocialListeningRoom />
           </div>
         )}
       </div>

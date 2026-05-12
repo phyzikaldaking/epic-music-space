@@ -22,6 +22,32 @@ export async function uploadAudioBlob(
 }
 
 /**
+ * Studio helper: upload a blob to an exact pathname (no extra random suffix).
+ * Callers can include the full key, e.g. `studio/<project>/<track>.bin`.
+ */
+export async function uploadStudioAudio(
+  pathname: string,
+  file: Blob | File
+): Promise<{ url: string }> {
+  try {
+    const contentType =
+      typeof (file as { type?: unknown }).type === "string" &&
+      (file as { type?: string }).type
+        ? (file as { type: string }).type
+        : "application/octet-stream";
+
+    const blob = await put(pathname, file, {
+      access: "public",
+      contentType,
+    });
+    return { url: blob.url };
+  } catch (err) {
+    console.error("[blobClient] Studio upload failed:", err);
+    throw new Error("Failed to upload studio audio");
+  }
+}
+
+/**
  * Upload video export to Vercel Blob
  */
 export async function uploadVideoBlob(
