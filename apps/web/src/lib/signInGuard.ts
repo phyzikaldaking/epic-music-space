@@ -45,17 +45,24 @@ export async function assertSignInAllowed(email: string, ip: string) {
   try {
     await signInAttemptLimiter.consume(attemptIpKey(ip));
   } catch (err) {
-    return {
-      allowed: false as const,
-      retryAfterSeconds: retryAfterSecondsFrom(err),
-    };
+    // Only block on an actual rate-limit result (RateLimiterRes).
+    // Connection/infrastructure errors from Redis must fail open —
+    // returning allowed:false here would lock every user out whenever
+    // Redis is unreachable or REDIS_URL is not configured.
+    if (err instanceof RateLimiterRes) {
+      return {
+        allowed: false as const,
+        retryAfterSeconds: retryAfterSecondsFrom(err),
+      };
+    }
+    // Infrastructure error — fail open and let the request through.
   }
 
   const limiter = strictLimiter as typeof strictLimiter & {
     get: (key: string) => Promise<RateLimiterRes | null>;
   };
 
-  // We deliberately do NOT apply a per-IP failure ceiling — that punishes
+  // We deliberately do NOT apply a per-IP failure ceiling â that punishes
   // every legitimate user behind a shared NAT for one attacker's bad
   // password attempts. Per-email and per-(email,IP) ceilings still apply.
   const [emailState, emailIpState] = await Promise.all([
