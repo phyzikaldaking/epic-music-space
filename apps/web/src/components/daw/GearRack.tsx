@@ -1,33 +1,21 @@
 "use client";
 
-import type { ReactElement } from "react";
-
 /**
- * Visual gear rack for the EMS DAW. The audio under each gear card is
- * the platform-native Web Audio chain — these styled cards are honest
- * representations, not faked emulations. Clicking applies a recommended
- * preset to the FX chain of the supplied track.
+ * Compact gear rack for the EMS DAW.
  *
- *   • U87 Microphone — represents the active mic input. Triggers
- *     record-arm on the supplied track.
- *   • Avalon 737 — vocal chain preset (slight low-cut, mid presence,
- *     gentle compression, plate reverb).
- *   • EMS Frontline Bus — platform-native vocal bus for upfront lead
- *     capture: drive, presence, air, and parallel compression.
- *   • Pultec EQP-1A — boosting low + air preset (low shelf +3,
- *     high shelf +3, comp off).
- *   • Lexicon 480L — long hall reverb preset (decay 4s, wet 0.35).
+ * The rack is intentionally rendered like Pro Tools insert/plugin slots:
+ * small, dense, track-ready buttons instead of oversized hardware cards.
+ * Clicking a slot still applies the same Web Audio preset chain to the
+ * focused track; this is a presentation/layout correction, not a DSP change.
  */
 
 interface GearPreset {
   id: string;
   name: string;
+  shortName: string;
   subtitle: string;
-  era: string;
-  /** Preset to apply via the FxPanel setters when clicked. */
+  tone: string;
   apply: (fns: GearApplyHandlers) => void;
-  /** Inline SVG glyph — keeps the rack zero-asset. */
-  Glyph: () => ReactElement;
 }
 
 export interface GearApplyHandlers {
@@ -49,35 +37,17 @@ const PRESETS: GearPreset[] = [
   {
     id: "u87",
     name: "U87",
-    subtitle: "Mic input · arms track",
-    era: "Studio standard",
+    shortName: "U87",
+    subtitle: "Mic arm",
+    tone: "border-slate-300/35 bg-slate-300/10 text-slate-100",
     apply: ({ onArm }) => onArm(),
-    Glyph: () => (
-      <svg viewBox="0 0 100 140" className="h-20 w-auto" aria-hidden="true">
-        <defs>
-          <linearGradient id="u87a" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#d4d4d4" />
-            <stop offset="1" stopColor="#5b5b5b" />
-          </linearGradient>
-        </defs>
-        <rect x="32" y="10" width="36" height="46" rx="6" fill="url(#u87a)" stroke="#000" strokeOpacity="0.5" />
-        <pattern id="u87grid" width="4" height="4" patternUnits="userSpaceOnUse">
-          <rect width="4" height="4" fill="none" />
-          <circle cx="2" cy="2" r="0.6" fill="#1c1c1c" />
-        </pattern>
-        <rect x="34" y="13" width="32" height="40" rx="3" fill="url(#u87grid)" />
-        <rect x="44" y="56" width="12" height="40" rx="2" fill="#3a3a3a" />
-        <rect x="36" y="96" width="28" height="6" rx="1" fill="#1f1f1f" />
-        <rect x="34" y="102" width="32" height="14" rx="2" fill="#0d0d0d" />
-        <text x="50" y="113" fontSize="6" textAnchor="middle" fill="#c0c0c0" fontFamily="ui-monospace, monospace">U 87</text>
-      </svg>
-    ),
   },
   {
     id: "avalon",
     name: "Avalon 737",
-    subtitle: "Vocal chain · EQ + comp + warm",
-    era: "Class-A tube",
+    shortName: "737",
+    subtitle: "Vocal chain",
+    tone: "border-amber-300/35 bg-amber-400/10 text-amber-100",
     apply: ({ onSetEq, onSetComp, onSetReverb }) => {
       onSetEq("low", -2);
       onSetEq("mid", 1.5);
@@ -85,32 +55,13 @@ const PRESETS: GearPreset[] = [
       onSetComp({ enabled: true, threshDb: -22, ratio: 4 });
       onSetReverb({ wet: 0.18, decaySec: 1.6 });
     },
-    Glyph: () => (
-      <svg viewBox="0 0 160 80" className="h-20 w-auto" aria-hidden="true">
-        <defs>
-          <linearGradient id="avalon-bg" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#5a4a32" />
-            <stop offset="1" stopColor="#2b2419" />
-          </linearGradient>
-        </defs>
-        <rect x="2" y="2" width="156" height="76" rx="3" fill="url(#avalon-bg)" stroke="#0a0700" />
-        <rect x="6" y="6" width="148" height="68" rx="2" fill="#1a1410" stroke="#caa063" strokeOpacity="0.4" />
-        {[24, 56, 88, 120].map((cx) => (
-          <g key={cx}>
-            <circle cx={cx} cy="40" r="13" fill="#0c0907" stroke="#caa063" strokeWidth="1" />
-            <circle cx={cx} cy="40" r="9" fill="#1f1813" />
-            <line x1={cx} y1="32" x2={cx} y2="40" stroke="#f5d490" strokeWidth="1.2" strokeLinecap="round" />
-          </g>
-        ))}
-        <text x="80" y="72" fontSize="7" textAnchor="middle" fill="#caa063" fontFamily="ui-monospace, monospace" letterSpacing="2">AVALON</text>
-      </svg>
-    ),
   },
   {
     id: "frontline",
     name: "EMS Frontline",
-    subtitle: "Vocal bus · loud upfront",
-    era: "Platform sound",
+    shortName: "EMS",
+    subtitle: "Lead bus",
+    tone: "border-cyan-300/35 bg-cyan-400/10 text-cyan-100",
     apply: ({ onSetEq, onSetComp, onSetVocalBus, onSetReverb, onSetDelay }) => {
       onSetEq("low", -3);
       onSetEq("mid", 2);
@@ -126,82 +77,29 @@ const PRESETS: GearPreset[] = [
       onSetReverb({ wet: 0.12, decaySec: 1.2 });
       onSetDelay({ wet: 0.07, beats: 0.25, feedback: 0.18 });
     },
-    Glyph: () => (
-      <svg viewBox="0 0 160 80" className="h-20 w-auto" aria-hidden="true">
-        <rect x="2" y="2" width="156" height="76" rx="3" fill="#16120b" stroke="#fbbf24" strokeOpacity="0.5" />
-        <rect x="10" y="10" width="140" height="18" rx="2" fill="#090807" stroke="#fbbf24" strokeOpacity="0.35" />
-        <text x="18" y="23" fontSize="10" fill="#fde68a" fontFamily="ui-monospace, monospace" letterSpacing="2">EMS FRONTLINE</text>
-        <path d="M17 55 C31 26, 45 72, 59 43 S87 30, 101 54 S129 62, 143 31" fill="none" stroke="#22d3ee" strokeWidth="2.5" strokeLinecap="round" />
-        {[28, 56, 88, 120].map((cx, index) => (
-          <g key={cx}>
-            <circle cx={cx} cy="54" r="8" fill="#080604" stroke="#fbbf24" />
-            <line
-              x1={cx}
-              y1="48"
-              x2={cx + (index % 2 === 0 ? 4 : -4)}
-              y2="54"
-              stroke="#fde68a"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
-          </g>
-        ))}
-        <rect x="118" y="14" width="22" height="8" rx="1" fill="#22d3ee" opacity="0.8" />
-      </svg>
-    ),
   },
   {
     id: "pultec",
     name: "Pultec EQP-1A",
-    subtitle: "Lows + air · classic curve",
-    era: "Vintage tube EQ",
+    shortName: "EQP",
+    subtitle: "Low + air",
+    tone: "border-orange-300/35 bg-orange-400/10 text-orange-100",
     apply: ({ onSetEq, onSetComp }) => {
       onSetEq("low", 3);
       onSetEq("mid", 0);
       onSetEq("high", 3);
       onSetComp({ enabled: false });
     },
-    Glyph: () => (
-      <svg viewBox="0 0 160 80" className="h-20 w-auto" aria-hidden="true">
-        <rect x="2" y="2" width="156" height="76" rx="3" fill="#1c1208" stroke="#daa54f" strokeOpacity="0.45" />
-        <rect x="6" y="6" width="148" height="20" rx="2" fill="#3b270d" stroke="#daa54f" strokeOpacity="0.3" />
-        <text x="80" y="20" fontSize="9" textAnchor="middle" fill="#f4d28a" fontFamily="ui-serif, serif" letterSpacing="3">PULTEC</text>
-        {[28, 60, 100, 132].map((cx) => (
-          <g key={cx}>
-            <circle cx={cx} cy="50" r="12" fill="#0a0703" stroke="#daa54f" />
-            <line x1={cx} y1="42" x2={cx + 4} y2="50" stroke="#f4d28a" strokeWidth="1.2" />
-          </g>
-        ))}
-      </svg>
-    ),
   },
   {
     id: "lexicon",
     name: "Lexicon 480L",
-    subtitle: "Long hall · cinematic tail",
-    era: "Reverb classic",
+    shortName: "480L",
+    subtitle: "Hall send",
+    tone: "border-blue-300/35 bg-blue-400/10 text-blue-100",
     apply: ({ onSetReverb }) => {
       onSetReverb({ wet: 0.35, decaySec: 4 });
     },
-    Glyph: () => (
-      <svg viewBox="0 0 160 80" className="h-20 w-auto" aria-hidden="true">
-        <rect x="2" y="2" width="156" height="76" rx="3" fill="#0d1525" stroke="#3b82f6" strokeOpacity="0.45" />
-        <rect x="10" y="14" width="80" height="20" rx="2" fill="#000" stroke="#3b82f6" strokeOpacity="0.55" />
-        <text x="14" y="29" fontSize="11" fill="#7dd3fc" fontFamily="ui-monospace, monospace">HALL · 4.0s</text>
-        {Array.from({ length: 18 }).map((_, i) => (
-          <rect
-            key={i}
-            x={10 + i * 4.5}
-            y={48 - Math.sin(i / 2) * 8 - 4}
-            width="3"
-            height={Math.sin(i / 2) * 8 + 6 + 4}
-            fill="#7dd3fc"
-            opacity={1 - i / 18}
-          />
-        ))}
-        <text x="150" y="72" fontSize="7" textAnchor="end" fill="#7dd3fc" fontFamily="ui-monospace, monospace" letterSpacing="2">LEXICON 480L</text>
-      </svg>
-    ),
   },
 ];
 
@@ -211,34 +109,41 @@ interface Props {
 
 export default function GearRack({ onApplyToTrack }: Props) {
   return (
-    <section className="rounded-2xl border border-white/10 bg-gradient-to-r from-[#1a1410] via-[#0e0a08] to-[#0c0c14] p-4">
-      <header className="mb-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.32em] text-amber-300/85">
-          Studio rack
-        </p>
-        <p className="mt-0.5 text-xs text-white/55">
-          Click a piece of gear to apply a preset to the focused track.
-          Audio uses native Web Audio under the hood — these are honest
-          tributes, not faked emulations.
-        </p>
+    <section className="rounded-lg border border-white/10 bg-black/25 p-2">
+      <header className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-[0.28em] text-white/55">
+            Inserts
+          </p>
+          <p className="text-[10px] text-white/35">
+            Compact preset slots for the focused mixer track.
+          </p>
+        </div>
+        <span className="rounded border border-emerald-300/25 bg-emerald-400/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-widest text-emerald-100">
+          Track FX
+        </span>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {PRESETS.map((preset) => (
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
+        {PRESETS.map((preset, index) => (
           <button
             key={preset.id}
             type="button"
             onClick={() => onApplyToTrack(preset.apply)}
-            className="group flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-black/40 p-3 text-center transition hover:border-white/25 hover:bg-black/60"
+            title={`${preset.name} - apply to focused track`}
+            className={`group min-h-12 rounded-md border px-2 py-1.5 text-left shadow-inner transition hover:-translate-y-0.5 hover:bg-white/10 ${preset.tone}`}
           >
-            <div className="flex h-24 items-end justify-center">
-              <preset.Glyph />
+            <div className="flex items-center gap-1.5">
+              <span className="rounded bg-black/45 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-white/80">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span className="truncate text-[11px] font-black uppercase tracking-widest">
+                {preset.shortName}
+              </span>
             </div>
-            <div className="w-full">
-              <p className="text-sm font-bold text-white/95 group-hover:text-white">{preset.name}</p>
-              <p className="mt-0.5 text-[10px] uppercase tracking-widest text-white/40">{preset.subtitle}</p>
-              <p className="mt-1 text-[9px] uppercase tracking-widest text-amber-300/55">{preset.era}</p>
-            </div>
+            <p className="mt-1 truncate text-[9px] uppercase tracking-wider text-white/45">
+              {preset.subtitle}
+            </p>
           </button>
         ))}
       </div>
