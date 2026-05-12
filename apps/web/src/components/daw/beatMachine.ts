@@ -881,3 +881,34 @@ export async function renderPatternToBuffer(
   }
   return offline.startRendering();
 }
+
+/**
+ * Render a SINGLE lane of a beat pattern to its own AudioBuffer. Powers
+ * the "Render trackouts" workflow where the artist wants every drum
+ * stem on its own track — they can then mute the kick to record vocals
+ * without the kick fighting the mic, or duck/sidechain each stem
+ * independently. Same scheduler as the full render, but only the
+ * requested lane plays.
+ */
+export async function renderLaneToBuffer(
+  pattern: BeatPattern,
+  lane: DrumKind,
+  bpm: number,
+  bars: number = 1,
+  sampleRate: number = 44100,
+  kit: DrumKitId = "acoustic",
+): Promise<AudioBuffer> {
+  const stepSec = 60 / bpm / STEPS_PER_BEAT;
+  const totalSteps = STEPS * bars;
+  const totalSec = totalSteps * stepSec + 2.0;
+  const offline = new OfflineAudioContext(2, Math.ceil(totalSec * sampleRate), sampleRate);
+  for (let bar = 0; bar < bars; bar++) {
+    for (let step = 0; step < STEPS; step++) {
+      const when = (bar * STEPS + step) * stepSec;
+      if (pattern[lane][step]) {
+        scheduleDrumHit(offline, offline.destination, lane, { when, kit });
+      }
+    }
+  }
+  return offline.startRendering();
+}

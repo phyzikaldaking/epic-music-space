@@ -22,6 +22,7 @@ import {
   demoPattern,
   emptyPattern as emptyBeatPattern,
   renderPatternToBuffer,
+  renderLaneToBuffer,
   suggestPattern,
   trapDemoPattern,
   type BeatPattern,
@@ -80,6 +81,7 @@ import { tooltips } from "./tooltipCopy";
 import { setStudioContext, clearStudioContext } from "@/lib/studioContextStore";
 import { curatedTrapDemo } from "./demoSessions";
 import { aiToolSchemas, type AiToolName } from "@/lib/aiTools";
+import { useMidiInput } from "@/lib/useMidiInput";
 import {
   startYjsCollab,
   setSharedField,
@@ -113,6 +115,7 @@ const SampleChopperModal = dynamic(() => import("./SampleChopperModal"), { ssr: 
 const ReferenceSpectrumOverlay = dynamic(() => import("./ReferenceSpectrumOverlay"), { ssr: false });
 const SessionReceiptCard = dynamic(() => import("./SessionReceiptCard"), { ssr: false });
 const SendClipToDmButton = dynamic(() => import("./SendClipToDmButton"), { ssr: false });
+const AIFeaturesHub = dynamic(() => import("./AIFeaturesHub"), { ssr: false });
 
 const DEFAULT_TRACKS: Array<{ name: string; color: string; armed: boolean }> = [
   { name: "Vocal", color: "#ec4899", armed: true },
@@ -595,6 +598,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   // AI Melodyne — when set, opens the note-level pitch editor for
   // the track id stored here. Closed by setting back to null.
   const [melodyneTrackId, setMelodyneTrackId] = useState<TrackId | null>(null);
+  const [aiHubOpen, setAiHubOpen] = useState(false);
   const [userTemplates, setUserTemplates] = useState<
     Array<{
       id: string;
@@ -1897,6 +1901,23 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     setManualBpmInput(String(transport.bpm));
   }, [transport?.bpm]);
 
+  // Web MIDI input — route controller notes to synth voice path (#12).
+  // The hook handles browser-compatible MIDI access; falls back silently
+  // on unsupported browsers (Safari, Firefox, etc.).
+  useMidiInput((event) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    const snapToKey = transport?.projectKey
+      ? (n: number) => engine.snapMidiToKey(n) ?? n
+      : (n: number) => n;
+    const snappedNote = snapToKey(event.note);
+    if (event.velocity > 0) {
+      engine.synthNoteOn(snappedNote, event.velocity);
+    } else {
+      engine.synthNoteOff(snappedNote);
+    }
+  });
+
   // Live-session heartbeat — pings /api/studio/heartbeat every 30 s so the
   // production timeline can set isLiveNow for this user's posts.
   useEffect(() => {
@@ -2980,6 +3001,64 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     }
   }
 
+  // Bake each drum lane into its own dedicated track so the artist can
+  // see (and mute / arm / EQ) every stem independently while rapping
+  // on top. Skips lanes that are empty in the current pattern. Each new
+  // track lands in the Edit window like any imported audio. The artist
+  // can then mute the kick to record vocals without it bleeding, etc.
+  async function renderBeatTrackouts() {
+    const engine = engineRef.current;
+    if (!engine || !beat || !transport) return;
+    setRenderingBeat(true);
+    const colors: Record<DrumKind, string> = {
+      kick: "#f87171",
+      snare: "#fbbf24",
+      clap: "#a78bfa",
+      hat: "#22d3ee",
+      openHat: "#60a5fa",
+      perc: "#34d399",
+      bass808: "#ec4899",
+      crash: "#f59e0b",
+    };
+    let made = 0;
+    try {
+      for (const lane of DRUM_LANES) {
+        const hasHits = (beat.pattern[lane] ?? []).some(Boolean);
+        if (!hasHits) continue;
+        const buf = await renderLaneToBuffer(
+          beat.pattern,
+          lane,
+          transport.bpm,
+          1,
+          44100,
+          beat.kit,
+        );
+        const name = (beat.laneNames?.[lane] ?? lane).toString();
+        const id = engine.addTrack(
+          name.charAt(0).toUpperCase() + name.slice(1),
+          colors[lane] ?? "#7c5cff",
+        );
+        engine.setTrackBuffer(id, buf);
+        made++;
+      }
+      if (made === 0) {
+        setNotice({ tone: "info", message: "Beat pattern is empty — nothing to bake." });
+      } else {
+        setSnapshot(engine.getSnapshot());
+        pushAuditEvent("beat", `Rendered ${made} beat trackouts to individual tracks`);
+        setNotice({
+          tone: "success",
+          message: `Baked ${made} drum stems to their own tracks. Mute any one to rap clean.`,
+        });
+      }
+    } catch (err) {
+      console.warn("[DawWorkspace] trackouts render failed", err);
+      setNotice({ tone: "error", message: "Trackouts render failed." });
+    } finally {
+      setRenderingBeat(false);
+    }
+  }
+
   const assignBeatLaneSample = useCallback(
     async (lane: DrumKind, file: File) => {
       if (!ensureInit()) return;
@@ -3481,8 +3560,21 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               className="rounded-md border border-white/10 bg-black/40"
               aria-label="Edit window"
             >
-              <div className="border-b border-white/10 bg-white/[0.02] px-3 py-2 text-[10px] font-black uppercase tracking-[0.32em] text-white/55">
-                Edit · {tracks.length} track{tracks.length === 1 ? "" : "s"}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-white/[0.02] px-3 py-2">
+                <div className="text-[10px] font-black uppercase tracking-[0.32em] text-white/55">
+                  Edit · {tracks.length} track{tracks.length === 1 ? "" : "s"}
+                </div>
+                {beat && (
+                  <button
+                    type="button"
+                    onClick={renderBeatTrackouts}
+                    disabled={renderingBeat}
+                    className="rounded-md border border-cyan-400/40 bg-cyan-500/15 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-500/25 disabled:opacity-50"
+                    title="Bake every drum lane into its own track — rap over the beat with stem-level control"
+                  >
+                    {renderingBeat ? "Baking…" : "↧ Render trackouts"}
+                  </button>
+                )}
               </div>
               <div>
                 {tracks.map((track) => (
@@ -3542,46 +3634,33 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             </section>
           )}
 
-          {mainMode === "beat" && (
+          {(mainMode === "beat" || mainMode === "mix" || mainMode === "publish") && (
             <section
-              className="rounded-md border border-white/10 bg-black/40 p-3"
-              aria-label="Beat machine"
+              className="rounded-md border border-white/10 bg-black/40 px-3 py-2"
+              aria-label={mainMode}
             >
-              <div className="text-[10px] font-black uppercase tracking-[0.32em] text-amber-300">
-                Beat machine
+              <div
+                className={`text-[10px] font-black uppercase tracking-[0.32em] ${
+                  mainMode === "beat"
+                    ? "text-amber-300"
+                    : mainMode === "mix"
+                      ? "text-cyan-300"
+                      : "text-emerald-300"
+                }`}
+              >
+                {mainMode === "beat"
+                  ? "Beat machine"
+                  : mainMode === "mix"
+                    ? "Mix console"
+                    : "Master + Publish"}
               </div>
-              <p className="mt-1 text-[11px] text-white/55">
-                Scroll down for the full grid (kit, swing, fills, stutter).
-                Switching to Edit returns you to the track lanes.
-              </p>
-            </section>
-          )}
-
-          {mainMode === "mix" && (
-            <section
-              className="rounded-md border border-white/10 bg-black/40 p-3"
-              aria-label="Mixer"
-            >
-              <div className="text-[10px] font-black uppercase tracking-[0.32em] text-cyan-300">
-                Mix
-              </div>
-              <p className="mt-1 text-[11px] text-white/55">
-                Track strip faders + EQ + master live below. Switch back to
-                Edit for the recording window.
-              </p>
-            </section>
-          )}
-
-          {mainMode === "publish" && (
-            <section
-              className="rounded-md border border-white/10 bg-black/40 p-3"
-              aria-label="Publish"
-            >
-              <div className="text-[10px] font-black uppercase tracking-[0.32em] text-emerald-300">
-                Publish
-              </div>
-              <p className="mt-1 text-[11px] text-white/55">
-                Master metering + the publish bar live below.
+              <p className="mt-0.5 text-[11px] text-white/55">
+                {mainMode === "beat"
+                  ? "Drum grid, kit, swing, fills, and round-robin variants below."
+                  : mainMode === "mix"
+                    ? "Track strip faders, EQ, sends, and master meter below."
+                    : "Master EQ + LUFS metering + publish to marketplace below."}{" "}
+                Switch to <strong>Edit</strong> for the recording window.
               </p>
             </section>
           )}
@@ -3618,6 +3697,16 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                 {item.label} →
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => {
+                setDrawerOpen(false);
+                setAiHubOpen((v) => !v);
+              }}
+              className="block w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-left hover:bg-white/[0.06]"
+            >
+              🚀 AI Features Hub →
+            </button>
             <label className="mt-4 flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] p-2 text-[11px]">
               <input
                 type="checkbox"
@@ -3637,8 +3726,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         scroll for the full surface (mix tools, beat grid, master);
         the edit window above covers 90% of the recording workflow.
         Toggle off in the drawer to fall back to the old stacked
-        layout. */}
-    <div data-studio-content className="relative mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8">
+        layout. We hide the whole legacy block in proMode so the user
+        only sees the Pro Tools-style top bar + edit window. */}
+    <div data-studio-content className={`relative mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8 ${proMode && mainMode === "edit" ? "hidden" : ""}`}>
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
@@ -3668,29 +3758,48 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       )}
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="mb-6 overflow-hidden rounded-[1.5rem] border border-white/10 bg-[linear-gradient(135deg,rgba(12,12,20,0.98),rgba(9,16,28,0.94)_46%,rgba(25,13,28,0.9))] p-5 shadow-2xl shadow-black/30">
-        <div className="pointer-events-none mb-5 h-24 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
-          <div className="flex h-full items-end gap-1 px-4 pb-3 opacity-80">
-            {Array.from({ length: 48 }, (_, i) => (
-              <span
-                key={i}
-                className={`w-full rounded-t bg-cyan-200/50 ${VIS_BAR_HEIGHT_CLASSES[i % VIS_BAR_HEIGHT_CLASSES.length]} ${VIS_BAR_OPACITY_CLASSES[i % VIS_BAR_OPACITY_CLASSES.length]}`}
-              />
-            ))}
+      {/* In proMode the header is fully hidden — the Pro Tools top bar
+          (StudioTopBar above) is the only header. The legacy hero only
+          renders in the legacy layout when the user opts out. */}
+      <div
+        className={
+          proMode
+            ? "hidden"
+            : "mb-6 overflow-hidden rounded-[1.5rem] border border-white/10 bg-[linear-gradient(135deg,rgba(12,12,20,0.98),rgba(9,16,28,0.94)_46%,rgba(25,13,28,0.9))] p-5 shadow-2xl shadow-black/30"
+        }
+      >
+        {!proMode && (
+          <div className="pointer-events-none mb-5 h-24 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+            <div className="flex h-full items-end gap-1 px-4 pb-3 opacity-80">
+              {Array.from({ length: 48 }, (_, i) => (
+                <span
+                  key={i}
+                  className={`w-full rounded-t bg-cyan-200/50 ${VIS_BAR_HEIGHT_CLASSES[i % VIS_BAR_HEIGHT_CLASSES.length]} ${VIS_BAR_OPACITY_CLASSES[i % VIS_BAR_OPACITY_CLASSES.length]}`}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.32em] text-brand-300/80">
-            EMS Studio · Blueprint
-          </p>
-          <h1 className="mt-1 text-3xl font-extrabold sm:text-4xl">Next-gen recording board</h1>
-          <p className="mt-1 max-w-xl text-sm text-white/65">
-            Frontline vocal bus, adaptive latency, MIDI capture, beat patterns, master render, and
-            catalog publishing in one browser-native studio.
-          </p>
-        </div>
-          <div className="flex items-start gap-3">
+        )}
+        <div
+          className={
+            proMode
+              ? "flex w-full flex-wrap items-center justify-between gap-2"
+              : "flex flex-wrap items-end justify-between gap-3"
+          }
+        >
+        {!proMode && (
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.32em] text-brand-300/80">
+              EMS Studio · Blueprint
+            </p>
+            <h1 className="mt-1 text-3xl font-extrabold sm:text-4xl">Next-gen recording board</h1>
+            <p className="mt-1 max-w-xl text-sm text-white/65">
+              Frontline vocal bus, adaptive latency, MIDI capture, beat patterns, master render, and
+              catalog publishing in one browser-native studio.
+            </p>
+          </div>
+        )}
+          <div className={proMode ? "flex flex-wrap items-center gap-2" : "flex items-start gap-3"}>
             <ProjectMenu
               currentProjectId={projectId}
               currentProjectName={projectName}
@@ -5672,6 +5781,21 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
               };
             }
           }}
+          onBeatPatternsGenerated={(_patterns, bpm) => {
+            const engine = engineRef.current;
+            if (!engine) return;
+            // TODO(midi): wire generated patterns into the engine once a
+            // public setMidiClip(trackId, notes, lengthBeats) API exists.
+            // For now we just match the transport tempo so playback feels
+            // right when the user manually populates the synth.
+            if (bpm !== transport?.bpm) {
+              engine.setBpm(bpm);
+            }
+            setNotice({
+              tone: "success",
+              message: `Synced to ${bpm} BPM — load the patterns onto the synth manually.`,
+            });
+          }}
         />
       )}
 
@@ -5934,111 +6058,134 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         }}
       />
 
-      {/* Per-track take browser. We resolve the trackName at render
-          time from the currently-focused track — the take history is
-          per-track, so the browser only makes sense in a track
-          context. Falls back to the first armed track if no focus. */}
-      {takeBrowserOpen && engineRef.current && (() => {
-        const targetId =
-          focusedId ?? tracks.find((t) => t.armed)?.id ?? tracks[0]?.id;
-        const target = targetId ? tracks.find((t) => t.id === targetId) : null;
-        if (!target) return null;
-        return (
-          <TakeBrowserModal
-            engine={engineRef.current}
-            trackId={target.id}
-            trackName={target.name}
-            open
-            onClose={() => setTakeBrowserOpen(false)}
-          />
-        );
-      })()}
+    </div>
 
-      {warmupOpen && (
-        <VocalWarmupModal
-          open={warmupOpen}
-          projectKey={null}
-          onClose={() => setWarmupOpen(false)}
-        />
-      )}
+    {/* When proMode is on, the legacy div is hidden — so we render the
+        Notice + initError here as a fixed top-of-screen banner so the
+        user still sees important toasts (save success, errors, etc.). */}
+    {proMode && (initError || notice) && (
+      <div className="fixed top-[120px] inset-x-0 z-[140] mx-auto max-w-md px-4">
+        {initError && (
+          <div className="mb-2 rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-200 shadow-2xl shadow-black/40">
+            {initError}
+          </div>
+        )}
+        {notice && (
+          <StudioNotice notice={notice} onDismiss={() => setNotice(null)} />
+        )}
+      </div>
+    )}
 
-      {/* Recoverable takes modal — opened from the crash-recovery
-          banner. Reads IDB and lets the producer restore each
-          persisted take onto its original track. */}
-      {recoverModalOpen && engineRef.current && (
-        <RecoverableTakesModal
+    {/* Modals + recovery banner live OUTSIDE the legacy div so they
+        still appear when proMode hides that block. They render in
+        portal-style fixed positioning anyway. */}
+    {takeBrowserOpen && engineRef.current && (() => {
+      const targetId =
+        focusedId ?? tracks.find((t) => t.armed)?.id ?? tracks[0]?.id;
+      const target = targetId ? tracks.find((t) => t.id === targetId) : null;
+      if (!target) return null;
+      return (
+        <TakeBrowserModal
           engine={engineRef.current}
-          open={recoverModalOpen}
-          onClose={() => setRecoverModalOpen(false)}
-          onNotice={(tone, message) => setNotice({ tone, message })}
+          trackId={target.id}
+          trackName={target.name}
+          open
+          onClose={() => setTakeBrowserOpen(false)}
         />
-      )}
+      );
+    })()}
 
-      {/* AI Melodyne — note-level pitch editor. Opens from the track
-          lane's Tune button. On Apply we swap the corrected buffer
-          back into the engine via setTrackBuffer. */}
-      {melodyneTrackId && engineRef.current && (
-        <MelodyneEditor
-          buffer={engineRef.current.getTrackBuffer(melodyneTrackId)}
-          ctx={engineRef.current.audioContext}
-          onApply={(corrected) => {
-            engineRef.current?.setTrackBuffer(melodyneTrackId, corrected);
-            setMelodyneTrackId(null);
-            setNotice({ tone: "success", message: "Melodyne applied" });
-            setSnapshot(engineRef.current?.getSnapshot() ?? null);
-          }}
-          onClose={() => setMelodyneTrackId(null)}
-        />
-      )}
+    {warmupOpen && (
+      <VocalWarmupModal
+        open={warmupOpen}
+        projectKey={null}
+        onClose={() => setWarmupOpen(false)}
+      />
+    )}
 
-      {/* Sample chopper — transient-detected slices → per-slice tracks. */}
-      {sampleChopperOpen && engineRef.current && (
-        <SampleChopperModal
-          engine={engineRef.current}
-          open={sampleChopperOpen}
-          onClose={() => setSampleChopperOpen(false)}
-          onNotice={(tone, message) => setNotice({ tone, message })}
-        />
-      )}
+    {recoverModalOpen && engineRef.current && (
+      <RecoverableTakesModal
+        engine={engineRef.current}
+        open={recoverModalOpen}
+        onClose={() => setRecoverModalOpen(false)}
+        onNotice={(tone, message) => setNotice({ tone, message })}
+      />
+    )}
 
-      {/* Crash-recovery banner. Surfaces when a previous session left
-          a recording in-flight breadcrumb dangling (tab died mid-take). */}
-      {recoveryPrompt && (
-        <div className="fixed inset-x-0 bottom-4 z-[180] mx-auto max-w-md px-4">
-          <div className="rounded-2xl border border-amber-400/50 bg-amber-500/10 p-4 backdrop-blur">
-            <div className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-200">
-              Recovered from crash
-            </div>
-            <p className="mt-1 text-sm">
-              Looks like a take on <strong>{recoveryPrompt.trackName}</strong>
-              {" "}got cut off. Your in-progress audio is in cold storage —
-              recover it or wipe the slate.
-            </p>
-            <div className="mt-3 flex items-center justify-end gap-2">
-              <button
-                onClick={() => {
-                  clearInFlight();
-                  setRecoveryPrompt(null);
-                }}
-                className="rounded-full border border-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10"
-              >
-                Dismiss
-              </button>
-              <button
-                onClick={() => {
-                  clearInFlight();
-                  setRecoveryPrompt(null);
-                  setRecoverModalOpen(true);
-                }}
-                className="rounded-full bg-amber-400 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-black hover:bg-amber-300"
-              >
-                Recover takes
-              </button>
-            </div>
+    {melodyneTrackId && engineRef.current && (
+      <MelodyneEditor
+        buffer={engineRef.current.getTrackBuffer(melodyneTrackId)}
+        ctx={engineRef.current.audioContext}
+        onApply={(corrected) => {
+          engineRef.current?.setTrackBuffer(melodyneTrackId, corrected);
+          setMelodyneTrackId(null);
+          setNotice({ tone: "success", message: "Melodyne applied" });
+          setSnapshot(engineRef.current?.getSnapshot() ?? null);
+        }}
+        onClose={() => setMelodyneTrackId(null)}
+      />
+    )}
+
+    {sampleChopperOpen && engineRef.current && (
+      <SampleChopperModal
+        engine={engineRef.current}
+        open={sampleChopperOpen}
+        onClose={() => setSampleChopperOpen(false)}
+        onNotice={(tone, message) => setNotice({ tone, message })}
+      />
+    )}
+
+    {recoveryPrompt && (
+      <div className="fixed inset-x-0 bottom-4 z-[180] mx-auto max-w-md px-4">
+        <div className="rounded-2xl border border-amber-400/50 bg-amber-500/10 p-4 backdrop-blur">
+          <div className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-200">
+            Recovered from crash
+          </div>
+          <p className="mt-1 text-sm">
+            Looks like a take on <strong>{recoveryPrompt.trackName}</strong>
+            {" "}got cut off. Your in-progress audio is in cold storage —
+            recover it or wipe the slate.
+          </p>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button
+              onClick={() => {
+                clearInFlight();
+                setRecoveryPrompt(null);
+              }}
+              className="rounded-full border border-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10"
+            >
+              Dismiss
+            </button>
+            <button
+              onClick={() => {
+                clearInFlight();
+                setRecoveryPrompt(null);
+                setRecoverModalOpen(true);
+              }}
+              className="rounded-full bg-amber-400 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-black hover:bg-amber-300"
+            >
+              Recover takes
+            </button>
           </div>
         </div>
-      )}
-    </div>
+      </div>
+    )}
+
+    {/* AI Features Hub Modal */}
+    {aiHubOpen && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div className="relative w-full max-w-4xl max-h-[90vh] rounded-lg border border-white/20 bg-[#0a0a0f]">
+          <button
+            type="button"
+            onClick={() => setAiHubOpen(false)}
+            className="absolute top-3 right-3 z-10 rounded-md border border-white/15 bg-white/5 p-2 text-xs font-bold text-white/70 hover:bg-white/10"
+          >
+            Close ×
+          </button>
+          <AIFeaturesHub />
+        </div>
+      </div>
+    )}
     </StudioTooltipProvider>
   );
 }

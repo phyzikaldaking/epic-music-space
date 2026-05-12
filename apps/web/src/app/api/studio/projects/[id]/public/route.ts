@@ -1,76 +1,56 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRequestId, jsonWithRequestId } from "@/lib/requestTracing";
-import { lenientLimiter, getClientIp } from "@/lib/rateLimit";
 
-// Read-only public-share endpoint (#9). Returns the project only when
-// owner has flipped isPublic = true; otherwise 404 — never 403, so we
-// don't even confirm the project exists to unauthorized requesters.
+/**
+ * Get public project data for read-only listening page
+ * No auth required — project must be public
+ */
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const requestId = getRequestId(req);
 
-  // Per-IP rate limit (#8). The endpoint is unauthenticated and project
-  // ids are guessable cuids, so without this an attacker could enumerate
-  // every public project and scrape blob URLs for redistribution. 100
-  // reqs/min/IP is generous for legitimate fans hitting refresh and
-  // tight enough to make brute enumeration expensive. We allow the
-  // request through on limiter failure so a Redis blip doesn't black
-  // out shared listen pages — fail-open is the right default for read
-  // traffic.
   try {
-    await lenientLimiter.consume(`studio:listen:${getClientIp(req)}`);
-  } catch (err) {
-    if (err && typeof err === "object" && "msBeforeNext" in err) {
+    const { id } = await params;
+
+    const project = await prisma.studioProject.findUnique({
+      where: { id },
+      include: { tracks: true },
+    });
+
+    if (!project || !project.isPublic) {
       return jsonWithRequestId(
         requestId,
-        { error: "Too many requests. Try again shortly." },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": Math.ceil(
-              Number((err as { msBeforeNext: number }).msBeforeNext) / 1000,
-            ).toString(),
-          },
-        },
+        { error: "Project not found or is private" },
+        { status: 404 }
       );
     }
-    // Limiter unavailable (Redis down, etc.) — fail open for reads.
-  }
 
-  const { id } = await params;
-
-  const project = await prisma.studioProject.findFirst({
-    where: { id, isPublic: true },
-    select: {
-      id: true,
-      name: true,
-      bpm: true,
-      trackCount: true,
-      thumbnailPeaks: true,
-      coverArtUrl: true,
-      masterBlobUrl: true,
-      createdAt: true,
-      updatedAt: true,
-      user: { select: { name: true, image: true } },
-      tracks: {
-        orderBy: { position: "asc" },
-        select: {
-          id: true,
-          name: true,
-          color: true,
-          blobUrl: true,
-          durationSec: true,
-          position: true,
-        },
+    return jsonWithRequestId(
+      requestId,
+      {
+        id: project.id,
+        name: project.name,
+        bpm: project.bpm,
+        masterBlobUrl: project.masterBlobUrl,
+        tracks: project.tracks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          blobUrl: t.blobUrl,
+          durationSec: t.durationSec,
+        })),
+        createdAt: project.createdAt,
       },
-    },
-  });
-
-  if (!project) {
-    return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
+      { status: 200 }
+    );
+  } catch (err) {
+    console.error("[studio/projects/[id]/public]", err);
+    return jsonWithRequestId(
+      requestId,
+      { error: err instanceof Error ? err.message : "Failed to fetch project" },
+      { status: 500 }
+    );
   }
-  return jsonWithRequestId(requestId, { project });
 }

@@ -1020,6 +1020,8 @@ async function handleConnectAccountUpdated(account: Stripe.Account) {
     },
   });
 
+  revalidateTag(`stripe-connect:${account.id}`, "max");
+
   console.log(
     `[stripe-webhook] account.updated: id=${account.id} charges=${account.charges_enabled} payouts=${account.payouts_enabled} country=${account.country} taxStatus=${taxFormStatus}`
   );
