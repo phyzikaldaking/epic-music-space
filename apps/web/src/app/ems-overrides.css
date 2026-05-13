@@ -1,0 +1,84 @@
+/* FINAL EMS GLOBAL OVERRIDE LAYER */
+:root {
+  --ems-pink: #ff2d92;
+  --ems-magenta: #ff00aa;
+  --ems-yellow: #fde047;
+  --ems-cyan: #22d3ee;
+  --ems-blue: #2563eb;
+  --ems-purple: #a855f7;
+}
+
+.vc-page::before,
+.vc-studio-scan,
+.vc-grain,
+.vc-stars,
+.vc-grid-floor,
+.vc-horizon,
+.vc-palm,
+.vc-palm-left,
+.vc-palm-right {
+  display: none !important;
+  opacity: 0 !important;
+  animation: none !important;
+  background-image: none !important;
+}
+
+.vc-page,
+main:not([data-studio-content]) {
+  background:
+    radial-gradient(circle at 8% 5%, rgba(253,224,71,.2), transparent 26%),
+    radial-gradient(circle at 88% 0%, rgba(255,45,146,.24), transparent 30%),
+    radial-gradient(circle at 52% 42%, rgba(34,211,238,.15), transparent 35%),
+    linear-gradient(135deg,#170624,#090b2e 52%,#061f2d) !important;
+  color: #fff !important;
+}
+
+.vc-nav,
+.studio-nav,
+header,
+nav[role="navigation"] {
+  background: linear-gradient(90deg, rgba(255,45,146,.22), rgba(34,211,238,.18), rgba(253,224,71,.16)), rgba(12, 5, 30, .86) !important;
+  backdrop-filter: blur(18px) saturate(170%) !important;
+  border-bottom: 1px solid rgba(255,255,255,.16) !important;
+  box-shadow: 0 18px 50px -30px rgba(255,45,146,.75), inset 0 1px 0 rgba(255,255,255,.12) !important;
+}
+
+.vc-logo,
+.vc-section-title,
+.vc-hero-h1,
+.studio-label-lg {
+  background: linear-gradient(90deg, #fff 0%, #fde047 25%, #ff5fbf 52%, #22d3ee 82%, #fff 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+}
+
+.vc-track-card,
+.vc-feat-card,
+.vc-split-card,
+.vc-lb-table,
+.glass-card,
+.studio-faceplate,
+.studio-faceplate-dark {
+  border-radius: 28px !important;
+  border: 1px solid rgba(255,255,255,.18) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.05)),
+    radial-gradient(circle at 100% 0%, rgba(253,224,71,.16), transparent 34%),
+    rgba(15,8,38,.72) !important;
+  box-shadow: 0 24px 80px -45px rgba(34,211,238,.7), inset 0 1px 0 rgba(255,255,255,.16) !important;
+}
+
+.vc-btn,
+.vc-btn-pink,
+.vc-btn-chrome,
+.vc-btn-ghost,
+.vc-btn-ghost-cyan,
+.studio-engage-btn,
+button[type="submit"] {
+  border-radius: 18px !important;
+  background: linear-gradient(90deg, var(--ems-yellow), var(--ems-pink), var(--ems-cyan)) !important;
+  color: #100316 !important;
+  border: 1px solid rgba(255,255,255,.32) !important;
+  box-shadow: 0 0 34px rgba(255,45,146,.34), 0 12px 30px -20px rgba(34,211,238,.9) !important;
+}
