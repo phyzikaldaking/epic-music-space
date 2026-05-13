@@ -52,6 +52,7 @@ function mediaErrorMessage(error: unknown): string {
   if (error.name === "NotReadableError") return "Camera or microphone is already in use by another app.";
   if (error.name === "OverconstrainedError") return "This camera or microphone setting is not supported by the device.";
   if (error.name === "SecurityError") return "Camera access requires a secure HTTPS browser session.";
+  if (error.name === "AbortError") return "The device stopped responding. Try toggling the camera again.";
   return error.message || "Camera or microphone permission was denied.";
 }
 
@@ -71,11 +72,13 @@ export default function StudioVideoCollab({ tier = "starter", participants = [],
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [isRequesting, setIsRequesting] = useState(false);
+  const [isHidden, setIsHidden] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
   const limit = STUDIO_VIDEO_SEAT_LIMITS[tier] ?? STUDIO_VIDEO_SEAT_LIMITS.starter;
   const deviceSupported = hasMediaDevices();
+  const isSecure = typeof window === "undefined" || window.isSecureContext || window.location.hostname === "localhost";
 
   const localParticipant: StudioVideoParticipant = useMemo(() => ({
     id: "local",
@@ -90,6 +93,13 @@ export default function StudioVideoCollab({ tier = "starter", participants = [],
   const safeParticipants = useMemo(() => dedupeParticipants(participants), [participants]);
   const visibleParticipants = useMemo(() => [localParticipant, ...safeParticipants].slice(0, limit), [limit, localParticipant, safeParticipants]);
   const overflowCount = Math.max(0, safeParticipants.length + 1 - limit);
+  const roomActive = cameraEnabled || micEnabled || Boolean(localStream);
+
+  const applyTrackState = useCallback((nextCamera: boolean, nextMic: boolean) => {
+    const stream = streamRef.current;
+    stream?.getVideoTracks().forEach((track) => { track.enabled = nextCamera && !isHidden; });
+    stream?.getAudioTracks().forEach((track) => { track.enabled = nextMic; });
+  }, [isHidden]);
 
   const replaceLocalStream = useCallback((nextStream: MediaStream | null) => {
     stopStream(streamRef.current);
@@ -106,12 +116,13 @@ export default function StudioVideoCollab({ tier = "starter", participants = [],
   async function requestLocalStream(nextCamera: boolean, nextMic: boolean): Promise<MediaStream | null> {
     if (!nextCamera && !nextMic) return null;
     if (!hasMediaDevices()) throw new Error("Camera and microphone are not available in this browser or context.");
+    if (!isSecure) throw new Error("Camera access requires a secure HTTPS browser session.");
     const stream = await navigator.mediaDevices.getUserMedia({
       video: nextCamera ? { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24, max: 30 } } : false,
       audio: nextMic ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
     });
     stream.getAudioTracks().forEach((track) => { track.enabled = nextMic; });
-    stream.getVideoTracks().forEach((track) => { track.enabled = nextCamera; });
+    stream.getVideoTracks().forEach((track) => { track.enabled = nextCamera && !isHidden; });
     return stream;
   }
 
@@ -122,6 +133,12 @@ export default function StudioVideoCollab({ tier = "starter", participants = [],
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     try {
+      if (streamRef.current && (nextCamera || nextMic)) {
+        applyTrackState(nextCamera, nextMic);
+        setCameraEnabled(nextCamera);
+        setMicEnabled(nextMic);
+        return;
+      }
       const stream = await requestLocalStream(nextCamera, nextMic);
       if (!mountedRef.current || requestId !== requestIdRef.current) {
         stopStream(stream);
@@ -143,13 +160,8 @@ export default function StudioVideoCollab({ tier = "starter", participants = [],
     }
   }
 
-  async function toggleCamera() {
-    await setMediaState(!cameraEnabled, micEnabled);
-  }
-
-  async function toggleMic() {
-    await setMediaState(cameraEnabled, !micEnabled);
-  }
+  async function toggleCamera() { await setMediaState(!cameraEnabled, micEnabled); }
+  async function toggleMic() { await setMediaState(cameraEnabled, !micEnabled); }
 
   function leaveVideoRoom() {
     requestIdRef.current += 1;
@@ -162,12 +174,22 @@ export default function StudioVideoCollab({ tier = "starter", participants = [],
 
   useEffect(() => {
     mountedRef.current = true;
+    function handleVisibility() {
+      const hidden = document.hidden;
+      setIsHidden(hidden);
+      streamRef.current?.getVideoTracks().forEach((track) => { track.enabled = cameraEnabled && !hidden; });
+    }
+    function handlePageHide() { leaveVideoRoom(); }
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("pagehide", handlePageHide);
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pagehide", handlePageHide);
       mountedRef.current = false;
       stopStream(streamRef.current);
       streamRef.current = null;
     };
-  }, []);
+  }, [cameraEnabled]);
 
   return (
     <section className="rounded-2xl border border-cyan-300/20 bg-black/40 p-4 text-white shadow-2xl" aria-label="Studio video collaboration room">
@@ -177,11 +199,13 @@ export default function StudioVideoCollab({ tier = "starter", participants = [],
           <h3 className="text-lg font-bold">See who you&apos;re collabing with</h3>
           <p className="text-xs text-white/50">{visibleParticipants.length}/{limit} seats on {tier.toUpperCase()} plan</p>
           {!deviceSupported ? <p className="mt-1 text-[11px] text-amber-200/80">Camera requires a browser with media-device support.</p> : null}
+          {!isSecure ? <p className="mt-1 text-[11px] text-amber-200/80">Camera requires HTTPS or localhost.</p> : null}
+          {isHidden && roomActive ? <p className="mt-1 text-[11px] text-cyan-100/70">Camera video pauses while this tab is hidden.</p> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" disabled={isRequesting || !deviceSupported} onClick={toggleCamera} className={`min-h-10 touch-manipulation rounded-full px-3 text-xs font-black uppercase tracking-widest transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-60 ${cameraEnabled ? "bg-cyan-400 text-black" : "border border-white/15 text-white/70 hover:bg-white/10"}`} aria-pressed={cameraEnabled}>{isRequesting ? "Working" : cameraEnabled ? "Camera On" : "Camera Off"}</button>
-          <button type="button" disabled={isRequesting || !deviceSupported} onClick={toggleMic} className={`min-h-10 touch-manipulation rounded-full px-3 text-xs font-black uppercase tracking-widest transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-60 ${micEnabled ? "bg-amber-300 text-black" : "border border-white/15 text-white/70 hover:bg-white/10"}`} aria-pressed={micEnabled}>{isRequesting ? "Working" : micEnabled ? "Mic On" : "Mic Off"}</button>
-          {(cameraEnabled || micEnabled || localStream) ? <button type="button" onClick={leaveVideoRoom} className="min-h-10 touch-manipulation rounded-full border border-red-300/30 px-3 text-xs font-black uppercase tracking-widest text-red-100 transition hover:bg-red-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-300">Leave</button> : null}
+          <button type="button" disabled={isRequesting || !deviceSupported || !isSecure} onClick={toggleCamera} className={`min-h-10 touch-manipulation rounded-full px-3 text-xs font-black uppercase tracking-widest transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-60 ${cameraEnabled ? "bg-cyan-400 text-black" : "border border-white/15 text-white/70 hover:bg-white/10"}`} aria-pressed={cameraEnabled}>{isRequesting ? "Working" : cameraEnabled ? "Camera On" : "Camera Off"}</button>
+          <button type="button" disabled={isRequesting || !deviceSupported || !isSecure} onClick={toggleMic} className={`min-h-10 touch-manipulation rounded-full px-3 text-xs font-black uppercase tracking-widest transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-60 ${micEnabled ? "bg-amber-300 text-black" : "border border-white/15 text-white/70 hover:bg-white/10"}`} aria-pressed={micEnabled}>{isRequesting ? "Working" : micEnabled ? "Mic On" : "Mic Off"}</button>
+          {roomActive ? <button type="button" onClick={leaveVideoRoom} className="min-h-10 touch-manipulation rounded-full border border-red-300/30 px-3 text-xs font-black uppercase tracking-widest text-red-100 transition hover:bg-red-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-300">Leave</button> : null}
         </div>
       </div>
 
