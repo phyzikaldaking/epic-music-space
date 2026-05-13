@@ -16,6 +16,19 @@ export default async function StudioTryPage() {
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            [data-studio-content="true"].hidden {
+              display: block !important;
+            }
+            [data-studio-content="true"] {
+              visibility: visible !important;
+              opacity: 1 !important;
+            }
+          `,
+        }}
+      />
       <noscript>
         <div className="mx-auto max-w-4xl px-4 py-16 text-center">
           <p className="studio-label text-rec-400">EMS Studio</p>
