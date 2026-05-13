@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import Providers from "@/components/Providers";
 import FeedbackBotMount from "@/components/FeedbackBotMount";
 import { getSiteUrl } from "@/lib/site";
@@ -169,8 +167,6 @@ export default async function RootLayout({
           {children}
           <FeedbackBotMount />
         </Providers>
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   );
