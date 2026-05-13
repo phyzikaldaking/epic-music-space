@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { auth } from "@/lib/auth";
 import StudioTryClient from "./StudioTryClient";
 
@@ -11,27 +10,25 @@ export const metadata: Metadata = {
     "Make a beat, record a take, and mix — right in your browser. No account needed to start.",
 };
 
-/**
- * Guest entry to the DAW. The auth wall on /studio/board sent first-time
- * visitors through five clicks before they touched a control surface;
- * this lets them play immediately. Saving + publishing still require a
- * sign-up (the DAW's existing 401 handlers surface the prompt at the
- * moment they actually try to save), so the only real shift is *when*
- * we ask for the email — at "I want to keep this" instead of at "I'm
- * curious."
- *
- * The actual DAW vs. PhoneStudio swap happens in StudioTryClient since
- * viewport detection is client-side.
- */
 export default async function StudioTryPage() {
   const session = await auth();
   const isAuthed = Boolean(session?.user?.id);
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-gradient-to-b from-[#070710] via-[#0b0b18] to-[#040408]">
-      <Suspense fallback={null}>
-        <StudioTryClient isAuthed={isAuthed} />
-      </Suspense>
+      <noscript>
+        <div className="mx-auto max-w-4xl px-4 py-16 text-center">
+          <p className="studio-label text-rec-400">EMS Studio</p>
+          <h1 className="mt-3 font-display text-4xl uppercase tracking-wider text-white">
+            JavaScript is required to run the browser studio.
+          </h1>
+          <p className="mt-4 text-white/60">
+            Turn JavaScript on, then reload this page to open the beat machine,
+            mixer, and recording tools.
+          </p>
+        </div>
+      </noscript>
+      <StudioTryClient isAuthed={isAuthed} />
     </div>
   );
 }
