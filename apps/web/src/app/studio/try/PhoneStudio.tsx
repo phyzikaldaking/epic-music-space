@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { scheduleDrumHit, type DrumKind, type DrumKitId } from "@/components/daw/beatMachine";
+import StudioVideoCollab from "@/components/daw/StudioVideoCollab";
 import { haptic, useHapticIntensity } from "@/lib/haptics";
 import { stashGuestMix, GUEST_RESUME_FLAG } from "@/lib/guestStash";
 import { postFunnelEvent } from "@/lib/funnelClient";
@@ -50,6 +51,7 @@ export default function PhoneStudio() {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showBeatGrid, setShowBeatGrid] = useState(false);
+  const [showVideoRoom, setShowVideoRoom] = useState(false);
   const playingRef = useRef(false);
   const hasRecordingRef = useRef(false);
   useEffect(() => { playingRef.current = playing; }, [playing]);
@@ -194,6 +196,8 @@ export default function PhoneStudio() {
   return (
     <div className="mx-auto flex min-h-[calc(100vh-65px)] max-w-md flex-col px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+2rem)]">
       <header className="mb-4 text-center"><p className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-amber-300/80">Phone Studio · Space = Play / Stop</p><h1 className="mt-1 text-2xl font-extrabold">Make a beat</h1><p className="mt-1 text-xs text-white/55">Hit a pad to play. Hit Record, then play your pads. Space bar starts/stops playback.</p><div className="mt-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-1.5 py-0.5 text-[9px] uppercase tracking-widest"><span className="text-white/40">Haptics</span>{(["off", "soft", "strong"] as const).map((opt) => <button key={opt} type="button" onClick={() => setHapticIntensity(opt)} className={`rounded-full px-2 py-0.5 font-bold transition ${hapticIntensity === opt ? "bg-amber-400 text-black" : "text-white/55 hover:bg-white/10"}`} aria-label={`Set haptics to ${opt}`}>{opt}</button>)}</div></header>
+      <button type="button" onClick={() => setShowVideoRoom((v) => !v)} className="mb-3 min-h-10 rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-3 py-2 text-xs font-black uppercase tracking-widest text-cyan-100 transition hover:bg-cyan-400/15">{showVideoRoom ? "Hide Video Room" : "Open Video Room"}</button>
+      {showVideoRoom && <div className="mb-4"><StudioVideoCollab tier="starter" localName="Studio Owner" onUpgrade={() => setNotice("Upgrade plans will unlock more live studio video seats.")} /></div>}
       <div className="mb-4 flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2"><div className="flex items-center gap-2 text-xs"><span className="text-white/55">BPM</span><button type="button" onClick={() => setBpm((b) => Math.max(60, b - 5))} className="h-7 w-7 rounded-md border border-white/15 bg-white/5 font-bold">−</button><span className="w-8 text-center font-mono font-bold">{bpm}</span><button type="button" onClick={() => setBpm((b) => Math.min(180, b + 5))} className="h-7 w-7 rounded-md border border-white/15 bg-white/5 font-bold">+</button></div><button type="button" onClick={recording ? stopRecording : startRecording} className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${recording ? "bg-red-500 text-white animate-pulse" : "border border-red-500/50 text-red-300"}`}><span className="h-2 w-2 rounded-full bg-current" />{recording ? "Recording…" : "Record"}</button></div>
       <div className="grid flex-1 content-start" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(clamp(120px, 40vw, 200px), 1fr))", gap: "clamp(8px, 2vw, 16px)" }}>{PADS.map((p) => <button key={p.kind} type="button" onPointerDown={(e) => { e.preventDefault(); const pressure = e.pressure; fireHit(p.kind, pressure > 0 && pressure !== 0.5 ? pressure : 0.7); }} className={`relative aspect-square rounded-3xl border bg-gradient-to-br ${p.color} text-center transition active:scale-[0.97] ${activePad === p.kind ? "ring-4 ring-white/40" : ""}`} aria-label={`Play ${p.label}`}><span className="absolute inset-0 flex flex-col items-center justify-center gap-1"><span className="text-[clamp(2rem,9cqw,3rem)]">{p.emoji}</span><span className="text-[clamp(0.75rem,2.4cqw,0.95rem)] font-extrabold uppercase tracking-widest text-white">{p.label}</span></span></button>)}</div>
       <div className="mt-4"><button type="button" onClick={() => setShowBeatGrid((v) => !v)} className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-xs font-bold uppercase tracking-widest text-white/65 hover:bg-white/10 transition"><span>{showBeatGrid ? "Hide beat grid" : "Show beat grid"}</span><span aria-hidden>{showBeatGrid ? "▾" : "▸"}</span></button>{showBeatGrid && <div className="mt-2"><MobileBeatGrid getCtx={getCtx} bpm={bpm} kit={DEFAULT_KIT} /></div>}</div>
