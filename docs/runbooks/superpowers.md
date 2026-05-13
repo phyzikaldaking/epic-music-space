@@ -61,3 +61,7 @@ Expected response:
 ## Ownership
 
 This runbook belongs to the Epic Music Space production operations workflow. Keep it updated whenever asset storage, package identity, or sync automation changes.
+
+## Production routing note
+
+The public production domain is `epicmusicspace.com`. Confirm that the Vercel project holding that domain is deploying the same GitHub `main` branch before treating a green deployment on any similarly named project as live.
