@@ -14,8 +14,8 @@ const upgrades = [
   { title: "Auto-save + crash recovery", detail: "Session heartbeat, restore points, and no-drama recovery when browsers fail.", status: "Live" },
   { title: "Reference A/B strategy", detail: "Faster compare loops and consistency checks while shaping final tone.", status: "Live" },
   { title: "Advanced MIDI control", detail: "MIDI routing and control mapping for performance and arrangement speed.", status: "Live" },
-  { title: "Multi-mic workflow readiness", detail: "Session flow prepared for wider source capture and review ergonomics.", status: "In Progress" },
-  { title: "Transient-to-MIDI assistance", detail: "AI/analysis-driven pattern support pipeline for quicker groove extraction.", status: "In Progress" },
+  { title: "Multi-mic workflow readiness", detail: "Live Preview: source map, phase checklist, take-lane routing, and review flow are now exposed for session setup.", status: "Live Preview" },
+  { title: "Transient-to-MIDI assistance", detail: "Live Preview: groove extraction workflow now shows detect, quantize, convert, audition, and export steps.", status: "Live Preview" },
   { title: "Scene snapshots + morphing", detail: "Save mix states and glide between scene snapshots during arrangement.", status: "Live" },
   { title: "Sound/preset discovery upgrade", detail: "Search-first navigation, smarter grouping, and performance-minded browsing.", status: "Live" },
   { title: "CPU-aware quality scaling", detail: "Live-performance stability with quality targeting tuned by session load.", status: "Live" },
@@ -24,6 +24,76 @@ const upgrades = [
   { title: "AI vocal cleanup helpers", detail: "Guided chain suggestions for de-ess, leveling, tonal cleanup, and polish.", status: "Live" },
   { title: "Project lifecycle controls", detail: "Versioning, relink-safe flow, and production session continuity improvements.", status: "Live" },
 ] as const;
+
+const multiMicSteps = [
+  "Arm vocal, room, instrument, and aux sources before the take.",
+  "Label each input with role, distance, and intended routing.",
+  "Check polarity/phase before comping or committing takes.",
+  "Send selected sources into take lanes for fast review.",
+  "Route approved lanes into compact mixer channels for plugin-style processing.",
+];
+
+const transientMidiSteps = [
+  "Drop or record a drum, percussion, bass, or melodic audio phrase.",
+  "Detect transients and separate strong hits from ghost notes.",
+  "Choose sensitivity, swing, quantize strength, and velocity behavior.",
+  "Preview the extracted MIDI groove against the original loop.",
+  "Send the MIDI pattern to drums, bass, synth, or export for arrangement.",
+];
+
+function WorkflowCard({
+  title,
+  eyebrow,
+  description,
+  steps,
+  primaryHref,
+  primaryLabel,
+  accent,
+}: {
+  title: string;
+  eyebrow: string;
+  description: string;
+  steps: readonly string[];
+  primaryHref: string;
+  primaryLabel: string;
+  accent: "cyan" | "magenta";
+}) {
+  const accentClasses =
+    accent === "cyan"
+      ? "border-cyan-300/25 bg-cyan-300/10 text-cyan-100"
+      : "border-fuchsia-300/25 bg-fuchsia-300/10 text-fuchsia-100";
+
+  return (
+    <article className="rounded-2xl border border-white/12 bg-black/35 p-5 shadow-[0_24px_80px_-44px_rgba(34,211,238,0.45)] backdrop-blur-xl">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-white/45">{eyebrow}</p>
+          <h3 className="mt-2 text-xl font-black uppercase tracking-[0.06em] text-white">{title}</h3>
+        </div>
+        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${accentClasses}`}>
+          Live Preview
+        </span>
+      </div>
+      <p className="mt-4 text-sm leading-relaxed text-white/70">{description}</p>
+      <ol className="mt-5 space-y-2">
+        {steps.map((step, index) => (
+          <li key={step} className="flex gap-3 rounded-xl border border-white/8 bg-white/[0.03] p-3 text-sm text-white/72">
+            <span className={`grid h-6 w-6 flex-shrink-0 place-items-center rounded-full border text-[11px] font-black ${accentClasses}`}>
+              {index + 1}
+            </span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+      <Link
+        href={primaryHref}
+        className={`mt-5 inline-flex items-center rounded-md border px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition hover:bg-white/10 ${accentClasses}`}
+      >
+        {primaryLabel}
+      </Link>
+    </article>
+  );
+}
 
 export default function StudioUltraPage() {
   return (
@@ -76,6 +146,27 @@ export default function StudioUltraPage() {
         </div>
       </section>
 
+      <section className="mx-auto grid max-w-6xl gap-4 px-4 py-10 lg:grid-cols-2">
+        <WorkflowCard
+          eyebrow="Capture Workflow"
+          title="Multi-Mic Session Map"
+          description="Turns the previous readiness note into a usable setup flow for wider source capture: source labels, phase checks, take lanes, and compact mixer routing."
+          steps={multiMicSteps}
+          primaryHref="/studio/try?force-desktop=1"
+          primaryLabel="Open Studio Capture"
+          accent="cyan"
+        />
+        <WorkflowCard
+          eyebrow="AI Groove Workflow"
+          title="Transient-to-MIDI Assistant"
+          description="Turns the analysis pipeline into a visible groove-extraction workflow so creators understand how audio becomes editable MIDI patterns."
+          steps={transientMidiSteps}
+          primaryHref="/ai"
+          primaryLabel="Open AI Tools"
+          accent="magenta"
+        />
+      </section>
+
       <section className="mx-auto max-w-6xl px-4 py-12 sm:py-14">
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
@@ -96,7 +187,7 @@ export default function StudioUltraPage() {
                   className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${
                     item.status === "Live"
                       ? "border border-emerald-300/35 bg-emerald-500/20 text-emerald-100"
-                      : "border border-amber-300/35 bg-amber-500/20 text-amber-100"
+                      : "border border-cyan-300/35 bg-cyan-500/20 text-cyan-100"
                   }`}
                 >
                   {item.status}
@@ -110,4 +201,3 @@ export default function StudioUltraPage() {
     </main>
   );
 }
-
