@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
 import Providers from "@/components/Providers";
-import FeedbackBotMount from "@/components/FeedbackBotMount";
 import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -163,10 +162,7 @@ export default async function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: structuredDataJson }}
         />
-        <Providers>
-          {children}
-          <FeedbackBotMount />
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
