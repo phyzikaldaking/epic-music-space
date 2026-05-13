@@ -16,6 +16,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isAuthRoute =
     !pathname || pathname === "/auth" || pathname.startsWith("/auth/");
+  const isHomepage = pathname === "/";
 
   useEffect(() => {
     const loader = document.getElementById("__ems-loading");
@@ -65,7 +66,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                 {children}
               </main>
               <Footer />
-              <DeferredGlobalWidgets />
+              {!isHomepage && <DeferredGlobalWidgets />}
             </>
           )}
         </ToastProvider>
