@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: "Studio · Epic Music Space",
+  title: "Studio",
   description:
     "Enter the electrified EMS creator universe: studio, mixer, beat machine, piano roll, samples, and artist tools.",
 };
@@ -27,7 +27,7 @@ function PublicStudioLanding() {
               <span className="text-lg">🎹</span> EMS Creative Studio <span className="text-lg">🎸</span>
             </div>
             <h1 className="mt-5 font-display text-5xl font-black uppercase leading-[0.9] tracking-[0.02em] sm:text-7xl lg:text-8xl">
-              Make It
+              Make It{" "}
               <span className="block bg-gradient-to-r from-yellow-200 via-fuchsia-300 to-cyan-200 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(236,72,153,.45)]">Sound Alive.</span>
             </h1>
             <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/82 sm:text-xl">

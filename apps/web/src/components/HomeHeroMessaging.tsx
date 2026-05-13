@@ -7,9 +7,9 @@ export default function HomeHeroMessaging() {
         ◉ The artist operating system for releases, fans, and revenue
       </p>
       <h1 className="mt-4 font-display text-5xl uppercase leading-[1.02] tracking-wider text-white sm:text-6xl lg:text-7xl">
-        Launch your music.
+        Launch your music.{" "}
         <br />
-        <span className="text-tube-300">Build your fanbase.</span>
+        <span className="text-tube-300">Build your fanbase.</span>{" "}
         <br />
         Sell licenses.
       </h1>

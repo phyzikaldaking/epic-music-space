@@ -534,7 +534,7 @@ export default async function VersusPage({
               Live competition
             </p>
             <h1 className="font-bebas-neue text-5xl leading-[0.95] tracking-tight sm:text-6xl md:text-7xl">
-              <span className="bg-gradient-to-br from-white via-white to-accent-200 bg-clip-text text-transparent">VS</span>
+              <span className="bg-gradient-to-br from-white via-white to-accent-200 bg-clip-text text-transparent">VS</span>{" "}
               <span className="ml-1 bg-gradient-to-br from-accent-400 via-pink-400 to-brand-400 bg-clip-text text-transparent">Battles</span>
             </h1>
             <p className="mt-4 text-base text-white/85 drop-shadow-[0_2px_16px_rgba(0,0,0,0.6)] sm:text-lg">
