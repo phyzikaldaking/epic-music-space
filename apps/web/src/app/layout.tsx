@@ -4,6 +4,7 @@ import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
 import Providers from "@/components/Providers";
 import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
+import "./ems-overrides.css";
 
 const bebasNeue = Bebas_Neue({
   weight: "400",
@@ -55,13 +56,10 @@ const structuredDataJson = JSON.stringify(structuredData);
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  // viewportFit=cover lets the layout extend behind the iPhone notch +
-  // home indicator; components that care opt-in via env(safe-area-inset-*).
-  // Player bar + mobile bottom-nav already do.
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
-    { media: "(prefers-color-scheme: light)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: dark)", color: "#12051f" },
+    { media: "(prefers-color-scheme: light)", color: "#12051f" },
   ],
 };
 
@@ -134,14 +132,6 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // CRITICAL — DO NOT REMOVE.
-  // Pull the per-request nonce that proxy.ts set on the request headers.
-  // Passing it to inline <script> tags is what lets CSP's 'strict-dynamic'
-  // chain trust into Next.js's auto-injected flight-data scripts; without
-  // this, hydration scripts get blocked and the page never becomes
-  // interactive. This regression has shipped to production THREE times
-  // now (most recently in 96f9769); see scripts/smoke-browser.mjs for the
-  // synthetic that was supposed to catch it.
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
