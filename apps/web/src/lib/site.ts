@@ -1,6 +1,6 @@
 const fallbackSiteUrl =
   process.env.NODE_ENV === "production"
-    ? "https://epicmusicspace.com"
+    ? "https://www.epicmusicspace.com"
     : "http://localhost:3000";
 
 export function getSiteUrl() {

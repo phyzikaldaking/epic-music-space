@@ -56,10 +56,11 @@ export function hashPhoneLoginCode(code: string, phone: string): string {
 }
 
 export function isPhoneAuthConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  const from = env.TWILIO_VERIFY_FROM || env.TWILIO_FROM_NUMBER;
   return Boolean(
     env.TWILIO_ACCOUNT_SID &&
       env.TWILIO_AUTH_TOKEN &&
-      env.TWILIO_VERIFY_FROM,
+      from,
   );
 }
 
@@ -73,7 +74,7 @@ export async function sendPhoneLoginCode(phone: string, code: string) {
 
   const sid = process.env.TWILIO_ACCOUNT_SID!;
   const token = process.env.TWILIO_AUTH_TOKEN!;
-  const from = process.env.TWILIO_VERIFY_FROM!;
+  const from = process.env.TWILIO_VERIFY_FROM || process.env.TWILIO_FROM_NUMBER!;
 
   const body = new URLSearchParams({
     To: phone,

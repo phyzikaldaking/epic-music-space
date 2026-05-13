@@ -100,7 +100,7 @@ export function validateCriticalEnvironment(env: EnvSource = process.env): Criti
   const twilioValues = [
     readEnv(env, "TWILIO_ACCOUNT_SID"),
     readEnv(env, "TWILIO_AUTH_TOKEN"),
-    readEnv(env, "TWILIO_VERIFY_FROM"),
+    readEnv(env, "TWILIO_VERIFY_FROM") || readEnv(env, "TWILIO_FROM_NUMBER"),
   ];
   if (twilioValues.some(Boolean) && !twilioValues.every(Boolean)) {
     addIssue("warning", "partial_phone_auth_config", "Phone OTP configuration is only partially set.");

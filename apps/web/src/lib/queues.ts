@@ -101,10 +101,10 @@ export const analyticsQueue = makeQueue<AnalyticsJobData>(
 );
 // Dedicated dead-letter queues per domain for clearer ownership
 export const analyticsDeadLetterQueue = makeQueue<DeadLetterJobData>(
-  `${QUEUE_NAMES.analytics}:dead-letter`,
+  `${QUEUE_NAMES.analytics}-dead-letter`,
 );
 export const payoutDeadLetterQueue = makeQueue<DeadLetterJobData>(
-  `${QUEUE_NAMES.payoutTransfers}:dead-letter`,
+  `${QUEUE_NAMES.payoutTransfers}-dead-letter`,
 );
 export const payoutTransferQueue = makeQueue<PayoutTransferJobData>(
   QUEUE_NAMES.payoutTransfers,
