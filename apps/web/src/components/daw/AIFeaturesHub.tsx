@@ -1,7 +1,16 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useState } from "react";
+import TikTokSyncPanel from "./TikTokSyncPanel";
+import ProducerBattleMode from "./ProducerBattleMode";
+import RemixGenerator from "./RemixGenerator";
+import VibeMatchBrowser from "./VibeMatchBrowser";
+import VocalHarmonyStacker from "./VocalHarmonyStacker";
+import VocalKeyDetection from "./VocalKeyDetection";
+import LiveJamSessions from "./LiveJamSessions";
+import CollaborationDrafts from "./CollaborationDrafts";
+import SmartLoopSuggestions from "./SmartLoopSuggestions";
+import DrumPatternDNAMixer from "./DrumPatternDNAMixer";
 import {
   AIMasteringSlider,
   GenreEffectChains,
@@ -9,18 +18,7 @@ import {
   TrendingSamplePacks,
 } from "./PhaseFFeaturesComponents";
 
-const TikTokSyncPanel = dynamic(() => import("./TikTokSyncPanel"), { ssr: false });
-const ProducerBattleMode = dynamic(() => import("./ProducerBattleMode"), { ssr: false });
-const RemixGenerator = dynamic(() => import("./RemixGenerator"), { ssr: false });
-const VibeMatchBrowser = dynamic(() => import("./VibeMatchBrowser"), { ssr: false });
-const VocalHarmonyStacker = dynamic(() => import("./VocalHarmonyStacker"), { ssr: false });
-const VocalKeyDetection = dynamic(() => import("./VocalKeyDetection"), { ssr: false });
-const LiveJamSessions = dynamic(() => import("./LiveJamSessions"), { ssr: false });
-const CollaborationDrafts = dynamic(() => import("./CollaborationDrafts"), { ssr: false });
-const SmartLoopSuggestions = dynamic(() => import("./SmartLoopSuggestions"), { ssr: false });
-const DrumPatternDNAMixer = dynamic(() => import("./DrumPatternDNAMixer"), { ssr: false });
-
-type TabId = 
+type TabId =
   | "tiktok"
   | "battle"
   | "remix"
@@ -73,11 +71,11 @@ export default function AIFeaturesHub({
 
   return (
     <div className="flex flex-col h-full bg-[#0c0c12] border border-white/10 rounded-lg">
-      {/* Tab Bar */}
       <div className="flex gap-1 p-2 border-b border-white/10 overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            type="button"
             onClick={() => setActiveTab(tab.id)}
             className={`px-3 py-1 text-xs whitespace-nowrap rounded transition ${
               activeTab === tab.id
@@ -90,7 +88,6 @@ export default function AIFeaturesHub({
         ))}
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto p-3">
         {activeTab === "tiktok" && <TikTokSyncPanel />}
         {activeTab === "battle" && <ProducerBattleMode />}
