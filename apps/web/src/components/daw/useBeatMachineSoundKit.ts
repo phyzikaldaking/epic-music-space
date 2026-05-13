@@ -1,23 +1,23 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
-import { KitBrowser } from "./KitBrowser";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { SoundAsset } from "./soundKits";
-import { getDefaultSoundKit, SOUND_KITS } from "./soundKits";
+import { getDefaultSoundKit, SOUND_KITS, type SoundKit } from "./soundKits";
 import { loadWaveformPreview } from "./sampleLoader";
 import { previewSoundAsset, preloadSoundKit } from "./beatMachineRuntime";
 import type { DrumKind } from "./beatMachine";
 
 export interface BeatMachineSoundKitState {
+  selectedKit: SoundKit;
   selectedKitId: string;
   selectedLane: DrumKind;
   selectedSoundId: string | null;
   waveformPeaks: number[] | null;
+  kits: SoundKit[];
   setSelectedKitId: (kitId: string) => void;
   setSelectedLane: (lane: DrumKind) => void;
   previewSound: (sound: SoundAsset) => Promise<void>;
   preloadSelectedKit: () => Promise<void>;
-  KitBrowserPanel: () => ReactElement;
 }
 
 export function useBeatMachineSoundKit(audioContext?: AudioContext | null, outputNode?: AudioNode | null): BeatMachineSoundKitState {
@@ -27,10 +27,7 @@ export function useBeatMachineSoundKit(audioContext?: AudioContext | null, outpu
   const [waveformPeaks, setWaveformPeaks] = useState<number[] | null>(null);
   const latestPreviewId = useRef(0);
 
-  const selectedKit = useMemo(
-    () => SOUND_KITS.find((kit) => kit.id === selectedKitId) ?? getDefaultSoundKit(),
-    [selectedKitId],
-  );
+  const selectedKit = useMemo(() => SOUND_KITS.find((kit) => kit.id === selectedKitId) ?? getDefaultSoundKit(), [selectedKitId]);
 
   const previewSound = useCallback(async (sound: SoundAsset) => {
     setSelectedSoundId(sound.id);
@@ -45,9 +42,7 @@ export function useBeatMachineSoundKit(audioContext?: AudioContext | null, outpu
     const peaks = await loadWaveformPreview(audioContext, sound);
     if (latestPreviewId.current === requestId) setWaveformPeaks(peaks);
 
-    if (outputNode) {
-      await previewSoundAsset(audioContext, outputNode, sound);
-    }
+    if (outputNode) await previewSoundAsset(audioContext, outputNode, sound);
   }, [audioContext, outputNode]);
 
   const preloadSelectedKit = useCallback(async () => {
@@ -55,30 +50,16 @@ export function useBeatMachineSoundKit(audioContext?: AudioContext | null, outpu
     await preloadSoundKit(audioContext, selectedKit.id);
   }, [audioContext, selectedKit.id]);
 
-  const KitBrowserPanel = useCallback(() => (
-    <KitBrowser
-      kits={SOUND_KITS}
-      selectedKitId={selectedKit.id}
-      selectedLane={selectedLane}
-      waveformPeaks={waveformPeaks}
-      onSelectKit={(kitId) => {
-        setSelectedKitId(kitId);
-        setSelectedSoundId(null);
-        setWaveformPeaks(null);
-      }}
-      onPreviewSound={previewSound}
-    />
-  ), [previewSound, selectedKit.id, selectedLane, waveformPeaks]);
-
   return {
+    selectedKit,
     selectedKitId: selectedKit.id,
     selectedLane,
     selectedSoundId,
     waveformPeaks,
+    kits: SOUND_KITS,
     setSelectedKitId,
     setSelectedLane,
     previewSound,
     preloadSelectedKit,
-    KitBrowserPanel,
   };
 }
