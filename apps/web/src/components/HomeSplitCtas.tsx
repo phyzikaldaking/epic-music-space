@@ -1,8 +1,4 @@
-"use client";
-
 import Link from "next/link";
-import { postFunnelEvent } from "@/lib/funnelClient";
-import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 
 type Placement = "hero" | "closing";
 
@@ -22,32 +18,13 @@ export default function HomeSplitCtas({
   if (placement === "hero") {
     return (
       <div className={containerClassName}>
-        <Link
-          href="/studio/try"
-          className={artistClassName}
-          onClick={() => {
-            void postFunnelEvent({
-              event: FUNNEL_EVENTS.homeSplitCtaClick,
-              role: "ARTIST",
-              source: "home_primary_studio_cta",
-              properties: { placement, destination: "/studio/try" },
-            });
-          }}
-        >
+        <Link href="/studio/try" className={artistClassName}>
           Open the Studio Free →
         </Link>
         <div className="flex flex-wrap items-center justify-center gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
           <Link
             href="/marketplace"
             className="underline decoration-dotted underline-offset-4 hover:text-white/75"
-            onClick={() => {
-              void postFunnelEvent({
-                event: FUNNEL_EVENTS.homeSplitCtaClick,
-                role: "LISTENER",
-                source: "home_secondary_marketplace_cta",
-                properties: { placement, destination: "/marketplace" },
-              });
-            }}
           >
             Browse catalog
           </Link>
@@ -55,14 +32,6 @@ export default function HomeSplitCtas({
           <Link
             href="/auth/signup?role=ARTIST"
             className="underline decoration-dotted underline-offset-4 hover:text-white/75"
-            onClick={() => {
-              void postFunnelEvent({
-                event: FUNNEL_EVENTS.homeSplitCtaClick,
-                role: "ARTIST",
-                source: "home_secondary_signup_cta",
-                properties: { placement, destination: "/auth/signup?role=ARTIST" },
-              });
-            }}
           >
             Create account
           </Link>
@@ -73,32 +42,10 @@ export default function HomeSplitCtas({
 
   return (
     <div className={containerClassName}>
-      <Link
-        href="/auth/signup?role=ARTIST"
-        className={artistClassName}
-        onClick={() => {
-          void postFunnelEvent({
-            event: FUNNEL_EVENTS.homeSplitCtaClick,
-            role: "ARTIST",
-            source: "home_split_cta",
-            properties: { placement },
-          });
-        }}
-        >
+      <Link href="/auth/signup?role=ARTIST" className={artistClassName}>
         Start as Artist →
       </Link>
-      <Link
-        href="/auth/signup?role=LISTENER"
-        className={listenerClassName}
-        onClick={() => {
-          void postFunnelEvent({
-            event: FUNNEL_EVENTS.homeSplitCtaClick,
-            role: "LISTENER",
-            source: "home_split_cta",
-            properties: { placement },
-          });
-        }}
-        >
+      <Link href="/auth/signup?role=LISTENER" className={listenerClassName}>
         Explore as Listener →
       </Link>
     </div>
