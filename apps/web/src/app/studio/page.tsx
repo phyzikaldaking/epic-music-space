@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Studio · Epic Music Space",
@@ -9,11 +10,7 @@ export const metadata: Metadata = {
     "Enter the electrified EMS creator universe: studio, mixer, beat machine, piano roll, samples, and artist tools.",
 };
 
-export default async function StudioIndexPage() {
-  const session = await auth();
-  if (session?.user?.id) {
-    redirect("/studio/try");
-  }
+export default function StudioIndexPage() {
   return <PublicStudioLanding />;
 }
 
