@@ -1,18 +1,6 @@
-"use client";
-
 import Link from "next/link";
 import Image from "next/image";
-import dynamic from "next/dynamic";
 import { formatPrice } from "@ems/utils";
-
-// Lazy the heavy player so the hero ships fast and the audio engine only
-// loads when the visitor actually scrolls or interacts.
-const AudioPlayer = dynamic(() => import("@/components/LazyAudioPlayer"), {
-  ssr: false,
-  loading: () => (
-    <div className="h-9 animate-pulse rounded-full bg-white/5" aria-hidden="true" />
-  ),
-});
 
 interface HeroSong {
   id: string;
@@ -35,10 +23,40 @@ interface Props {
   secondary?: HeroSong | null;
 }
 
+function StaticPreviewStrip({ title, href }: { title: string; href: string }) {
+  return (
+    <Link
+      href={href}
+      className="group relative block overflow-hidden rounded-2xl border border-white/10 bg-black/35 p-3 transition hover:border-cyan-200/35 hover:bg-white/[0.04]"
+      aria-label={`Open ${title} track page to play preview`}
+    >
+      <div className="flex items-center gap-3">
+        <span className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-full border border-cyan-200/25 bg-cyan-300/10 text-cyan-100 transition group-hover:bg-cyan-300/20">
+          <svg className="ml-0.5 h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">
+            Preview ready
+          </p>
+          <div className="mt-2 h-8 overflow-hidden rounded-xl border border-white/10 bg-black/45">
+            <div className="h-full bg-[repeating-linear-gradient(90deg,rgba(255,255,255,0.18)_0_2px,transparent_2px_9px)] opacity-70" />
+          </div>
+        </div>
+        <span className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/50 sm:inline-flex">
+          Open Track →
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 export default function HeroNowSpinning({ song, secondary }: Props) {
   const claimed = song.totalLicenses > 0
     ? Math.round((song.soldLicenses / song.totalLicenses) * 100)
     : 0;
+  const trackHref = `/track/${song.id}`;
 
   return (
     <section
@@ -47,7 +65,7 @@ export default function HeroNowSpinning({ song, secondary }: Props) {
     >
       <div className="flex items-start gap-3 sm:gap-4">
         <Link
-          href={`/track/${song.id}`}
+          href={trackHref}
           className="relative block h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-white/12 sm:h-20 sm:w-20"
           aria-label={`${song.title} by ${song.artist} — open track page`}
         >
@@ -72,13 +90,11 @@ export default function HeroNowSpinning({ song, secondary }: Props) {
               Now spinning
             </p>
           </div>
-          <Link href={`/track/${song.id}`} className="mt-0.5 block hover:text-accent-300">
+          <Link href={trackHref} className="mt-0.5 block hover:text-accent-300">
             <p className="line-clamp-1 text-base font-black text-white sm:text-lg">{song.title}</p>
           </Link>
           <p className="line-clamp-1 text-xs text-white/55 sm:text-sm">{song.artist}</p>
 
-          {/* Spec chips — surface the data points the platform makes a point
-              of being honest about (BPM, key, licenses claimed). */}
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em]">
             {song.genre && (
               <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/60">
@@ -102,17 +118,15 @@ export default function HeroNowSpinning({ song, secondary }: Props) {
         </div>
 
         <Link
-          href={`/track/${song.id}`}
+          href={trackHref}
           className="hidden flex-shrink-0 self-center rounded-full border border-white/12 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/65 transition hover:bg-white/10 sm:inline-flex"
         >
           {formatPrice(song.licensePrice)} / license →
         </Link>
       </div>
 
-      {/* Inline waveform-style player. Streams through our own /api proxy
-          via getStreamUrl inside <AudioPlayer>. */}
       <div className="mt-3 sm:mt-4">
-        <AudioPlayer audioUrl={song.audioUrl} title={song.title} songId={song.id} />
+        <StaticPreviewStrip title={song.title} href={trackHref} />
       </div>
 
       {secondary && (
