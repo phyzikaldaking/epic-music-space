@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
 import { KitBrowser } from "./KitBrowser";
 import type { SoundAsset } from "./soundKits";
 import { getDefaultSoundKit, SOUND_KITS } from "./soundKits";
@@ -17,7 +17,7 @@ export interface BeatMachineSoundKitState {
   setSelectedLane: (lane: DrumKind) => void;
   previewSound: (sound: SoundAsset) => Promise<void>;
   preloadSelectedKit: () => Promise<void>;
-  KitBrowserPanel: () => JSX.Element;
+  KitBrowserPanel: () => ReactElement;
 }
 
 export function useBeatMachineSoundKit(audioContext?: AudioContext | null, outputNode?: AudioNode | null): BeatMachineSoundKitState {
