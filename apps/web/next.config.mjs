@@ -4,15 +4,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.resolve(__dirname, "src");
 
-// CSP frame-ancestors 'none' (set in middleware) is the modern equivalent;
-// X-Frame-Options DENY is belt-and-suspenders for legacy clients. Stripe
-// Checkout / OAuth popups need same-origin-allow-popups (not same-origin) to
-// open and post back. The Permissions-Policy denies every powerful API we
-// don't use and self-allows camera/mic for creator recording flows.
-// X-Frame-Options is split out (frameOptionsHeader) so the headers() block
-// can omit it for /track/[id]/embed and /versus/[id]/embed routes that
-// are designed to be iframed by third parties.
 const frameOptionsHeader = { key: "X-Frame-Options", value: "DENY" };
+const noStoreHeader = { key: "Cache-Control", value: "no-store, max-age=0" };
 const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "off" },
   { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
@@ -60,7 +53,6 @@ const nextConfig = {
   },
   poweredByHeader: false,
   transpilePackages: ["@ems/utils"],
-  // Disable PPR to avoid Next.js 16 hydration issues
   experimental: {
     ppr: false,
   },
@@ -70,48 +62,21 @@ const nextConfig = {
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     dangerouslyAllowSVG: true,
-    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;" ,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "**.amazonaws.com",
-      },
-      {
-        protocol: "https",
-        hostname: "lh3.googleusercontent.com",
-      },
-      {
-        protocol: "https",
-        hostname: "epicmusicspace.com",
-      },
-      {
-        protocol: "https",
-        hostname: "www.epicmusicspace.com",
-      },
-      {
-        protocol: "https",
-        hostname: "**.supabase.co",
-      },
-      {
-        protocol: "https",
-        hostname: "images.unsplash.com",
-      },
-      {
-        // Mux thumbnail/static-renditions for video posts
-        protocol: "https",
-        hostname: "image.mux.com",
-      },
-      {
-        protocol: "https",
-        hostname: "stream.mux.com",
-      },
+      { protocol: "https", hostname: "**.amazonaws.com" },
+      { protocol: "https", hostname: "lh3.googleusercontent.com" },
+      { protocol: "https", hostname: "epicmusicspace.com" },
+      { protocol: "https", hostname: "www.epicmusicspace.com" },
+      { protocol: "https", hostname: "**.supabase.co" },
+      { protocol: "https", hostname: "images.unsplash.com" },
+      { protocol: "https", hostname: "image.mux.com" },
+      { protocol: "https", hostname: "stream.mux.com" },
     ],
   },
   webpack(config, { dev }) {
     config.resolve.alias["@"] = srcDir;
-    if (dev) {
-      config.cache = false;
-    }
+    if (dev) config.cache = false;
     config.ignoreWarnings = config.ignoreWarnings ?? [];
     config.ignoreWarnings.push({
       module:
@@ -122,31 +87,20 @@ const nextConfig = {
   },
   async headers() {
     return [
-      {
-        source: "/(.*)",
-        headers: securityHeaders,
-      },
-      // X-Frame-Options DENY for everything EXCEPT public embed routes
-      // (track player, versus battle widget). Embed paths are explicitly
-      // designed to be iframed by third-party sites; the rest of the
-      // app is clickjacking-protected as before.
-      {
-        source: "/((?!.*\\/embed(?:\\/|$)).*)",
-        headers: [frameOptionsHeader],
-      },
-      // Auth pages: no-cache + revalidate every request (prevent stale sign-in)
+      { source: "/(.*)", headers: securityHeaders },
+      { source: "/((?!.*\\/embed(?:\\/|$)).*)", headers: [frameOptionsHeader] },
       {
         source: "/auth/:path*",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "public, max-age=0, must-revalidate",
-          },
-        ],
+        headers: [noStoreHeader],
       },
-      // Performance hints: preconnect to critical third-party origins so the
-      // browser can warm up the TCP/TLS handshake while the HTML is still
-      // streaming. Saves 100-300ms on first byte for fonts/Stripe.
+      {
+        source: "/studio/:path*",
+        headers: [noStoreHeader, { key: "X-EMS-Studio-Build", value: "pro-tools-compact-v2" }],
+      },
+      {
+        source: "/api/:path*",
+        headers: [noStoreHeader],
+      },
       {
         source: "/(.*)",
         headers: [
@@ -165,22 +119,15 @@ const nextConfig = {
   },
 };
 
-// BotID — wrap the routes that should be challenged. Empty path list keeps
-// the runtime headers wired so checkBotId() server-side calls work, while
-// individual routes are responsible for actually invoking the check.
 let exported = nextConfig;
 try {
   const { withBotId } = await import("botid/next/config");
   exported = withBotId(exported);
-} catch {
-  // botid not installed — fall through.
-}
+} catch {}
 
 if (process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN) {
   try {
     const { withSentryConfig } = await import("@sentry/nextjs");
-    // Wrap the already-BotID-wrapped config (if any) so both plugins'
-    // settings stack rather than clobbering each other.
     exported = withSentryConfig(exported, {
       silent: true,
       org: process.env.SENTRY_ORG,
@@ -191,9 +138,7 @@ if (process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN) {
       disableLogger: true,
       automaticVercelMonitors: false,
     });
-  } catch {
-    // @sentry/nextjs not installed at build time — fall through.
-  }
+  } catch {}
 }
 
 export default exported;
