@@ -1,19 +1,16 @@
 import { NextResponse } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
+import { getCollabRoomState } from "@/lib/collabBackend";
+import { getRequestIdentity, liveKitTokenSchema } from "@/lib/collabSecurity";
 
 export const dynamic = "force-dynamic";
 
-type TokenRequest = {
-  roomId?: string;
-  identity?: string;
-  name?: string;
-  canPublish?: boolean;
-  canSubscribe?: boolean;
-  canPublishData?: boolean;
-};
-
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as TokenRequest;
+  const raw = await request.json().catch(() => ({}));
+  const parsed = liveKitTokenSchema.safeParse(raw);
+  if (!parsed.success) return NextResponse.json({ ready: false, error: "Invalid LiveKit token request", issues: parsed.error.flatten() }, { status: 400 });
+
+  const body = parsed.data;
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
   const url = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? process.env.LIVEKIT_URL;
@@ -26,12 +23,18 @@ export async function POST(request: Request) {
   }
 
   const roomId = body.roomId ?? "ems-main-room";
-  const identity = body.identity ?? `guest-${crypto.randomUUID()}`;
-  const name = body.name ?? "Studio Guest";
+  const room = await getCollabRoomState(roomId);
+  if (room.locked) {
+    return NextResponse.json({ ready: false, error: "Room is locked" }, { status: 403 });
+  }
+
+  const identity = getRequestIdentity(request);
+  const clientIdentity = body.identity ?? identity.email ?? `guest-${crypto.randomUUID()}`;
+  const clientName = body.name ?? identity.name ?? "Studio Guest";
 
   const token = new AccessToken(apiKey, apiSecret, {
-    identity,
-    name,
+    identity: clientIdentity,
+    name: clientName,
     ttl: "2h",
   });
 
@@ -48,6 +51,6 @@ export async function POST(request: Request) {
     url,
     token: await token.toJwt(),
     roomId,
-    identity,
+    identity: clientIdentity,
   });
 }
