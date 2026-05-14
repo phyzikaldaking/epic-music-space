@@ -88,7 +88,7 @@ function synth(id: string): Float32Array {
   return out;
 }
 
-function wav(samples: Float32Array): Uint8Array {
+function wav(samples: Float32Array): ArrayBuffer {
   const dataSize = samples.length * 2;
   const buffer = Buffer.alloc(44 + dataSize);
   let o = 0;
@@ -110,7 +110,7 @@ function wav(samples: Float32Array): Uint8Array {
     buffer.writeInt16LE(s < 0 ? s * 0x8000 : s * 0x7fff, o);
     o += 2;
   }
-  return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
 }
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
