@@ -3,6 +3,7 @@ import { AccessToken } from "livekit-server-sdk";
 import { getCollabRoomState } from "@/lib/collabBackend";
 import { getRequestIdentity, liveKitTokenSchema } from "@/lib/collabSecurity";
 import { verifyCollabInvite } from "@/lib/collabInvites";
+import { checkCollabRateLimit, collabRateLimitHeaders } from "@/lib/collabRateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,9 @@ type TokenRequestWithInvite = {
 };
 
 export async function POST(request: Request) {
+  const limit = checkCollabRateLimit(request, "collab-livekit-token", 30, 60_000);
+  if (!limit.allowed) return NextResponse.json({ ready: false, error: "Too many LiveKit token requests" }, { status: 429, headers: collabRateLimitHeaders(limit) });
+
   const raw = (await request.json().catch(() => ({}))) as TokenRequestWithInvite;
   const parsed = liveKitTokenSchema.safeParse(raw);
   if (!parsed.success) return NextResponse.json({ ready: false, error: "Invalid LiveKit token request", issues: parsed.error.flatten() }, { status: 400 });
@@ -30,21 +34,21 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ready: false,
       error: "LiveKit is not configured. Add LIVEKIT_API_KEY, LIVEKIT_API_SECRET, and NEXT_PUBLIC_LIVEKIT_URL.",
-    }, { status: 200 });
+    }, { status: 200, headers: collabRateLimitHeaders(limit) });
   }
 
   const requestedRoomId = body.roomId ?? "ems-main-room";
   const invite = verifyCollabInvite(raw.invite);
   if (raw.invite && !invite.valid) {
-    return NextResponse.json({ ready: false, error: invite.reason }, { status: 403 });
+    return NextResponse.json({ ready: false, error: invite.reason }, { status: 403, headers: collabRateLimitHeaders(limit) });
   }
   if (invite.valid && invite.payload.roomId !== requestedRoomId) {
-    return NextResponse.json({ ready: false, error: "Invite does not match this room" }, { status: 403 });
+    return NextResponse.json({ ready: false, error: "Invite does not match this room" }, { status: 403, headers: collabRateLimitHeaders(limit) });
   }
 
   const room = await getCollabRoomState(requestedRoomId);
   if (room.locked && !invite.valid) {
-    return NextResponse.json({ ready: false, error: "Room is locked. A valid invite is required." }, { status: 403 });
+    return NextResponse.json({ ready: false, error: "Room is locked. A valid invite is required." }, { status: 403, headers: collabRateLimitHeaders(limit) });
   }
 
   const identity = getRequestIdentity(request);
@@ -76,5 +80,5 @@ export async function POST(request: Request) {
     identity: clientIdentity,
     permission,
     role: invite.valid ? invite.payload.role : "HOST",
-  });
+  }, { headers: collabRateLimitHeaders(limit) });
 }
