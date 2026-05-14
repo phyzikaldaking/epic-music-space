@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { readDurableCollabState, writeDurableCollabState } from "@/lib/collabDurableState";
 
 export type CollabRole = "HOST" | "PRODUCER" | "ENGINEER" | "ARTIST" | "GUEST";
 export type CollabPermission = "OWNER" | "EDIT" | "COMMENT" | "VIEW";
@@ -104,6 +105,10 @@ function stateFromPrismaRoom(room: Awaited<ReturnType<typeof getPrismaRoom>>): C
 
 export async function getCollabRoomState(roomId = "ems-main-room"): Promise<CollabRoomState> {
   if (process.env.DATABASE_URL) {
+    try {
+      const durable = await readDurableCollabState(roomId, seed(roomId));
+      if (durable) return durable;
+    } catch (error) { console.warn("[collab] durable state failed, trying prisma room fallback", error); }
     try { return stateFromPrismaRoom(await getPrismaRoom(roomId)); } catch (error) { console.warn("[collab] prisma state failed, falling back to memory", error); }
   }
   if (!rooms.has(roomId)) rooms.set(roomId, seed(roomId));
@@ -111,7 +116,15 @@ export async function getCollabRoomState(roomId = "ems-main-room"): Promise<Coll
 }
 
 export async function updateCollabRoomState(roomId: string, patch: Partial<MutableRoomState>, title = "Session update", detail = "Room state updated") {
+  const current = await getCollabRoomState(roomId);
+  const event: CollabEvent = { id: `event-${Date.now()}`, title, detail, createdAt: now(), tone: "cyan" };
+  const nextEvents = [event, ...(patch.events ?? current.events)].slice(0, 10);
+
   if (process.env.DATABASE_URL) {
+    try {
+      const durable = await writeDurableCollabState(roomId, current, { roomName: patch.roomName, locked: patch.locked, recordApproval: patch.recordApproval, exportApproval: patch.exportApproval, screenShare: patch.screenShare, markerCount: patch.markerCount, seats: patch.seats, events: nextEvents }, { action: title, detail, metadata: { roomId } });
+      if (durable) return durable;
+    } catch (error) { console.warn("[collab] durable update failed, trying prisma room fallback", error); }
     try {
       const room = await getPrismaRoom(roomId);
       const currentMeta = metaFromDescription(room.description);
@@ -124,9 +137,8 @@ export async function updateCollabRoomState(roomId: string, patch: Partial<Mutab
       return stateFromPrismaRoom(await getPrismaRoom(roomId));
     } catch (error) { console.warn("[collab] prisma update failed, falling back to memory", error); }
   }
-  const current = rooms.get(roomId) ?? seed(roomId);
-  const event: CollabEvent = { id: `event-${Date.now()}`, title, detail, createdAt: now(), tone: "cyan" };
-  const next: MutableRoomState = { ...current, ...patch, events: [event, ...(patch.events ?? current.events)].slice(0, 10) };
+  const memoryCurrent = rooms.get(roomId) ?? seed(roomId);
+  const next: MutableRoomState = { ...memoryCurrent, ...patch, events: nextEvents };
   rooms.set(roomId, next);
   return compute(next);
 }
