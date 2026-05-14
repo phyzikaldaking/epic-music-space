@@ -19,12 +19,9 @@ const trustLinks = [
 
 export default function PublicFooter() {
   const pathname = usePathname() ?? "";
-  const isImmersiveStudio =
-    pathname === "/studio" ||
-    pathname === "/studio/try" ||
-    pathname.startsWith("/studio/try/");
+  const isStudioRoute = pathname === "/studio" || pathname.startsWith("/studio/");
 
-  if (isImmersiveStudio) return null;
+  if (isStudioRoute) return null;
 
   return (
     <footer className="relative z-[1] border-t border-white/10 bg-black/50 px-4 py-10 text-white" aria-label="Epic Music Space footer">
