@@ -4,9 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 
 type MidiStatus = "unsupported" | "idle" | "requesting" | "ready" | "error";
 
-type MidiAccessLike = {
-  inputs: Map<string, { id: string; name?: string; onmidimessage: ((event: { data: Uint8Array | number[] }) => void) | null }>;
-};
+type MidiMessageLike = { data: Uint8Array | number[] | null };
+type MidiInputLike = { id: string; name?: string; onmidimessage: ((event: MidiMessageLike) => void) | null };
+type MidiAccessLike = { inputs: Map<string, MidiInputLike> };
+
+function readMidiBytes(data: MidiMessageLike["data"]) {
+  if (!data) return null;
+  const bytes = Array.from(data);
+  if (bytes.length < 3) return null;
+  const [statusByte = 0, data1 = 0, data2 = 0] = bytes;
+  return { statusByte, data1, data2 };
+}
 
 export function useStudioMidiBridge(sessionId = "ems-main-session") {
   const [status, setStatus] = useState<MidiStatus>("idle");
@@ -27,7 +35,9 @@ export function useStudioMidiBridge(sessionId = "ems-main-session") {
       setDevices(nextDevices);
       access.inputs.forEach((input) => {
         input.onmidimessage = (event) => {
-          const [statusByte, data1, data2] = Array.from(event.data);
+          const bytes = readMidiBytes(event.data);
+          if (!bytes) return;
+          const { statusByte, data1, data2 } = bytes;
           const command = statusByte & 0xf0;
           const channel = (statusByte & 0x0f) + 1;
           const type = command === 0x90 && data2 > 0 ? "note_on" : command === 0x80 || (command === 0x90 && data2 === 0) ? "note_off" : command === 0xb0 ? "cc" : "transport";
