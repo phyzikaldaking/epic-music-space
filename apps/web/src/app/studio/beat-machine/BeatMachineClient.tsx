@@ -1,0 +1,391 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { scheduleDrumHit, type DrumKind, type DrumKitId } from "@/components/daw/beatMachine";
+import { useStudioMidiBridge } from "../try/useStudioMidiBridge";
+
+type BeatTrackKind = "drum" | "bass" | "melody" | "fx";
+type BeatTrack = { id: string; name: string; kind: BeatTrackKind; color: string; level: number; pan: number; muted: boolean; padKind: DrumKind; pattern: boolean[] };
+type SavedPattern = { id: string; name: string; tracks: BeatTrack[]; bpm: number; swing: number; createdAt: string };
+type ArrangementSection = { id: string; name: string; color: string; patternId?: string; note: string };
+
+const DEFAULT_KIT: DrumKitId = "trap";
+const SESSION_ID = "ems-beat-machine-session";
+const STORAGE_KEY = "ems-beat-machine-patterns";
+const COLORS = ["#17fff4", "#ff34df", "#f6d63d", "#42ff56", "#a855ff", "#ff7a2f", "#23d4ff", "#ff4f8b"];
+const STEPS = Array.from({ length: 16 }, (_, index) => index + 1);
+const PADS: { label: string; kind: DrumKind; color: string; hotkey: string }[] = [
+  { label: "Kick", kind: "kick", color: "#17fff4", hotkey: "1" },
+  { label: "Snare", kind: "snare", color: "#ff34df", hotkey: "2" },
+  { label: "Clap", kind: "clap", color: "#f6d63d", hotkey: "3" },
+  { label: "Hat", kind: "hat", color: "#42ff56", hotkey: "4" },
+  { label: "Open Hat", kind: "openHat", color: "#a855ff", hotkey: "5" },
+  { label: "Perc", kind: "perc", color: "#ff7a2f", hotkey: "6" },
+  { label: "808", kind: "bass808", color: "#23d4ff", hotkey: "7" },
+  { label: "Crash", kind: "crash", color: "#ff4f8b", hotkey: "8" },
+];
+const INITIAL_TRACKS: BeatTrack[] = [
+  { id: "kick", name: "Kick", kind: "drum", padKind: "kick", color: "#17fff4", level: 88, pan: 0, muted: false, pattern: STEPS.map((step) => [1, 5, 9, 13].includes(step)) },
+  { id: "snare", name: "Snare / Clap", kind: "drum", padKind: "snare", color: "#ff34df", level: 76, pan: 0, muted: false, pattern: STEPS.map((step) => [5, 13].includes(step)) },
+  { id: "hat", name: "Hi-Hats", kind: "drum", padKind: "hat", color: "#42ff56", level: 64, pan: 8, muted: false, pattern: STEPS.map((step) => step % 2 === 1) },
+  { id: "bass", name: "808 Bass", kind: "bass", padKind: "bass808", color: "#f6d63d", level: 82, pan: -4, muted: false, pattern: STEPS.map((step) => [1, 4, 9, 12, 15].includes(step)) },
+  { id: "perc", name: "Perc Fill", kind: "fx", padKind: "perc", color: "#ff7a2f", level: 58, pan: 14, muted: false, pattern: STEPS.map((step) => [7, 11, 16].includes(step)) },
+];
+const INITIAL_SECTIONS: ArrangementSection[] = ["Intro", "Verse", "Hook", "Bridge", "Drop", "Breakdown", "Outro", "Alt Hook"].map((name, index) => ({ id: name.toLowerCase().replace(/\s+/g, "-"), name, color: COLORS[index % COLORS.length], note: "Drop saved patterns here." }));
+
+function isTypingTarget(target: EventTarget | null) {
+  const el = target as HTMLElement | null;
+  const tag = el?.tagName?.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || Boolean(el?.isContentEditable);
+}
+
+function cloneTracks(tracks: BeatTrack[]) {
+  return tracks.map((track) => ({ ...track, pattern: [...track.pattern] }));
+}
+
+function downloadText(filename: string, text: string, type = "application/json") {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function writeWav(samples: Float32Array, sampleRate: number) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const writeString = (offset: number, value: string) => Array.from(value).forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0)));
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  let offset = 44;
+  samples.forEach((sample) => {
+    const clipped = Math.max(-1, Math.min(1, sample));
+    view.setInt16(offset, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
+    offset += 2;
+  });
+  return buffer;
+}
+
+function renderPreviewWav(tracks: BeatTrack[], bpm: number, swing: number) {
+  const sampleRate = 44100;
+  const stepDuration = 60 / bpm / 4;
+  const totalSamples = Math.ceil(stepDuration * 16 * sampleRate);
+  const samples = new Float32Array(totalSamples);
+  tracks.forEach((track, trackIndex) => {
+    if (track.muted) return;
+    track.pattern.forEach((enabled, stepIndex) => {
+      if (!enabled) return;
+      const swung = stepIndex % 2 === 1 ? (swing / 100) * stepDuration * 0.5 : 0;
+      const start = Math.floor((stepIndex * stepDuration + swung) * sampleRate);
+      const length = Math.floor((track.padKind === "bass808" ? 0.32 : 0.11) * sampleRate);
+      for (let i = 0; i < length && start + i < samples.length; i += 1) {
+        const t = i / sampleRate;
+        const env = Math.exp(-t * (track.padKind === "bass808" ? 5 : 22));
+        const freq = track.padKind === "kick" ? 58 - t * 70 : track.padKind === "snare" || track.padKind === "clap" ? 190 : track.padKind === "hat" || track.padKind === "openHat" ? 6200 : track.padKind === "bass808" ? 45 : 330 + trackIndex * 40;
+        const tone = Math.sin(2 * Math.PI * Math.max(35, freq) * t) * env * (track.level / 100) * 0.25;
+        const noise = (Math.random() * 2 - 1) * env * (track.padKind === "hat" || track.padKind === "snare" || track.padKind === "clap" ? 0.12 : 0.02);
+        samples[start + i] += tone + noise;
+      }
+    });
+  });
+  return writeWav(samples, sampleRate);
+}
+
+export default function BeatMachineClient() {
+  const [playing, setPlaying] = useState(false);
+  const [bpm, setBpm] = useState(92);
+  const [swing, setSwing] = useState(18);
+  const [activePad, setActivePad] = useState<string | null>(null);
+  const [selectedTrack, setSelectedTrack] = useState("kick");
+  const [tracks, setTracks] = useState<BeatTrack[]>(INITIAL_TRACKS);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [savedPatterns, setSavedPatterns] = useState<SavedPattern[]>([]);
+  const [sections, setSections] = useState<ArrangementSection[]>(INITIAL_SECTIONS);
+  const [notice, setNotice] = useState("Beat machine ready.");
+  const ctxRef = useRef<AudioContext | null>(null);
+  const masterRef = useRef<GainNode | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const stepRef = useRef(0);
+  const tracksRef = useRef(tracks);
+  const bpmRef = useRef(bpm);
+  const swingRef = useRef(swing);
+  const midi = useStudioMidiBridge(SESSION_ID);
+  const selected = useMemo(() => tracks.find((track) => track.id === selectedTrack) ?? tracks[0], [selectedTrack, tracks]);
+
+  useEffect(() => { tracksRef.current = tracks; }, [tracks]);
+  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+  useEffect(() => { swingRef.current = swing; }, [swing]);
+  useEffect(() => {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    try { setSavedPatterns(JSON.parse(raw) as SavedPattern[]); } catch { setSavedPatterns([]); }
+  }, []);
+  useEffect(() => { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(savedPatterns)); }, [savedPatterns]);
+
+  function getCtx() {
+    if (ctxRef.current && ctxRef.current.state !== "closed") return ctxRef.current;
+    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const ctx = new Ctor({ latencyHint: "interactive", sampleRate: 48000 });
+    const gain = ctx.createGain();
+    gain.gain.value = 0.86;
+    gain.connect(ctx.destination);
+    ctxRef.current = ctx;
+    masterRef.current = gain;
+    return ctx;
+  }
+
+  const firePad = useCallback((kind: DrumKind, label: string, velocity = 0.92, when?: number) => {
+    const ctx = getCtx();
+    if (ctx.state === "suspended") void ctx.resume();
+    scheduleDrumHit(ctx, masterRef.current ?? ctx.destination, kind, { kit: DEFAULT_KIT, when: when ?? ctx.currentTime, velocity });
+    setActivePad(label);
+    window.setTimeout(() => setActivePad(null), 120);
+  }, []);
+
+  const playStep = useCallback((stepIndex: number) => {
+    const ctx = getCtx();
+    const stepDuration = 60 / bpmRef.current / 4;
+    const swung = stepIndex % 2 === 1 ? (swingRef.current / 100) * stepDuration * 0.5 : 0;
+    const when = ctx.currentTime + 0.025 + swung;
+    tracksRef.current.forEach((track) => {
+      if (!track.muted && track.pattern[stepIndex]) firePad(track.padKind, track.name, Math.max(0.1, track.level / 100), when);
+    });
+  }, [firePad]);
+
+  function startSequencer() {
+    const ctx = getCtx();
+    if (ctx.state === "suspended") void ctx.resume();
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    setPlaying(true);
+    setNotice("Sequencer playing.");
+    playStep(stepRef.current);
+    timerRef.current = window.setInterval(() => {
+      stepRef.current = (stepRef.current + 1) % 16;
+      setCurrentStep(stepRef.current);
+      playStep(stepRef.current);
+    }, (60 / bpmRef.current / 4) * 1000);
+  }
+
+  function stopSequencer() {
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = null;
+    setPlaying(false);
+    setNotice("Sequencer stopped.");
+  }
+
+  function toggleStep(trackId: string, stepIndex: number) {
+    setTracks((current) => current.map((track) => track.id === trackId ? { ...track, pattern: track.pattern.map((step, index) => index === stepIndex ? !step : step) } : track));
+  }
+
+  function updateTrack(trackId: string, patch: Partial<BeatTrack>) {
+    setTracks((current) => current.map((track) => track.id === trackId ? { ...track, ...patch } : track));
+  }
+
+  function addTrack(kind: BeatTrackKind) {
+    const index = tracks.length + 1;
+    const padKind: DrumKind = kind === "bass" ? "bass808" : kind === "fx" ? "perc" : kind === "melody" ? "openHat" : "kick";
+    const track: BeatTrack = { id: `beat-track-${Date.now()}`, name: kind === "bass" ? `808 ${index}` : kind === "melody" ? `Melody ${index}` : kind === "fx" ? `FX ${index}` : `Drum ${index}`, kind, padKind, color: COLORS[index % COLORS.length], level: 66, pan: 0, muted: false, pattern: STEPS.map((step) => kind === "drum" ? step % 4 === 1 : step === 1 || step === 9) };
+    setTracks((current) => [...current, track]);
+    setSelectedTrack(track.id);
+    setNotice(`${track.name} added.`);
+  }
+
+  function savePattern() {
+    const pattern: SavedPattern = { id: `pattern-${Date.now()}`, name: `Pattern ${savedPatterns.length + 1}`, tracks: cloneTracks(tracks), bpm, swing, createdAt: new Date().toISOString() };
+    setSavedPatterns((current) => [pattern, ...current].slice(0, 24));
+    setNotice(`${pattern.name} saved.`);
+  }
+
+  function duplicatePattern() {
+    setTracks((current) => current.map((track, index) => ({ ...track, id: `dup-${Date.now()}-${track.id}`, name: `${track.name} Copy`, color: COLORS[(index + 2) % COLORS.length], pattern: [...track.pattern] })));
+    setNotice("Pattern duplicated into new track copies.");
+  }
+
+  function clearTrack() {
+    setTracks((current) => current.map((track) => track.id === selected.id ? { ...track, pattern: STEPS.map(() => false) } : track));
+    setNotice(`${selected.name} cleared.`);
+  }
+
+  function randomFill() {
+    setTracks((current) => current.map((track) => track.id === selected.id ? { ...track, pattern: STEPS.map((_, index) => index % 4 === 0 || Math.random() > 0.67) } : track));
+    setNotice(`Random fill added to ${selected.name}.`);
+  }
+
+  function humanizeHats() {
+    setTracks((current) => current.map((track) => track.id.toLowerCase().includes("hat") || track.padKind === "hat" ? { ...track, pattern: track.pattern.map((step, index) => step || (index % 2 === 1 && Math.random() > 0.72)) } : track));
+    setSwing((value) => Math.min(60, value + 5));
+    setNotice("Hats humanized with extra ghost steps and swing.");
+  }
+
+  function quantize() {
+    setTracks((current) => current.map((track) => ({ ...track, pattern: track.pattern.map((step, index) => step && index >= 0) })));
+    setNotice("Pattern quantized to 16 steps.");
+  }
+
+  function halfTime() {
+    setTracks((current) => current.map((track) => ({ ...track, pattern: track.pattern.map((_, index) => Boolean(track.pattern[(index * 2) % 16])) })));
+    setNotice("Half-time pattern generated.");
+  }
+
+  function saveKit() {
+    downloadText("ems-beat-kit.json", JSON.stringify({ tracks, bpm, swing, savedAt: new Date().toISOString() }, null, 2));
+    setNotice("Kit downloaded as JSON.");
+  }
+
+  function exportLoop() {
+    const wav = renderPreviewWav(tracks, bpm, swing);
+    const url = URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ems-beat-loop.wav";
+    a.click();
+    URL.revokeObjectURL(url);
+    setNotice("Loop exported as WAV preview.");
+  }
+
+  function dragPattern(event: React.DragEvent<HTMLButtonElement>, pattern: SavedPattern) {
+    event.dataTransfer.setData("application/x-ems-pattern", pattern.id);
+  }
+
+  function dropPattern(event: React.DragEvent<HTMLDivElement>, sectionId: string) {
+    event.preventDefault();
+    const patternId = event.dataTransfer.getData("application/x-ems-pattern");
+    const pattern = savedPatterns.find((item) => item.id === patternId);
+    if (!pattern) return;
+    setSections((current) => current.map((section) => section.id === sectionId ? { ...section, patternId, note: `${pattern.name} · ${pattern.bpm} BPM` } : section));
+    setNotice(`${pattern.name} assigned to ${sectionId}.`);
+  }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (isTypingTarget(event.target)) return;
+      if (event.code === "Space" && !event.repeat) { event.preventDefault(); playing ? stopSequencer() : startSequencer(); }
+      const pad = PADS[Number(event.key) - 1];
+      if (pad) firePad(pad.kind, pad.label);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [firePad, playing]);
+
+  useEffect(() => {
+    if (playing) { stopSequencer(); startSequencer(); }
+    return () => { if (timerRef.current) window.clearInterval(timerRef.current); };
+  }, [bpm]);
+
+  useEffect(() => () => { if (timerRef.current) window.clearInterval(timerRef.current); ctxRef.current?.close().catch(() => undefined); }, []);
+
+  const midiGuard = midi.status === "unsupported" ? "MIDI unavailable in this browser. Pads and sequencer still work." : midi.status === "error" ? "MIDI permission failed. Reconnect or use pads." : midi.status === "ready" ? `${midi.devices.length} MIDI device(s) ready.` : "MIDI optional. Connect when needed.";
+
+  return (
+    <main id="main-content" className="min-h-screen overflow-y-auto bg-[#05070a] pb-20 text-white sm:pb-24">
+      <div className="fixed inset-0 -z-10 opacity-80 [background:radial-gradient(circle_at_18%_12%,rgba(23,255,244,.18),transparent_30%),radial-gradient(circle_at_88%_20%,rgba(255,52,223,.15),transparent_28%),linear-gradient(135deg,#05070a,#10151a_45%,#050609)]" />
+      <div className="mx-auto max-w-[1800px] px-3 py-3 sm:px-5 sm:py-4 lg:px-8">
+        <header className="sticky top-2 z-30 mb-4 rounded-2xl border border-green-300/20 bg-[#080d10]/95 p-3 shadow-[0_0_60px_rgba(23,255,244,.14)] backdrop-blur supports-[backdrop-filter]:bg-[#080d10]/80 sm:top-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <Link href="/studio/try" className="rounded-xl border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-100 sm:px-4 sm:py-3 sm:text-xs">← Studio</Link>
+            <div className="min-w-[150px] flex-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.24em] text-green-200/70 sm:text-[10px]">Dedicated beat page</p>
+              <h1 className="text-xl font-black uppercase tracking-wider sm:text-4xl">Beat Machine</h1>
+            </div>
+            <button onClick={playing ? stopSequencer : startSequencer} className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-widest sm:px-5 sm:py-3 sm:text-sm ${playing ? "border-pink-300 bg-pink-400/20 text-pink-100" : "border-green-300 bg-green-300/15 text-green-100"}`}>{playing ? "Stop" : "Play"}</button>
+            <div className="flex items-center rounded-full border border-white/10 bg-black/45 px-2 py-1">
+              <button onClick={() => setBpm((value) => Math.max(60, value - 1))} className="h-8 w-8 rounded-full bg-white/5 text-lg">-</button>
+              <span className="w-14 text-center font-mono text-base font-black text-cyan-100 sm:w-16 sm:text-lg">{bpm}</span>
+              <button onClick={() => setBpm((value) => Math.min(180, value + 1))} className="h-8 w-8 rounded-full bg-white/5 text-lg">+</button>
+            </div>
+            <button onClick={midi.connect} className="rounded-xl border border-green-300/35 bg-green-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-green-100 sm:px-4 sm:py-3">MIDI {midi.status}</button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white/45">
+            <span className="rounded-full border border-white/10 px-3 py-1">Step {currentStep + 1}</span>
+            <span className="rounded-full border border-white/10 px-3 py-1">{notice}</span>
+            <span className="rounded-full border border-white/10 px-3 py-1">{midi.lastEvent ? `Last MIDI: ${midi.lastEvent}` : midiGuard}</span>
+          </div>
+        </header>
+
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-green-300/25 bg-black/45 p-3 shadow-[0_0_45px_rgba(66,255,86,.08)] sm:p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-green-200/70">Performance pads</p><h2 className="text-xl font-black uppercase">Trap Kit</h2></div>
+                <span className="rounded-full border border-white/10 px-3 py-1 text-[10px] uppercase tracking-widest text-white/45">Keys 1-8</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3 xl:grid-cols-2">
+                {PADS.map((pad) => <button key={pad.label} onClick={() => firePad(pad.kind, pad.label)} className={`h-20 rounded-2xl border text-left transition sm:h-24 ${activePad === pad.label ? "scale-95" : "hover:scale-[.98]"}`} style={{ background: pad.color, borderColor: pad.color, color: "#061014", boxShadow: activePad === pad.label ? `0 0 26px ${pad.color}` : undefined }}><span className="block px-3 text-xl font-black uppercase sm:px-4 sm:text-2xl">{pad.label}</span><span className="block px-3 text-xs font-black uppercase opacity-70 sm:px-4">Hotkey {pad.hotkey}</span></button>)}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/45 p-3 sm:p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/70">Groove control</p>
+              <div className="mt-3 grid gap-4">
+                <label className="block"><span className="text-xs font-black uppercase text-white/50">Swing {swing}%</span><input type="range" min="0" max="60" value={swing} onChange={(event) => setSwing(Number(event.target.value))} className="mt-2 w-full accent-green-300" /></label>
+                <label className="block"><span className="text-xs font-black uppercase text-white/50">Selected level {selected.level}%</span><input type="range" min="0" max="100" value={selected.level} onChange={(event) => updateTrack(selected.id, { level: Number(event.target.value) })} className="mt-2 w-full accent-cyan-300" /></label>
+                <label className="block"><span className="text-xs font-black uppercase text-white/50">Selected pan {selected.pan}</span><input type="range" min="-50" max="50" value={selected.pan} onChange={(event) => updateTrack(selected.id, { pan: Number(event.target.value) })} className="mt-2 w-full accent-pink-400" /></label>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/45 p-3 sm:p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-yellow-200/70">Saved patterns</p>
+              <div className="mt-3 space-y-2">
+                {savedPatterns.length === 0 && <p className="text-sm text-white/45">Save a pattern to drag it into the arranger.</p>}
+                {savedPatterns.map((pattern) => <button key={pattern.id} draggable onDragStart={(event) => dragPattern(event, pattern)} onClick={() => { setTracks(cloneTracks(pattern.tracks)); setBpm(pattern.bpm); setSwing(pattern.swing); setNotice(`${pattern.name} loaded.`); }} className="block w-full rounded-xl border border-white/10 bg-[#071015] p-3 text-left"><b className="uppercase text-green-100">{pattern.name}</b><span className="ml-2 text-[10px] uppercase text-white/40">{pattern.bpm} BPM</span><p className="mt-1 text-xs text-white/45">Drag to arrangement or click to load.</p></button>)}
+              </div>
+            </div>
+          </div>
+
+          <div className="min-w-0 space-y-4">
+            <section className="rounded-2xl border border-cyan-300/20 bg-[#071015]/90 p-3 sm:p-4">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div><p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/70">16-step sequencer</p><h2 className="text-2xl font-black uppercase">Pattern A</h2></div>
+                <div className="flex flex-wrap gap-2"><button onClick={() => addTrack("drum")} className="rounded-lg border border-cyan-300/35 px-3 py-2 text-xs font-black uppercase text-cyan-100">+ Drum</button><button onClick={() => addTrack("bass")} className="rounded-lg border border-yellow-300/35 px-3 py-2 text-xs font-black uppercase text-yellow-100">+ 808</button><button onClick={() => addTrack("melody")} className="rounded-lg border border-green-300/35 px-3 py-2 text-xs font-black uppercase text-green-100">+ Melody</button><button onClick={() => addTrack("fx")} className="rounded-lg border border-pink-300/35 px-3 py-2 text-xs font-black uppercase text-pink-100">+ FX</button></div>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/45 p-2 sm:p-3">
+                <div className="min-w-[980px] space-y-2">
+                  <div className="grid grid-cols-[160px_repeat(16,minmax(42px,1fr))] gap-2 text-center text-[10px] font-black uppercase tracking-widest text-white/35"><span className="text-left">Track</span>{STEPS.map((step) => <span key={step} className={currentStep + 1 === step ? "text-green-200" : ""}>{step}</span>)}</div>
+                  {tracks.map((track) => <div key={track.id} className="grid grid-cols-[160px_repeat(16,minmax(42px,1fr))] gap-2"><button onClick={() => setSelectedTrack(track.id)} className={`rounded-lg border px-3 py-2 text-left text-xs font-black uppercase ${selectedTrack === track.id ? "border-green-300/70 bg-green-300/10" : "border-white/10 bg-white/[.03]"}`} style={{ color: track.color }}>{track.name}</button>{track.pattern.map((enabled, index) => <button key={`${track.id}-${index}`} onClick={() => toggleStep(track.id, index)} className={`h-10 rounded-lg border transition ${currentStep === index ? "ring-2 ring-white/60" : ""} ${enabled ? "scale-95" : "hover:bg-white/10"}`} style={{ borderColor: enabled ? track.color : "rgba(255,255,255,.12)", background: enabled ? track.color : "rgba(255,255,255,.035)", boxShadow: enabled ? `0 0 14px ${track.color}55` : undefined }} aria-label={`${track.name} step ${index + 1}`} />)}</div>)}
+                </div>
+              </div>
+            </section>
+
+            <section className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-black/45 p-3 sm:p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-yellow-200/70">Track mixer</p>
+                <div className="mt-3 grid gap-3">{tracks.map((track) => <div key={track.id} className="rounded-xl border border-white/10 bg-[#071015] p-3"><div className="flex items-center justify-between gap-3"><button onClick={() => setSelectedTrack(track.id)} className="font-black uppercase" style={{ color: track.color }}>{track.name}</button><button onClick={() => updateTrack(track.id, { muted: !track.muted })} className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase ${track.muted ? "border-pink-300 bg-pink-300/20 text-pink-100" : "border-white/10 text-white/45"}`}>{track.muted ? "Muted" : "Live"}</button></div><input aria-label={`${track.name} level`} type="range" min="0" max="100" value={track.level} onChange={(event) => updateTrack(track.id, { level: Number(event.target.value) })} className="mt-3 w-full accent-cyan-300" /></div>)}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/45 p-3 sm:p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-pink-200/70">Pattern tools</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <Tool label="Save Pattern" onClick={savePattern} /><Tool label="Export Loop" onClick={exportLoop} /><Tool label="Duplicate Pattern" onClick={duplicatePattern} /><Tool label="Clear Track" onClick={clearTrack} /><Tool label="Random Fill" onClick={randomFill} /><Tool label="Humanize Hats" onClick={humanizeHats} /><Tool label="Quantize" onClick={quantize} /><Tool label="Half-Time" onClick={halfTime} /><Tool label="Save Kit" onClick={saveKit} />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-white/10 bg-black/45 p-3 sm:p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-green-200/70">Arrangement drag/drop</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {sections.map((section) => <div key={section.id} onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropPattern(event, section.id)} className="min-h-32 rounded-xl border border-white/10 bg-[#071015] p-3"><div className="font-black uppercase" style={{ color: section.color }}>{section.name}</div><p className="mt-2 text-xs text-white/45">{section.note}</p>{section.patternId && <button onClick={() => setSections((current) => current.map((item) => item.id === section.id ? { ...item, patternId: undefined, note: "Drop saved patterns here." } : item))} className="mt-3 rounded-full border border-white/10 px-3 py-1 text-[10px] uppercase text-white/45">Clear</button>}</div>)}
+              </div>
+            </section>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function Tool({ label, onClick }: { label: string; onClick: () => void }) {
+  return <button onClick={onClick} className="rounded-xl border border-white/10 bg-white/[.035] p-3 text-left text-[11px] font-black uppercase tracking-widest text-white/65 hover:border-green-300/40 hover:text-green-100 sm:p-4 sm:text-xs">{label}</button>;
+}
