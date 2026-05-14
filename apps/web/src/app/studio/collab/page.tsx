@@ -33,14 +33,7 @@ type RoomState = {
   updatedAt: string;
 };
 
-type LiveKitTokenResponse = {
-  ready: boolean;
-  url?: string;
-  token?: string;
-  roomId?: string;
-  identity?: string;
-  error?: string;
-};
+type LiveKitTokenResponse = { ready: boolean; url?: string; token?: string; roomId?: string; identity?: string; error?: string };
 
 type LiveKitRoomLike = {
   connect: (url: string, token: string) => Promise<void>;
@@ -48,6 +41,9 @@ type LiveKitRoomLike = {
   on: (event: unknown, handler: (...args: unknown[]) => void) => LiveKitRoomLike;
   localParticipant?: {
     publishData?: (data: Uint8Array, options?: { reliable?: boolean; topic?: string }) => Promise<void> | void;
+    setMicrophoneEnabled?: (enabled: boolean) => Promise<unknown>;
+    setCameraEnabled?: (enabled: boolean) => Promise<unknown>;
+    setScreenShareEnabled?: (enabled: boolean) => Promise<unknown>;
   };
   remoteParticipants?: Map<string, unknown>;
 };
@@ -89,20 +85,18 @@ export default function StudioCollabConsolePage() {
   const [liveKitReady, setLiveKitReady] = useState<"checking" | "ready" | "missing" | "connected" | "error">("checking");
   const [liveKitError, setLiveKitError] = useState<string | null>(null);
   const [participantCount, setParticipantCount] = useState(1);
+  const [localMicOn, setLocalMicOn] = useState(false);
+  const [localCamOn, setLocalCamOn] = useState(false);
+  const [localScreenOn, setLocalScreenOn] = useState(false);
+  const [mediaBusy, setMediaBusy] = useState(false);
   const liveKitRoomRef = useRef<LiveKitRoomLike | null>(null);
 
   const loadRoom = useCallback(async () => {
-    try {
-      const next = await readRoom();
-      setState(next);
-    } catch {
-      setState(fallback);
-    }
+    try { setState(await readRoom()); }
+    catch { setState(fallback); }
   }, []);
 
-  useEffect(() => {
-    void loadRoom();
-  }, [loadRoom]);
+  useEffect(() => { void loadRoom(); }, [loadRoom]);
 
   useEffect(() => {
     let active = true;
@@ -120,7 +114,6 @@ export default function StudioCollabConsolePage() {
           setLiveKitError(tokenData?.error ?? "LiveKit environment is not configured.");
           return;
         }
-
         const livekit = await import("livekit-client");
         if (!active) return;
         const room = new livekit.Room({ adaptiveStream: true, dynacast: true }) as unknown as LiveKitRoomLike;
@@ -129,10 +122,7 @@ export default function StudioCollabConsolePage() {
         room.on(livekit.RoomEvent.ParticipantDisconnected, refreshParticipants);
         room.on(livekit.RoomEvent.DataReceived, () => void loadRoom());
         await room.connect(tokenData.url, tokenData.token);
-        if (!active) {
-          room.disconnect();
-          return;
-        }
+        if (!active) { room.disconnect(); return; }
         liveKitRoomRef.current = room;
         refreshParticipants();
         setLiveKitReady("connected");
@@ -164,6 +154,45 @@ export default function StudioCollabConsolePage() {
     } catch {}
   }
 
+  async function toggleLocalMic() {
+    const next = !localMicOn;
+    setMediaBusy(true);
+    try {
+      if (!liveKitRoomRef.current?.localParticipant?.setMicrophoneEnabled) throw new Error("LiveKit microphone control is unavailable.");
+      await liveKitRoomRef.current.localParticipant.setMicrophoneEnabled(next);
+      setLocalMicOn(next);
+      await patchSeat(seats[0] ?? fallback.seats[0], { mic: next }, `Local microphone ${next ? "enabled" : "disabled"}`);
+    } catch (error) {
+      setLiveKitError(error instanceof Error ? error.message : "Microphone permission failed.");
+    } finally { setMediaBusy(false); }
+  }
+
+  async function toggleLocalCamera() {
+    const next = !localCamOn;
+    setMediaBusy(true);
+    try {
+      if (!liveKitRoomRef.current?.localParticipant?.setCameraEnabled) throw new Error("LiveKit camera control is unavailable.");
+      await liveKitRoomRef.current.localParticipant.setCameraEnabled(next);
+      setLocalCamOn(next);
+      await patchSeat(seats[0] ?? fallback.seats[0], { cam: next }, `Local camera ${next ? "enabled" : "disabled"}`);
+    } catch (error) {
+      setLiveKitError(error instanceof Error ? error.message : "Camera permission failed.");
+    } finally { setMediaBusy(false); }
+  }
+
+  async function toggleScreenShare() {
+    const next = !localScreenOn;
+    setMediaBusy(true);
+    try {
+      if (!liveKitRoomRef.current?.localParticipant?.setScreenShareEnabled) throw new Error("LiveKit screen share control is unavailable.");
+      await liveKitRoomRef.current.localParticipant.setScreenShareEnabled(next);
+      setLocalScreenOn(next);
+      await updateRoom({ screenShare: next }, "Screen share", next ? "Screen share started" : "Screen share stopped");
+    } catch (error) {
+      setLiveKitError(error instanceof Error ? error.message : "Screen share permission failed.");
+    } finally { setMediaBusy(false); }
+  }
+
   async function updateRoom(patch: Partial<RoomState>, title: string, detail: string) {
     const optimistic = { ...state, ...patch, updatedAt: new Date().toISOString() };
     setState(optimistic);
@@ -173,10 +202,7 @@ export default function StudioCollabConsolePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: state.roomId, ...patch, title, detail }),
       });
-      if (res.ok) {
-        setState(await res.json());
-        await broadcastRoomUpdate(title);
-      }
+      if (res.ok) { setState(await res.json()); await broadcastRoomUpdate(title); }
     } catch {}
   }
 
@@ -192,10 +218,7 @@ export default function StudioCollabConsolePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: state.roomId, seatId: seat.id, ...patch }),
       });
-      if (res.ok) {
-        setState(await res.json());
-        await broadcastRoomUpdate(note);
-      }
+      if (res.ok) { setState(await res.json()); await broadcastRoomUpdate(note); }
     } catch {}
   }
 
@@ -221,6 +244,8 @@ export default function StudioCollabConsolePage() {
           <button onClick={() => updateRoom({ locked: !state.locked }, "Room lock changed", `Room ${state.locked ? "opened" : "locked"}`)} className={`rounded-lg border px-3 py-2 text-xs font-black uppercase ${state.locked ? "border-red-300/40 bg-red-300/10 text-red-100" : "border-emerald-300/40 bg-emerald-300/10 text-emerald-100"}`}>{state.locked ? "Locked" : "Open"}</button>
         </header>
 
+        {liveKitError && <div className="mt-2 rounded-xl border border-yellow-300/30 bg-yellow-300/10 px-3 py-2 text-xs text-yellow-100">{liveKitError}</div>}
+
         <section className="mt-3 grid min-h-0 flex-1 grid-cols-[1.2fr_.8fr] gap-3 overflow-hidden">
           <div className="grid min-h-0 grid-rows-[1fr_148px] gap-3 overflow-hidden">
             <div className="grid min-h-0 grid-cols-2 gap-3 overflow-hidden rounded-2xl border border-white/15 bg-[#10151a]/95 p-3">
@@ -243,17 +268,17 @@ export default function StudioCollabConsolePage() {
             </div>
 
             <div className="grid grid-cols-4 gap-3 rounded-2xl border border-white/15 bg-[#10151a]/95 p-3">
-              <button onClick={() => Promise.all(seats.map((seat) => patchSeat(seat, { mic: false }, `${seat.name} muted by host`)))} className="rounded-xl border border-cyan-300/30 bg-black/45 p-3 text-xs font-black uppercase text-cyan-100">Mute All</button>
-              <button onClick={() => updateRoom({ screenShare: !state.screenShare }, "Screen share", state.screenShare ? "Screen share stopped" : "Screen share started")} className="rounded-xl border border-pink-300/30 bg-black/45 p-3 text-xs font-black uppercase text-pink-100">{state.screenShare ? "Stop Share" : "Share Screen"}</button>
-              <button onClick={() => updateRoom({ markerCount: state.markerCount + 1 }, "Marker dropped", `Marker ${state.markerCount + 1} dropped on the timeline`)} className="rounded-xl border border-yellow-300/30 bg-black/45 p-3 text-xs font-black uppercase text-yellow-100">Drop Marker</button>
-              <button onClick={() => updateRoom({}, "Session checkpoint", "Session checkpoint saved manually")} className="rounded-xl border border-emerald-300/30 bg-black/45 p-3 text-xs font-black uppercase text-emerald-100">Save Room</button>
+              <button disabled={mediaBusy} onClick={toggleLocalMic} className={`rounded-xl border p-3 text-xs font-black uppercase ${localMicOn ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-black/45 text-white/50"}`}>{localMicOn ? "Mic On" : "Mic Off"}</button>
+              <button disabled={mediaBusy} onClick={toggleLocalCamera} className={`rounded-xl border p-3 text-xs font-black uppercase ${localCamOn ? "border-pink-300/30 bg-pink-300/10 text-pink-100" : "border-white/10 bg-black/45 text-white/50"}`}>{localCamOn ? "Camera On" : "Camera Off"}</button>
+              <button disabled={mediaBusy} onClick={toggleScreenShare} className={`rounded-xl border p-3 text-xs font-black uppercase ${localScreenOn ? "border-yellow-300/30 bg-yellow-300/10 text-yellow-100" : "border-white/10 bg-black/45 text-white/50"}`}>{localScreenOn ? "Stop Share" : "Share Screen"}</button>
+              <button onClick={() => updateRoom({ markerCount: state.markerCount + 1 }, "Marker dropped", `Marker ${state.markerCount + 1} dropped on the timeline`)} className="rounded-xl border border-emerald-300/30 bg-black/45 p-3 text-xs font-black uppercase text-emerald-100">Drop Marker</button>
             </div>
           </div>
 
           <aside className="grid min-h-0 grid-rows-[120px_1fr_210px] gap-3 overflow-hidden">
             <section className="grid grid-cols-3 gap-2 rounded-2xl border border-white/15 bg-[#10151a]/95 p-3"><Stat label="Editors" value={editCount} /><Stat label="Muted" value={mutedCount} /><Stat label="Markers" value={state.markerCount} /></section>
             <section className="overflow-hidden rounded-2xl border border-white/15 bg-[#10151a]/95 p-3"><h2 className="text-sm font-black uppercase tracking-[0.2em]">Session Activity</h2><div className="mt-3 space-y-2 overflow-hidden">{activity.map((item) => <div key={item.id} className="rounded-xl border border-white/10 bg-black/45 p-3 text-xs text-white/70"><b className="text-white/85">{item.title}</b><br />{item.detail}</div>)}</div></section>
-            <section className="rounded-2xl border border-white/15 bg-[#10151a]/95 p-3"><h2 className="text-sm font-black uppercase tracking-[0.2em]">Room Controls</h2><div className="mt-3 grid grid-cols-2 gap-2"><Toggle label="Host Lock" active={state.locked} onClick={() => updateRoom({ locked: !state.locked }, "Host lock", "Host lock changed")} /><Toggle label="Record OK" active={state.recordApproval} onClick={() => updateRoom({ recordApproval: !state.recordApproval }, "Record approval", "Record approval changed")} /><Toggle label="Export OK" active={state.exportApproval} onClick={() => updateRoom({ exportApproval: !state.exportApproval }, "Export approval", "Export approval changed")} /><Toggle label="Screen" active={state.screenShare} onClick={() => updateRoom({ screenShare: !state.screenShare }, "Screen share", "Screen state changed")} /></div></section>
+            <section className="rounded-2xl border border-white/15 bg-[#10151a]/95 p-3"><h2 className="text-sm font-black uppercase tracking-[0.2em]">Room Controls</h2><div className="mt-3 grid grid-cols-2 gap-2"><Toggle label="Host Lock" active={state.locked} onClick={() => updateRoom({ locked: !state.locked }, "Host lock", "Host lock changed")} /><Toggle label="Record OK" active={state.recordApproval} onClick={() => updateRoom({ recordApproval: !state.recordApproval }, "Record approval", "Record approval changed")} /><Toggle label="Export OK" active={state.exportApproval} onClick={() => updateRoom({ exportApproval: !state.exportApproval }, "Export approval", "Export approval changed")} /><Toggle label="Save Room" active={false} onClick={() => updateRoom({}, "Session checkpoint", "Session checkpoint saved manually")} /></div></section>
           </aside>
         </section>
       </div>
