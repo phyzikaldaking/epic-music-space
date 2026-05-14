@@ -53,11 +53,14 @@ type ProductionTimelineResponse =
 
 function normalizePosts(payload: ProductionTimelineResponse): ProductionPost[] {
   const rows = Array.isArray(payload) ? payload : Array.isArray(payload.posts) ? payload.posts : [];
-  return rows.map((post) => ({
-    ...post,
-    createdAt: new Date(post.createdAt),
-    ...(post.liveUntil ? { liveUntil: new Date(post.liveUntil) } : {}),
-  }));
+  return rows.map((post) => {
+    const { liveUntil, ...rest } = post;
+    return {
+      ...rest,
+      createdAt: new Date(post.createdAt),
+      ...(liveUntil ? { liveUntil: new Date(liveUntil) } : {}),
+    };
+  });
 }
 
 function avgBand(spectrum: number[], start: number, end: number): number {
