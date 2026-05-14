@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { scheduleDrumHit, type DrumKind, type DrumKitId } from "@/components/daw/beatMachine";
+import StudioPageShell from "@/components/studio/StudioPageShell";
 import { useStudioMidiBridge } from "../try/useStudioMidiBridge";
 
 type BeatTrackKind = "drum" | "bass" | "melody" | "fx";
@@ -36,10 +37,7 @@ const INITIAL_SECTIONS: ArrangementSection[] = ["Intro", "Verse", "Hook", "Bridg
 
 function isTypingTarget(target: EventTarget | null) { const el = target as HTMLElement | null; const tag = el?.tagName?.toLowerCase(); return tag === "input" || tag === "textarea" || tag === "select" || Boolean(el?.isContentEditable); }
 function cloneTracks(tracks: BeatTrack[]) { return tracks.map((track) => ({ ...track, pattern: [...track.pattern] })); }
-function normalizePattern(raw: any): SavedPattern | null {
-  if (!raw || typeof raw !== "object" || !Array.isArray(raw.tracks)) return null;
-  return { id: String(raw.id), name: String(raw.name ?? "Pattern"), tracks: raw.tracks as BeatTrack[], bpm: Number(raw.bpm ?? 92), swing: Number(raw.swing ?? 0), arrangement: Array.isArray(raw.arrangement) ? raw.arrangement as ArrangementSection[] : undefined, createdAt: String(raw.createdAt ?? raw.updatedAt ?? new Date().toISOString()) };
-}
+function normalizePattern(raw: any): SavedPattern | null { if (!raw || typeof raw !== "object" || !Array.isArray(raw.tracks)) return null; return { id: String(raw.id), name: String(raw.name ?? "Pattern"), tracks: raw.tracks as BeatTrack[], bpm: Number(raw.bpm ?? 92), swing: Number(raw.swing ?? 0), arrangement: Array.isArray(raw.arrangement) ? raw.arrangement as ArrangementSection[] : undefined, createdAt: String(raw.createdAt ?? raw.updatedAt ?? new Date().toISOString()) }; }
 function downloadText(filename: string, text: string, type = "application/json") { const blob = new Blob([text], { type }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url); }
 function writeWav(samples: Float32Array, sampleRate: number) { const buffer = new ArrayBuffer(44 + samples.length * 2); const view = new DataView(buffer); const writeString = (offset: number, value: string) => Array.from(value).forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0))); writeString(0, "RIFF"); view.setUint32(4, 36 + samples.length * 2, true); writeString(8, "WAVE"); writeString(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, "data"); view.setUint32(40, samples.length * 2, true); let offset = 44; samples.forEach((sample) => { const clipped = Math.max(-1, Math.min(1, sample)); view.setInt16(offset, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true); offset += 2; }); return buffer; }
 function renderPreviewWav(tracks: BeatTrack[], bpm: number, swing: number) { const sampleRate = 44100; const stepDuration = 60 / bpm / 4; const totalSamples = Math.ceil(stepDuration * 16 * sampleRate); const samples = new Float32Array(totalSamples); tracks.forEach((track, trackIndex) => { if (track.muted) return; track.pattern.forEach((enabled, stepIndex) => { if (!enabled) return; const swung = stepIndex % 2 === 1 ? (swing / 100) * stepDuration * 0.5 : 0; const start = Math.floor((stepIndex * stepDuration + swung) * sampleRate); const length = Math.floor((track.padKind === "bass808" ? 0.32 : 0.11) * sampleRate); for (let i = 0; i < length && start + i < samples.length; i += 1) { const t = i / sampleRate; const env = Math.exp(-t * (track.padKind === "bass808" ? 5 : 22)); const freq = track.padKind === "kick" ? 58 - t * 70 : track.padKind === "snare" || track.padKind === "clap" ? 190 : track.padKind === "hat" || track.padKind === "openHat" ? 6200 : track.padKind === "bass808" ? 45 : 330 + trackIndex * 40; const tone = Math.sin(2 * Math.PI * Math.max(35, freq) * t) * env * (track.level / 100) * 0.25; const noise = (Math.random() * 2 - 1) * env * (track.padKind === "hat" || track.padKind === "snare" || track.padKind === "clap" ? 0.12 : 0.02); samples[start + i] += tone + noise; } }); }); return writeWav(samples, sampleRate); }
@@ -71,27 +69,8 @@ export default function BeatMachineClient() {
   useEffect(() => { swingRef.current = swing; }, [swing]);
   useEffect(() => { void loadPatterns(); }, []);
 
-  async function loadPatterns() {
-    setSyncing(true);
-    try {
-      const res = await fetch(`/api/studio/beat-patterns?projectId=${encodeURIComponent(PROJECT_ID)}`, { cache: "no-store" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !Array.isArray(data?.patterns)) throw new Error(data?.error ?? "Pattern API unavailable");
-      const patterns = data.patterns.map(normalizePattern).filter(Boolean) as SavedPattern[];
-      setSavedPatterns(patterns);
-      setNotice(patterns.length ? `${patterns.length} backend patterns loaded.` : "No backend patterns yet.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Pattern sync failed.");
-    } finally { setSyncing(false); }
-  }
-
-  async function persistPattern(pattern: SavedPattern) {
-    const res = await fetch("/api/studio/beat-patterns", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId: PROJECT_ID, sessionId: SESSION_ID, ...pattern, arrangement: sections }) });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || !data?.pattern) throw new Error(data?.error ?? "Pattern save failed");
-    return normalizePattern(data.pattern) ?? pattern;
-  }
-
+  async function loadPatterns() { setSyncing(true); try { const res = await fetch(`/api/studio/beat-patterns?projectId=${encodeURIComponent(PROJECT_ID)}`, { cache: "no-store" }); const data = await res.json().catch(() => null); if (!res.ok || !Array.isArray(data?.patterns)) throw new Error(data?.error ?? "Pattern API unavailable"); const patterns = data.patterns.map(normalizePattern).filter(Boolean) as SavedPattern[]; setSavedPatterns(patterns); setNotice(patterns.length ? `${patterns.length} backend patterns loaded.` : "No backend patterns yet."); } catch (error) { setNotice(error instanceof Error ? error.message : "Pattern sync failed."); } finally { setSyncing(false); } }
+  async function persistPattern(pattern: SavedPattern) { const res = await fetch("/api/studio/beat-patterns", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId: PROJECT_ID, sessionId: SESSION_ID, ...pattern, arrangement: sections }) }); const data = await res.json().catch(() => null); if (!res.ok || !data?.pattern) throw new Error(data?.error ?? "Pattern save failed"); return normalizePattern(data.pattern) ?? pattern; }
   function getCtx() { if (ctxRef.current && ctxRef.current.state !== "closed") return ctxRef.current; const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext; const ctx = new Ctor({ latencyHint: "interactive", sampleRate: 48000 }); const gain = ctx.createGain(); gain.gain.value = 0.86; gain.connect(ctx.destination); ctxRef.current = ctx; masterRef.current = gain; return ctx; }
   const firePad = useCallback((kind: DrumKind, label: string, velocity = 0.92, when?: number) => { const ctx = getCtx(); if (ctx.state === "suspended") void ctx.resume(); scheduleDrumHit(ctx, masterRef.current ?? ctx.destination, kind, { kit: DEFAULT_KIT, when: when ?? ctx.currentTime, velocity }); setActivePad(label); window.setTimeout(() => setActivePad(null), 120); }, []);
   const playStep = useCallback((stepIndex: number) => { const ctx = getCtx(); const stepDuration = 60 / bpmRef.current / 4; const swung = stepIndex % 2 === 1 ? (swingRef.current / 100) * stepDuration * 0.5 : 0; const when = ctx.currentTime + 0.025 + swung; tracksRef.current.forEach((track) => { if (!track.muted && track.pattern[stepIndex]) firePad(track.padKind, track.name, Math.max(0.1, track.level / 100), when); }); }, [firePad]);
@@ -118,8 +97,7 @@ export default function BeatMachineClient() {
 
   const midiGuard = midi.status === "unsupported" ? "MIDI unavailable in this browser. Pads and sequencer still work." : midi.status === "error" ? "MIDI permission failed. Reconnect or use pads." : midi.status === "ready" ? `${midi.devices.length} MIDI device(s) ready.` : "MIDI optional. Connect when needed.";
 
-  return <main id="main-content" className="min-h-screen overflow-x-hidden overflow-y-auto bg-[#05070a] pb-20 text-white sm:pb-24">
-    <div className="fixed inset-0 -z-10 opacity-80 [background:radial-gradient(circle_at_18%_12%,rgba(23,255,244,.18),transparent_30%),radial-gradient(circle_at_88%_20%,rgba(255,52,223,.15),transparent_28%),linear-gradient(135deg,#05070a,#10151a_45%,#050609)]" />
+  return <StudioPageShell>
     <div className="mx-auto max-w-[1800px] px-3 py-3 sm:px-5 sm:py-4 lg:px-8">
       <header className="sticky top-2 z-30 mb-4 rounded-2xl border border-green-300/20 bg-[#080d10]/95 p-3 shadow-[0_0_60px_rgba(23,255,244,.14)] backdrop-blur supports-[backdrop-filter]:bg-[#080d10]/80 sm:top-3">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3"><Link href="/studio/try" className="rounded-xl border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-100 sm:px-4 sm:py-3 sm:text-xs">← Studio</Link><div className="min-w-[150px] flex-1"><p className="text-[9px] font-black uppercase tracking-[0.24em] text-green-200/70 sm:text-[10px]">Project-backed beat page</p><h1 className="text-xl font-black uppercase tracking-wider sm:text-4xl">Beat Machine</h1></div><button onClick={playing ? stopSequencer : startSequencer} className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-widest sm:px-5 sm:py-3 sm:text-sm ${playing ? "border-pink-300 bg-pink-400/20 text-pink-100" : "border-green-300 bg-green-300/15 text-green-100"}`}>{playing ? "Stop" : "Play"}</button><button onClick={() => void loadPatterns()} className="rounded-xl border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-100">{syncing ? "Syncing" : "Sync"}</button><div className="flex items-center rounded-full border border-white/10 bg-black/45 px-2 py-1"><button onClick={() => setBpm((value) => Math.max(60, value - 1))} className="h-8 w-8 rounded-full bg-white/5 text-lg">-</button><span className="w-14 text-center font-mono text-base font-black text-cyan-100 sm:w-16 sm:text-lg">{bpm}</span><button onClick={() => setBpm((value) => Math.min(180, value + 1))} className="h-8 w-8 rounded-full bg-white/5 text-lg">+</button></div><button onClick={midi.connect} className="rounded-xl border border-green-300/35 bg-green-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-green-100 sm:px-4 sm:py-3">MIDI {midi.status}</button></div>
@@ -134,6 +112,6 @@ export default function BeatMachineClient() {
         <section className="rounded-2xl border border-white/10 bg-black/45 p-3 sm:p-4"><p className="text-[10px] font-black uppercase tracking-[0.24em] text-green-200/70">Arrangement drag/drop</p><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{sections.map((section) => <div key={section.id} onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropPattern(event, section.id)} className="min-h-32 rounded-xl border border-white/10 bg-[#071015] p-3"><div className="font-black uppercase" style={{ color: section.color }}>{section.name}</div><p className="mt-2 text-xs text-white/45">{section.note}</p>{section.patternId && <button onClick={() => setSections((current) => current.map((item) => item.id === section.id ? { ...item, patternId: undefined, note: "Drop saved patterns here." } : item))} className="mt-3 rounded-full border border-white/10 px-3 py-1 text-[10px] uppercase text-white/45">Clear</button>}</div>)}</div></section></div>
       </section>
     </div>
-  </main>;
+  </StudioPageShell>;
 }
 function Tool({ label, onClick }: { label: string; onClick: () => void }) { return <button onClick={onClick} className="rounded-xl border border-white/10 bg-white/[.035] p-3 text-left text-[11px] font-black uppercase tracking-widest text-white/65 hover:border-green-300/40 hover:text-green-100 sm:p-4 sm:text-xs">{label}</button>; }
