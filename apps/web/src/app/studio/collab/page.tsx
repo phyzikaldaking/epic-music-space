@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Seat = {
   id: string;
@@ -31,6 +31,25 @@ type RoomState = {
   events: EventItem[];
   backend: string;
   updatedAt: string;
+};
+
+type LiveKitTokenResponse = {
+  ready: boolean;
+  url?: string;
+  token?: string;
+  roomId?: string;
+  identity?: string;
+  error?: string;
+};
+
+type LiveKitRoomLike = {
+  connect: (url: string, token: string) => Promise<void>;
+  disconnect: () => void;
+  on: (event: unknown, handler: (...args: unknown[]) => void) => LiveKitRoomLike;
+  localParticipant?: {
+    publishData?: (data: Uint8Array, options?: { reliable?: boolean; topic?: string }) => Promise<void> | void;
+  };
+  remoteParticipants?: Map<string, unknown>;
 };
 
 const fallback: RoomState = {
@@ -67,43 +86,83 @@ async function readRoom() {
 export default function StudioCollabConsolePage() {
   const [state, setState] = useState<RoomState>(fallback);
   const [copied, setCopied] = useState(false);
-  const [liveKitReady, setLiveKitReady] = useState<"checking" | "ready" | "missing">("checking");
+  const [liveKitReady, setLiveKitReady] = useState<"checking" | "ready" | "missing" | "connected" | "error">("checking");
+  const [liveKitError, setLiveKitError] = useState<string | null>(null);
+  const [participantCount, setParticipantCount] = useState(1);
+  const liveKitRoomRef = useRef<LiveKitRoomLike | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    async function load() {
-      try {
-        const next = await readRoom();
-        if (active) setState(next);
-      } catch {
-        if (active) setState(fallback);
-      }
+  const loadRoom = useCallback(async () => {
+    try {
+      const next = await readRoom();
+      setState(next);
+    } catch {
+      setState(fallback);
     }
-    void load();
-    const timer = window.setInterval(load, 5000);
-    return () => { active = false; window.clearInterval(timer); };
   }, []);
 
   useEffect(() => {
-    async function checkToken() {
+    void loadRoom();
+  }, [loadRoom]);
+
+  useEffect(() => {
+    let active = true;
+    async function joinLiveKit() {
       try {
-        const res = await fetch("/api/studio/collab/livekit-token", {
+        const tokenRes = await fetch("/api/studio/collab/livekit-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ roomId: state.roomId, identity: "console-check", name: "Console Check" }),
+          body: JSON.stringify({ roomId: state.roomId, identity: `console-${Date.now()}`, name: "EMS Console" }),
         });
-        const data = await res.json().catch(() => null) as { ready?: boolean } | null;
-        setLiveKitReady(data?.ready ? "ready" : "missing");
-      } catch { setLiveKitReady("missing"); }
+        const tokenData = (await tokenRes.json().catch(() => null)) as LiveKitTokenResponse | null;
+        if (!active) return;
+        if (!tokenData?.ready || !tokenData.url || !tokenData.token) {
+          setLiveKitReady("missing");
+          setLiveKitError(tokenData?.error ?? "LiveKit environment is not configured.");
+          return;
+        }
+
+        const livekit = await import("livekit-client");
+        if (!active) return;
+        const room = new livekit.Room({ adaptiveStream: true, dynacast: true }) as unknown as LiveKitRoomLike;
+        const refreshParticipants = () => setParticipantCount((room.remoteParticipants?.size ?? 0) + 1);
+        room.on(livekit.RoomEvent.ParticipantConnected, refreshParticipants);
+        room.on(livekit.RoomEvent.ParticipantDisconnected, refreshParticipants);
+        room.on(livekit.RoomEvent.DataReceived, () => void loadRoom());
+        await room.connect(tokenData.url, tokenData.token);
+        if (!active) {
+          room.disconnect();
+          return;
+        }
+        liveKitRoomRef.current = room;
+        refreshParticipants();
+        setLiveKitReady("connected");
+        setLiveKitError(null);
+      } catch (error) {
+        if (!active) return;
+        setLiveKitReady("error");
+        setLiveKitError(error instanceof Error ? error.message : "LiveKit connection failed.");
+      }
     }
-    void checkToken();
-  }, [state.roomId]);
+    void joinLiveKit();
+    return () => {
+      active = false;
+      liveKitRoomRef.current?.disconnect();
+      liveKitRoomRef.current = null;
+    };
+  }, [state.roomId, loadRoom]);
 
   const seats = state.seats;
   const activity = state.events;
-  const liveCount = useMemo(() => state.liveCount, [state.liveCount]);
+  const liveCount = useMemo(() => Math.max(state.liveCount, participantCount), [state.liveCount, participantCount]);
   const editCount = useMemo(() => state.editorCount, [state.editorCount]);
   const mutedCount = useMemo(() => state.mutedCount, [state.mutedCount]);
+
+  async function broadcastRoomUpdate(topic: string) {
+    try {
+      const payload = new TextEncoder().encode(JSON.stringify({ type: "room:update", topic, at: new Date().toISOString() }));
+      await liveKitRoomRef.current?.localParticipant?.publishData?.(payload, { reliable: true, topic: "ems-room-state" });
+    } catch {}
+  }
 
   async function updateRoom(patch: Partial<RoomState>, title: string, detail: string) {
     const optimistic = { ...state, ...patch, updatedAt: new Date().toISOString() };
@@ -114,7 +173,10 @@ export default function StudioCollabConsolePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: state.roomId, ...patch, title, detail }),
       });
-      if (res.ok) setState(await res.json());
+      if (res.ok) {
+        setState(await res.json());
+        await broadcastRoomUpdate(title);
+      }
     } catch {}
   }
 
@@ -130,7 +192,10 @@ export default function StudioCollabConsolePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: state.roomId, seatId: seat.id, ...patch }),
       });
-      if (res.ok) setState(await res.json());
+      if (res.ok) {
+        setState(await res.json());
+        await broadcastRoomUpdate(note);
+      }
     } catch {}
   }
 
@@ -150,7 +215,7 @@ export default function StudioCollabConsolePage() {
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/60">EMS Live Room · {state.backend}</p>
             <h1 className="truncate text-sm font-black uppercase tracking-[0.2em]">{state.roomName}</h1>
           </div>
-          <span className={`rounded-lg border px-3 py-2 text-xs font-black uppercase ${liveKitReady === "ready" ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100" : "border-yellow-300/35 bg-yellow-300/10 text-yellow-100"}`}>LiveKit {liveKitReady}</span>
+          <span title={liveKitError ?? undefined} className={`rounded-lg border px-3 py-2 text-xs font-black uppercase ${liveKitReady === "connected" || liveKitReady === "ready" ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100" : "border-yellow-300/35 bg-yellow-300/10 text-yellow-100"}`}>LiveKit {liveKitReady}</span>
           <span className="rounded-lg border border-emerald-300/35 bg-emerald-300/10 px-3 py-2 text-xs font-black uppercase text-emerald-100">{liveCount} live</span>
           <button onClick={copyInvite} className="rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-xs font-black uppercase text-cyan-100">{copied ? "Copied" : "Invite"}</button>
           <button onClick={() => updateRoom({ locked: !state.locked }, "Room lock changed", `Room ${state.locked ? "opened" : "locked"}`)} className={`rounded-lg border px-3 py-2 text-xs font-black uppercase ${state.locked ? "border-red-300/40 bg-red-300/10 text-red-100" : "border-emerald-300/40 bg-emerald-300/10 text-emerald-100"}`}>{state.locked ? "Locked" : "Open"}</button>
