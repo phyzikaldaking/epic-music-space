@@ -8,7 +8,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: "/",
+        allow: ["/", "/studio/try", "/marketplace", "/rooms", "/versus", "/how-licenses-work"],
         disallow: [
           "/dashboard",
           "/analytics",
@@ -26,6 +26,8 @@ export default function robots(): MetadataRoute.Robots {
           "/admin",
           "/admin/",
           "/me",
+          "/studio/manage",
+          "/studio/live",
         ],
       },
     ],
