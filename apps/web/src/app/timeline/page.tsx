@@ -6,9 +6,10 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
-  title: "Timeline · Epic Music Space",
+    title: "Timeline",
   description:
     "Your hybrid activity feed — drops from creators you follow, live sessions, battles, and community updates all in one place.",
+    alternates: { canonical: "/timeline" },
 };
 
 const QUICK_LINKS = [
