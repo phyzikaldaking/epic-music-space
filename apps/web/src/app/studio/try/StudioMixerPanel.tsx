@@ -1,17 +1,33 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect, useMemo } from "react";
 import StudioMixerChannel from "./StudioMixerChannel";
+import { useRafMeterBridge } from "./useRafMeterBridge";
 import type { StudioTrack } from "./studioWorkstationTypes";
 
 type Props = {
   tracks: StudioTrack[];
   selectedTrack: string;
+  playing?: boolean;
   setSelectedTrack: (id: string) => void;
   updateTrack: (id: string, patch: Partial<StudioTrack>) => void;
 };
 
-function StudioMixerPanel({ tracks, selectedTrack, setSelectedTrack, updateTrack }: Props) {
+function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedTrack, updateTrack }: Props) {
+  const trackIds = useMemo(() => tracks.map((track) => track.id), [tracks]);
+  const meters = useRafMeterBridge(trackIds);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const now = performance.now();
+      tracks.forEach((track, index) => {
+        meters.setMeterValue(track.id, track.muted ? 4 : Math.max(16, Math.min(98, 35 + ((now / 140 + index * 19) % 56))));
+      });
+    }, playing ? 120 : 420);
+
+    return () => window.clearInterval(id);
+  }, [meters, playing, tracks]);
+
   return (
     <section className="min-h-[680px] overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#0b1115] p-2 pr-1">
       <div className="grid min-h-[760px] grid-cols-4 gap-2 lg:grid-cols-8">
@@ -20,6 +36,7 @@ function StudioMixerPanel({ tracks, selectedTrack, setSelectedTrack, updateTrack
             key={track.id}
             track={track}
             selected={selectedTrack === track.id}
+            bindMeter={meters.bindMeter}
             onSelect={() => setSelectedTrack(track.id)}
             onUpdate={(patch) => updateTrack(track.id, patch)}
           />
