@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createCollabInvite } from "@/lib/collabInvites";
 import { collabPermissionSchema, roomIdSchema } from "@/lib/collabSecurity";
+import { checkCollabRateLimit, collabRateLimitHeaders } from "@/lib/collabRateLimit";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,9 @@ const inviteSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const limit = checkCollabRateLimit(request, "collab-invite-create", 12, 60_000);
+  if (!limit.allowed) return NextResponse.json({ error: "Too many invite requests" }, { status: 429, headers: collabRateLimitHeaders(limit) });
+
   const raw = await request.json().catch(() => ({}));
   const parsed = inviteSchema.safeParse(raw);
   if (!parsed.success) {
@@ -33,5 +37,5 @@ export async function POST(request: Request) {
     permission: body.permission,
     expiresAt: new Date(Date.now() + body.ttlMinutes * 60_000).toISOString(),
     path: `/studio/collab?roomId=${encodeURIComponent(roomId)}&invite=${encodeURIComponent(token)}`,
-  });
+  }, { headers: collabRateLimitHeaders(limit) });
 }
