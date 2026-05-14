@@ -15,7 +15,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Artifact not found" }, { status: 404 });
   }
 
-  return new NextResponse(artifact.data, {
+  const body = artifact.data.buffer.slice(
+    artifact.data.byteOffset,
+    artifact.data.byteOffset + artifact.data.byteLength,
+  );
+
+  return new NextResponse(body, {
     headers: {
       "Content-Type": artifact.mimeType,
       "Content-Disposition": `attachment; filename="${artifact.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}"`,
