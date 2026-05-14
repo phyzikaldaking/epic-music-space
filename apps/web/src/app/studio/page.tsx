@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
-import PhoneStudio from "./try/PhoneStudio";
+import ElectricStudio from "./try/ElectricStudio";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Studio",
-  description: "A focused no-scroll EMS studio workspace with dedicated Edit, Mix, Beat, Collab, and Export pages.",
+  description: "A full-screen electric EMS DAW workspace with timeline editing, mixer controls, beat pads, melody tracks, FX rack, and recording tools.",
 };
 
 export default function StudioIndexPage() {
-  return <PhoneStudio />;
+  return <ElectricStudio />;
 }
