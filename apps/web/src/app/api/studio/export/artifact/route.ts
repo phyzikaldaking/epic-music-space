@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getAudioExportArtifact } from "@/lib/studioExportRenderer";
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  const userId = session?.user?.id ?? "demo-user";
+  const userId = request.nextUrl.searchParams.get("userId") ?? "demo-user";
   const jobId = request.nextUrl.searchParams.get("jobId");
 
   if (!jobId) {
