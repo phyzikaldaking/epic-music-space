@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { patchCollabSeat, updateCollabRoomState } from "@/lib/collabBackend";
-import { roomIdSchema, seatIdSchema } from "@/lib/collabSecurity";
+import { canHost, getCollabAuthority, roomIdSchema, seatIdSchema } from "@/lib/collabSecurity";
 import { checkCollabRateLimit, collabRateLimitHeaders } from "@/lib/collabRateLimit";
 import { trackCollabEvent } from "@/lib/collabTelemetry";
 
@@ -12,6 +12,7 @@ const moderationSchema = z.object({
   seatId: seatIdSchema.optional(),
   action: z.enum(["mute", "camera_off", "make_viewer", "make_commenter", "make_editor", "kick", "lock_room", "unlock_room"]),
   reason: z.string().min(1).max(240).optional(),
+  invite: z.string().min(20).max(2000).optional(),
 });
 
 export async function POST(request: Request) {
@@ -30,6 +31,12 @@ export async function POST(request: Request) {
 
   const body = parsed.data;
   const roomId = body.roomId ?? "ems-main-room";
+  const authority = getCollabAuthority(request, roomId, body.invite);
+  if (!canHost(authority)) {
+    trackCollabEvent({ event: "moderation_forbidden", level: "warn", roomId, action: body.action, status: 403 });
+    return NextResponse.json({ error: authority.reason ?? "Host permission required" }, { status: 403, headers: collabRateLimitHeaders(limit) });
+  }
+
   const reason = body.reason ?? "Host moderation action";
   trackCollabEvent({ event: "moderation_action_requested", roomId, action: body.action, seatId: body.seatId, reason });
 
