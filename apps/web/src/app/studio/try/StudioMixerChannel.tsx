@@ -9,16 +9,17 @@ type Props = {
   selected: boolean;
   onSelect: () => void;
   onUpdate: (patch: Partial<StudioTrack>) => void;
+  bindMeter?: (trackId: string) => (element: HTMLDivElement | null) => void;
 };
 
-function StudioMixerChannel({ track, selected, onSelect, onUpdate }: Props) {
+function StudioMixerChannel({ track, selected, onSelect, onUpdate, bindMeter }: Props) {
   return (
     <div
       onClick={onSelect}
       className={`flex min-h-[700px] flex-col rounded-lg border p-2 ${selected ? "bg-white/[.07]" : "bg-black/45"}`}
       style={{
         borderColor: selected ? track.color : "rgba(255,255,255,.12)",
-        boxShadow: selected ? `0 0 20px ${track.color}35` : undefined,
+        boxShadow: selected ? `0 0 12px ${track.color}28` : undefined,
       }}
     >
       <div className="truncate text-[10px] font-black uppercase tracking-widest" style={{ color: track.color }}>
@@ -64,11 +65,11 @@ function StudioMixerChannel({ track, selected, onSelect, onUpdate }: Props) {
       <div className="mt-2 flex min-h-[430px] flex-1 items-end justify-center gap-2">
         <div className="relative h-full w-3 rounded-full bg-white/10">
           <div
-            className="absolute bottom-0 w-full rounded-full"
+            ref={bindMeter?.(track.id)}
+            className="absolute bottom-0 w-full rounded-full transition-[height] duration-75"
             style={{
               height: `${track.muted ? 4 : track.meter}%`,
               background: track.color,
-              boxShadow: `0 0 14px ${track.color}`,
             }}
           />
         </div>
