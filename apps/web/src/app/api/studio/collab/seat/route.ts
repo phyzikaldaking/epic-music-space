@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { patchCollabSeat } from "@/lib/collabBackend";
-import { seatPatchSchema } from "@/lib/collabSecurity";
+import { canEdit, getCollabAuthority, seatPatchSchema } from "@/lib/collabSecurity";
 import { checkCollabRateLimit, collabRateLimitHeaders } from "@/lib/collabRateLimit";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,12 @@ export async function POST(request: Request) {
   const parsed = seatPatchSchema.safeParse(raw);
   if (!parsed.success) return NextResponse.json({ error: "Invalid seat patch", issues: parsed.error.flatten() }, { status: 400 });
   const body = parsed.data;
-  const state = await patchCollabSeat(body.roomId ?? "ems-main-room", body.seatId, {
+  const roomId = body.roomId ?? "ems-main-room";
+  const authority = getCollabAuthority(request, roomId, body.invite);
+  if (!canEdit(authority)) {
+    return NextResponse.json({ error: authority.reason ?? "Edit permission required" }, { status: 403, headers: collabRateLimitHeaders(limit) });
+  }
+  const state = await patchCollabSeat(roomId, body.seatId, {
     mic: body.mic,
     cam: body.cam,
     speaking: body.speaking,
