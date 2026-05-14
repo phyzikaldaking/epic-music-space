@@ -1,4 +1,4 @@
-import { prisma } from "@ems/db";
+import { prisma } from "@/lib/prisma";
 
 export type CollabRole = "HOST" | "PRODUCER" | "ENGINEER" | "ARTIST" | "GUEST";
 export type CollabPermission = "OWNER" | "EDIT" | "COMMENT" | "VIEW";
