@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { patchCollabSeat, updateCollabRoomState } from "@/lib/collabBackend";
 import { roomIdSchema, seatIdSchema } from "@/lib/collabSecurity";
+import { checkCollabRateLimit, collabRateLimitHeaders } from "@/lib/collabRateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,9 @@ const moderationSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const limit = checkCollabRateLimit(request, "collab-moderation-write", 20, 60_000);
+  if (!limit.allowed) return NextResponse.json({ error: "Too many moderation actions" }, { status: 429, headers: collabRateLimitHeaders(limit) });
+
   const raw = await request.json().catch(() => ({}));
   const parsed = moderationSchema.safeParse(raw);
   if (!parsed.success) {
@@ -25,12 +29,12 @@ export async function POST(request: Request) {
 
   if (body.action === "lock_room") {
     const state = await updateCollabRoomState(roomId, { locked: true }, "Room locked", reason);
-    return NextResponse.json(state);
+    return NextResponse.json(state, { headers: collabRateLimitHeaders(limit) });
   }
 
   if (body.action === "unlock_room") {
     const state = await updateCollabRoomState(roomId, { locked: false }, "Room unlocked", reason);
-    return NextResponse.json(state);
+    return NextResponse.json(state, { headers: collabRateLimitHeaders(limit) });
   }
 
   if (!body.seatId) {
@@ -47,5 +51,5 @@ export async function POST(request: Request) {
     {};
 
   const state = await patchCollabSeat(roomId, body.seatId, patch);
-  return NextResponse.json(state);
+  return NextResponse.json(state, { headers: collabRateLimitHeaders(limit) });
 }
