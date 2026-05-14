@@ -40,9 +40,7 @@ function noise(seed: number): () => number {
   };
 }
 
-function env(t: number, decay = 8): number {
-  return Math.exp(-t * decay);
-}
+function env(t: number, decay = 8): number { return Math.exp(-t * decay); }
 
 function synth(id: string): Float32Array {
   const kind = kindFromId(id);
@@ -61,12 +59,11 @@ function synth(id: string): Float32Array {
       if (t < 0.018) v += n() * (1 - t / 0.018) * 0.55;
     } else if (kind === "bass808") {
       const f = 42 + seed * 16;
-      v = Math.sin(TWO_PI * f * t) * env(t, 2.4);
-      v = Math.tanh(v * 3.2) * 0.85;
+      v = Math.tanh(Math.sin(TWO_PI * f * t) * env(t, 2.4) * 3.2) * 0.85;
     } else if (kind === "snare") {
       v = n() * env(t, 18) * 0.85 + Math.sin(TWO_PI * (185 + seed * 80) * t) * env(t, 16) * 0.45;
     } else if (kind === "clap") {
-      const burst = (Math.exp(-((t - 0.018) ** 2) / 0.00004) + Math.exp(-((t - 0.038) ** 2) / 0.00006) + Math.exp(-((t - 0.067) ** 2) / 0.00009));
+      const burst = Math.exp(-((t - 0.018) ** 2) / 0.00004) + Math.exp(-((t - 0.038) ** 2) / 0.00006) + Math.exp(-((t - 0.067) ** 2) / 0.00009);
       v = n() * burst * 0.8 + n() * env(Math.max(0, t - 0.06), 12) * 0.25;
     } else if (kind === "hat") {
       v = n() * env(t, 55) * (Math.sin(TWO_PI * 9000 * t) > 0 ? 1 : -1);
@@ -91,7 +88,7 @@ function synth(id: string): Float32Array {
   return out;
 }
 
-function wav(samples: Float32Array): Buffer {
+function wav(samples: Float32Array): Uint8Array {
   const dataSize = samples.length * 2;
   const buffer = Buffer.alloc(44 + dataSize);
   let o = 0;
@@ -113,7 +110,7 @@ function wav(samples: Float32Array): Buffer {
     buffer.writeInt16LE(s < 0 ? s * 0x8000 : s * 0x7fff, o);
     o += 2;
   }
-  return buffer;
+  return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 }
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -123,6 +120,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   return new Response(body, {
     headers: {
       "Content-Type": "audio/wav",
+      "Content-Length": String(body.byteLength),
       "Content-Disposition": `inline; filename="${id}.wav"`,
       "Cache-Control": "public, max-age=31536000, immutable",
       "X-EMS-License": "EMS-owned procedurally generated original WAV asset",
