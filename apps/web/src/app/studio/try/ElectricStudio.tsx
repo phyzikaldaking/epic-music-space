@@ -1,5 +1,5 @@
-import StudioWorkstationClient from "./StudioWorkstationClient";
+import StudioWorkstationRecoveryClient from "./StudioWorkstationRecoveryClient";
 
 export default function ElectricStudio() {
-  return <StudioWorkstationClient />;
+  return <StudioWorkstationRecoveryClient />;
 }
