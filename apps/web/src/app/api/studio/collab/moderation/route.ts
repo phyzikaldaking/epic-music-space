@@ -3,6 +3,7 @@ import { z } from "zod";
 import { patchCollabSeat, updateCollabRoomState } from "@/lib/collabBackend";
 import { roomIdSchema, seatIdSchema } from "@/lib/collabSecurity";
 import { checkCollabRateLimit, collabRateLimitHeaders } from "@/lib/collabRateLimit";
+import { trackCollabEvent } from "@/lib/collabTelemetry";
 
 export const dynamic = "force-dynamic";
 
@@ -15,17 +16,22 @@ const moderationSchema = z.object({
 
 export async function POST(request: Request) {
   const limit = checkCollabRateLimit(request, "collab-moderation-write", 20, 60_000);
-  if (!limit.allowed) return NextResponse.json({ error: "Too many moderation actions" }, { status: 429, headers: collabRateLimitHeaders(limit) });
+  if (!limit.allowed) {
+    trackCollabEvent({ event: "moderation_rate_limited", level: "warn", scope: "collab-moderation-write", status: 429 });
+    return NextResponse.json({ error: "Too many moderation actions" }, { status: 429, headers: collabRateLimitHeaders(limit) });
+  }
 
   const raw = await request.json().catch(() => ({}));
   const parsed = moderationSchema.safeParse(raw);
   if (!parsed.success) {
+    trackCollabEvent({ event: "moderation_invalid_request", level: "warn", status: 400 });
     return NextResponse.json({ error: "Invalid moderation action", issues: parsed.error.flatten() }, { status: 400 });
   }
 
   const body = parsed.data;
   const roomId = body.roomId ?? "ems-main-room";
   const reason = body.reason ?? "Host moderation action";
+  trackCollabEvent({ event: "moderation_action_requested", roomId, action: body.action, seatId: body.seatId, reason });
 
   if (body.action === "lock_room") {
     const state = await updateCollabRoomState(roomId, { locked: true }, "Room locked", reason);
@@ -38,6 +44,7 @@ export async function POST(request: Request) {
   }
 
   if (!body.seatId) {
+    trackCollabEvent({ event: "moderation_missing_seat", level: "warn", roomId, action: body.action, status: 400 });
     return NextResponse.json({ error: "seatId is required for this moderation action" }, { status: 400 });
   }
 
