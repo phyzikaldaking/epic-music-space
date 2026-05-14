@@ -17,6 +17,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const isAuthRoute =
     !pathname || pathname === "/auth" || pathname.startsWith("/auth/");
   const isHomepage = pathname === "/";
+  const isImmersiveStudio =
+    pathname === "/studio" ||
+    pathname === "/studio/try" ||
+    pathname?.startsWith("/studio/try/");
 
   useEffect(() => {
     const loader = document.getElementById("__ems-loading");
@@ -59,6 +63,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             <main id="main-content" className="pb-12">
               {children}
             </main>
+          ) : isImmersiveStudio ? (
+            <>{children}</>
           ) : (
             <>
               <Navbar />

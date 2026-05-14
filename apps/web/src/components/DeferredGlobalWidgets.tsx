@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
 import { ClientOnlyDynamics } from "@/components/ClientDynamics";
 
 const OnboardingTour = dynamic(() => import("@/components/OnboardingTour"));
@@ -32,6 +33,16 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 export default function DeferredGlobalWidgets() {
   const [ready, setReady] = useState(false);
+  const pathname = usePathname() ?? "";
+  const isImmersiveStudio =
+    pathname === "/studio" ||
+    pathname === "/studio/try" ||
+    pathname.startsWith("/studio/try/");
+  const isCrowdedScrollPage =
+    pathname === "/timeline" ||
+    pathname.startsWith("/timeline/") ||
+    pathname === "/marketplace" ||
+    pathname.startsWith("/marketplace/");
 
   useEffect(() => {
     if (!IS_PRODUCTION) return;
@@ -56,23 +67,29 @@ export default function DeferredGlobalWidgets() {
   if (!IS_PRODUCTION) return null;
   if (!ready) return null;
 
+  const analytics = process.env.NODE_ENV === "production" ? (
+    <>
+      <VercelAnalytics />
+      <VercelSpeedInsights />
+    </>
+  ) : null;
+
+  if (isImmersiveStudio) {
+    return <>{analytics}</>;
+  }
+
   return (
     <>
       <GlobalAudioPlayer />
       <MobileBottomNav />
       <OfflineBanner />
-      <OnboardingTour />
-      <KeyboardShortcuts />
+      {!isCrowdedScrollPage && <OnboardingTour />}
+      {!isCrowdedScrollPage && <KeyboardShortcuts />}
       <CookieConsent />
-      <ChatbotWidget />
-      <InstallAppPrompt />
-      <ClientOnlyDynamics />
-      {process.env.NODE_ENV === "production" && (
-        <>
-          <VercelAnalytics />
-          <VercelSpeedInsights />
-        </>
-      )}
+      {!isCrowdedScrollPage && <ChatbotWidget />}
+      {!isCrowdedScrollPage && <InstallAppPrompt />}
+      {!isCrowdedScrollPage && <ClientOnlyDynamics />}
+      {analytics}
     </>
   );
 }

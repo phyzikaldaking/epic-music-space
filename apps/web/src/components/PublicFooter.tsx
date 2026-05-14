@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const platformLinks = [
   { href: "/studio/try", label: "Try Studio" },
@@ -15,6 +18,14 @@ const trustLinks = [
 ];
 
 export default function PublicFooter() {
+  const pathname = usePathname() ?? "";
+  const isImmersiveStudio =
+    pathname === "/studio" ||
+    pathname === "/studio/try" ||
+    pathname.startsWith("/studio/try/");
+
+  if (isImmersiveStudio) return null;
+
   return (
     <footer className="relative z-[1] border-t border-white/10 bg-black/50 px-4 py-10 text-white" aria-label="Epic Music Space footer">
       <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-[1.2fr_0.8fr_0.8fr]">
