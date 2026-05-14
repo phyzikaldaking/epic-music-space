@@ -1,0 +1,30 @@
+.cleanStudio {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #06080c;
+}
+
+.cleanStudio :global(svg polyline) {
+  display: none !important;
+}
+
+.cleanStudio :global(svg) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.cleanStudio :global([data-ems-workspace]) {
+  isolation: isolate;
+}
+
+.cleanStudio :global([data-ems-workspace] button),
+.cleanStudio :global([data-ems-workspace] input),
+.cleanStudio :global([data-ems-workspace] a) {
+  position: relative;
+  z-index: 3;
+}
+
+.cleanStudio :global([data-ems-workspace] [class*="shadow-"]) {
+  filter: none;
+}
