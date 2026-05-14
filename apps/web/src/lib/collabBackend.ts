@@ -1,5 +1,3 @@
-import { prisma } from "@ems/db";
-
 export type CollabRole = "HOST" | "PRODUCER" | "ENGINEER" | "ARTIST" | "GUEST";
 export type CollabPermission = "OWNER" | "EDIT" | "COMMENT" | "VIEW";
 
@@ -36,8 +34,11 @@ export type CollabRoomState = {
   mutedCount: number;
   seats: CollabSeat[];
   events: CollabEvent[];
-  backend: "prisma" | "memory";
+  backend: "server-memory";
+  updatedAt: string;
 };
+
+type MutableRoomState = Omit<CollabRoomState, "liveCount" | "editorCount" | "mutedCount" | "updatedAt">;
 
 const defaultSeats: CollabSeat[] = [
   { id: "host", name: "Host", role: "HOST", permission: "OWNER", online: true, mic: true, cam: true, speaking: true, color: "#23f7ff" },
@@ -52,74 +53,57 @@ const defaultEvents: CollabEvent[] = [
   { id: "checkpoint", title: "Session checkpoint", detail: "Collab state checkpoint is ready.", createdAt: new Date().toISOString(), tone: "green" },
 ];
 
-function summarize(roomId: string, roomName: string, seats: CollabSeat[], events: CollabEvent[], backend: "prisma" | "memory"): CollabRoomState {
+const globalForCollab = globalThis as unknown as { emsCollabRooms?: Map<string, MutableRoomState> };
+const rooms = globalForCollab.emsCollabRooms ?? new Map<string, MutableRoomState>();
+if (!globalForCollab.emsCollabRooms) globalForCollab.emsCollabRooms = rooms;
+
+function seed(roomId: string): MutableRoomState {
   return {
     roomId,
-    roomName,
+    roomName: "EMS Main Studio",
     locked: false,
     recordApproval: true,
     exportApproval: true,
     screenShare: false,
-    markerCount: events.filter((event) => event.title.toLowerCase().includes("marker")).length + 3,
-    liveCount: seats.filter((seat) => seat.online).length,
-    editorCount: seats.filter((seat) => seat.permission === "OWNER" || seat.permission === "EDIT").length,
-    mutedCount: seats.filter((seat) => !seat.mic).length,
-    seats,
-    events,
-    backend,
+    markerCount: 3,
+    seats: defaultSeats,
+    events: defaultEvents,
+    backend: "server-memory",
+  };
+}
+
+function compute(room: MutableRoomState): CollabRoomState {
+  return {
+    ...room,
+    liveCount: room.seats.filter((seat) => seat.online).length,
+    editorCount: room.seats.filter((seat) => seat.permission === "OWNER" || seat.permission === "EDIT").length,
+    mutedCount: room.seats.filter((seat) => !seat.mic).length,
+    updatedAt: new Date().toISOString(),
   };
 }
 
 export async function getCollabRoomState(roomId = "ems-main-room"): Promise<CollabRoomState> {
-  try {
-    const room = await prisma.room.findFirst({
-      where: { id: roomId },
-      include: {
-        participants: { include: { user: true }, take: 8 },
-        messages: { orderBy: { createdAt: "desc" }, take: 8 },
-        timelineNotes: { orderBy: { createdAt: "desc" }, take: 8 },
-      },
-    });
-
-    if (!room) return summarize(roomId, "EMS Main Studio", defaultSeats, defaultEvents, "memory");
-
-    const seats: CollabSeat[] = room.participants.length
-      ? room.participants.map((participant, index) => ({
-          id: participant.id,
-          name: participant.user?.name ?? participant.user?.username ?? `Seat ${index + 1}`,
-          role: index === 0 ? "HOST" : "GUEST",
-          permission: index === 0 ? "OWNER" : "COMMENT",
-          online: true,
-          mic: true,
-          cam: index % 2 === 0,
-          speaking: index === 0,
-          color: ["#23f7ff", "#ff34d8", "#f5d94c", "#9b5cff"][index % 4]!,
-        }))
-      : defaultSeats;
-
-    const events: CollabEvent[] = [
-      ...room.timelineNotes.map((note, index) => ({ id: note.id, title: "Timeline note", detail: note.body, createdAt: note.createdAt.toISOString(), tone: index % 2 ? "pink" as const : "yellow" as const })),
-      ...room.messages.map((message, index) => ({ id: message.id, title: "Room message", detail: message.body, createdAt: message.createdAt.toISOString(), tone: index % 2 ? "cyan" as const : "green" as const })),
-    ].slice(0, 8);
-
-    return summarize(room.id, room.title ?? "EMS Live Studio", seats, events.length ? events : defaultEvents, "prisma");
-  } catch (error) {
-    console.warn("[collab] falling back to memory state", error);
-    return summarize(roomId, "EMS Main Studio", defaultSeats, defaultEvents, "memory");
-  }
+  if (!rooms.has(roomId)) rooms.set(roomId, seed(roomId));
+  return compute(rooms.get(roomId)!);
 }
 
-export async function appendCollabEvent(roomId: string, detail: string, title = "Session update") {
-  try {
-    await prisma.roomTimelineNote.create({
-      data: {
-        roomId,
-        body: detail,
-        authorId: "system",
-      },
-    });
-  } catch (error) {
-    console.warn("[collab] event append skipped", error);
-  }
-  return getCollabRoomState(roomId);
+export async function updateCollabRoomState(roomId: string, patch: Partial<MutableRoomState>, title = "Session update", detail = "Room state updated") {
+  const current = rooms.get(roomId) ?? seed(roomId);
+  const next: MutableRoomState = {
+    ...current,
+    ...patch,
+    events: [
+      { id: `event-${Date.now()}`, title, detail, createdAt: new Date().toISOString(), tone: "cyan" },
+      ...(patch.events ?? current.events),
+    ].slice(0, 10),
+  };
+  rooms.set(roomId, next);
+  return compute(next);
+}
+
+export async function patchCollabSeat(roomId: string, seatId: string, patch: Partial<CollabSeat>) {
+  const current = rooms.get(roomId) ?? seed(roomId);
+  const nextSeats = current.seats.map((seat) => seat.id === seatId ? { ...seat, ...patch } : seat);
+  rooms.set(roomId, { ...current, seats: nextSeats });
+  return compute(rooms.get(roomId)!);
 }
