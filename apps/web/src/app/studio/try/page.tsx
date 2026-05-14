@@ -1,9 +1,9 @@
 "use client";
 
-import PhoneStudio from "./PhoneStudio";
+import ElectricStudio from "./ElectricStudio";
 
 export const dynamic = "force-dynamic";
 
 export default function StudioTryPage() {
-  return <PhoneStudio />;
+  return <ElectricStudio />;
 }
