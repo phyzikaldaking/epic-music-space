@@ -15,16 +15,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Artifact not found" }, { status: 404 });
   }
 
-  const body = artifact.data.buffer.slice(
-    artifact.data.byteOffset,
-    artifact.data.byteOffset + artifact.data.byteLength,
-  );
-
-  return new NextResponse(body, {
+  const bytes = Uint8Array.from(artifact.data);
+  const response = new Response(bytes, {
     headers: {
       "Content-Type": artifact.mimeType,
       "Content-Disposition": `attachment; filename="${artifact.filename.replace(/[^a-zA-Z0-9._-]/g, "-")}"`,
       "Cache-Control": "private, max-age=0, no-store",
     },
   });
+
+  return response;
 }
