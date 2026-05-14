@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type Permission = "OWNER" | "EDIT" | "COMMENT" | "VIEW";
@@ -10,6 +10,7 @@ type EventItem = { id: string; title: string; detail: string; createdAt: string 
 type RoomState = { roomId: string; roomName: string; locked: boolean; recordApproval: boolean; exportApproval: boolean; screenShare: boolean; markerCount: number; liveCount: number; editorCount: number; mutedCount: number; seats: Seat[]; events: EventItem[]; backend: string; updatedAt: string };
 type TokenResponse = { ready: boolean; url?: string; token?: string; error?: string; permission?: Permission; role?: string };
 type Notice = { tone: "success" | "warn" | "error"; title: string; body: string };
+type LiveKitRoomLike = { connect: (url: string, token: string) => Promise<void>; disconnect: () => void; on: (event: unknown, handler: (...args: unknown[]) => void) => LiveKitRoomLike; remoteParticipants?: Map<string, unknown> };
 
 const fallbackSeats: Seat[] = [
   { id: "host", name: "Host", role: "Owner", color: "#23f7ff", online: true, mic: true, cam: true, permission: "OWNER", speaking: true },
@@ -53,10 +54,12 @@ export default function CollabConsoleClient() {
   const [viewerPermission, setViewerPermission] = useState<Permission>(inviteToken ? "COMMENT" : "OWNER");
   const [viewerRole, setViewerRole] = useState(inviteToken ? "GUEST" : "HOST");
   const [deviceMessage, setDeviceMessage] = useState("Run a device check before recording or sharing.");
+  const [participantCount, setParticipantCount] = useState(1);
+  const liveKitRoomRef = useRef<LiveKitRoomLike | null>(null);
 
   const canHost = viewerPermission === "OWNER" || viewerRole === "HOST";
   const canEdit = canHost || viewerPermission === "EDIT";
-  const liveCount = useMemo(() => Math.max(room.liveCount, room.seats.filter((seat) => seat.online).length), [room]);
+  const liveCount = useMemo(() => Math.max(room.liveCount, room.seats.filter((seat) => seat.online).length, participantCount), [room, participantCount]);
   const protectedPayload = useCallback((payload: Record<string, unknown>) => ({ ...payload, roomId: activeRoomId, invite: inviteToken }), [activeRoomId, inviteToken]);
 
   const loadRoom = useCallback(async () => {
@@ -82,7 +85,7 @@ export default function CollabConsoleClient() {
         const res = await fetch("/api/studio/collab/livekit-token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: activeRoomId, invite: inviteToken, identity: `console-${Date.now()}`, name: "EMS Console" }) });
         const data = (await res.json().catch(() => null)) as TokenResponse | null;
         if (!active) return;
-        if (!data?.ready) {
+        if (!data?.ready || !data.url || !data.token) {
           const body = data?.error ?? "Live room token was not issued.";
           setLiveStatus("missing");
           setNotice({ tone: "warn", title: "Live room not connected", body });
@@ -91,17 +94,28 @@ export default function CollabConsoleClient() {
         }
         setViewerPermission(data.permission ?? (inviteToken ? "COMMENT" : "OWNER"));
         setViewerRole(data.role ?? (inviteToken ? "GUEST" : "HOST"));
-        setLiveStatus("ready");
-        setNotice({ tone: "success", title: "Live room authorized", body: "This room is ready for LiveKit media controls." });
-        clientLog("livekit_authorized", { roomId: activeRoomId, permission: data.permission, role: data.role });
+        const livekit = await import("livekit-client");
+        if (!active) return;
+        const lkRoom = new livekit.Room({ adaptiveStream: true, dynacast: true }) as unknown as LiveKitRoomLike;
+        const refreshParticipants = () => setParticipantCount((lkRoom.remoteParticipants?.size ?? 0) + 1);
+        lkRoom.on(livekit.RoomEvent.ParticipantConnected, refreshParticipants);
+        lkRoom.on(livekit.RoomEvent.ParticipantDisconnected, refreshParticipants);
+        lkRoom.on(livekit.RoomEvent.DataReceived, () => void loadRoom());
+        await lkRoom.connect(data.url, data.token);
+        if (!active) { lkRoom.disconnect(); return; }
+        liveKitRoomRef.current = lkRoom;
+        refreshParticipants();
+        setLiveStatus("connected");
+        setNotice({ tone: "success", title: "Live room connected", body: "LiveKit room join, data sync, and participant presence are active." });
+        clientLog("livekit_connected", { roomId: activeRoomId, permission: data.permission, role: data.role });
       } catch (error) {
         const body = error instanceof Error ? error.message : "LiveKit authorization failed.";
-        if (active) { setLiveStatus("error"); setNotice({ tone: "error", title: "LiveKit failed", body }); }
+        if (active) { setLiveStatus("error"); setNotice({ tone: "error", title: "LiveKit failed", body }); clientLog("livekit_connection_failed", { roomId: activeRoomId, error: body }); }
       }
     }
     void join();
-    return () => { active = false; };
-  }, [activeRoomId, inviteToken]);
+    return () => { active = false; liveKitRoomRef.current?.disconnect(); liveKitRoomRef.current = null; setParticipantCount(1); };
+  }, [activeRoomId, inviteToken, loadRoom]);
 
   async function postRoom(patch: Partial<RoomState>, title: string, detail: string) {
     if ((patch.locked !== undefined || patch.recordApproval !== undefined || patch.exportApproval !== undefined) && !canHost) {
