@@ -1,5 +1,14 @@
 import { prisma } from "@/lib/prisma";
 
+type StudioState = Record<string, unknown> & {
+  sessionId?: string;
+  projectId?: string;
+  tracks?: unknown[];
+  transport?: Record<string, unknown>;
+  selectedTrack?: unknown;
+  updatedAt?: string;
+};
+
 type StudioOperation = {
   id?: string;
   sessionId: string;
@@ -71,7 +80,7 @@ async function ensureRealtimeTables() {
   initialized = true;
 }
 
-function emptyState(sessionId: string, projectId?: string) {
+function emptyState(sessionId: string, projectId?: string): StudioState {
   return {
     sessionId,
     projectId: projectId ?? "ems-default-project",
@@ -82,12 +91,12 @@ function emptyState(sessionId: string, projectId?: string) {
   };
 }
 
-function objectState(value: unknown, sessionId: string, projectId?: string): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : emptyState(sessionId, projectId);
+function objectState(value: unknown, sessionId: string, projectId?: string): StudioState {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as StudioState : emptyState(sessionId, projectId);
 }
 
-function applyOperation(state: Record<string, unknown>, op: StudioOperation) {
-  const next = { ...state, updatedAt: new Date().toISOString() };
+function applyOperation(state: StudioState, op: StudioOperation): StudioState {
+  const next: StudioState = { ...state, updatedAt: new Date().toISOString() };
   if (op.type === "state.patch") return { ...next, ...(op.payload ?? {}) };
   if (op.type === "track.upsert" && op.payload) {
     const tracks = Array.isArray(next.tracks) ? [...next.tracks] as Record<string, unknown>[] : [];
@@ -101,7 +110,7 @@ function applyOperation(state: Record<string, unknown>, op: StudioOperation) {
     const tracks = Array.isArray(next.tracks) ? next.tracks.filter((track) => String((track as Record<string, unknown>).id) !== op.target) : [];
     return { ...next, tracks };
   }
-  if (op.type === "transport.patch") return { ...next, transport: { ...(next.transport as Record<string, unknown> | undefined), ...(op.payload ?? {}) } };
+  if (op.type === "transport.patch") return { ...next, transport: { ...(next.transport ?? {}), ...(op.payload ?? {}) } };
   if (op.type === "selection.set") return { ...next, selectedTrack: op.target ?? op.payload?.selectedTrack ?? null };
   return { ...next, lastOperation: op };
 }
