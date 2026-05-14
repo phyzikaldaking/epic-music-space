@@ -14,6 +14,87 @@
   pointer-events: none !important;
 }
 
+/* Replace the removed fake SVG squiggles with clean DAW-style waveform blocks. */
+.cleanStudio :global(div:has(> svg)) {
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0.72);
+}
+
+.cleanStudio :global(div:has(> svg)::before) {
+  content: "";
+  position: absolute;
+  inset: 18% 8px;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.9;
+  background:
+    linear-gradient(90deg,
+      transparent 0 2%,
+      currentColor 2% 2.8%,
+      transparent 2.8% 4.8%,
+      currentColor 4.8% 6.2%,
+      transparent 6.2% 8.4%,
+      currentColor 8.4% 9.1%,
+      transparent 9.1% 11.8%,
+      currentColor 11.8% 13.2%,
+      transparent 13.2% 16%,
+      currentColor 16% 17.5%,
+      transparent 17.5% 20%,
+      currentColor 20% 21%,
+      transparent 21% 24%,
+      currentColor 24% 25.8%,
+      transparent 25.8% 29%,
+      currentColor 29% 31%,
+      transparent 31% 35%,
+      currentColor 35% 36.2%,
+      transparent 36.2% 40%,
+      currentColor 40% 42.5%,
+      transparent 42.5% 47%,
+      currentColor 47% 48.4%,
+      transparent 48.4% 53%,
+      currentColor 53% 56%,
+      transparent 56% 61%,
+      currentColor 61% 63.5%,
+      transparent 63.5% 68%,
+      currentColor 68% 69.2%,
+      transparent 69.2% 73%,
+      currentColor 73% 75.7%,
+      transparent 75.7% 80%,
+      currentColor 80% 82%,
+      transparent 82% 86%,
+      currentColor 86% 88.7%,
+      transparent 88.7% 93%,
+      currentColor 93% 95.2%,
+      transparent 95.2% 100%);
+  clip-path: polygon(
+    0 48%, 2% 38%, 4% 58%, 6% 24%, 8% 72%, 10% 40%,
+    12% 56%, 14% 18%, 16% 84%, 18% 34%, 20% 66%, 22% 42%,
+    24% 60%, 26% 28%, 28% 76%, 30% 46%, 32% 54%, 34% 22%,
+    36% 82%, 38% 36%, 40% 64%, 42% 48%, 44% 52%, 46% 30%,
+    48% 70%, 50% 42%, 52% 58%, 54% 20%, 56% 86%, 58% 38%,
+    60% 62%, 62% 44%, 64% 56%, 66% 26%, 68% 78%, 70% 40%,
+    72% 60%, 74% 32%, 76% 74%, 78% 48%, 80% 52%, 82% 24%,
+    84% 82%, 86% 36%, 88% 64%, 90% 44%, 92% 56%, 94% 28%,
+    96% 76%, 98% 42%, 100% 58%, 100% 100%, 0 100%
+  );
+  filter: drop-shadow(0 0 7px currentColor);
+}
+
+.cleanStudio :global(div:has(> svg)::after) {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 50%;
+  z-index: 1;
+  height: 1px;
+  pointer-events: none;
+  background: currentColor;
+  opacity: 0.34;
+  box-shadow: 0 0 8px currentColor;
+}
+
 .cleanStudio :global([data-ems-workspace]) {
   isolation: isolate;
 }
