@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import ElectricStudio from "./try/ElectricStudio";
+import styles from "./try/studio-clean.module.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,5 +11,5 @@ export const metadata: Metadata = {
 };
 
 export default function StudioIndexPage() {
-  return <ElectricStudio />;
+  return <div className={styles.cleanStudio}><ElectricStudio /></div>;
 }
