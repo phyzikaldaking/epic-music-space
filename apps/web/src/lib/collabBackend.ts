@@ -1,5 +1,6 @@
 export type CollabRole = "HOST" | "PRODUCER" | "ENGINEER" | "ARTIST" | "GUEST";
 export type CollabPermission = "OWNER" | "EDIT" | "COMMENT" | "VIEW";
+export type CollabTone = "cyan" | "pink" | "yellow" | "green";
 
 export type CollabSeat = {
   id: string;
@@ -18,7 +19,7 @@ export type CollabEvent = {
   title: string;
   detail: string;
   createdAt: string;
-  tone: "cyan" | "pink" | "yellow" | "green";
+  tone: CollabTone;
 };
 
 export type CollabRoomState = {
@@ -47,10 +48,12 @@ const defaultSeats: CollabSeat[] = [
   { id: "artist", name: "Artist", role: "ARTIST", permission: "COMMENT", online: true, mic: false, cam: true, speaking: false, color: "#9b5cff" },
 ];
 
+const now = () => new Date().toISOString();
+
 const defaultEvents: CollabEvent[] = [
-  { id: "take", title: "Take armed", detail: "Lead Vox is ready for a punch-in pass.", createdAt: new Date().toISOString(), tone: "cyan" },
-  { id: "mix", title: "Mix note pinned", detail: "Engineer requested tighter low-end on the 808 bus.", createdAt: new Date().toISOString(), tone: "yellow" },
-  { id: "checkpoint", title: "Session checkpoint", detail: "Collab state checkpoint is ready.", createdAt: new Date().toISOString(), tone: "green" },
+  { id: "take", title: "Take armed", detail: "Lead Vox is ready for a punch-in pass.", createdAt: now(), tone: "cyan" },
+  { id: "mix", title: "Mix note pinned", detail: "Engineer requested tighter low-end on the 808 bus.", createdAt: now(), tone: "yellow" },
+  { id: "checkpoint", title: "Session checkpoint", detail: "Collab state checkpoint is ready.", createdAt: now(), tone: "green" },
 ];
 
 const globalForCollab = globalThis as unknown as { emsCollabRooms?: Map<string, MutableRoomState> };
@@ -78,7 +81,7 @@ function compute(room: MutableRoomState): CollabRoomState {
     liveCount: room.seats.filter((seat) => seat.online).length,
     editorCount: room.seats.filter((seat) => seat.permission === "OWNER" || seat.permission === "EDIT").length,
     mutedCount: room.seats.filter((seat) => !seat.mic).length,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now(),
   };
 }
 
@@ -89,13 +92,11 @@ export async function getCollabRoomState(roomId = "ems-main-room"): Promise<Coll
 
 export async function updateCollabRoomState(roomId: string, patch: Partial<MutableRoomState>, title = "Session update", detail = "Room state updated") {
   const current = rooms.get(roomId) ?? seed(roomId);
+  const event: CollabEvent = { id: `event-${Date.now()}`, title, detail, createdAt: now(), tone: "cyan" };
   const next: MutableRoomState = {
     ...current,
     ...patch,
-    events: [
-      { id: `event-${Date.now()}`, title, detail, createdAt: new Date().toISOString(), tone: "cyan" },
-      ...(patch.events ?? current.events),
-    ].slice(0, 10),
+    events: [event, ...(patch.events ?? current.events)].slice(0, 10),
   };
   rooms.set(roomId, next);
   return compute(next);
