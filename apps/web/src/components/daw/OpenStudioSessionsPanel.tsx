@@ -76,6 +76,8 @@ export default function OpenStudioSessionsPanel({
     };
   }, [artistId]);
 
+  if (!open && visitorCount <= 0) return null;
+
   function send() {
     const body = draft.trim();
     if (!body) return;
@@ -102,7 +104,7 @@ export default function OpenStudioSessionsPanel({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-[calc(env(safe-area-inset-bottom)+1.25rem)] right-5 z-40 flex items-center gap-2 rounded-full border border-emerald-400/40 bg-gradient-to-br from-emerald-500/30 via-cyan-500/20 to-transparent px-4 py-3 text-sm font-bold text-emerald-100 shadow-2xl shadow-emerald-500/20 transition hover:border-emerald-400/60 active:scale-[0.98]"
+        className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-3 z-30 flex items-center gap-1.5 rounded-full border border-emerald-400/35 bg-black/80 px-2.5 py-1.5 text-xs font-bold text-emerald-100 shadow-xl shadow-black/30 transition hover:border-emerald-400/60 active:scale-[0.98]"
       >
         <span className="relative flex h-2.5 w-2.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />

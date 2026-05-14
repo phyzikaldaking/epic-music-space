@@ -4679,7 +4679,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         Space play · R record · L loop · M metronome · T tap · Home rewind · A-W-S-E-D... play synth · Drop audio on a track to import
       </p>
 
-      <div className="mb-6 grid gap-2 lg:grid-cols-2">
+      <div className="mb-2 grid gap-2 lg:grid-cols-[minmax(190px,300px)_1fr]">
         <AudioSettingsPanel
           ctx={engineRef.current?.audioContext ?? null}
           latencyMode={transport?.latencyMode ?? "recording"}
@@ -4720,7 +4720,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           "BPM ramp" tool; the sample chopper is one-tap to drop a
           breakbeat as N sliced tracks. */}
       {engineRef.current && transport && (
-        <div className="mb-6 grid gap-2 lg:grid-cols-2">
+        <div className="mb-2 grid gap-2 lg:grid-cols-2">
           <TempoMapEditor
             engine={engineRef.current}
             tempoMap={transport.tempoMap}
@@ -4748,7 +4748,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       )}
 
       {!showSplash && (
-        <div className="mb-5 grid gap-2 sm:grid-cols-5">
+        <div className="mb-2 grid gap-1.5 sm:grid-cols-5">
           <StatusPill
             label="Armed Tracks"
             value={`${tracks.filter((t) => t.armed).length}`}
@@ -4767,7 +4767,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           <button
             type="button"
             onClick={() => setShowShortcuts(true)}
-            className="rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-left transition hover:bg-white/[0.07]"
+            className="rounded-lg border border-white/12 bg-white/[0.03] px-2 py-1.5 text-left transition hover:bg-white/[0.07]"
           >
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">Shortcuts</p>
             <p className="mt-1 text-sm font-semibold text-white">Press <span className="font-mono">?</span> to view all</p>
@@ -4776,7 +4776,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           <button
             type="button"
             onClick={() => setCompactStrips((value) => !value)}
-            className="rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-left transition hover:bg-white/[0.07]"
+            className="rounded-lg border border-white/12 bg-white/[0.03] px-2 py-1.5 text-left transition hover:bg-white/[0.07]"
           >
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">Channel strips</p>
             <p className="mt-1 text-sm font-semibold text-white">{compactStrips ? "Compact mode" : "Expanded mode"}</p>
@@ -6875,9 +6875,9 @@ function StatusPill({
         : "border-white/12 bg-white/[0.03] text-white/85";
 
   return (
-    <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
-      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">{label}</p>
-      <p className="mt-1 text-sm font-semibold">{value}</p>
+    <div className={`rounded-lg border px-2 py-1 ${toneClass}`}>
+      <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-white/50">{label}</p>
+      <p className="mt-0.5 truncate text-xs font-semibold">{value}</p>
     </div>
   );
 }

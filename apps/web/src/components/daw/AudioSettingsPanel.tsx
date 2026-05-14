@@ -43,39 +43,50 @@ export default function AudioSettingsPanel({ ctx, latencyMode }: AudioSettingsPa
   }, [ctx]);
 
   const sampleRateOk = stats ? stats.sampleRate >= 48000 : true;
+  const latencyLabel =
+    latencyMode === "recording"
+      ? "REC"
+      : latencyMode === "mastering"
+        ? "MASTER"
+        : "MIX";
 
   return (
     <section
-      className="rounded-2xl border border-tube-300/25 bg-black/40 p-3 font-mono text-[11px]"
+      className="rounded-lg border border-white/10 bg-black/45 px-2 py-1.5 font-mono text-[10px]"
       data-studio-section="audio-settings"
     >
-      <header className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-tube-300/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.32em] text-tube-300">
-            Pro defaults active
-          </span>
-          <span className="text-[10px] uppercase tracking-widest text-white/55">
-            Audio engine
-          </span>
-        </div>
+      <header className="flex min-h-7 items-center gap-1.5">
+        <span className="rounded bg-tube-300/15 px-1.5 py-0.5 font-black uppercase tracking-[0.16em] text-tube-300">
+          Engine
+        </span>
+        <span className={sampleRateOk ? "text-cyan-100" : "text-amber-200"}>
+          {stats ? `${(stats.sampleRate / 1000).toFixed(0)}k` : "sleep"}
+        </span>
+        <span className="text-white/25">/</span>
+        <span className="text-white/65">32f</span>
+        <span className="text-white/25">/</span>
+        <span className="text-white/65">{latencyLabel}</span>
+        <span className={stats?.state === "running" ? "ml-auto rounded bg-emerald-400/15 px-1.5 py-0.5 uppercase text-emerald-200" : "ml-auto rounded bg-white/10 px-1.5 py-0.5 uppercase text-white/55"}>
+          {stats?.state ?? "idle"}
+        </span>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-md border border-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/70 hover:bg-white/10 transition"
+          className="rounded border border-white/10 px-1.5 py-0.5 font-bold uppercase tracking-wider text-white/55 hover:bg-white/10"
           aria-expanded={open}
         >
-          {open ? "Hide" : "Show"}
+          {open ? "Less" : "More"}
         </button>
       </header>
 
       {open && (
         <>
           {!stats ? (
-            <p className="mt-2 text-white/55">
+            <p className="mt-1 text-white/55">
               Press play, record, or tap a pad to wake the audio engine.
             </p>
           ) : (
-            <dl className="mt-2 grid grid-cols-2 gap-y-1.5 text-white/70">
+            <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-white/10 pt-1 text-[10px] text-white/70">
               <StudioTooltip label={tooltips.audioSampleRate}>
                 <dt className="cursor-help">Sample rate</dt>
               </StudioTooltip>
@@ -125,7 +136,7 @@ export default function AudioSettingsPanel({ ctx, latencyMode }: AudioSettingsPa
           )}
 
           {stats && !sampleRateOk && (
-            <p className="mt-2 rounded-md border border-amber-400/30 bg-amber-400/5 p-2 text-[10px] leading-snug text-amber-200">
+            <p className="mt-1 rounded border border-amber-400/30 bg-amber-400/5 p-1.5 text-[10px] leading-snug text-amber-200">
               Your audio device is running at {stats.sampleRate.toLocaleString()} Hz.
               Recordings will use the device&apos;s rate — pitch and length are
               still correct, but exports may not hit the 48 kHz pro target.
