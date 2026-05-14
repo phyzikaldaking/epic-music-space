@@ -10,7 +10,18 @@ type EventItem = { id: string; title: string; detail: string; createdAt: string 
 type RoomState = { roomId: string; roomName: string; locked: boolean; recordApproval: boolean; exportApproval: boolean; screenShare: boolean; markerCount: number; liveCount: number; editorCount: number; mutedCount: number; seats: Seat[]; events: EventItem[]; backend: string; updatedAt: string };
 type TokenResponse = { ready: boolean; url?: string; token?: string; error?: string; permission?: Permission; role?: string };
 type Notice = { tone: "success" | "warn" | "error"; title: string; body: string };
-type LiveKitRoomLike = { connect: (url: string, token: string) => Promise<void>; disconnect: () => void; on: (event: unknown, handler: (...args: unknown[]) => void) => LiveKitRoomLike; remoteParticipants?: Map<string, unknown> };
+type LiveKitRoomLike = {
+  connect: (url: string, token: string) => Promise<void>;
+  disconnect: () => void;
+  on: (event: unknown, handler: (...args: unknown[]) => void) => LiveKitRoomLike;
+  remoteParticipants?: Map<string, unknown>;
+  localParticipant?: {
+    setMicrophoneEnabled?: (enabled: boolean) => Promise<unknown>;
+    setCameraEnabled?: (enabled: boolean) => Promise<unknown>;
+    setScreenShareEnabled?: (enabled: boolean) => Promise<unknown>;
+    publishData?: (data: Uint8Array, options?: { reliable?: boolean; topic?: string }) => Promise<void> | void;
+  };
+};
 
 const fallbackSeats: Seat[] = [
   { id: "host", name: "Host", role: "Owner", color: "#23f7ff", online: true, mic: true, cam: true, permission: "OWNER", speaking: true },
@@ -43,6 +54,10 @@ function clientLog(event: string, data: Record<string, unknown> = {}) {
   console.info("[ems-collab-client]", JSON.stringify({ ts: new Date().toISOString(), event, ...scrubbed }));
 }
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export default function CollabConsoleClient() {
   const searchParams = useSearchParams();
   const activeRoomId = searchParams.get("roomId") ?? "ems-main-room";
@@ -55,12 +70,17 @@ export default function CollabConsoleClient() {
   const [viewerRole, setViewerRole] = useState(inviteToken ? "GUEST" : "HOST");
   const [deviceMessage, setDeviceMessage] = useState("Run a device check before recording or sharing.");
   const [participantCount, setParticipantCount] = useState(1);
+  const [localMicOn, setLocalMicOn] = useState(false);
+  const [localCamOn, setLocalCamOn] = useState(false);
+  const [localScreenOn, setLocalScreenOn] = useState(false);
+  const [mediaBusy, setMediaBusy] = useState(false);
   const liveKitRoomRef = useRef<LiveKitRoomLike | null>(null);
 
   const canHost = viewerPermission === "OWNER" || viewerRole === "HOST";
   const canEdit = canHost || viewerPermission === "EDIT";
   const liveCount = useMemo(() => Math.max(room.liveCount, room.seats.filter((seat) => seat.online).length, participantCount), [room, participantCount]);
   const protectedPayload = useCallback((payload: Record<string, unknown>) => ({ ...payload, roomId: activeRoomId, invite: inviteToken }), [activeRoomId, inviteToken]);
+  const localSeat = room.seats[0] ?? fallbackSeats[0];
 
   const loadRoom = useCallback(async () => {
     try {
@@ -68,7 +88,7 @@ export default function CollabConsoleClient() {
       if (!res.ok) throw new Error(`Room API ${res.status}`);
       setRoom(await res.json());
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Room load failed";
+      const message = errorMessage(error, "Room load failed");
       setRoom(fallbackRoom(activeRoomId));
       setNotice({ tone: "warn", title: "Room fallback active", body: message });
       clientLog("room_load_failed", { roomId: activeRoomId, error: message });
@@ -106,16 +126,25 @@ export default function CollabConsoleClient() {
         liveKitRoomRef.current = lkRoom;
         refreshParticipants();
         setLiveStatus("connected");
-        setNotice({ tone: "success", title: "Live room connected", body: "LiveKit room join, data sync, and participant presence are active." });
+        setNotice({ tone: "success", title: "Live room connected", body: "LiveKit room join, media controls, data sync, and participant presence are active." });
         clientLog("livekit_connected", { roomId: activeRoomId, permission: data.permission, role: data.role });
       } catch (error) {
-        const body = error instanceof Error ? error.message : "LiveKit authorization failed.";
+        const body = errorMessage(error, "LiveKit authorization failed.");
         if (active) { setLiveStatus("error"); setNotice({ tone: "error", title: "LiveKit failed", body }); clientLog("livekit_connection_failed", { roomId: activeRoomId, error: body }); }
       }
     }
     void join();
-    return () => { active = false; liveKitRoomRef.current?.disconnect(); liveKitRoomRef.current = null; setParticipantCount(1); };
+    return () => { active = false; liveKitRoomRef.current?.disconnect(); liveKitRoomRef.current = null; setParticipantCount(1); setLocalMicOn(false); setLocalCamOn(false); setLocalScreenOn(false); };
   }, [activeRoomId, inviteToken, loadRoom]);
+
+  async function broadcastRoomUpdate(topic: string) {
+    try {
+      const payload = new TextEncoder().encode(JSON.stringify({ type: "room:update", topic, roomId: activeRoomId, at: new Date().toISOString() }));
+      await liveKitRoomRef.current?.localParticipant?.publishData?.(payload, { reliable: true, topic: "ems-room-state" });
+    } catch (error) {
+      clientLog("livekit_data_broadcast_failed", { roomId: activeRoomId, error: errorMessage(error, "broadcast failed") });
+    }
+  }
 
   async function postRoom(patch: Partial<RoomState>, title: string, detail: string) {
     if ((patch.locked !== undefined || patch.recordApproval !== undefined || patch.exportApproval !== undefined) && !canHost) {
@@ -126,9 +155,10 @@ export default function CollabConsoleClient() {
       const res = await fetch("/api/studio/collab/room", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(protectedPayload({ ...patch, title, detail })) });
       if (!res.ok) throw new Error(`Room update ${res.status}`);
       setRoom(await res.json());
+      await broadcastRoomUpdate(title);
       clientLog("room_update_sent", { roomId: activeRoomId, title });
     } catch (error) {
-      setNotice({ tone: "error", title: "Room update failed", body: error instanceof Error ? error.message : "Room update failed." });
+      setNotice({ tone: "error", title: "Room update failed", body: errorMessage(error, "Room update failed.") });
     }
   }
 
@@ -141,9 +171,10 @@ export default function CollabConsoleClient() {
       const res = await fetch("/api/studio/collab/seat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(protectedPayload({ seatId: seat.id, ...patch })) });
       if (!res.ok) throw new Error(`Seat update ${res.status}`);
       setRoom(await res.json());
+      await broadcastRoomUpdate(note);
       clientLog("seat_update_sent", { roomId: activeRoomId, seatId: seat.id, note });
     } catch (error) {
-      setNotice({ tone: "error", title: "Seat update failed", body: error instanceof Error ? error.message : "Seat update failed." });
+      setNotice({ tone: "error", title: "Seat update failed", body: errorMessage(error, "Seat update failed.") });
     }
   }
 
@@ -156,9 +187,67 @@ export default function CollabConsoleClient() {
       const res = await fetch("/api/studio/collab/moderation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(protectedPayload({ seatId: seat.id, action, reason: `Host action: ${action}` })) });
       if (!res.ok) throw new Error(`Moderation ${res.status}`);
       setRoom(await res.json());
+      await broadcastRoomUpdate(action);
       clientLog("moderation_sent", { roomId: activeRoomId, seatId: seat.id, action });
     } catch (error) {
-      setNotice({ tone: "error", title: "Moderation failed", body: error instanceof Error ? error.message : "Moderation failed." });
+      setNotice({ tone: "error", title: "Moderation failed", body: errorMessage(error, "Moderation failed.") });
+    }
+  }
+
+  async function toggleLocalMic() {
+    const next = !localMicOn;
+    setMediaBusy(true);
+    try {
+      const participant = liveKitRoomRef.current?.localParticipant;
+      if (!participant?.setMicrophoneEnabled) throw new Error("LiveKit microphone control is unavailable.");
+      await participant.setMicrophoneEnabled(next);
+      setLocalMicOn(next);
+      await postSeat(localSeat, { mic: next }, `local microphone ${next ? "on" : "off"}`);
+      clientLog("mic_toggled", { roomId: activeRoomId, enabled: next });
+    } catch (error) {
+      const body = errorMessage(error, "Microphone permission failed.");
+      setNotice({ tone: "error", title: "Microphone failed", body });
+      clientLog("mic_toggle_failed", { roomId: activeRoomId, error: body });
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function toggleLocalCamera() {
+    const next = !localCamOn;
+    setMediaBusy(true);
+    try {
+      const participant = liveKitRoomRef.current?.localParticipant;
+      if (!participant?.setCameraEnabled) throw new Error("LiveKit camera control is unavailable.");
+      await participant.setCameraEnabled(next);
+      setLocalCamOn(next);
+      await postSeat(localSeat, { cam: next }, `local camera ${next ? "on" : "off"}`);
+      clientLog("camera_toggled", { roomId: activeRoomId, enabled: next });
+    } catch (error) {
+      const body = errorMessage(error, "Camera permission failed.");
+      setNotice({ tone: "error", title: "Camera failed", body });
+      clientLog("camera_toggle_failed", { roomId: activeRoomId, error: body });
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function toggleScreenShare() {
+    const next = !localScreenOn;
+    setMediaBusy(true);
+    try {
+      const participant = liveKitRoomRef.current?.localParticipant;
+      if (!participant?.setScreenShareEnabled) throw new Error("LiveKit screen share control is unavailable.");
+      await participant.setScreenShareEnabled(next);
+      setLocalScreenOn(next);
+      await postRoom({ screenShare: next }, "Screen share", next ? "Screen share started" : "Screen share stopped");
+      clientLog("screen_share_toggled", { roomId: activeRoomId, enabled: next });
+    } catch (error) {
+      const body = errorMessage(error, "Screen share permission failed.");
+      setNotice({ tone: "error", title: "Screen share failed", body });
+      clientLog("screen_share_failed", { roomId: activeRoomId, error: body });
+    } finally {
+      setMediaBusy(false);
     }
   }
 
@@ -172,7 +261,7 @@ export default function CollabConsoleClient() {
       stream.getTracks().forEach((track) => track.stop());
       setDeviceMessage(`Device check passed. Mic: ${mic ? "yes" : "no"}. Camera: ${cam ? "yes" : "no"}.`);
     } catch (error) {
-      setDeviceMessage(error instanceof Error ? error.message : "Device check failed.");
+      setDeviceMessage(errorMessage(error, "Device check failed."));
     }
   }
 
@@ -200,18 +289,25 @@ export default function CollabConsoleClient() {
         </header>
         {notice && <div className={`rounded-xl border px-3 py-2 text-xs ${noticeClass}`}><b>{notice.title}:</b> {notice.body}</div>}
         <section className="grid min-h-0 flex-1 grid-cols-[1.2fr_.8fr] gap-3 overflow-hidden">
-          <div className="grid min-h-0 grid-cols-2 gap-3 overflow-hidden rounded-2xl border border-white/15 bg-[#10151a]/95 p-3">
-            {room.seats.map((seat) => <article key={seat.id} className="flex min-h-0 flex-col rounded-xl border border-white/10 bg-black/50 p-3">
-              <div className="flex items-center justify-between"><div><h2 className="text-lg font-black uppercase" style={{ color: seat.color }}>{seat.name}</h2><p className="text-[10px] font-black uppercase tracking-widest text-white/40">{seat.role} · {seat.permission}</p></div><span className="text-[10px] uppercase text-white/50">{seat.online ? "live" : "away"}</span></div>
-              <div className="mt-4 grid flex-1 place-items-center rounded-xl border border-white/10 bg-[#070a0d]"><div className="grid h-24 w-24 place-items-center rounded-full border text-3xl font-black" style={{ borderColor: seat.color, color: seat.color }}>{seat.cam ? seat.name[0] : "—"}</div></div>
-              <div className="mt-3 grid grid-cols-3 gap-2"><button onClick={() => postSeat(seat, { mic: !seat.mic }, "mic toggle")} className="rounded border border-white/10 py-2 text-[10px] uppercase text-white/60">Mic</button><button onClick={() => postSeat(seat, { cam: !seat.cam }, "camera toggle")} className="rounded border border-white/10 py-2 text-[10px] uppercase text-white/60">Cam</button><button disabled={!canEdit} onClick={() => postSeat(seat, { permission: seat.permission === "EDIT" ? "COMMENT" : "EDIT" }, "permission toggle")} className="rounded border border-white/10 py-2 text-[10px] uppercase text-white/60 disabled:opacity-30">Edit</button></div>
-              {canHost && <div className="mt-2 grid grid-cols-3 gap-2"><button onClick={() => moderate(seat, "mute")} className="rounded border border-white/10 py-1 text-[9px] uppercase text-white/40">Mute</button><button onClick={() => moderate(seat, "camera_off")} className="rounded border border-white/10 py-1 text-[9px] uppercase text-white/40">Cam Off</button><button onClick={() => moderate(seat, "kick")} className="rounded border border-red-300/25 py-1 text-[9px] uppercase text-red-100/70">Kick</button></div>}
-            </article>)}
+          <div className="grid min-h-0 grid-rows-[1fr_96px] gap-3 overflow-hidden">
+            <div className="grid min-h-0 grid-cols-2 gap-3 overflow-hidden rounded-2xl border border-white/15 bg-[#10151a]/95 p-3">
+              {room.seats.map((seat) => <article key={seat.id} className="flex min-h-0 flex-col rounded-xl border border-white/10 bg-black/50 p-3">
+                <div className="flex items-center justify-between"><div><h2 className="text-lg font-black uppercase" style={{ color: seat.color }}>{seat.name}</h2><p className="text-[10px] font-black uppercase tracking-widest text-white/40">{seat.role} · {seat.permission}</p></div><span className="text-[10px] uppercase text-white/50">{seat.online ? "live" : "away"}</span></div>
+                <div className="mt-4 grid flex-1 place-items-center rounded-xl border border-white/10 bg-[#070a0d]"><div className="grid h-24 w-24 place-items-center rounded-full border text-3xl font-black" style={{ borderColor: seat.color, color: seat.color }}>{seat.cam ? seat.name[0] : "—"}</div></div>
+                <div className="mt-3 grid grid-cols-3 gap-2"><button onClick={() => postSeat(seat, { mic: !seat.mic }, "mic toggle")} className="rounded border border-white/10 py-2 text-[10px] uppercase text-white/60">Mic</button><button onClick={() => postSeat(seat, { cam: !seat.cam }, "camera toggle")} className="rounded border border-white/10 py-2 text-[10px] uppercase text-white/60">Cam</button><button disabled={!canEdit} onClick={() => postSeat(seat, { permission: seat.permission === "EDIT" ? "COMMENT" : "EDIT" }, "permission toggle")} className="rounded border border-white/10 py-2 text-[10px] uppercase text-white/60 disabled:opacity-30">Edit</button></div>
+                {canHost && <div className="mt-2 grid grid-cols-3 gap-2"><button onClick={() => moderate(seat, "mute")} className="rounded border border-white/10 py-1 text-[9px] uppercase text-white/40">Mute</button><button onClick={() => moderate(seat, "camera_off")} className="rounded border border-white/10 py-1 text-[9px] uppercase text-white/40">Cam Off</button><button onClick={() => moderate(seat, "kick")} className="rounded border border-red-300/25 py-1 text-[9px] uppercase text-red-100/70">Kick</button></div>}
+              </article>)}
+            </div>
+            <div className="grid grid-cols-3 gap-3 rounded-2xl border border-white/15 bg-[#10151a]/95 p-3">
+              <button disabled={mediaBusy || liveStatus !== "connected"} onClick={toggleLocalMic} className={`rounded-xl border px-3 py-2 text-xs font-black uppercase disabled:opacity-35 ${localMicOn ? "border-cyan-300/35 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-black/45 text-white/50"}`}>{localMicOn ? "Mic On" : "Mic Off"}</button>
+              <button disabled={mediaBusy || liveStatus !== "connected"} onClick={toggleLocalCamera} className={`rounded-xl border px-3 py-2 text-xs font-black uppercase disabled:opacity-35 ${localCamOn ? "border-pink-300/35 bg-pink-300/10 text-pink-100" : "border-white/10 bg-black/45 text-white/50"}`}>{localCamOn ? "Camera On" : "Camera Off"}</button>
+              <button disabled={mediaBusy || liveStatus !== "connected"} onClick={toggleScreenShare} className={`rounded-xl border px-3 py-2 text-xs font-black uppercase disabled:opacity-35 ${localScreenOn ? "border-yellow-300/35 bg-yellow-300/10 text-yellow-100" : "border-white/10 bg-black/45 text-white/50"}`}>{localScreenOn ? "Stop Share" : "Share Screen"}</button>
+            </div>
           </div>
           <aside className="grid min-h-0 grid-rows-[120px_1fr_210px_160px] gap-3 overflow-hidden">
             <section className="grid grid-cols-3 gap-2 rounded-2xl border border-white/15 bg-[#10151a]/95 p-3"><Stat label="Editors" value={room.editorCount} /><Stat label="Muted" value={room.mutedCount} /><Stat label="Markers" value={room.markerCount} /></section>
             <section className="overflow-hidden rounded-2xl border border-white/15 bg-[#10151a]/95 p-3"><h2 className="text-sm font-black uppercase tracking-[0.2em]">Activity</h2><div className="mt-3 space-y-2">{room.events.slice(0, 5).map((event) => <div key={event.id} className="rounded-xl border border-white/10 bg-black/45 p-3 text-xs text-white/70"><b>{event.title}</b><br />{event.detail}</div>)}</div></section>
-            <section className="rounded-2xl border border-white/15 bg-[#10151a]/95 p-3"><h2 className="text-sm font-black uppercase tracking-[0.2em]">Room Controls</h2><div className="mt-3 grid grid-cols-2 gap-2"><Toggle disabled={!canHost} label="Record OK" active={room.recordApproval} onClick={() => postRoom({ recordApproval: !room.recordApproval }, "Record approval", "Record approval changed")} /><Toggle disabled={!canHost} label="Export OK" active={room.exportApproval} onClick={() => postRoom({ exportApproval: !room.exportApproval }, "Export approval", "Export approval changed")} /><Toggle label="Screen" active={room.screenShare} onClick={() => postRoom({ screenShare: !room.screenShare }, "Screen share", "Screen share changed")} /><Toggle label="Marker" active={false} onClick={() => postRoom({ markerCount: room.markerCount + 1 }, "Marker dropped", "Marker dropped")} /></div></section>
+            <section className="rounded-2xl border border-white/15 bg-[#10151a]/95 p-3"><h2 className="text-sm font-black uppercase tracking-[0.2em]">Room Controls</h2><div className="mt-3 grid grid-cols-2 gap-2"><Toggle disabled={!canHost} label="Record OK" active={room.recordApproval} onClick={() => postRoom({ recordApproval: !room.recordApproval }, "Record approval", "Record approval changed")} /><Toggle disabled={!canHost} label="Export OK" active={room.exportApproval} onClick={() => postRoom({ exportApproval: !room.exportApproval }, "Export approval", "Export approval changed")} /><Toggle label="Screen" active={room.screenShare} onClick={toggleScreenShare} /><Toggle label="Marker" active={false} onClick={() => postRoom({ markerCount: room.markerCount + 1 }, "Marker dropped", "Marker dropped")} /></div></section>
             <section className="rounded-2xl border border-white/15 bg-[#10151a]/95 p-3"><div className="flex items-center justify-between"><h2 className="text-sm font-black uppercase tracking-[0.2em]">Device Check</h2><button onClick={runDeviceCheck} className="rounded border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-[10px] font-black uppercase text-cyan-100">Run</button></div><p className="mt-3 text-xs text-white/55">{deviceMessage}</p></section>
           </aside>
         </section>
