@@ -14,30 +14,38 @@ type CollabTelemetryPayload = {
   metadata?: Record<string, unknown>;
 };
 
-function scrub(value: unknown): unknown {
+type CollabTelemetryEvent = Record<string, unknown> & {
+  ts: string;
+  service: "ems-collab";
+  level: CollabTelemetryLevel;
+};
+
+function scrubValue(value: unknown): unknown {
   if (typeof value === "string") {
-    if (value.length > 180) return `${value.slice(0, 180)}...`;
     if (/token|secret|key|invite|jwt/i.test(value)) return "[redacted]";
-    return value;
+    return value.length > 180 ? `${value.slice(0, 180)}...` : value;
   }
-  if (Array.isArray(value)) return value.map(scrub);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, val]) => [
-        key,
-        /token|secret|key|invite|jwt/i.test(key) ? "[redacted]" : scrub(val),
-      ]),
-    );
-  }
+  if (Array.isArray(value)) return value.map(scrubValue);
+  if (value && typeof value === "object") return scrubObject(value as Record<string, unknown>);
   return value;
 }
 
+function scrubObject(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).map(([key, val]) => [
+      key,
+      /token|secret|key|invite|jwt/i.test(key) ? "[redacted]" : scrubValue(val),
+    ]),
+  );
+}
+
 export function trackCollabEvent(payload: CollabTelemetryPayload) {
-  const event = {
+  const scrubbedPayload = scrubObject(payload as Record<string, unknown>);
+  const event: CollabTelemetryEvent = {
+    ...scrubbedPayload,
     ts: new Date().toISOString(),
     service: "ems-collab",
     level: payload.level ?? "info",
-    ...scrub(payload),
   };
 
   const logger = event.level === "error" ? console.error : event.level === "warn" ? console.warn : console.info;
