@@ -224,7 +224,7 @@ export default function PhoneStudio() {
 
   return (
     <main id="main-content" className="fixed inset-0 overflow-hidden bg-[#07070b] text-white">
-      <div className="flex h-full min-h-0 pt-[65px]">
+      <div className="flex h-full min-h-0">
         <aside className="flex w-[76px] shrink-0 flex-col items-center gap-2 border-r border-white/10 bg-black/70 px-2 py-3">
           <Link href="/" className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/35">EMS</Link>
           {MODES.map((item) => (

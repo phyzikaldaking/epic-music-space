@@ -85,7 +85,7 @@ export default function DeferredGlobalWidgets() {
       <OfflineBanner />
       {!isCrowdedScrollPage && <OnboardingTour />}
       {!isCrowdedScrollPage && <KeyboardShortcuts />}
-      <CookieConsent />
+      {!isCrowdedScrollPage && <CookieConsent />}
       {!isCrowdedScrollPage && <ChatbotWidget />}
       {!isCrowdedScrollPage && <InstallAppPrompt />}
       {!isCrowdedScrollPage && <ClientOnlyDynamics />}
