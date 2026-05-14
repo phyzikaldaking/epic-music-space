@@ -4,7 +4,7 @@ import { memo } from "react";
 
 type Props = {
   label: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 };
 
 function StudioLazyPanel({ label, children }: Props) {
@@ -13,7 +13,7 @@ function StudioLazyPanel({ label, children }: Props) {
       <div className="mb-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] text-white/45">
         {label}
       </div>
-      {children}
+      {children ?? <div className="h-[600px] animate-pulse rounded-lg border border-white/5 bg-white/[.025]" />}
     </div>
   );
 }
