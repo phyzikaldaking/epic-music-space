@@ -26,6 +26,13 @@
   --vc-void: #050009;
 }
 
+html,
+body {
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -63,11 +70,15 @@ textarea::placeholder {
   display: none !important;
 }
 
-/* Keep workspace shells inside the viewport and stop old decorative layers from floating above controls. */
+/* Studio pages must scroll. Do not globally trap the DAW in a no-scroll shell. */
 [data-studio-content],
 [data-ems-workspace] {
   isolation: isolate;
   position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 [data-studio-content] button,
@@ -95,11 +106,12 @@ textarea::placeholder {
 }
 .vc-nav { position: sticky; top: 0; z-index: 60; }
 
-/* Studio coach dock should not crush the new no-scroll workspace. */
+/* Studio coach dock should not block scrolling or crush the workspace. */
 @media (min-width: 1024px) {
   body[data-studio-coach-docked] [data-studio-content],
   body[data-studio-coach-docked] [data-ems-workspace] {
     padding-right: 0 !important;
+    overflow-y: auto !important;
   }
 }
 
