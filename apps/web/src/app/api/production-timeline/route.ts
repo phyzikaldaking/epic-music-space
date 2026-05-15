@@ -100,6 +100,18 @@ function toAuthorRole(role: string): "artist" | "producer" | "engineer" | "liste
   }
 }
 
+type PublicTimelineSong = { title: string; artist: string; genre: string | null };
+
+function isPublicTimelineSong(song: PublicTimelineSong, authorName: string): boolean {
+  const text = [song.title, song.artist, song.genre ?? "", authorName].join(" ").toLowerCase();
+  return !text.includes("ledger test") && !text.includes("test artist") && !/\b177789\d+\b/.test(text);
+}
+
+function publicGenre(value: string | null): string {
+  const cleaned = value?.trim();
+  return cleaned && cleaned.toLowerCase() !== "unknown" ? cleaned : "Uncategorized";
+}
+
 /**
  * GET /api/production-timeline
  *
@@ -123,7 +135,7 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const filter = url.searchParams.get("filter") ?? "all";
-  const limit = Math.min(30, Math.max(1, Number(url.searchParams.get("limit") ?? 20)));
+  const limit = Math.min(20, Math.max(1, Number(url.searchParams.get("limit") ?? 10)));
   const cursor = url.searchParams.get("cursor") ?? undefined;
 
   // Auth is optional — block-list filtering applies for authed users
@@ -182,6 +194,7 @@ export async function GET(req: NextRequest) {
           versusWins: true,
           versusLosses: true,
           streamCount: true,
+          createdAt: true,
         },
       })
     : [];
@@ -209,7 +222,11 @@ export async function GET(req: NextRequest) {
     .map((p) => {
       const song = songMap.get(p.songId!);
       if (!song) return null;
-      const spectrum = deriveSpectrum(song.genre, song.bpm);
+      const authorName = p.author.name ?? p.author.username ?? "";
+      if (!isPublicTimelineSong(song, authorName)) return null;
+      const genre = publicGenre(song.genre);
+      const displayBpm = song.bpm ?? 0;
+      const spectrum = deriveSpectrum(genre, song.bpm);
       const mixConfidence = deriveMixConfidence({
         bpm: song.bpm,
         key: song.key,
@@ -237,14 +254,14 @@ export async function GET(req: NextRequest) {
       return {
         id: p.id,
         authorId: p.author.id,
-        authorName: p.author.name ?? p.author.username ?? "Unknown",
+        authorName: authorName || "Unknown",
         authorImage: p.author.image ?? undefined,
         authorRole: toAuthorRole(p.author.role),
         isLiveNow: liveAuthorIds.has(p.author.id),
         trackId: song.id,
         trackTitle: song.title,
-        genre: song.genre ?? "Unknown",
-        bpm: song.bpm ?? 120,
+        genre,
+        bpm: displayBpm,
         key: song.key ?? undefined,
         spectrum,
         masterLufs,
@@ -254,7 +271,7 @@ export async function GET(req: NextRequest) {
         remixCount,
         versionCount,
         stemDownloadCount,
-        createdAt: p.createdAt,
+        createdAt: song.createdAt ?? p.createdAt,
       };
     })
     .filter((p): p is NonNullable<typeof p> => p !== null);

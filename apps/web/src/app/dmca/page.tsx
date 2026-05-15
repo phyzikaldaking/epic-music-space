@@ -3,8 +3,10 @@ import Link from "next/link";
 import DmcaForm from "./DmcaForm";
 
 export const metadata: Metadata = {
-  title: "DMCA Policy & Takedown",
-  description: "How to submit a DMCA takedown notice or counter-notice for content on Epic Music Space.",
+  title: "DMCA Policy & Takedown | Epic Music Space",
+  description: "Submit a DMCA takedown notice or counter-notice for content on Epic Music Space.",
+  alternates: { canonical: "/dmca" },
+  openGraph: { title: "Epic Music Space DMCA Policy", description: "DMCA takedown and counter-notice information for Epic Music Space.", url: "/dmca" },
 };
 
 export default function DmcaPage() {

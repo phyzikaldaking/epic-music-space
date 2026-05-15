@@ -5,6 +5,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export const metadata: Metadata = {
+  title: "Create Account | Epic Music Space",
+  description: "Create an Epic Music Space account to upload tracks, join rooms, build playlists, and unlock creator tools.",
+  alternates: { canonical: "/auth/signup" },
   robots: { index: false, follow: false },
 };
 

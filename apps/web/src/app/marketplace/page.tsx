@@ -18,9 +18,15 @@ import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 export const revalidate = 30;
 
 export const metadata: Metadata = {
-  title: "Marketplace",
+  title: "Marketplace | Epic Music Space",
   description:
-    "Browse the early catalog of independent artists on Epic Music Space. Buy a license, share in their streaming revenue, and back the artists before they break.",
+    "Browse independent artists on Epic Music Space, license tracks, and back the artists before they break.",
+  alternates: { canonical: "/marketplace" },
+  openGraph: {
+    title: "Epic Music Space Marketplace",
+    description: "Discover active tracks, licensing opportunities, and artist momentum in the EMS marketplace.",
+    url: "/marketplace",
+  },
 };
 
 type PriceLike = string | number | { toString(): string };
@@ -218,6 +224,16 @@ function normalizedText(value: string | null | undefined): string {
   return typeof value === "string" ? value : "";
 }
 
+function publicGenre(value: string | null | undefined): string {
+  const cleaned = normalizedText(value).trim();
+  return cleaned.length > 0 && cleaned.toLowerCase() !== "unknown" ? cleaned : "Uncategorized";
+}
+
+function isPublicCatalogTrack(track: Pick<RawTrack, "title" | "artist" | "genre">): boolean {
+  const text = [track.title, track.artist, track.genre ?? ""].join(" ").toLowerCase();
+  return !text.includes("ledger test") && !text.includes("test artist") && !/\b177789\d+\b/.test(text);
+}
+
 function levenshteinWithinOne(a: string, b: string) {
   if (Math.abs(a.length - b.length) > 1) return false;
   let edits = 0;
@@ -349,7 +365,7 @@ function toMarketplaceSong(track: RawTrack): MarketplaceSong {
     id: track.id,
     title: track.title,
     artist: track.artist,
-    genre: track.genre,
+    genre: publicGenre(track.genre),
     audioUrl: track.audioUrl,
     coverUrl: track.coverUrl,
     bpm: track.bpm,
@@ -435,6 +451,7 @@ export default async function MarketplacePage(props: {
         versusLosses: true,
         createdAt: true,
       },
+      take: 48,
     });
   } catch {
     allSongs = await getResilientFallbackTracks();
@@ -445,6 +462,7 @@ export default async function MarketplacePage(props: {
   }
 
   const rankedSongs = allSongs
+    .filter(isPublicCatalogTrack)
     .map((song) => {
       try {
         return toMarketplaceSong(song);
@@ -679,7 +697,7 @@ export default async function MarketplacePage(props: {
           </div>
           <div className="mt-6">
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {displaySongs.slice(0, 6).map((song, index) => (
+              {displaySongs.slice(0, 3).map((song, index) => (
                 <SongCard
                   key={song.id}
                   id={song.id}
@@ -780,7 +798,7 @@ export default async function MarketplacePage(props: {
             <SectionErrorBoundary title="Waveform Compare"><MarketplaceConfidencePanel tracks={displaySongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore, licensePrice: Number(song.licensePrice), revenueSharePct: Number(song.revenueSharePct), soldLicenses: song.soldLicenses, totalLicenses: song.totalLicenses }))} /></SectionErrorBoundary>
             <SectionErrorBoundary title="Saved Searches"><MarketplaceRetentionTools tracks={displaySongs.map((song) => ({ id: song.id, title: song.title }))} /></SectionErrorBoundary>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {displaySongs.map((song, index) => (
+              {displaySongs.slice(0, 12).map((song, index) => (
                 <SongCard
                   key={song.id}
                   id={song.id}

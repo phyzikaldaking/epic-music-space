@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { prisma } from "@/lib/prisma";
@@ -5,9 +6,11 @@ import { isRoomExpired } from "@/lib/roomTier";
 
 export const revalidate = 30;
 
-export const metadata = {
-  title: "Listening Sessions",
-  description: "Live audio rooms hosted by artists right now.",
+export const metadata: Metadata = {
+  title: "Listening Sessions | Epic Music Space",
+  description: "Browse live rooms and listening sessions hosted by artists on Epic Music Space.",
+  alternates: { canonical: "/rooms" },
+  openGraph: { title: "Epic Music Space Listening Sessions", description: "See live rooms and artist listening sessions happening now.", url: "/rooms" },
 };
 
 export default async function RoomsIndexPage() {

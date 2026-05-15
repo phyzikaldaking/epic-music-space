@@ -6,9 +6,10 @@ import { prisma } from "@/lib/prisma";
 export const revalidate = 120;
 
 export const metadata: Metadata = {
-  title: "Labels",
-  description:
-    "Browse artist labels on Epic Music Space and create a roster for licensing releases.",
+  title: "Labels | Epic Music Space",
+  description: "Browse artist labels on Epic Music Space and create a roster for licensing releases.",
+  alternates: { canonical: "/label" },
+  openGraph: { title: "Epic Music Space Labels", description: "Browse artist labels, rosters, and licensing catalogs.", url: "/label" },
 };
 
 type LabelListItem = {

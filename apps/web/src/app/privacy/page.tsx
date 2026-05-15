@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy",
-  description: "How Epic Music Space collects, uses, shares, and protects your personal information. GDPR + CCPA compliant.",
+  title: "Privacy Policy | Epic Music Space",
+  description: "How Epic Music Space collects, uses, shares, and protects personal information.",
+  alternates: { canonical: "/privacy" },
+  openGraph: { title: "Epic Music Space Privacy Policy", description: "How Epic Music Space handles personal information.", url: "/privacy" },
 };
 
 const EFFECTIVE_DATE = "May 5, 2026";

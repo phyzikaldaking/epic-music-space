@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Terms of Service",
-  description: "Epic Music Space Terms of Service governing use of the platform, license purchases, and artist uploads.",
+  title: "Terms of Service | Epic Music Space",
+  description: "Epic Music Space Terms of Service governing platform use, license purchases, and artist uploads.",
+  alternates: { canonical: "/terms" },
+  openGraph: { title: "Epic Music Space Terms of Service", description: "Terms governing use of Epic Music Space.", url: "/terms" },
 };
 
 const EFFECTIVE_DATE = "May 5, 2026";

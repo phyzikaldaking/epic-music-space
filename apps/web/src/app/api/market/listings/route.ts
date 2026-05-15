@@ -15,6 +15,18 @@ function listingsCacheHeaders() {
   };
 }
 
+type PublicListingCandidate = { title: string; artist: string; genre: string | null };
+
+function isPublicListing(song: PublicListingCandidate): boolean {
+  const text = [song.title, song.artist, song.genre ?? ""].join(" ").toLowerCase();
+  return !text.includes("ledger test") && !text.includes("test artist") && !/\b177789\d+\b/.test(text);
+}
+
+function publicGenre(value: string | null): string {
+  const cleaned = value?.trim();
+  return cleaned && cleaned.toLowerCase() !== "unknown" ? cleaned : "Uncategorized";
+}
+
 /**
  * GET /api/market/listings
  *
@@ -75,7 +87,7 @@ export async function GET(req: NextRequest) {
   );
 
   const result = allActive
-    .filter((s) => s.soldLicenses < s.totalLicenses)
+    .filter((s) => s.soldLicenses < s.totalLicenses && isPublicListing(s))
     .map((song) => {
       const ranking = computeRankingTransparency({
         aiScore: Number(song.aiScore ?? 0),
@@ -89,6 +101,7 @@ export async function GET(req: NextRequest) {
       });
       return {
         ...song,
+        genre: publicGenre(song.genre),
         rankScore: ranking.finalScore,
         paidBoostApplied: ranking.paidApplied,
         paidBoostCap: ranking.paidCap,

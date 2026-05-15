@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Standard License Agreement",
+  title: "Standard License Agreement | Epic Music Space",
   description: "The standard non-exclusive license used for tracks purchased on Epic Music Space.",
+  alternates: { canonical: "/license-agreement" },
+  openGraph: { title: "Epic Music Space Standard License Agreement", description: "The standard license terms for tracks purchased on Epic Music Space.", url: "/license-agreement" },
 };
 
 export default function LicenseAgreementPage() {

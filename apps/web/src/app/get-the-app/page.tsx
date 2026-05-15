@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Get the App",
   description:
     "Download the Epic Music Space app for iOS and Android. Connect with artists live, vote on battles, discover viral music, and build your music community — all from your phone.",
+  alternates: { canonical: "/get-the-app" },
   openGraph: {
     title: "Epic Music Space — Music's Biggest Social Platform on iOS & Android",
     description: "Connect with artists, discover viral tracks, and vote on battles in real time. Now on your phone.",

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { prisma } from "@/lib/prisma";
@@ -17,9 +18,11 @@ import WeeklySeasonBanner from "@/components/WeeklySeasonBanner";
 import MainCardCountdown from "@/components/MainCardCountdown";
 import { getWeekLabel, getMsUntilWeekReset, getWeeklyArtistTopN } from "@/lib/weeklyseason";
 
-export const metadata = {
-  title: "Versus Battles",
-  description: "Vote on 1v1 track battles and Battle Royale showdowns. Discover the hottest music and help crown the next champion on Epic Music Space.",
+export const metadata: Metadata = {
+  title: "Versus Battles | Epic Music Space",
+  description: "Vote on 1v1 track battles and Battle Royale showdowns on Epic Music Space.",
+  alternates: { canonical: "/versus" },
+  openGraph: { title: "Epic Music Space Versus Battles", description: "Vote on battles, follow results, and help crown the next champion.", url: "/versus" },
 };
 
 const PAST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 days of recent results

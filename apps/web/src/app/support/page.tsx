@@ -4,9 +4,10 @@ import { prisma } from "@/lib/prisma";
 import SupportForm from "./SupportForm";
 
 export const metadata: Metadata = {
-  title: "Support",
-  description:
-    "Open a support ticket. We respond within one business day to every artist, producer, engineer, and listener.",
+  title: "Support | Epic Music Space",
+  description: "Open an Epic Music Space support ticket for account, artist, producer, engineer, listener, and marketplace help.",
+  alternates: { canonical: "/support" },
+  openGraph: { title: "Epic Music Space Support", description: "Get help with your Epic Music Space account and creator tools.", url: "/support" },
 };
 
 export default async function SupportPage() {

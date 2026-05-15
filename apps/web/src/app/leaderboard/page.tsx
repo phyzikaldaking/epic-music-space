@@ -12,9 +12,9 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Leaderboard",
     description: "Top trending songs and artists, ranked by fan votes and streams in real time.",
-    url: "https://epicmusicspace.com/leaderboard",
+    url: "https://www.epicmusicspace.com/leaderboard",
   },
-  alternates: { canonical: "https://epicmusicspace.com/leaderboard" },
+  alternates: { canonical: "https://www.epicmusicspace.com/leaderboard" },
 };
 
 export default async function LeaderboardPage({

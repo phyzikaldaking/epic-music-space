@@ -176,7 +176,7 @@ export function ProductionPostCard({
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/70">Track</p>
             <h3 className="mt-1 truncate text-lg font-black text-white">{post.trackTitle}</h3>
             <p className="mt-1 text-xs text-white/50">
-              {post.genre} · {post.bpm} BPM{post.key ? " · " + post.key : ""}
+              {post.genre} · {bpmLabel}{post.key ? " · " + post.key : ""}
             </p>
           </div>
           <div className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-right">
@@ -263,7 +263,7 @@ export default function ProductionTimeline({
 
     const fetchPosts = async () => {
       try {
-        const res = await fetch("/api/production-timeline", { cache: "no-store" });
+        const res = await fetch("/api/production-timeline?limit=10", { cache: "no-store" });
         if (!res.ok) throw new Error("Timeline request failed with " + res.status);
         const payload = (await res.json()) as ProductionTimelineResponse;
         if (cancelled) return;
@@ -280,7 +280,7 @@ export default function ProductionTimeline({
     };
 
     void fetchPosts();
-    pollRef.current = setInterval(() => void fetchPosts(), 12000);
+    pollRef.current = setInterval(() => void fetchPosts(), 30000);
     return () => {
       cancelled = true;
       if (pollRef.current) clearInterval(pollRef.current);
