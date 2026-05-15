@@ -29,8 +29,8 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
   }, [meters, playing, tracks]);
 
   return (
-    <section className="min-h-[680px] overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#0b1115] p-2 pr-1">
-      <div className="grid min-h-[760px] grid-cols-4 gap-2 lg:grid-cols-8">
+    <section className="max-h-[calc(100vh-170px)] min-h-[680px] min-w-[1040px] overflow-auto overscroll-contain rounded-xl border border-white/10 bg-[#0b1115] p-2">
+      <div className="grid min-h-[900px] min-w-[1280px] grid-cols-8 gap-2 pb-8 pr-8">
         {tracks.map((track) => (
           <StudioMixerChannel
             key={track.id}
