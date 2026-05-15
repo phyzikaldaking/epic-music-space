@@ -25,15 +25,18 @@
   --vc-deep: #1a0530;
   --vc-void: #050009;
   --ems-transport-height: 72px;
-  --ems-workspace-min-width: 1280px;
+  --ems-workspace-min-width: 1440px;
   --ems-workspace-min-height: 1180px;
 }
 
 html,
 body {
   min-height: 100%;
-  overflow-x: auto;
-  overflow-y: auto;
+  min-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  overscroll-behavior: auto;
+  scrollbar-gutter: stable both-edges;
 }
 
 body {
@@ -41,6 +44,22 @@ body {
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+body,
+#__next,
+main {
+  overflow: visible !important;
+}
+
+main,
+section,
+article,
+[data-page],
+[data-route],
+[data-studio-content],
+[data-ems-workspace] {
+  max-width: none;
 }
 
 input,
@@ -73,53 +92,57 @@ textarea::placeholder {
   display: none !important;
 }
 
-/* Studio pages must scroll on both axes. Do not globally trap the DAW in a no-scroll shell. */
+/* Global app scroll contract: the browser window owns the outside scrollbars. */
 [data-studio-content],
-[data-ems-workspace] {
+[data-ems-workspace],
+.ems-page-scroll-surface {
   isolation: isolate;
   position: relative;
   min-height: 100vh;
-  overflow: auto;
-  overscroll-behavior: contain;
+  min-width: min(100%, var(--ems-workspace-min-width));
+  overflow: visible !important;
+  overscroll-behavior: auto;
   scrollbar-gutter: stable both-edges;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
 }
 
 .ems-scroll,
 .ems-scroll-x,
 .ems-scroll-y,
 .ems-workspace-scroll {
-  overscroll-behavior: contain;
+  overscroll-behavior: auto;
   scrollbar-gutter: stable both-edges;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
 }
 
 .ems-scroll,
 .ems-workspace-scroll {
-  overflow: auto;
+  overflow: visible !important;
 }
 
 .ems-scroll-x {
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
 }
 
 .ems-scroll-y {
-  overflow-x: hidden;
+  overflow-x: visible;
   overflow-y: auto;
 }
 
 .ems-workspace-scroll {
-  min-width: min(100%, var(--ems-workspace-min-width));
-  min-height: min(100dvh, var(--ems-workspace-min-height));
-  touch-action: pan-x pan-y;
+  min-width: var(--ems-workspace-min-width);
+  min-height: var(--ems-workspace-min-height);
 }
 
 .ems-panel-scroll {
-  max-height: calc(100dvh - var(--ems-transport-height) - 32px);
+  max-height: none;
   min-height: 560px;
-  overflow: auto;
-  overscroll-behavior: contain;
+  min-width: 100%;
+  overflow: visible !important;
+  overscroll-behavior: auto;
   scrollbar-gutter: stable both-edges;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x pan-y;
@@ -148,15 +171,19 @@ textarea::placeholder {
   opacity: 0.18;
 }
 
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
 .ems-scroll::-webkit-scrollbar,
 .ems-workspace-scroll::-webkit-scrollbar,
 .ems-panel-scroll::-webkit-scrollbar,
 [data-studio-content]::-webkit-scrollbar,
 [data-ems-workspace]::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
 .ems-scroll::-webkit-scrollbar-track,
 .ems-workspace-scroll::-webkit-scrollbar-track,
 .ems-panel-scroll::-webkit-scrollbar-track,
@@ -166,6 +193,8 @@ textarea::placeholder {
   border-radius: 999px;
 }
 
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
 .ems-scroll::-webkit-scrollbar-thumb,
 .ems-workspace-scroll::-webkit-scrollbar-thumb,
 .ems-panel-scroll::-webkit-scrollbar-thumb,
@@ -186,12 +215,13 @@ textarea::placeholder {
   z-index: 2;
 }
 
-/* Legacy Vice City classes still exist on older marketing routes, but the global scanline no longer sits over the entire app. */
+/* Legacy Vice City classes still exist on older marketing routes, but they must not trap global page scroll. */
 .vc-page {
   background: var(--vc-void);
   color: #fff;
   font-family: Inter, system-ui, sans-serif;
-  overflow-x: hidden;
+  overflow: visible !important;
+  min-width: min(100%, var(--ems-workspace-min-width));
 }
 .vc-page::before {
   content: '';
@@ -206,7 +236,7 @@ textarea::placeholder {
   body[data-studio-coach-docked] [data-studio-content],
   body[data-studio-coach-docked] [data-ems-workspace] {
     padding-right: 0 !important;
-    overflow: auto !important;
+    overflow: visible !important;
   }
 }
 
