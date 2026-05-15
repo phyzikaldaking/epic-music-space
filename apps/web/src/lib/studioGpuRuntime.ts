@@ -1,5 +1,46 @@
 import { createGpuFftPlan, gpuFftComputeShader, pushSpectrogramFrame, reduceCollaborativePluginGraph, type CollaborativePluginGraphEdit, type CollaborativePluginGraphState } from "@/lib/studioGpuSpectralEngine";
 
+type SafeGpuBuffer = {
+  getMappedRange?: () => ArrayBuffer;
+  unmap?: () => void;
+  mapAsync?: (mode: number) => Promise<void>;
+  destroy?: () => void;
+};
+type SafeGpuPipeline = { getBindGroupLayout?: (index: number) => unknown };
+type SafeGpuPass = {
+  setPipeline?: (pipeline: SafeGpuPipeline) => void;
+  setBindGroup?: (index: number, bindGroup: unknown) => void;
+  dispatchWorkgroups?: (count: number) => void;
+  end?: () => void;
+};
+type SafeGpuEncoder = { beginComputePass?: () => SafeGpuPass; copyBufferToBuffer?: (...args: unknown[]) => void; finish?: () => unknown };
+type SafeGpuDevice = {
+  createShaderModule?: (descriptor: { code: string }) => unknown;
+  createComputePipeline?: (descriptor: { layout: "auto"; compute: { module: unknown; entryPoint: string } }) => SafeGpuPipeline;
+  createBuffer?: (descriptor: { size: number; usage: number; mappedAtCreation?: boolean }) => SafeGpuBuffer;
+  createBindGroup?: (descriptor: { layout: unknown; entries: Array<{ binding: number; resource: { buffer: SafeGpuBuffer } }> }) => unknown;
+  createCommandEncoder?: () => SafeGpuEncoder;
+  queue?: { submit?: (commands: unknown[]) => void };
+};
+type SafeGpuAdapter = { requestDevice?: () => Promise<SafeGpuDevice> };
+type SafeGpu = { requestAdapter?: () => Promise<SafeGpuAdapter | null> };
+type SafeNavigatorWithGpu = Navigator & { gpu?: SafeGpu };
+
+type SafeWebSocket = {
+  readyState: number;
+  send: (value: string) => void;
+  close: () => void;
+  addEventListener: (type: "message", listener: (event: { data: string }) => void) => void;
+};
+type SafeBroadcastChannel = {
+  postMessage: (message: unknown) => void;
+  close: () => void;
+  addEventListener: (type: "message", listener: (event: { data: unknown }) => void) => void;
+};
+
+declare const GPUBufferUsage: { STORAGE: number; COPY_SRC: number; COPY_DST: number; MAP_READ: number } | undefined;
+declare const GPUMapMode: { READ: number } | undefined;
+
 export type WebGpuFftRuntime = {
   supported: boolean;
   planSize: number;
@@ -13,13 +54,20 @@ function fallbackMagnitude(samples: Float32Array) {
   return output;
 }
 
+function getSafeGpu() {
+  return typeof navigator !== "undefined" ? (navigator as SafeNavigatorWithGpu).gpu : undefined;
+}
+
 export async function createWebGpuFftRuntime(size = 2048): Promise<WebGpuFftRuntime> {
   const plan = createGpuFftPlan(size);
-  const gpu = typeof navigator !== "undefined" ? (navigator as Navigator & { gpu?: GPU }).gpu : undefined;
-  if (!gpu) return { supported: false, planSize: plan.size, stageCount: plan.stageCount, execute: async (samples) => fallbackMagnitude(samples) };
+  const gpu = getSafeGpu();
+  if (!gpu?.requestAdapter) return { supported: false, planSize: plan.size, stageCount: plan.stageCount, execute: async (samples) => fallbackMagnitude(samples) };
   const adapter = await gpu.requestAdapter();
-  if (!adapter) return { supported: false, planSize: plan.size, stageCount: plan.stageCount, execute: async (samples) => fallbackMagnitude(samples) };
+  if (!adapter?.requestDevice) return { supported: false, planSize: plan.size, stageCount: plan.stageCount, execute: async (samples) => fallbackMagnitude(samples) };
   const device = await adapter.requestDevice();
+  if (!device.createShaderModule || !device.createComputePipeline || !device.createBuffer || !device.createBindGroup || !device.createCommandEncoder || !device.queue?.submit || !GPUBufferUsage || !GPUMapMode) {
+    return { supported: false, planSize: plan.size, stageCount: plan.stageCount, execute: async (samples) => fallbackMagnitude(samples) };
+  }
   const shader = gpuFftComputeShader(plan);
   const module = device.createShaderModule({ code: shader });
   const pipeline = device.createComputePipeline({ layout: "auto", compute: { module, entryPoint: "main" } });
@@ -34,30 +82,37 @@ export async function createWebGpuFftRuntime(size = 2048): Promise<WebGpuFftRunt
         complex[index * 2] = samples[index] ?? 0;
         complex[index * 2 + 1] = 0;
       }
-      const storage = device.createBuffer({ size: complex.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
-      new Float32Array(storage.getMappedRange()).set(complex);
-      storage.unmap();
-      const readback = device.createBuffer({ size: complex.byteLength, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-      const bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: storage } }] });
-      const encoder = device.createCommandEncoder();
-      const pass = encoder.beginComputePass();
-      pass.setPipeline(pipeline);
-      pass.setBindGroup(0, bindGroup);
-      pass.dispatchWorkgroups(Math.ceil(plan.size / plan.workgroupSize));
-      pass.end();
-      encoder.copyBufferToBuffer(storage, 0, readback, 0, complex.byteLength);
-      device.queue.submit([encoder.finish()]);
-      await readback.mapAsync(GPUMapMode.READ);
-      const result = new Float32Array(readback.getMappedRange()).slice();
-      readback.unmap();
+      const storage = device.createBuffer?.({ size: complex.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
+      const mapped = storage?.getMappedRange?.();
+      if (!storage || !mapped) return fallbackMagnitude(samples);
+      new Float32Array(mapped).set(complex);
+      storage.unmap?.();
+      const readback = device.createBuffer?.({ size: complex.byteLength, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+      if (!readback || !pipeline.getBindGroupLayout) return fallbackMagnitude(samples);
+      const bindGroup = device.createBindGroup?.({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: storage } }] });
+      const encoder = device.createCommandEncoder?.();
+      const pass = encoder?.beginComputePass?.();
+      if (!bindGroup || !encoder || !pass) return fallbackMagnitude(samples);
+      pass.setPipeline?.(pipeline);
+      pass.setBindGroup?.(0, bindGroup);
+      pass.dispatchWorkgroups?.(Math.ceil(plan.size / plan.workgroupSize));
+      pass.end?.();
+      encoder.copyBufferToBuffer?.(storage, 0, readback, 0, complex.byteLength);
+      const command = encoder.finish?.();
+      if (command) device.queue?.submit?.([command]);
+      await readback.mapAsync?.(GPUMapMode.READ);
+      const range = readback.getMappedRange?.();
+      if (!range) return fallbackMagnitude(samples);
+      const result = new Float32Array(range).slice();
+      readback.unmap?.();
       const magnitudes = new Float32Array(plan.size);
       for (let index = 0; index < plan.size; index += 1) {
         const re = result[index * 2] ?? 0;
         const im = result[index * 2 + 1] ?? 0;
         magnitudes[index] = Math.sqrt(re * re + im * im);
       }
-      storage.destroy();
-      readback.destroy();
+      storage.destroy?.();
+      readback.destroy?.();
       return magnitudes;
     },
   };
@@ -78,7 +133,7 @@ export class WebGlSpectrogramRenderer {
     this.history = pushSpectrogramFrame(this.history, frame, this.width);
   }
 
-  render(time = performance.now()) {
+  render(time = typeof performance !== "undefined" ? performance.now() : 0) {
     const gl = this.gl;
     if (!gl) return false;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -99,17 +154,29 @@ export class WebGlSpectrogramRenderer {
   }
 }
 
+function createSafeBroadcastChannel(name: string): SafeBroadcastChannel | undefined {
+  if (typeof globalThis === "undefined" || !("BroadcastChannel" in globalThis)) return undefined;
+  const Ctor = (globalThis as typeof globalThis & { BroadcastChannel?: new (name: string) => SafeBroadcastChannel }).BroadcastChannel;
+  return Ctor ? new Ctor(name) : undefined;
+}
+
+function createSafeWebSocket(url: string): SafeWebSocket | undefined {
+  if (typeof globalThis === "undefined" || !("WebSocket" in globalThis)) return undefined;
+  const Ctor = (globalThis as typeof globalThis & { WebSocket?: new (url: string) => SafeWebSocket }).WebSocket;
+  return Ctor ? new Ctor(url) : undefined;
+}
+
 export class StudioGraphRealtimeTransport {
-  private socket?: WebSocket;
-  private bus?: BroadcastChannel;
+  private socket?: SafeWebSocket;
+  private bus?: SafeBroadcastChannel;
   private listeners = new Set<(edit: CollaborativePluginGraphEdit) => void>();
 
   constructor(private roomId: string, private websocketUrl?: string) {
-    if (typeof BroadcastChannel !== "undefined") this.bus = new BroadcastChannel(`ems-plugin-graph-${roomId}`);
+    this.bus = createSafeBroadcastChannel(`ems-plugin-graph-${roomId}`);
     this.bus?.addEventListener("message", (event) => this.emit(event.data as CollaborativePluginGraphEdit));
-    if (websocketUrl && typeof WebSocket !== "undefined") {
-      this.socket = new WebSocket(websocketUrl);
-      this.socket.addEventListener("message", (event) => this.emit(JSON.parse(event.data) as CollaborativePluginGraphEdit));
+    if (websocketUrl) {
+      this.socket = createSafeWebSocket(websocketUrl);
+      this.socket?.addEventListener("message", (event) => this.emit(JSON.parse(event.data) as CollaborativePluginGraphEdit));
     }
   }
 
@@ -120,7 +187,7 @@ export class StudioGraphRealtimeTransport {
 
   publish(edit: CollaborativePluginGraphEdit) {
     this.bus?.postMessage(edit);
-    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(edit));
+    if (this.socket?.readyState === 1) this.socket.send(JSON.stringify(edit));
     this.emit(edit);
   }
 
