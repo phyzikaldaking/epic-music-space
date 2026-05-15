@@ -1,108 +1,34 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import CreatePlaylistButton from "./CreatePlaylistButton";
+import { auth } from "@/auth";
+import CreatePlaylistButton from "@/components/CreatePlaylistButton";
+import { prisma } from "@/lib/db";
 
 export const metadata: Metadata = {
-  title: "Playlists",
-  description: "Your playlists on Epic Music Space.",
-  robots: { index: false, follow: false },
+  title: "Playlists | Epic Music Space",
+  description: "Collect, organize, and replay your favorite Epic Music Space tracks in private playlists.",
+  alternates: { canonical: "/playlists" },
+  openGraph: { title: "Playlists on Epic Music Space", description: "Sign in to build playlists from tracks, rooms, battles, and marketplace finds.", url: "/playlists" },
 };
-
-export const dynamic = "force-dynamic";
 
 export default async function PlaylistsPage() {
   const session = await auth();
-  if (!session?.user?.id) redirect("/auth/signin?callbackUrl=/playlists");
-
-  const playlists = await prisma.playlist.findMany({
-    where: { ownerId: session.user.id },
-    orderBy: { updatedAt: "desc" },
-    take: 100,
-  });
-
-  const ids = playlists.map((p) => p.id);
-  const counts = ids.length
-    ? await prisma.playlistTrack.groupBy({
-        by: ["playlistId"],
-        where: { playlistId: { in: ids } },
-        _count: { _all: true },
-      })
-    : [];
-  const countByPlaylist = new Map(
-    counts.map((c) => [c.playlistId, c._count._all]),
-  );
-
+  const userId = session?.user?.id;
+  if (!userId) {
+    return (
+      <main className="min-h-screen bg-black text-white">
+        <section className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-20 sm:px-8">
+          <div className="space-y-4"><p className="text-sm font-semibold uppercase tracking-[0.28em] text-fuchsia-300">Playlists</p><h1 className="text-4xl font-black tracking-tight sm:text-6xl">Keep your next set ready.</h1><p className="max-w-2xl text-lg leading-8 text-slate-300">Playlists are saved to your account so your crates, references, and room-ready picks follow you across devices.</p></div>
+          <div className="flex flex-wrap gap-3"><Link prefetch={false} href="/auth/signin?callbackUrl=/playlists" className="rounded-full bg-white px-5 py-3 text-sm font-bold text-black">Sign in to view playlists</Link><Link prefetch={false} href="/auth/signup?callbackUrl=/playlists" className="rounded-full border border-white/20 px-5 py-3 text-sm font-bold text-white">Create account</Link></div>
+        </section>
+      </main>
+    );
+  }
+  const playlists = await prisma.playlist.findMany({ where: { userId }, include: { _count: { select: { items: true } } }, orderBy: { createdAt: "desc" } });
   return (
-    <div className="mx-auto max-w-7xl px-4 py-12">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-white/45">
-            Your library
-          </p>
-          <h1 className="mt-1 text-3xl font-extrabold text-gradient-ems">Playlists</h1>
-          <p className="mt-1 text-sm text-white/55">
-            Build and share track collections. Drop the link to anyone — they don&apos;t need an account to listen.
-          </p>
-        </div>
-        <CreatePlaylistButton />
-      </div>
-
-      {playlists.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 studio-faceplate p-10 text-center">
-          <p className="mb-3 text-4xl" aria-hidden>🎵</p>
-          <p className="text-sm font-semibold text-white/85">
-            You haven&apos;t made a playlist yet.
-          </p>
-          <p className="mx-auto mt-1 max-w-sm text-xs text-white/45">
-            Create one and start adding tracks from the marketplace, your saves, or any artist&apos;s page.
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {playlists.map((p) => {
-            const count = countByPlaylist.get(p.id) ?? 0;
-            return (
-              <Link
-                key={p.id}
-                href={`/playlists/${p.id}`}
-                className="group flex flex-col rounded-2xl border border-white/10 studio-faceplate p-4 transition hover:border-brand-500/60"
-              >
-                <div className="aspect-square w-full overflow-hidden rounded-xl bg-gradient-to-br from-brand-600/30 to-fuchsia-600/30">
-                  {p.coverUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.coverUrl}
-                      alt=""
-                      className="h-full w-full object-cover transition group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-5xl opacity-70" aria-hidden>
-                      🎵
-                    </div>
-                  )}
-                </div>
-                <div className="mt-3 flex items-start justify-between gap-2">
-                  <h2 className="line-clamp-2 text-sm font-bold text-white/95">
-                    {p.name}
-                  </h2>
-                  {p.isPublic && (
-                    <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
-                      Public
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 text-xs text-white/45">
-                  {count} {count === 1 ? "track" : "tracks"} · Updated{" "}
-                  {new Date(p.updatedAt).toLocaleDateString()}
-                </p>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    <main className="mx-auto min-h-screen max-w-5xl px-6 py-10 text-white">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold uppercase tracking-[0.24em] text-fuchsia-300">Your library</p><h1 className="mt-2 text-3xl font-black">Playlists</h1></div><CreatePlaylistButton /></header>
+      {playlists.length === 0 ? <section className="mt-10 rounded-lg border border-white/10 bg-white/[0.04] p-8 text-slate-300"><h2 className="text-xl font-bold text-white">No playlists yet</h2><p className="mt-2 max-w-2xl">Create your first playlist, then save tracks from the marketplace and timeline.</p></section> : <section className="mt-10 grid gap-4 sm:grid-cols-2">{playlists.map((playlist) => <Link prefetch={false} key={playlist.id} href={"/playlists/" + playlist.id} className="rounded-lg border border-white/10 bg-white/[0.04] p-5 transition hover:border-fuchsia-300/50 hover:bg-white/[0.08]"><h2 className="text-xl font-bold text-white">{playlist.name}</h2><p className="mt-2 text-sm text-slate-400">{playlist._count.items} tracks</p></Link>)}</section>}
+    </main>
   );
 }

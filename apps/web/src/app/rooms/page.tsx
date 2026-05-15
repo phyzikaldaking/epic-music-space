@@ -51,7 +51,7 @@ export default async function RoomsIndexPage() {
           </p>
         </div>
         <Link
-          href="/rooms/new"
+          href="/auth/signin?callbackUrl=/rooms/new"
           className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-600"
         >
           🎙️ Open a Room
@@ -63,11 +63,11 @@ export default async function RoomsIndexPage() {
           <p className="text-6xl">🎧</p>
           <h2 className="mt-4 text-xl font-bold">No live rooms right now</h2>
           <p className="mt-2 max-w-md mx-auto text-sm text-white/45">
-            Be the first to host. Open a room, press play, and watch your fans
+            Be the first to host. Sign in to open a room, press play, and watch your fans
             drop in from anywhere in the world.
           </p>
           <Link
-            href="/rooms/new"
+            href="/auth/signin?callbackUrl=/rooms/new"
             className="mt-6 inline-block rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white hover:bg-brand-600"
           >
             Open a Room →

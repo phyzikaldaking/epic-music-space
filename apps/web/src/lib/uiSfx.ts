@@ -107,6 +107,7 @@ class UiSfxEngine {
   private settings: UiSfxSettings;
   private lastPlayedAt = 0;
   private listeners = new Set<UiSfxListener>();
+  private activated = false;
 
   constructor() {
     this.settings = readStoredSettings();
@@ -161,6 +162,7 @@ class UiSfxEngine {
 
   async warmup(): Promise<void> {
     if (!this.isEnabled()) return;
+    this.activated = true;
     this.ensureContext();
     if (this.ctx && this.ctx.state === "suspended") {
       await this.ctx.resume();
@@ -168,7 +170,7 @@ class UiSfxEngine {
   }
 
   async play(kind: UiSfxKind): Promise<void> {
-    if (!this.isEnabled()) return;
+    if (!this.isEnabled() || !this.activated) return;
     if (!this.settings.categories[kindCategory(kind)]) return;
 
     const now = Date.now();

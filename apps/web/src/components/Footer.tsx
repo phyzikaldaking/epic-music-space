@@ -2,59 +2,36 @@ import Link from "next/link";
 import { mobileStoreLinks } from "@/lib/mobileApp";
 
 const footerNav = [
-  {
-    heading: "Marketplace",
-    links: [
-      { label: "Browse Tracks", href: "/marketplace" },
-      { label: "Trending Charts", href: "/leaderboard" },
-      { label: "Space Music", href: "/marketplace?search=space" },
-      { label: "Sci-Fi Trailers", href: "/marketplace?search=sci-fi%20trailer" },
-      { label: "Game Cues", href: "/marketplace?search=game" },
-    ],
-  },
-  {
-    heading: "Artists",
-    links: [
-      { label: "Upload a Track", href: "/studio/new" },
-      { label: "Artist Dashboard", href: "/dashboard" },
-      { label: "Analytics", href: "/analytics" },
-      { label: "Boost a Track", href: "/boost" },
-      { label: "Label Portal", href: "/label" },
-      { label: "Invite & Earn", href: "/invite" },
-    ],
-  },
-  {
-    heading: "Platform",
-    links: [
-      { label: "Pricing", href: "/pricing" },
-      { label: "Versus Battles", href: "/versus" },
-      { label: "AI Assistant", href: "/ai" },
-      { label: "Get the App", href: "/get-the-app" },
-    ],
-  },
-  {
-    heading: "Account",
-    links: [
-      { label: "Profile", href: "/profile/edit" },
-      { label: "Library", href: "/library" },
-      { label: "Playlists", href: "/playlists" },
-      { label: "Redeem code", href: "/redeem" },
-      { label: "Notifications", href: "/settings/notifications" },
-      { label: "Privacy & data", href: "/settings/privacy" },
-      { label: "Support", href: "/support" },
-    ],
-  },
-  {
-    heading: "Legal",
-    links: [
-      { label: "Terms of Service", href: "/terms" },
-      { label: "Privacy Policy", href: "/privacy" },
-      { label: "License Agreement", href: "/license-agreement" },
-      { label: "DMCA / Copyright", href: "/dmca" },
-      { label: "Contact", href: "mailto:legal@epicmusicspace.com" },
-    ],
-  },
-];
+  { heading: "Explore", links: [
+    { label: "Marketplace", href: "/marketplace" },
+    { label: "Timeline", href: "/timeline" },
+    { label: "Rooms", href: "/rooms" },
+    { label: "Versus", href: "/versus" },
+    { label: "Leaderboard", href: "/leaderboard" },
+  ] },
+  { heading: "Artists", links: [
+    { label: "Create artist account", href: "/auth/signup?callbackUrl=/studio/setup" },
+    { label: "Upload a track (sign in)", href: "/auth/signin?callbackUrl=/studio/new" },
+    { label: "Artist dashboard (sign in)", href: "/auth/signin?callbackUrl=/dashboard" },
+    { label: "Analytics (sign in)", href: "/auth/signin?callbackUrl=/analytics" },
+    { label: "Boost (sign in)", href: "/auth/signin?callbackUrl=/boost" },
+    { label: "Label Portal", href: "/label" },
+  ] },
+  { heading: "Platform", links: [
+    { label: "Pricing", href: "/pricing" },
+    { label: "AI Assistant (sign in)", href: "/auth/signin?callbackUrl=/ai" },
+    { label: "Playlists", href: "/playlists" },
+    { label: "Redeem a code", href: "/redeem" },
+    { label: "Get the app", href: "/get-the-app" },
+  ] },
+  { heading: "Company", links: [
+    { label: "Support", href: "/support" },
+    { label: "Contact", href: "/contact" },
+    { label: "Privacy", href: "/privacy" },
+    { label: "Terms", href: "/terms" },
+    { label: "DMCA", href: "/dmca" },
+  ] },
+]];
 
 export default function Footer() {
   return (
@@ -204,7 +181,7 @@ export default function Footer() {
           <p className="max-w-lg text-center leading-5 sm:text-right">
             Digital content licenses only — not securities or financial
             instruments. Review our{" "}
-            <Link href="/legal/licensing" className="underline hover:text-white/50">
+            <Link href="/license-agreement" prefetch={false} className="underline hover:text-white/50">
               Licensing Agreement
             </Link>{" "}
             before purchasing.

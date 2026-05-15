@@ -549,7 +549,7 @@ export default async function VersusPage({
               Season Circuit
             </Link>
             <Link
-              href="/verzuz/new"
+              href="/auth/signin?callbackUrl=/verzuz/new"
               className="inline-flex items-center gap-2 rounded-xl border border-gold-400/45 bg-gold-400/10 px-4 py-2.5 text-xs font-black uppercase tracking-[0.18em] text-gold-100 hover:bg-gold-400/20 transition"
             >
               Verzuz · 10-round series
@@ -1130,7 +1130,7 @@ export default async function VersusPage({
             <p className="text-xl font-semibold text-white/60">No active battles right now.</p>
             <p className="mt-2 text-sm text-white/35 max-w-sm mx-auto">
               {isArtist
-                ? "Start a battle above — pit two of your tracks against each other and let the community vote."
+                ? "Sign in to start a battle above — pit two of your tracks against each other and let the community vote."
                 : session?.user?.id
                   ? "Check back soon! Artists are setting up battles. Meanwhile, browse the marketplace."
                   : "Sign up as an artist to start battles, or join as a listener to vote when battles go live."}

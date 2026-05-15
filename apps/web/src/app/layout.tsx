@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
 import Providers from "@/components/Providers";
-import PublicFooter from "@/components/PublicFooter";
 import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 import "./ems-overrides.css";

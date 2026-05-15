@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "EMS",
     description:
       "Connect with artists, discover trending music, join live rooms, and vote in fan-powered battles.",
-    start_url: "/feed",
+    start_url: "/timeline",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
@@ -45,7 +45,7 @@ export default function manifest(): MetadataRoute.Manifest {
     // Android, and in the right-click menu of an installed PWA on
     // desktop. iOS Safari ignores it for now.
     shortcuts: [
-      { name: "Feed", short_name: "Feed", url: "/feed", description: "Your artist and fan activity feed" },
+      { name: "Feed", short_name: "Feed", url: "/timeline", description: "Your artist and fan activity feed" },
       { name: "Marketplace", short_name: "Market", url: "/marketplace", description: "Discover and support independent artists" },
       { name: "Versus", short_name: "Versus", url: "/versus", description: "Fan-voted song battles" },
       { name: "Messages", short_name: "DMs", url: "/messages", description: "Direct messages" },
