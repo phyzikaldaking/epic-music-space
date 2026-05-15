@@ -3,7 +3,8 @@ import { reduceCollaborativePluginGraph } from "@/lib/studioGpuSpectralEngine";
 
 type SafeGpuBuffer = { destroy?: () => void };
 type SafeGpuDevice = { createBuffer?: (descriptor: { size: number; usage: number }) => SafeGpuBuffer };
-type SafeRtcPeerConnection = { close: () => void; onicecandidate: ((event: { candidate?: { toJSON: () => unknown } | null }) => void) | null };
+type SafeRtcCandidate = { toJSON?: () => unknown };
+type SafeRtcPeerConnection = { close: () => void; onicecandidate: ((event: { candidate?: SafeRtcCandidate | null }) => void) | null };
 type SafeMediaStream = { id: string };
 
 export type WebGpuRenderGraphNode = {
@@ -119,11 +120,11 @@ export class PeerMeshSyncRuntime {
 
   createPeer(targetActorId: string) {
     if (typeof globalThis === "undefined" || !("RTCPeerConnection" in globalThis)) return null;
-    const PeerCtor = (globalThis as typeof globalThis & { RTCPeerConnection?: new () => SafeRtcPeerConnection }).RTCPeerConnection;
+    const PeerCtor = (globalThis as typeof globalThis & { RTCPeerConnection?: new () => unknown }).RTCPeerConnection;
     if (!PeerCtor) return null;
-    const peer = new PeerCtor();
+    const peer = new PeerCtor() as SafeRtcPeerConnection;
     peer.onicecandidate = (event) => {
-      if (event.candidate) this.emit({ type: "ice", roomId: this.roomId, actorId: this.actorId, targetActorId, payload: event.candidate.toJSON(), createdAt: new Date().toISOString() });
+      if (event.candidate) this.emit({ type: "ice", roomId: this.roomId, actorId: this.actorId, targetActorId, payload: event.candidate.toJSON?.() ?? event.candidate, createdAt: new Date().toISOString() });
     };
     this.peers.set(targetActorId, peer);
     return peer;
