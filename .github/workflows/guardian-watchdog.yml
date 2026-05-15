@@ -1,0 +1,43 @@
+name: EMS Guardian Watchdog
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '*/30 * * * *'
+
+jobs:
+  guardian:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm install
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Route Smoke Test
+        run: node scripts/guardian/route-smoke.mjs
+
+      - name: Performance Budget
+        run: node scripts/guardian/perf-budget.mjs
+
+      - name: Security Audit
+        run: node scripts/guardian/security-audit.mjs
