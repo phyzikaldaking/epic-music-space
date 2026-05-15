@@ -24,12 +24,15 @@
   --vc-night: #0a0420;
   --vc-deep: #1a0530;
   --vc-void: #050009;
+  --ems-transport-height: 72px;
+  --ems-workspace-min-width: 1280px;
+  --ems-workspace-min-height: 1180px;
 }
 
 html,
 body {
   min-height: 100%;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
 }
 
@@ -70,15 +73,107 @@ textarea::placeholder {
   display: none !important;
 }
 
-/* Studio pages must scroll. Do not globally trap the DAW in a no-scroll shell. */
+/* Studio pages must scroll on both axes. Do not globally trap the DAW in a no-scroll shell. */
 [data-studio-content],
 [data-ems-workspace] {
   isolation: isolate;
   position: relative;
   min-height: 100vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ems-scroll,
+.ems-scroll-x,
+.ems-scroll-y,
+.ems-workspace-scroll {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ems-scroll,
+.ems-workspace-scroll {
+  overflow: auto;
+}
+
+.ems-scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.ems-scroll-y {
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
+}
+
+.ems-workspace-scroll {
+  min-width: min(100%, var(--ems-workspace-min-width));
+  min-height: min(100dvh, var(--ems-workspace-min-height));
+  touch-action: pan-x pan-y;
+}
+
+.ems-panel-scroll {
+  max-height: calc(100dvh - var(--ems-transport-height) - 32px);
+  min-height: 560px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+
+.ems-sticky-transport {
+  position: sticky;
+  top: max(0.5rem, env(safe-area-inset-top));
+  z-index: 80;
+}
+
+.ems-scroll-fade {
+  position: relative;
+}
+
+.ems-scroll-fade::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(5, 7, 10, 0.88), transparent 28px, transparent calc(100% - 28px), rgba(5, 7, 10, 0.88)),
+    linear-gradient(180deg, rgba(5, 7, 10, 0.72), transparent 24px, transparent calc(100% - 24px), rgba(5, 7, 10, 0.72));
+  mix-blend-mode: screen;
+  opacity: 0.18;
+}
+
+.ems-scroll::-webkit-scrollbar,
+.ems-workspace-scroll::-webkit-scrollbar,
+.ems-panel-scroll::-webkit-scrollbar,
+[data-studio-content]::-webkit-scrollbar,
+[data-ems-workspace]::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.ems-scroll::-webkit-scrollbar-track,
+.ems-workspace-scroll::-webkit-scrollbar-track,
+.ems-panel-scroll::-webkit-scrollbar-track,
+[data-studio-content]::-webkit-scrollbar-track,
+[data-ems-workspace]::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.045);
+  border-radius: 999px;
+}
+
+.ems-scroll::-webkit-scrollbar-thumb,
+.ems-workspace-scroll::-webkit-scrollbar-thumb,
+.ems-panel-scroll::-webkit-scrollbar-thumb,
+[data-studio-content]::-webkit-scrollbar-thumb,
+[data-ems-workspace]::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.85), rgba(255, 45, 146, 0.55));
+  border: 2px solid rgba(5, 7, 10, 0.88);
+  border-radius: 999px;
 }
 
 [data-studio-content] button,
@@ -111,7 +206,7 @@ textarea::placeholder {
   body[data-studio-coach-docked] [data-studio-content],
   body[data-studio-coach-docked] [data-ems-workspace] {
     padding-right: 0 !important;
-    overflow-y: auto !important;
+    overflow: auto !important;
   }
 }
 
