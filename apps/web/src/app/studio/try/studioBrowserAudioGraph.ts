@@ -41,15 +41,22 @@ function makeWaveShaperCurve(amount = 0.3) {
   return curve;
 }
 
+function normalizeSamples(samples: Float32Array) {
+  const normalized = new Float32Array(samples.length);
+  normalized.set(samples);
+  return normalized;
+}
+
 export function supportsOfflineAudioGraph() {
   return typeof OfflineAudioContext !== "undefined";
 }
 
 export async function renderOfflineAudioGraph(input: OfflineGraphInput) {
-  if (!supportsOfflineAudioGraph()) return input.samples;
-  const context = new OfflineAudioContext(1, input.samples.length, input.sampleRate);
-  const buffer = context.createBuffer(1, input.samples.length, input.sampleRate);
-  buffer.copyToChannel(input.samples, 0);
+  const samples = normalizeSamples(input.samples);
+  if (!supportsOfflineAudioGraph()) return samples;
+  const context = new OfflineAudioContext(1, samples.length, input.sampleRate);
+  const buffer = context.createBuffer(1, samples.length, input.sampleRate);
+  buffer.copyToChannel(samples, 0);
   const source = context.createBufferSource();
   source.buffer = buffer;
   let previous: AudioNode = source;
@@ -103,7 +110,7 @@ export async function renderOfflineAudioGraph(input: OfflineGraphInput) {
   previous.connect(context.destination);
   source.start(0);
   const rendered = await context.startRendering();
-  return rendered.getChannelData(0).slice();
+  return normalizeSamples(rendered.getChannelData(0));
 }
 
 export const DEFAULT_MASTERING_PLUGIN_CHAIN: PluginNodeConfig[] = [
