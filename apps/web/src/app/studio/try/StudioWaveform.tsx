@@ -8,6 +8,13 @@ type WaveformTile = {
   pathKey: string;
 };
 
+type StudioWaveformProps = {
+  color: string;
+  row: number;
+  tiles?: number;
+  tileStart?: number;
+};
+
 const waveformTileCache = new Map<string, WaveformTile>();
 const MAX_WAVEFORM_TILES = 256;
 
@@ -40,10 +47,11 @@ function getWaveformTile(row: number, tile: number): WaveformTile {
   return value;
 }
 
-function StudioWaveform({ color, row, tiles = 1 }: { color: string; row: number; tiles?: number }) {
+function StudioWaveform({ color, row, tiles = 1, tileStart = 0 }: StudioWaveformProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const safeTiles = Math.max(1, Math.min(8, tiles));
-  const tileData = useMemo(() => Array.from({ length: safeTiles }, (_, tile) => getWaveformTile(row, tile)), [row, safeTiles]);
+  const safeTileStart = Math.max(0, tileStart);
+  const tileData = useMemo(() => Array.from({ length: safeTiles }, (_, tile) => getWaveformTile(row, safeTileStart + tile)), [row, safeTiles, safeTileStart]);
 
   useEffect(() => {
     const svg = svgRef.current;
