@@ -39,6 +39,22 @@ let dataBuf: Uint8Array | null = null;
 const attachedElements = new WeakSet<HTMLMediaElement>();
 let smoothedLevel = 0;
 let initFailed = false;
+let userActivated = false;
+const pendingAudio = new WeakSet<HTMLMediaElement>();
+
+function deferAttachUntilGesture(audio: HTMLMediaElement): boolean {
+  if (pendingAudio.has(audio)) return false;
+  pendingAudio.add(audio);
+  const activate = () => {
+    userActivated = true;
+    pendingAudio.delete(audio);
+    attachAudioElement(audio);
+  };
+  window.addEventListener("pointerdown", activate, { once: true, passive: true });
+  window.addEventListener("keydown", activate, { once: true });
+  audio.addEventListener("play", activate, { once: true });
+  return false;
+}
 
 function ensureContext(): AudioContext | null {
   if (ctx) return ctx;
@@ -81,6 +97,8 @@ function ensureContext(): AudioContext | null {
 export function attachAudioElement(audio: HTMLMediaElement): boolean {
   if (typeof window === "undefined") return false;
   if (attachedElements.has(audio)) return true;
+  if (!userActivated && audio.paused) return deferAttachUntilGesture(audio);
+  userActivated = true;
 
   const acx = ensureContext();
   if (!acx || !analyser) return false;
