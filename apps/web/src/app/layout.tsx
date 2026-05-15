@@ -76,7 +76,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script suppressHydrationWarning nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredDataJson }} />
         <Providers>
           {children}
-          <PublicFooter />
         </Providers>
       </body>
     </html>
