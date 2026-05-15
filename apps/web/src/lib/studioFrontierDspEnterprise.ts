@@ -1,5 +1,18 @@
 import type { CollaborativePluginGraphEdit } from "@/lib/studioGpuSpectralEngine";
 
+type SafeGpuComputePipeline = unknown;
+type SafeGpuShaderModule = unknown;
+type SafeGpuDevice = {
+  createShaderModule?: (descriptor: { code: string }) => SafeGpuShaderModule;
+  createComputePipeline?: (descriptor: { layout: "auto"; compute: { module: SafeGpuShaderModule; entryPoint: string } }) => SafeGpuComputePipeline;
+};
+type SafeCryptoKey = unknown;
+type SafeSubtleCrypto = {
+  generateKey?: (...args: unknown[]) => Promise<SafeCryptoKey>;
+  encrypt?: (...args: unknown[]) => Promise<ArrayBuffer>;
+};
+type SafeCrypto = { subtle?: SafeSubtleCrypto; getRandomValues?: (array: Uint8Array) => Uint8Array };
+
 export type PersistentComputePipelineKey = "fft" | "convolution" | "granular" | "phase_vocoder" | "audio_graph";
 export type GpuAudioKernelNode = {
   id: string;
@@ -10,11 +23,11 @@ export type GpuAudioKernelNode = {
 };
 
 export class PersistentWebGpuPipelineRegistry {
-  private pipelines = new Map<string, GPUComputePipeline>();
-  constructor(private device?: GPUDevice) {}
+  private pipelines = new Map<string, SafeGpuComputePipeline>();
+  constructor(private device?: SafeGpuDevice) {}
 
   getOrCreate(key: string, shaderCode: string) {
-    if (!this.device) return null;
+    if (!this.device?.createShaderModule || !this.device.createComputePipeline) return null;
     const existing = this.pipelines.get(key);
     if (existing) return existing;
     const module = this.device.createShaderModule({ code: shaderCode });
@@ -105,20 +118,27 @@ export type EncryptedCollaborationEnvelope = {
   createdAt: string;
 };
 
+function getSafeCrypto() {
+  return typeof globalThis !== "undefined" ? (globalThis.crypto as SafeCrypto | undefined) : undefined;
+}
+
 export async function createCollaborationKey() {
-  if (typeof crypto === "undefined" || !crypto.subtle) return null;
-  return crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+  const safeCrypto = getSafeCrypto();
+  if (!safeCrypto?.subtle?.generateKey) return null;
+  return safeCrypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
 }
 
 function toBase64(bytes: Uint8Array) {
-  if (typeof btoa === "undefined") return Array.from(bytes).join(",");
-  return btoa(String.fromCharCode(...bytes));
+  if (typeof globalThis !== "undefined" && "btoa" in globalThis) return globalThis.btoa(String.fromCharCode(...bytes));
+  return Array.from(bytes).join(",");
 }
 
-export async function encryptCollaborationPayload(roomId: string, senderId: string, key: CryptoKey, payload: unknown): Promise<EncryptedCollaborationEnvelope> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+export async function encryptCollaborationPayload(roomId: string, senderId: string, key: SafeCryptoKey, payload: unknown): Promise<EncryptedCollaborationEnvelope> {
+  const safeCrypto = getSafeCrypto();
+  const iv = safeCrypto?.getRandomValues?.(new Uint8Array(12)) ?? new Uint8Array(12);
   const encoded = new TextEncoder().encode(JSON.stringify(payload));
-  const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded));
+  const encryptedBuffer = safeCrypto?.subtle?.encrypt ? await safeCrypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded) : encoded.buffer.slice(0);
+  const encrypted = new Uint8Array(encryptedBuffer);
   return { roomId, senderId, algorithm: "AES-GCM", iv: toBase64(iv), ciphertext: toBase64(encrypted), createdAt: new Date().toISOString() };
 }
 
