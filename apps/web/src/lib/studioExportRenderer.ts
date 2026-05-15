@@ -88,48 +88,83 @@ function padFrequency(track: BeatTrack, index: number) {
   return 220 + index * 55;
 }
 
-function renderTracksToWav(tracks: BeatTrack[], bpm = 92, swing = 12, stemTrackId?: string) {
+function softClip(sample: number) {
+  return Math.tanh(sample * 1.35) * 0.92;
+}
+
+function masterSamples(samples: Float32Array) {
+  let peak = 0;
+  for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
+  const gain = peak > 0 ? Math.min(1.8, 0.9 / peak) : 1;
+  const mastered = new Float32Array(samples.length);
+  let envelope = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    const input = samples[index] * gain;
+    envelope = Math.max(Math.abs(input), envelope * 0.997);
+    const compressed = input / (1 + Math.max(0, envelope - 0.62) * 1.8);
+    mastered[index] = softClip(compressed);
+  }
+  return mastered;
+}
+
+function renderTracksToSamples(tracks: BeatTrack[], bpm = 92, swing = 12, stemTrackId?: string, bars = 8) {
   const sampleRate = 44100;
   const stepDuration = 60 / bpm / 4;
-  const totalSamples = Math.ceil(stepDuration * 16 * sampleRate);
+  const steps = Math.max(16, bars * 16);
+  const totalSamples = Math.ceil(stepDuration * steps * sampleRate);
   const samples = new Float32Array(totalSamples);
   tracks.forEach((track, trackIndex) => {
     if (stemTrackId && String(track.id ?? track.name) !== stemTrackId) return;
-    if (track.muted || !Array.isArray(track.pattern)) return;
+    if (track.muted || !Array.isArray(track.pattern) || track.pattern.length === 0) return;
     const level = Math.max(0, Math.min(1, Number(track.level ?? 75) / 100));
-    track.pattern.forEach((enabled, stepIndex) => {
-      if (!enabled) return;
-      const swung = stepIndex % 2 === 1 ? (swing / 100) * stepDuration * 0.5 : 0;
-      const start = Math.floor((stepIndex * stepDuration + swung) * sampleRate);
-      const isBass = String(track.padKind ?? track.kind).includes("808") || String(track.kind).includes("bass");
-      const length = Math.floor((isBass ? 0.38 : 0.13) * sampleRate);
+    for (let absoluteStep = 0; absoluteStep < steps; absoluteStep += 1) {
+      const stepIndex = absoluteStep % track.pattern.length;
+      if (!track.pattern[stepIndex]) continue;
+      const swung = absoluteStep % 2 === 1 ? (swing / 100) * stepDuration * 0.5 : 0;
+      const start = Math.floor((absoluteStep * stepDuration + swung) * sampleRate);
+      const pad = String(track.padKind ?? track.kind ?? "");
+      const isBass = pad.includes("808") || pad.includes("bass");
+      const isHat = pad.includes("hat");
+      const isSnare = pad.includes("snare") || pad.includes("clap");
+      const length = Math.floor((isBass ? 0.55 : isHat ? 0.055 : 0.18) * sampleRate);
       const freq = padFrequency(track, trackIndex);
       for (let i = 0; i < length && start + i < samples.length; i += 1) {
         const t = i / sampleRate;
-        const env = Math.exp(-t * (isBass ? 5 : 24));
-        const tone = Math.sin(2 * Math.PI * Math.max(35, freq - (String(track.padKind).includes("kick") ? t * 90 : 0)) * t) * env * level * 0.26;
-        const noise = (Math.sin((i + 1) * 12.9898 + trackIndex * 78.233) * 43758.5453 % 1) * env * (String(track.padKind).includes("hat") || String(track.padKind).includes("snare") || String(track.padKind).includes("clap") ? 0.11 : 0.018);
+        const env = Math.exp(-t * (isBass ? 3.8 : isHat ? 42 : 18));
+        const pitchDrop = pad.includes("kick") ? t * 120 : 0;
+        const tone = Math.sin(2 * Math.PI * Math.max(32, freq - pitchDrop) * t) * env * level * (isBass ? 0.32 : 0.22);
+        const noiseSeed = Math.sin((i + 1) * 12.9898 + trackIndex * 78.233 + absoluteStep * 9.17) * 43758.5453;
+        const noise = (noiseSeed - Math.floor(noiseSeed) - 0.5) * env * (isHat ? 0.18 : isSnare ? 0.13 : 0.02);
         samples[start + i] += tone + noise;
       }
-    });
+    }
   });
-  return writeWav(samples, sampleRate);
+  return { samples, sampleRate };
+}
+
+function renderTracksToWav(tracks: BeatTrack[], bpm = 92, swing = 12, stemTrackId?: string, bars = 8, master = true) {
+  const rendered = renderTracksToSamples(tracks, bpm, swing, stemTrackId, bars);
+  return writeWav(master ? masterSamples(rendered.samples) : rendered.samples, rendered.sampleRate);
 }
 
 async function collectRenderState(projectId: string) {
   const patterns = await listBeatPatterns(projectId, 1).catch(() => []);
   const pattern = patterns[0] as { tracks?: BeatTrack[]; bpm?: number; swing?: number; name?: string; arrangement?: unknown[] } | undefined;
+  const tracks = Array.isArray(pattern?.tracks) ? pattern.tracks : [
+    { id: "kick", name: "Kick", padKind: "kick", level: 90, pattern: [true,false,false,false,true,false,false,false,true,false,false,false,true,false,false,false] },
+    { id: "snare", name: "Snare", padKind: "snare", level: 75, pattern: [false,false,false,false,true,false,false,false,false,false,false,false,true,false,false,false] },
+    { id: "hat", name: "Hat", padKind: "hat", level: 58, pattern: Array.from({ length: 16 }, (_, i) => i % 2 === 0) },
+    { id: "bass", name: "808", padKind: "bass808", kind: "bass", level: 82, pattern: [true,false,false,true,false,false,false,false,true,false,false,true,false,false,true,false] },
+  ];
+  const arrangement = Array.isArray(pattern?.arrangement) ? pattern.arrangement : [];
+  const bars = Math.max(8, Math.ceil(Math.max(16, ...tracks.map((track) => Array.isArray(track.pattern) ? track.pattern.length : 16), arrangement.length * 16) / 16));
   return {
     name: pattern?.name ?? "EMS Default Beat",
     bpm: Number(pattern?.bpm ?? 92),
     swing: Number(pattern?.swing ?? 12),
-    tracks: Array.isArray(pattern?.tracks) ? pattern.tracks : [
-      { id: "kick", name: "Kick", padKind: "kick", level: 90, pattern: [true,false,false,false,true,false,false,false,true,false,false,false,true,false,false,false] },
-      { id: "snare", name: "Snare", padKind: "snare", level: 75, pattern: [false,false,false,false,true,false,false,false,false,false,false,false,true,false,false,false] },
-      { id: "hat", name: "Hat", padKind: "hat", level: 58, pattern: Array.from({ length: 16 }, (_, i) => i % 2 === 0) },
-      { id: "bass", name: "808", padKind: "bass808", kind: "bass", level: 82, pattern: [true,false,false,true,false,false,false,false,true,false,false,true,false,false,true,false] },
-    ],
-    arrangement: pattern?.arrangement ?? [],
+    tracks,
+    bars,
+    arrangement,
   };
 }
 
@@ -154,7 +189,7 @@ async function saveArtifact(job: RenderJobRecord, filename: string, mimeType: st
 export async function createAudioRenderJob(input: RenderInput) {
   await ensureExportTable();
   const id = `audio-export-${Date.now()}-${crypto.randomUUID()}`;
-  const manifest = { projectId: input.projectId, sessionId: input.sessionId, format: input.format, stages: ["queued", "collect_project_state", "render_audio", "package_artifacts", "complete"], queuedAt: new Date().toISOString() };
+  const manifest = { projectId: input.projectId, sessionId: input.sessionId, format: input.format, stages: ["queued", "collect_project_state", "render_audio", "mastering", "package_artifacts", "complete"], queuedAt: new Date().toISOString() };
   await prisma.$executeRawUnsafe(`INSERT INTO ems_audio_export_job (id, user_id, project_id, session_id, format, status, progress, render_manifest) VALUES ($1,$2,$3,$4,$5,'queued',5,$6::jsonb)`, id, input.userId, input.projectId, input.sessionId, input.format, JSON.stringify(manifest));
   return runAudioRenderJob(id, input.userId);
 }
@@ -169,14 +204,15 @@ export async function runAudioRenderJob(jobId: string, userId: string) {
     const state = await collectRenderState(job.project_id);
     await prisma.$executeRawUnsafe(`UPDATE ems_audio_export_job SET status='rendering', progress=55, updated_at=NOW() WHERE id=$1`, jobId);
     if (job.format === "stems") {
-      for (const track of state.tracks) await saveArtifact(job, `${String(track.name ?? track.id ?? "stem").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-stem.wav`, "audio/wav", renderTracksToWav(state.tracks, state.bpm, state.swing, String(track.id ?? track.name)));
+      for (const track of state.tracks) await saveArtifact(job, `${String(track.name ?? track.id ?? "stem").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-stem.wav`, "audio/wav", renderTracksToWav(state.tracks, state.bpm, state.swing, String(track.id ?? track.name), state.bars, false));
     } else if (job.format === "license_package") {
-      const data = Buffer.from(JSON.stringify({ projectId: job.project_id, sessionId: job.session_id, pattern: state.name, bpm: state.bpm, swing: state.swing, tracks: state.tracks.map((track) => ({ id: track.id, name: track.name, kind: track.kind, padKind: track.padKind })), arrangement: state.arrangement, generatedAt: new Date().toISOString() }, null, 2));
+      const data = Buffer.from(JSON.stringify({ projectId: job.project_id, sessionId: job.session_id, pattern: state.name, bpm: state.bpm, swing: state.swing, bars: state.bars, tracks: state.tracks.map((track) => ({ id: track.id, name: track.name, kind: track.kind, padKind: track.padKind })), arrangement: state.arrangement, generatedAt: new Date().toISOString() }, null, 2));
       await saveArtifact(job, "license-package-manifest.json", "application/json", data);
     } else {
-      await saveArtifact(job, `${job.format}.wav`, "audio/wav", renderTracksToWav(state.tracks, state.bpm, state.swing));
+      await prisma.$executeRawUnsafe(`UPDATE ems_audio_export_job SET status='mastering', progress=75, updated_at=NOW() WHERE id=$1`, jobId);
+      await saveArtifact(job, `${job.format}-master.wav`, "audio/wav", renderTracksToWav(state.tracks, state.bpm, state.swing, undefined, state.bars, true));
     }
-    await prisma.$executeRawUnsafe(`UPDATE ems_audio_export_job SET status='complete', progress=100, output_url=$2, render_manifest=$3::jsonb, updated_at=NOW() WHERE id=$1`, jobId, publicArtifactUrl(jobId, job.format as AudioExportFormat), JSON.stringify({ ...state, completedAt: new Date().toISOString() }));
+    await prisma.$executeRawUnsafe(`UPDATE ems_audio_export_job SET status='complete', progress=100, output_url=$2, render_manifest=$3::jsonb, updated_at=NOW() WHERE id=$1`, jobId, publicArtifactUrl(jobId, job.format as AudioExportFormat), JSON.stringify({ ...state, mastering: { limiter: true, softClip: true, peakNormalize: true }, completedAt: new Date().toISOString() }));
   } catch (error) {
     await prisma.$executeRawUnsafe(`UPDATE ems_audio_export_job SET status='failed', error_message=$2, updated_at=NOW() WHERE id=$1`, jobId, error instanceof Error ? error.message : "render failed");
   }
