@@ -1,6 +1,11 @@
 import type { CollaborativePluginGraphEdit, CollaborativePluginGraphState } from "@/lib/studioGpuSpectralEngine";
 import { reduceCollaborativePluginGraph } from "@/lib/studioGpuSpectralEngine";
 
+type SafeGpuBuffer = { destroy?: () => void };
+type SafeGpuDevice = { createBuffer?: (descriptor: { size: number; usage: number }) => SafeGpuBuffer };
+type SafeRtcPeerConnection = { close: () => void; onicecandidate: ((event: { candidate?: { toJSON: () => unknown } | null }) => void) | null };
+type SafeMediaStream = { id: string };
+
 export type WebGpuRenderGraphNode = {
   id: string;
   kind: "fft" | "spectrogram" | "texture_compute" | "postprocess" | "readback";
@@ -14,7 +19,7 @@ export type WebGpuMemoryPoolBuffer = {
   size: number;
   usage: number;
   inUse: boolean;
-  buffer?: GPUBuffer;
+  buffer?: SafeGpuBuffer;
 };
 
 export type RenderGraphSchedule = {
@@ -38,7 +43,7 @@ export function scheduleWebGpuRenderGraph(nodes: WebGpuRenderGraphNode[]): Rende
 export class WebGpuMemoryPool {
   private buffers = new Map<string, WebGpuMemoryPoolBuffer>();
 
-  constructor(private device?: GPUDevice) {}
+  constructor(private device?: SafeGpuDevice) {}
 
   acquire(id: string, size: number, usage: number) {
     const reusable = [...this.buffers.values()].find((buffer) => !buffer.inUse && buffer.size >= size && buffer.usage === usage);
@@ -46,7 +51,7 @@ export class WebGpuMemoryPool {
       reusable.inUse = true;
       return reusable;
     }
-    const entry: WebGpuMemoryPoolBuffer = { id, size, usage, inUse: true, buffer: this.device?.createBuffer({ size, usage }) };
+    const entry: WebGpuMemoryPoolBuffer = { id, size, usage, inUse: true, buffer: this.device?.createBuffer?.({ size, usage }) };
     this.buffers.set(id, entry);
     return entry;
   }
@@ -57,7 +62,7 @@ export class WebGpuMemoryPool {
   }
 
   dispose() {
-    this.buffers.forEach((entry) => entry.buffer?.destroy());
+    this.buffers.forEach((entry) => entry.buffer?.destroy?.());
     this.buffers.clear();
   }
 }
@@ -107,14 +112,16 @@ export type PeerMeshSignal = {
 };
 
 export class PeerMeshSyncRuntime {
-  private peers = new Map<string, RTCPeerConnection>();
+  private peers = new Map<string, SafeRtcPeerConnection>();
   private listeners = new Set<(signal: PeerMeshSignal) => void>();
 
   constructor(private roomId: string, private actorId: string) {}
 
   createPeer(targetActorId: string) {
-    if (typeof RTCPeerConnection === "undefined") return null;
-    const peer = new RTCPeerConnection();
+    if (typeof globalThis === "undefined" || !("RTCPeerConnection" in globalThis)) return null;
+    const PeerCtor = (globalThis as typeof globalThis & { RTCPeerConnection?: new () => SafeRtcPeerConnection }).RTCPeerConnection;
+    if (!PeerCtor) return null;
+    const peer = new PeerCtor();
     peer.onicecandidate = (event) => {
       if (event.candidate) this.emit({ type: "ice", roomId: this.roomId, actorId: this.actorId, targetActorId, payload: event.candidate.toJSON(), createdAt: new Date().toISOString() });
     };
@@ -162,7 +169,7 @@ export type CollaborativeMediaLayer = {
   streamIds: string[];
 };
 
-export function attachCollaborativeMediaStream(layer: CollaborativeMediaLayer, stream: MediaStream | null): CollaborativeMediaLayer {
+export function attachCollaborativeMediaStream(layer: CollaborativeMediaLayer, stream: SafeMediaStream | null): CollaborativeMediaLayer {
   if (!stream) return layer;
   return { ...layer, distributedMediaEnabled: true, streamIds: [...new Set([...layer.streamIds, stream.id])] };
 }
