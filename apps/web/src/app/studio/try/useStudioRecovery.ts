@@ -9,6 +9,7 @@ type StudioSnapshotInput = {
   bar: number;
   playing: boolean;
   tracks: unknown[];
+  workspaceLayout?: unknown;
 };
 
 type StudioSnapshot = {
