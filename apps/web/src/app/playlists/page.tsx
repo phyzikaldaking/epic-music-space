@@ -24,11 +24,20 @@ export default async function PlaylistsPage() {
       </main>
     );
   }
-  const playlists = await prisma.playlist.findMany({ where: { userId }, include: { _count: { select: { items: true } } }, orderBy: { createdAt: "desc" } });
+  const playlists = await prisma.playlist.findMany({ where: { ownerId: userId }, orderBy: { updatedAt: "desc" } });
+  const playlistIds = playlists.map((playlist) => playlist.id);
+  const counts = playlistIds.length
+    ? await prisma.playlistTrack.groupBy({
+        by: ["playlistId"],
+        where: { playlistId: { in: playlistIds } },
+        _count: { _all: true },
+      })
+    : [];
+  const trackCounts = new Map(counts.map((count) => [count.playlistId, count._count._all]));
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-6 py-10 text-white">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold uppercase tracking-[0.24em] text-fuchsia-300">Your library</p><h1 className="mt-2 text-3xl font-black">Playlists</h1></div><CreatePlaylistButton /></header>
-      {playlists.length === 0 ? <section className="mt-10 rounded-lg border border-white/10 bg-white/[0.04] p-8 text-slate-300"><h2 className="text-xl font-bold text-white">No playlists yet</h2><p className="mt-2 max-w-2xl">Create your first playlist, then save tracks from the marketplace and timeline.</p></section> : <section className="mt-10 grid gap-4 sm:grid-cols-2">{playlists.map((playlist) => <Link prefetch={false} key={playlist.id} href={"/playlists/" + playlist.id} className="rounded-lg border border-white/10 bg-white/[0.04] p-5 transition hover:border-fuchsia-300/50 hover:bg-white/[0.08]"><h2 className="text-xl font-bold text-white">{playlist.name}</h2><p className="mt-2 text-sm text-slate-400">{playlist._count.items} tracks</p></Link>)}</section>}
+      {playlists.length === 0 ? <section className="mt-10 rounded-lg border border-white/10 bg-white/[0.04] p-8 text-slate-300"><h2 className="text-xl font-bold text-white">No playlists yet</h2><p className="mt-2 max-w-2xl">Create your first playlist, then save tracks from the marketplace and timeline.</p></section> : <section className="mt-10 grid gap-4 sm:grid-cols-2">{playlists.map((playlist) => <Link prefetch={false} key={playlist.id} href={"/playlists/" + playlist.id} className="rounded-lg border border-white/10 bg-white/[0.04] p-5 transition hover:border-fuchsia-300/50 hover:bg-white/[0.08]"><h2 className="text-xl font-bold text-white">{playlist.name}</h2><p className="mt-2 text-sm text-slate-400">{trackCounts.get(playlist.id) ?? 0} tracks</p></Link>)}</section>}
     </main>
   );
 }
