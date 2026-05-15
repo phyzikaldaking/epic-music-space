@@ -15,7 +15,8 @@ export default function NavbarSearch() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="hidden lg:block relative">
+    <form onSubmit={handleSubmit} role="search" aria-label="Site search" className="hidden lg:block relative">
+      <span className="sr-only">Search Epic Music Space</span>
       <input
         type="search"
         value={q}

@@ -798,7 +798,7 @@ export default async function MarketplacePage(props: {
             <SectionErrorBoundary title="Waveform Compare"><MarketplaceConfidencePanel tracks={displaySongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore, licensePrice: Number(song.licensePrice), revenueSharePct: Number(song.revenueSharePct), soldLicenses: song.soldLicenses, totalLicenses: song.totalLicenses }))} /></SectionErrorBoundary>
             <SectionErrorBoundary title="Saved Searches"><MarketplaceRetentionTools tracks={displaySongs.map((song) => ({ id: song.id, title: song.title }))} /></SectionErrorBoundary>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {displaySongs.slice(0, 12).map((song, index) => (
+              {displaySongs.slice(0, 6).map((song, index) => (
                 <SongCard
                   key={song.id}
                   id={song.id}

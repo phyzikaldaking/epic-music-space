@@ -43,7 +43,7 @@ const trustPoints = [
 
 export default function SimplifiedHomePage() {
   return (
-    <main id="main-content" className="relative min-h-screen overflow-hidden bg-black text-white">
+    <main className="relative min-h-screen overflow-hidden bg-black text-white">
       <section className="mx-auto flex min-h-[78vh] max-w-6xl flex-col justify-center px-4 py-16 sm:px-6 lg:px-8">
         <div className="max-w-3xl">
           <p className="studio-label mb-4 text-tube-300">Epic Music Space</p>
