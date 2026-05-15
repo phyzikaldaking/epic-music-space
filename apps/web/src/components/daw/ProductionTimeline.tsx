@@ -128,6 +128,7 @@ export function ProductionPostCard({
   onPreviewStems?: (trackId: string) => void;
 }) {
   const mixPercent = Math.round(post.mixConfidence * 100);
+  const bpmLabel = post.bpm > 0 ? post.bpm + " BPM" : "Tempo TBD";
   const hasEq = Boolean(post.recommendedEqSettings?.length);
 
   return (
