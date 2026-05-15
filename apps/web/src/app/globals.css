@@ -48,7 +48,8 @@ body {
 
 body,
 #__next,
-main {
+main,
+[data-nextjs-scroll-focus-boundary] {
   overflow: visible !important;
 }
 
@@ -95,7 +96,9 @@ textarea::placeholder {
 /* Global app scroll contract: the browser window owns the outside scrollbars. */
 [data-studio-content],
 [data-ems-workspace],
-.ems-page-scroll-surface {
+.ems-page-scroll-surface,
+.ems-studio-root,
+.ems-studio-runtime-root {
   isolation: isolate;
   position: relative;
   min-height: 100vh;
@@ -132,7 +135,8 @@ textarea::placeholder {
   overflow-y: auto;
 }
 
-.ems-workspace-scroll {
+.ems-workspace-scroll,
+.ems-studio-runtime-root {
   min-width: var(--ems-workspace-min-width);
   min-height: var(--ems-workspace-min-height);
 }
@@ -146,6 +150,28 @@ textarea::placeholder {
   scrollbar-gutter: stable both-edges;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x pan-y;
+}
+
+/* Studio hardening: legacy utility classes must not turn the workstation into a scroll jail. */
+[data-studio-content] .overflow-hidden,
+[data-ems-workspace] .overflow-hidden,
+.ems-studio-runtime-root .overflow-hidden,
+.ems-workspace-scroll .overflow-hidden {
+  overflow: visible !important;
+}
+
+[data-studio-content] .overflow-x-hidden,
+[data-ems-workspace] .overflow-x-hidden,
+.ems-studio-runtime-root .overflow-x-hidden,
+.ems-workspace-scroll .overflow-x-hidden {
+  overflow-x: visible !important;
+}
+
+[data-studio-content] .overflow-y-hidden,
+[data-ems-workspace] .overflow-y-hidden,
+.ems-studio-runtime-root .overflow-y-hidden,
+.ems-workspace-scroll .overflow-y-hidden {
+  overflow-y: visible !important;
 }
 
 .ems-sticky-transport {
