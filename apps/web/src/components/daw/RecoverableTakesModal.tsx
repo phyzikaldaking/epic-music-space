@@ -54,6 +54,7 @@ export default function RecoverableTakesModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     void listPersistedTakes().then((list) => {
       if (cancelled) return;

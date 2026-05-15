@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/purity */
 import { cache, Suspense } from "react";
 import Image from "next/image";
 import AdSlot from "@/components/ads/AdSlot";

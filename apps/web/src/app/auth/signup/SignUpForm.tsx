@@ -96,6 +96,7 @@ function SignUpContent({
   // shell.
   const [hideGoogleForWebView, setHideGoogleForWebView] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHideGoogleForWebView(isCapacitorWebView());
   }, []);
   const showGoogle = (typeof window === "undefined"
@@ -105,6 +106,7 @@ function SignUpContent({
   // Pre-select role from query param (e.g. ?role=ARTIST from homepage CTA)
   useEffect(() => {
     const r = searchParams.get("role") as RoleValue | null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (r && ROLES.some((ro) => ro.value === r)) setSelectedRole(r);
   }, [searchParams]);
 

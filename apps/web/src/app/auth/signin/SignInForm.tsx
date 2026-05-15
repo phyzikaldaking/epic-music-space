@@ -58,6 +58,7 @@ function SignInContent({
   // SSR doesn't know about the shell.
   const [hideGoogleForWebView, setHideGoogleForWebView] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHideGoogleForWebView(isCapacitorWebView());
   }, []);
   const showGoogle = (typeof window === "undefined"

@@ -102,6 +102,7 @@ export default async function DashboardPage() {
   // null (fresh account or first dashboard hit) we fall back to the past
   // 7 days so the card has something to show. We do this best-effort —
   // nothing here blocks the dashboard render if the bump fails.
+  // eslint-disable-next-line react-hooks/purity
   const previousVisit = userRow.lastSeenAt ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const wasFirstVisit = !userRow.lastSeenAt;
   void prisma.user
@@ -287,7 +288,8 @@ export default async function DashboardPage() {
 
   const trialDaysLeft =
     user.subscriptionTier === "TRIAL" && user.trialExpiresAt
-      ? Math.max(0, Math.ceil((user.trialExpiresAt.getTime() - Date.now()) / 86_400_000))
+      // eslint-disable-next-line react-hooks/purity
+  ? Math.max(0, Math.ceil((user.trialExpiresAt.getTime() - Date.now()) / 86_400_000))
       : null;
 
   const nextStep = (() => {

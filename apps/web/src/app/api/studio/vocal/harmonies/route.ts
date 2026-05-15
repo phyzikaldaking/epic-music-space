@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { getRequestId, jsonWithRequestId } from "@/lib/requestTracing";
 
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       harmonyCount?: number;
     };
 
-    const { trackId, harmonyCount = 3 } = body;
+    const { trackId } = body;
 
     if (!trackId) {
       return jsonWithRequestId(

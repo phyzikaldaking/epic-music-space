@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -24,7 +25,7 @@ export default function MagicLinkClient() {
     ranRef.current = true;
 
     if (!email || !token) {
-      setStatus("error");
+    setStatus("error");
       setErrorMessage("This sign-in link is missing required information. Request a fresh link below.");
       return;
     }
@@ -54,7 +55,7 @@ export default function MagicLinkClient() {
           .toString()
           .toLowerCase();
 
-        setStatus("error");
+      setStatus("error");
         if (code.includes("rate_limited")) {
           setErrorMessage("Too many sign-in attempts. Wait a minute, then request a fresh link.");
         } else if (code.includes("account_suspended")) {

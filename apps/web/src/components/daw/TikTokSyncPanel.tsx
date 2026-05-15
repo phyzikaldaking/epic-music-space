@@ -5,7 +5,7 @@ import { detectBPM, classifyGenre } from "@/lib/bpmDetector";
 import { generateBeatPattern } from "@/lib/beatGenerator";
 
 interface TikTokSyncPanelProps {
-  onBeatGenerated?: (patterns: any[]) => void;
+  onBeatGenerated?: (patterns: unknown[]) => void;
   onBPMDetected?: (bpm: number, genre: string) => void;
 }
 
@@ -37,19 +37,19 @@ export default function TikTokSyncPanel({
       });
 
       if (!extractRes.ok) {
-        const data = (await extractRes.json().catch(() => ({}))) as any;
+        const data = (await extractRes.json().catch(() => ({}))) as unknown;
         throw new Error(
           data.error || `Failed to extract audio (${extractRes.status})`
         );
       }
 
-      const { audioUrl } = (await extractRes.json()) as any;
+      const { audioUrl } = (await extractRes.json()) as unknown;
 
       // Fetch audio and decode
       const audioRes = await fetch(audioUrl);
       const arrayBuffer = await audioRes.arrayBuffer();
 
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioContext = new (window.AudioContext || (window as unknown).webkitAudioContext)();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
       // Detect BPM and genre
@@ -61,7 +61,7 @@ export default function TikTokSyncPanel({
       onBPMDetected?.(bpm, genre);
 
       // Generate beat pattern
-      const patterns = generateBeatPattern(bpm, genre as any);
+      const patterns = generateBeatPattern(bpm, genre as unknown);
       onBeatGenerated?.(patterns);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed");

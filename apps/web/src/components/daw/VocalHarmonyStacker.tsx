@@ -42,7 +42,7 @@ export default function VocalHarmonyStacker({
       });
 
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as any;
+        const data = (await res.json().catch(() => ({}))) as unknown;
         throw new Error(data.error || `Generation failed (${res.status})`);
       }
 

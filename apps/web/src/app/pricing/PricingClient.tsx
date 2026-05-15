@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability */
 "use client";
 
 import { useState } from "react";

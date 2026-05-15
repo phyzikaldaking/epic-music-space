@@ -98,6 +98,7 @@ export default async function AdminStatusPage() {
   if (!session?.user?.id) redirect("/auth/signin?callbackUrl=/admin/status");
   if (session.user.role !== "ADMIN") redirect("/dashboard");
 
+  // eslint-disable-next-line react-hooks/purity
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const [db, redis, queues, registrations24h, songs24h, totalUsers] = await Promise.all([

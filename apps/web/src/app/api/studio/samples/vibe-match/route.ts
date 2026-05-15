@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { getRequestId, jsonWithRequestId } from "@/lib/requestTracing";
 
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       sourceKey?: string;
     };
 
-    const { sourceGenre = "trap", sourceBpm = 142, sourceKey = "C" } = body;
+    const { sourceGenre: _sourceGenre = "trap", sourceBpm: _sourceBpm = 142, sourceKey: _sourceKey = "C" } = body;
 
     // Full implementation:
     // 1. Query sample library from database

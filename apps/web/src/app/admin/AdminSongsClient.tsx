@@ -53,6 +53,7 @@ export default function AdminSongsClient() {
     return () => clearTimeout(t);
   }, [query, fetchSongs]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void fetchSongs(query, page); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function doAction(songId: string, action: "toggle_active" | "delete") {

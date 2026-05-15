@@ -39,7 +39,7 @@ export default function RemixGenerator({
       });
 
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as any;
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error || `Remix failed (${res.status})`);
       }
 
@@ -61,7 +61,7 @@ export default function RemixGenerator({
       </h3>
 
       <p className="text-xs text-white/60 mb-3">
-        Transform "{projectName}" into a new style:
+        Transform &quot;{projectName}&quot; into a new style:
       </p>
 
       <div className="grid grid-cols-2 gap-2 mb-4">

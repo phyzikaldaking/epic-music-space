@@ -15,7 +15,7 @@ const KEY_PREFIX = "studio:live:";
  * The production-timeline route reads these keys to set `isLiveNow` on posts.
  * No Redis = silently no-ops (feature degrades gracefully).
  */
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
  * Called by DawWorkspace when the user explicitly leaves the studio
  * (pagehide / visibility change). Clears the live key immediately.
  */
-export async function DELETE(req: NextRequest) {
+export async function DELETE(_req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

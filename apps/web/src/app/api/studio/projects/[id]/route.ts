@@ -70,7 +70,7 @@ export async function PUT(
     const body = (await req.json()) as {
       name?: string;
       bpm?: number;
-      patternJson?: any;
+      patternJson?: unknown;
       trackCount?: number;
     };
 
