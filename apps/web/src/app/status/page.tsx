@@ -11,9 +11,9 @@ export const revalidate = 30; // re-fetch every 30s
 
 const SEVERITY_STYLE: Record<string, { dot: string; label: string; text: string }> = {
   INVESTIGATING: { dot: "bg-yellow-400", label: "Investigating", text: "text-yellow-300" },
-  IDENTIFIED:    { dot: "bg-orange-400", label: "Identified",    text: "text-orange-300" },
-  MONITORING:    { dot: "bg-sky-400",    label: "Monitoring",    text: "text-sky-300" },
-  RESOLVED:      { dot: "bg-emerald-400",label: "Resolved",      text: "text-emerald-300" },
+  IDENTIFIED: { dot: "bg-orange-400", label: "Identified", text: "text-orange-300" },
+  MONITORING: { dot: "bg-sky-400", label: "Monitoring", text: "text-sky-300" },
+  RESOLVED: { dot: "bg-emerald-400", label: "Resolved", text: "text-emerald-300" },
 };
 
 interface ServiceCheck {
@@ -35,7 +35,7 @@ const LABELS: Record<string, string> = {
   redis: "Redis (caching + queues)",
   supabase_storage: "Supabase Storage",
   stripe: "Stripe (payments)",
-  mux: "Mux (video)",
+  mux: "Mux (video upload + playback)",
   livekit: "LiveKit (rooms)",
 };
 
@@ -43,8 +43,16 @@ const STATUS_STYLES: Record<ServiceCheck["status"], { dot: string; label: string
   ok: { dot: "bg-emerald-400", label: "Operational", text: "text-emerald-300" },
   degraded: { dot: "bg-yellow-400", label: "Degraded", text: "text-yellow-300" },
   down: { dot: "bg-red-500", label: "Down", text: "text-red-300" },
-  not_configured: { dot: "bg-white/20", label: "Not configured", text: "text-white/40" },
+  not_configured: { dot: "bg-white/20", label: "Disabled", text: "text-white/40" },
 };
+
+function serviceDetail(service: ServiceCheck): string | null {
+  if (service.name === "mux" && service.status === "not_configured") {
+    return "Video uploads, transcoding, and Mux playback are temporarily disabled until production Mux credentials are configured. Photo posts and audio workflows remain available.";
+  }
+  if (service.message) return service.message;
+  return null;
+}
 
 async function getHealth(): Promise<HealthResponse | null> {
   try {
@@ -79,7 +87,7 @@ export default async function StatusPage() {
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
         <h1 className="text-2xl font-extrabold">Couldn&apos;t reach the health endpoint</h1>
         <p className="mt-2 text-sm text-white/50">
-          The status page itself is fine — try again in a few seconds.
+          The status page itself is fine - try again in a few seconds.
         </p>
       </div>
     );
@@ -95,7 +103,7 @@ export default async function StatusPage() {
         <span className={`h-3 w-3 animate-pulse rounded-full ${overall.dot}`} />
         <h1 className="text-2xl font-extrabold">
           {data.status === "healthy"
-            ? "All systems operational"
+            ? "All core systems operational"
             : data.status === "down"
               ? "Major outage"
               : "Degraded performance"}
@@ -111,10 +119,7 @@ export default async function StatusPage() {
           {incidents.map((inc) => {
             const sev = SEVERITY_STYLE[inc.severity] ?? SEVERITY_STYLE.INVESTIGATING;
             return (
-              <div
-                key={inc.id}
-                className="rounded-2xl border border-yellow-500/35 bg-yellow-500/8 p-4"
-              >
+              <div key={inc.id} className="rounded-2xl border border-yellow-500/35 bg-yellow-500/8 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <span className={`h-2 w-2 rounded-full ${sev.dot}`} />
@@ -122,14 +127,12 @@ export default async function StatusPage() {
                       {sev.label}
                     </span>
                     <span className="text-xs text-white/35">
-                      · {new Date(inc.createdAt).toLocaleString()}
+                      - {new Date(inc.createdAt).toLocaleString()}
                     </span>
                   </div>
                 </div>
                 <h3 className="mt-2 text-base font-bold">{inc.title}</h3>
-                {inc.body && (
-                  <p className="mt-1 text-sm text-white/65 whitespace-pre-wrap">{inc.body}</p>
-                )}
+                {inc.body && <p className="mt-1 whitespace-pre-wrap text-sm text-white/65">{inc.body}</p>}
               </div>
             );
           })}
@@ -139,21 +142,22 @@ export default async function StatusPage() {
       <ul className="space-y-2">
         {data.services.map((s) => {
           const style = STATUS_STYLES[s.status];
+          const detail = serviceDetail(s);
           return (
-            <li
-              key={s.name}
-              className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/3 px-4 py-3"
-            >
-              <div className="flex items-center gap-3">
-                <span className={`h-2.5 w-2.5 rounded-full ${style.dot}`} />
-                <span className="text-sm font-medium">{LABELS[s.name] ?? s.name}</span>
+            <li key={s.name} className="rounded-2xl border border-white/8 bg-white/3 px-4 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <span className={`h-2.5 w-2.5 rounded-full ${style.dot}`} />
+                  <span className="text-sm font-medium">{LABELS[s.name] ?? s.name}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  {s.latencyMs !== undefined && s.status === "ok" && (
+                    <span className="tabular-nums text-white/40">{s.latencyMs}ms</span>
+                  )}
+                  <span className={style.text}>{style.label}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-3 text-xs">
-                {s.latencyMs !== undefined && s.status === "ok" && (
-                  <span className="tabular-nums text-white/40">{s.latencyMs}ms</span>
-                )}
-                <span className={style.text}>{style.label}</span>
-              </div>
+              {detail && <p className="mt-2 pl-5 text-xs leading-5 text-white/45">{detail}</p>}
             </li>
           );
         })}
