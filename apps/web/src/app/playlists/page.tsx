@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { auth } from "@/auth";
-import CreatePlaylistButton from "@/components/CreatePlaylistButton";
-import { prisma } from "@/lib/db";
+import { auth } from "@/lib/auth";
+import CreatePlaylistButton from "./CreatePlaylistButton";
+import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
   title: "Playlists | Epic Music Space",

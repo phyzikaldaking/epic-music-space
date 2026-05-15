@@ -31,7 +31,7 @@ const footerNav = [
     { label: "Terms", href: "/terms" },
     { label: "DMCA", href: "/dmca" },
   ] },
-]];
+];
 
 export default function Footer() {
   return (
