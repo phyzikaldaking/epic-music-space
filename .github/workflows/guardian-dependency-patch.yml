@@ -1,0 +1,45 @@
+name: EMS Guardian Dependency Patch
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  dependency-patch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm install
+
+      - name: Audit fix (safe only)
+        run: npm audit fix || true
+
+      - name: Guardian checks
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run build
+          node scripts/guardian/security-audit.mjs
+
+      - name: Create dependency patch branch
+        run: |
+          git checkout -b guardian/dependency-patch-$(date +%Y%m%d)
+          git status
+
+      - name: Commit changes
+        run: |
+          git config user.name "ems-guardian"
+          git config user.email "guardian@epicmusicspace.com"
+          git add .
+          git diff --cached --quiet || git commit -m "chore: automated dependency patch update"
