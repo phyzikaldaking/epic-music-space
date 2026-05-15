@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { listBeatPatterns } from "@/lib/beatPatternStore";
+import { convolutionImpulse, masteringGraph, pitchCorrectionPreview, spectralEq, timeStretchPreview } from "@/lib/studioMasteringDsp";
 
 export type AudioExportFormat = "full_mix" | "stems" | "preview" | "license_package";
 
 type RenderInput = { userId: string; projectId: string; sessionId: string; format: AudioExportFormat };
 type RenderJobRecord = { id: string; user_id: string; project_id: string; session_id: string; format: string; status: string; progress: number; output_url: string | null; error_message: string | null; render_manifest: unknown; created_at: Date; updated_at: Date };
-type BeatTrack = { id?: string; name?: string; padKind?: string; kind?: string; level?: number; muted?: boolean; pattern?: boolean[] };
+type BeatTrack = { id?: string; name?: string; padKind?: string; kind?: string; level?: number; muted?: boolean; pattern?: boolean[]; fx?: { reverb?: number; drive?: number; tone?: number; stretch?: number; pitchCorrect?: number } };
 
 let initialized = false;
 let artifactsInitialized = false;
@@ -93,18 +94,16 @@ function softClip(sample: number) {
 }
 
 function masterSamples(samples: Float32Array) {
-  let peak = 0;
-  for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
-  const gain = peak > 0 ? Math.min(1.8, 0.9 / peak) : 1;
-  const mastered = new Float32Array(samples.length);
-  let envelope = 0;
-  for (let index = 0; index < samples.length; index += 1) {
-    const input = samples[index] * gain;
-    envelope = Math.max(Math.abs(input), envelope * 0.997);
-    const compressed = input / (1 + Math.max(0, envelope - 0.62) * 1.8);
-    mastered[index] = softClip(compressed);
-  }
-  return mastered;
+  return masteringGraph(samples);
+}
+
+function printTrackFx(samples: Float32Array, track: BeatTrack) {
+  let output = samples;
+  if (track.fx?.tone) output = spectralEq(output);
+  if (track.fx?.reverb) output = convolutionImpulse(output, Math.min(0.2, Math.max(0, track.fx.reverb)));
+  if (track.fx?.stretch) output = timeStretchPreview(output, Math.max(0.5, Math.min(2, track.fx.stretch)));
+  if (track.fx?.pitchCorrect) output = pitchCorrectionPreview(output, Math.min(0.08, Math.max(0, track.fx.pitchCorrect)));
+  return output;
 }
 
 function renderTracksToSamples(tracks: BeatTrack[], bpm = 92, swing = 12, stemTrackId?: string, bars = 8) {
@@ -116,6 +115,7 @@ function renderTracksToSamples(tracks: BeatTrack[], bpm = 92, swing = 12, stemTr
   tracks.forEach((track, trackIndex) => {
     if (stemTrackId && String(track.id ?? track.name) !== stemTrackId) return;
     if (track.muted || !Array.isArray(track.pattern) || track.pattern.length === 0) return;
+    const trackBus = new Float32Array(totalSamples);
     const level = Math.max(0, Math.min(1, Number(track.level ?? 75) / 100));
     for (let absoluteStep = 0; absoluteStep < steps; absoluteStep += 1) {
       const stepIndex = absoluteStep % track.pattern.length;
@@ -128,16 +128,19 @@ function renderTracksToSamples(tracks: BeatTrack[], bpm = 92, swing = 12, stemTr
       const isSnare = pad.includes("snare") || pad.includes("clap");
       const length = Math.floor((isBass ? 0.55 : isHat ? 0.055 : 0.18) * sampleRate);
       const freq = padFrequency(track, trackIndex);
-      for (let i = 0; i < length && start + i < samples.length; i += 1) {
+      for (let i = 0; i < length && start + i < trackBus.length; i += 1) {
         const t = i / sampleRate;
         const env = Math.exp(-t * (isBass ? 3.8 : isHat ? 42 : 18));
         const pitchDrop = pad.includes("kick") ? t * 120 : 0;
-        const tone = Math.sin(2 * Math.PI * Math.max(32, freq - pitchDrop) * t) * env * level * (isBass ? 0.32 : 0.22);
+        let tone = Math.sin(2 * Math.PI * Math.max(32, freq - pitchDrop) * t) * env * level * (isBass ? 0.32 : 0.22);
+        if (track.fx?.drive) tone = softClip(tone * (1 + track.fx.drive));
         const noiseSeed = Math.sin((i + 1) * 12.9898 + trackIndex * 78.233 + absoluteStep * 9.17) * 43758.5453;
         const noise = (noiseSeed - Math.floor(noiseSeed) - 0.5) * env * (isHat ? 0.18 : isSnare ? 0.13 : 0.02);
-        samples[start + i] += tone + noise;
+        trackBus[start + i] += tone + noise;
       }
     }
+    const printed = printTrackFx(trackBus, track);
+    for (let i = 0; i < Math.min(samples.length, printed.length); i += 1) samples[i] += printed[i];
   });
   return { samples, sampleRate };
 }
@@ -151,10 +154,10 @@ async function collectRenderState(projectId: string) {
   const patterns = await listBeatPatterns(projectId, 1).catch(() => []);
   const pattern = patterns[0] as { tracks?: BeatTrack[]; bpm?: number; swing?: number; name?: string; arrangement?: unknown[] } | undefined;
   const tracks = Array.isArray(pattern?.tracks) ? pattern.tracks : [
-    { id: "kick", name: "Kick", padKind: "kick", level: 90, pattern: [true,false,false,false,true,false,false,false,true,false,false,false,true,false,false,false] },
-    { id: "snare", name: "Snare", padKind: "snare", level: 75, pattern: [false,false,false,false,true,false,false,false,false,false,false,false,true,false,false,false] },
-    { id: "hat", name: "Hat", padKind: "hat", level: 58, pattern: Array.from({ length: 16 }, (_, i) => i % 2 === 0) },
-    { id: "bass", name: "808", padKind: "bass808", kind: "bass", level: 82, pattern: [true,false,false,true,false,false,false,false,true,false,false,true,false,false,true,false] },
+    { id: "kick", name: "Kick", padKind: "kick", level: 90, pattern: [true,false,false,false,true,false,false,false,true,false,false,false,true,false,false,false], fx: { drive: 0.12, tone: 0.2 } },
+    { id: "snare", name: "Snare", padKind: "snare", level: 75, pattern: [false,false,false,false,true,false,false,false,false,false,false,false,true,false,false,false], fx: { reverb: 0.08 } },
+    { id: "hat", name: "Hat", padKind: "hat", level: 58, pattern: Array.from({ length: 16 }, (_, i) => i % 2 === 0), fx: { tone: 0.1 } },
+    { id: "bass", name: "808", padKind: "bass808", kind: "bass", level: 82, pattern: [true,false,false,true,false,false,false,false,true,false,false,true,false,false,true,false], fx: { drive: 0.16, pitchCorrect: 0.01 } },
   ];
   const arrangement = Array.isArray(pattern?.arrangement) ? pattern.arrangement : [];
   const bars = Math.max(8, Math.ceil(Math.max(16, ...tracks.map((track) => Array.isArray(track.pattern) ? track.pattern.length : 16), arrangement.length * 16) / 16));
@@ -189,7 +192,7 @@ async function saveArtifact(job: RenderJobRecord, filename: string, mimeType: st
 export async function createAudioRenderJob(input: RenderInput) {
   await ensureExportTable();
   const id = `audio-export-${Date.now()}-${crypto.randomUUID()}`;
-  const manifest = { projectId: input.projectId, sessionId: input.sessionId, format: input.format, stages: ["queued", "collect_project_state", "render_audio", "mastering", "package_artifacts", "complete"], queuedAt: new Date().toISOString() };
+  const manifest = { projectId: input.projectId, sessionId: input.sessionId, format: input.format, stages: ["queued", "collect_project_state", "render_audio", "print_fx", "spectral_mastering", "package_artifacts", "complete"], queuedAt: new Date().toISOString() };
   await prisma.$executeRawUnsafe(`INSERT INTO ems_audio_export_job (id, user_id, project_id, session_id, format, status, progress, render_manifest) VALUES ($1,$2,$3,$4,$5,'queued',5,$6::jsonb)`, id, input.userId, input.projectId, input.sessionId, input.format, JSON.stringify(manifest));
   return runAudioRenderJob(id, input.userId);
 }
@@ -209,10 +212,10 @@ export async function runAudioRenderJob(jobId: string, userId: string) {
       const data = Buffer.from(JSON.stringify({ projectId: job.project_id, sessionId: job.session_id, pattern: state.name, bpm: state.bpm, swing: state.swing, bars: state.bars, tracks: state.tracks.map((track) => ({ id: track.id, name: track.name, kind: track.kind, padKind: track.padKind })), arrangement: state.arrangement, generatedAt: new Date().toISOString() }, null, 2));
       await saveArtifact(job, "license-package-manifest.json", "application/json", data);
     } else {
-      await prisma.$executeRawUnsafe(`UPDATE ems_audio_export_job SET status='mastering', progress=75, updated_at=NOW() WHERE id=$1`, jobId);
+      await prisma.$executeRawUnsafe(`UPDATE ems_audio_export_job SET status='spectral_mastering', progress=75, updated_at=NOW() WHERE id=$1`, jobId);
       await saveArtifact(job, `${job.format}-master.wav`, "audio/wav", renderTracksToWav(state.tracks, state.bpm, state.swing, undefined, state.bars, true));
     }
-    await prisma.$executeRawUnsafe(`UPDATE ems_audio_export_job SET status='complete', progress=100, output_url=$2, render_manifest=$3::jsonb, updated_at=NOW() WHERE id=$1`, jobId, publicArtifactUrl(jobId, job.format as AudioExportFormat), JSON.stringify({ ...state, mastering: { limiter: true, softClip: true, peakNormalize: true }, completedAt: new Date().toISOString() }));
+    await prisma.$executeRawUnsafe(`UPDATE ems_audio_export_job SET status='complete', progress=100, output_url=$2, render_manifest=$3::jsonb, updated_at=NOW() WHERE id=$1`, jobId, publicArtifactUrl(jobId, job.format as AudioExportFormat), JSON.stringify({ ...state, mastering: { limiter: true, softClip: true, peakNormalize: true, spectralEq: true, convolutionImpulse: true, timestretchPreview: true, pitchCorrectionPreview: true, trackFxPrinted: true }, completedAt: new Date().toISOString() }));
   } catch (error) {
     await prisma.$executeRawUnsafe(`UPDATE ems_audio_export_job SET status='failed', error_message=$2, updated_at=NOW() WHERE id=$1`, jobId, error instanceof Error ? error.message : "render failed");
   }
