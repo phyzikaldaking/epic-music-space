@@ -15,25 +15,25 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ["music", "entertainment", "social", "shopping"],
     icons: [
       {
-        src: "/icon?size=192",
+        src: "/icon?size=192&purpose=any",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icon?size=192",
+        src: "/icon?size=192&purpose=maskable",
         sizes: "192x192",
         type: "image/png",
         purpose: "maskable",
       },
       {
-        src: "/icon?size=512",
+        src: "/icon?size=512&purpose=any",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icon?size=512",
+        src: "/icon?size=512&purpose=maskable",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
@@ -45,7 +45,7 @@ export default function manifest(): MetadataRoute.Manifest {
     // Android, and in the right-click menu of an installed PWA on
     // desktop. iOS Safari ignores it for now.
     shortcuts: [
-      { name: "Feed", short_name: "Feed", url: "/timeline", description: "Your artist and fan activity feed" },
+      { name: "Timeline", short_name: "Timeline", url: "/timeline", description: "Your artist and fan activity feed" },
       { name: "Marketplace", short_name: "Market", url: "/marketplace", description: "Discover and support independent artists" },
       { name: "Versus", short_name: "Versus", url: "/versus", description: "Fan-voted song battles" },
       { name: "Messages", short_name: "DMs", url: "/messages", description: "Direct messages" },
