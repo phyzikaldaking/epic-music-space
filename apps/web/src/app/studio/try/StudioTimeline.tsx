@@ -18,6 +18,12 @@ type Props = {
   updateTrack?: (id: string, patch: Partial<StudioTrack>) => void;
 };
 
+type CloudRestorePayload = {
+  placedClips?: StudioClip[];
+  selectedClipId?: string | null;
+  selectedTrack?: string | null;
+};
+
 const DEFAULT_ROW_HEIGHT = 56;
 const COLLAPSED_ROW_HEIGHT = 28;
 const VIEWPORT_HEIGHT = 420;
@@ -200,6 +206,25 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
     window.addEventListener("ems:studio-place-sound", onPlaceSound);
     return () => window.removeEventListener("ems:studio-place-sound", onPlaceSound);
   }, [positionSec, selectedTrack, tracks, bpm]);
+
+  useEffect(() => {
+    function onCloudRestore(event: Event) {
+      const payload = (event as CustomEvent<CloudRestorePayload>).detail;
+      if (!Array.isArray(payload?.placedClips)) return;
+      activeAudioRef.current.forEach((audio) => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
+      activeAudioRef.current.clear();
+      setPlacedClips(payload.placedClips);
+      persistPlacedClips(payload.placedClips);
+      if (typeof payload.selectedTrack === "string") setSelectedTrack(payload.selectedTrack);
+      if (typeof payload.selectedClipId === "string" || payload.selectedClipId === null) setSelectedClipId?.(payload.selectedClipId ?? null);
+      window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `Restored ${payload.placedClips.length} timeline clips from cloud.` } }));
+    }
+    window.addEventListener("ems:studio-cloud-restored", onCloudRestore);
+    return () => window.removeEventListener("ems:studio-cloud-restored", onCloudRestore);
+  }, [setSelectedClipId, setSelectedTrack]);
 
   useEffect(() => {
     if (!playing) {
