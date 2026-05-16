@@ -10,6 +10,32 @@ export type WaveformPeaks = {
   sampleRate?: number;
 };
 
+export type StudioAudioBufferRef = {
+  id: string;
+  name: string;
+  durationSec: number;
+  sampleRate?: number;
+  channelCount?: number;
+  peaks: WaveformPeaks;
+  source: "import" | "recording" | "generated" | "placeholder";
+  createdAt: string;
+};
+
+export type StudioClip = {
+  id: string;
+  trackId: string;
+  name: string;
+  startSec: number;
+  durationSec: number;
+  offsetSec: number;
+  color?: string;
+  waveform: WaveformPeaks;
+  audioBufferId?: string;
+  muted?: boolean;
+  selected?: boolean;
+  source: "import" | "recording" | "generated" | "placeholder";
+};
+
 export type StudioTrack = {
   id: string;
   name: string;
@@ -30,6 +56,7 @@ export type StudioTrackRuntime = StudioTrack & {
   index: number;
   effectiveHeight: number;
   isSelected: boolean;
+  clips: StudioClip[];
 };
 
 export type StudioRuntimeState = {
@@ -41,7 +68,10 @@ export type StudioRuntimeState = {
   zoom: number;
   pixelsPerSecond: number;
   tracks: StudioTrackRuntime[];
+  clips: StudioClip[];
+  audioBuffers: StudioAudioBufferRef[];
   selectedTrackId: string | null;
+  selectedClipId: string | null;
 };
 
 export type StudioPad = { label: string; kind: DrumKind; color: string };
