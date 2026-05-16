@@ -1,4 +1,50 @@
 /**
+ * voiceToMidi.ts
+ *
+ * WARNING: `trackPitches` and `audioToMidiNotes` below run on the MAIN THREAD.
+ * For real-time use inside the DAW, use `audioToMidiNotesOffThread` (Worker-based)
+ * to avoid blocking the Web Audio graph during analysis.
+ *
+ * TODO: Migrate all callers to `audioToMidiNotesOffThread`.
+ */
+
+export interface MidiNote {
+  note: number;
+  startBeat: number;
+  durationBeats: number;
+  velocity: number;
+}
+
+/**
+ * Off-thread version: runs YIN pitch detection in a Web Worker.
+ * Does NOT block the audio thread.
+ */
+export function audioToMidiNotesOffThread(
+  buffer: AudioBuffer,
+  bpm = 120,
+): Promise<MidiNote[]> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker("/worklets/voiceToMidi.worker.js");
+    const channelData = buffer.getChannelData(0); // mono — use channel 0
+    const samples = channelData.buffer.slice(0); // transferable copy
+
+    worker.onmessage = (e) => {
+      worker.terminate();
+      if (e.data.type === "result") resolve(e.data.notes as MidiNote[]);
+      else reject(new Error(e.data.message ?? "Worker failed"));
+    };
+    worker.onerror = (err) => {
+      worker.terminate();
+      reject(new Error(err.message));
+    };
+
+    worker.postMessage({ type: "analyze", samples, sampleRate: buffer.sampleRate, bpm }, [samples]);
+  });
+}
+
+// ─── Legacy main-thread implementations below (kept for unit tests) ───────────
+
+/**
  * Voice-to-MIDI: convert sung audio into a MIDI clip.
  *
  * Pipeline:
@@ -8,13 +54,13 @@
  *      that doesn't need a full library) to estimate the fundamental
  *      frequency.
  *   4. Convert each frame's f0 to a MIDI note number.
- *   5. Quantize neighboring frames into note runs — combine consecutive
+ *   5. Quantize neighboring frames into note runs â combine consecutive
  *      frames with the same note, drop runs shorter than ~50ms.
  *   6. Emit MIDI notes with start/duration in beats (caller passes BPM).
  *
  * Honest caveats: works on a clean solo voice with one note at a time.
  * Polyphony, heavy vibrato, harsh sibilance, and noisy mics will throw
- * off octave estimates. Promoted as a starting point — the user is
+ * off octave estimates. Promoted as a starting point â the user is
  * expected to clean up the result in the piano roll.
  *
  * Why not CREPE-tiny: would require shipping a model file (~10 MB) and
@@ -25,7 +71,7 @@
 export interface PitchedFrame {
   /** Estimated fundamental in Hz, or null if unvoiced/too noisy. */
   freq: number | null;
-  /** RMS of this frame — used as velocity proxy. */
+  /** RMS of this frame â used as velocity proxy. */
   rms: number;
   /** Frame center time in seconds. */
   timeSec: number;
@@ -48,7 +94,7 @@ function estimatePitchYin(
   minHz: number = 70,
   maxHz: number = 1100,
 ): number | null {
-  // RMS gate — silence/whisper produces no usable estimate.
+  // RMS gate â silence/whisper produces no usable estimate.
   let rms = 0;
   for (let i = 0; i < size; i++) {
     const s = samples[start + i] ?? 0;
@@ -98,7 +144,7 @@ function estimatePitchYin(
   if (chosenTau < 0) return null;
 
   // Octave-reinforcement check (#5). YIN's first-below-threshold rule
-  // can lock onto a subharmonic — i.e. tau is 2× or 3× the true period.
+  // can lock onto a subharmonic â i.e. tau is 2Ã or 3Ã the true period.
   // For a clean voice the YIN value at tau/2 (one octave higher) is also
   // low. If tau/2 is meaningfully better than chosenTau, the higher
   // candidate is the true fundamental and we just rejected an octave
@@ -172,7 +218,7 @@ export function framesToMidi(
   const minNoteSec = options.minNoteSec ?? 0.06;
   const beatPerSec = bpm / 60;
 
-  // First pass: convert frame freqs → MIDI numbers (or null).
+  // First pass: convert frame freqs â MIDI numbers (or null).
   const midiSeq: Array<number | null> = frames.map((f) =>
     f.freq ? Math.round(freqToMidi(f.freq)) : null,
   );
@@ -213,7 +259,7 @@ export function framesToMidi(
 
   // Third pass: octave-jump correction. Single-note jumps of exactly
   // 12 semitones up-then-back-down are usually octave errors from the
-  // YIN minimum picker — pull them down.
+  // YIN minimum picker â pull them down.
   for (let i = 1; i < notes.length - 1; i++) {
     const prev = notes[i - 1];
     const cur = notes[i];
@@ -228,7 +274,7 @@ export function framesToMidi(
 }
 
 /** Convenience: full pipeline. Returns the converted notes plus a
- *  confidence score (#22) — the fraction of voiced frames vs total —
+ *  confidence score (#22) â the fraction of voiced frames vs total â
  *  so the UI can warn the user when the input was too quiet or noisy
  *  to detect pitch reliably. */
 export function audioToMidiNotes(
