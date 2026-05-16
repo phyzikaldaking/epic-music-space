@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { memo, useEffect, useMemo, useState } from "react";
 import BeatPadGrid from "./BeatPadGrid";
 import BeatSequencerRow from "./BeatSequencerRow";
@@ -196,12 +197,21 @@ function BeatTrackLane({
   }
 
   return (
-    <section className="relative h-full min-h-0 overflow-hidden rounded-xl border border-green-300/20 bg-black/45 p-2">
+    <section className="relative h-full min-h-0 overflow-auto rounded-xl border border-green-300/20 bg-black/45 p-2">
       {toast && (
         <div className="pointer-events-none absolute right-3 top-3 z-50 max-w-[320px] rounded-xl border border-cyan-300/35 bg-black/90 px-3 py-2 text-xs font-bold text-cyan-100 shadow-[0_0_24px_rgba(0,245,255,.18)]">
           {toast}
         </div>
       )}
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/55 px-3 py-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-green-200/70">Beat workspace</p>
+          <p className="text-[10px] text-white/40">Pads, sound browser, sequencer, and full piano roll access.</p>
+        </div>
+        <Link href="/studio/beat-machine#piano-roll" className="rounded-lg border border-green-300/35 bg-green-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-green-100 hover:bg-green-300/15">
+          🎹 Open Piano Roll
+        </Link>
+      </div>
       <BeatTransport
         midi={midi}
         selectedKit={activeKit}
@@ -215,11 +225,11 @@ function BeatTrackLane({
         onAssignSoundToTrack={handleAssignSoundToTrack}
         notify={emit}
       />
-      <div className="grid h-[calc(100%-180px)] min-h-[420px] min-w-0 grid-cols-1 gap-2 overflow-hidden xl:grid-cols-[210px_minmax(0,1fr)]">
+      <div className="grid min-h-[420px] min-w-0 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[210px_minmax(0,1fr)]">
         <div className="min-h-0 overflow-y-auto pr-1">
           <BeatPadGrid pads={visiblePads} activePad={activePad} onFirePad={handleFirePad} />
         </div>
-        <div className="min-h-0 min-w-0 overflow-hidden rounded-xl border border-white/10 bg-black/20 p-2">
+        <div className="min-h-0 min-w-0 overflow-auto rounded-xl border border-white/10 bg-black/20 p-2">
           <VirtualTrackList tracks={tracks} rowHeight={104} height={520}>
             {(track, row) => (
               <BeatSequencerRow key={track.id} track={track} index={row} selected={selectedTrack === track.id} onSelect={() => onSelectTrack(track.id)} />
