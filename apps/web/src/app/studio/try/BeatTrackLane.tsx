@@ -69,10 +69,16 @@ function BeatTrackLane({
   const [localKit, setLocalKit] = useState<DrumKitId>(() => safeStoredKit(typeof window !== "undefined" ? window.localStorage.getItem(KIT_STORAGE_KEY) : null));
   const [localInstrument, setLocalInstrument] = useState(() => typeof window !== "undefined" ? window.localStorage.getItem(INSTRUMENT_STORAGE_KEY) || "Trap Drums" : "Trap Drums");
   const [localSounds, setLocalSounds] = useState<StudioSoundAsset[]>(loadStoredSounds);
+  const [toast, setToast] = useState<string | null>(null);
   const activeKit = selectedKit ?? localKit;
   const activeInstrument = selectedInstrument ?? localInstrument;
   const activeSounds = sounds ?? localSounds;
-  const emit = notify ?? (() => undefined);
+
+  function emit(message: string) {
+    notify?.(message);
+    setToast(message);
+    window.setTimeout(() => setToast(null), 2400);
+  }
 
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem(KIT_STORAGE_KEY, activeKit);
@@ -116,7 +122,12 @@ function BeatTrackLane({
   }
 
   return (
-    <section className="h-full min-h-0 overflow-hidden rounded-xl border border-green-300/20 bg-black/45 p-2">
+    <section className="relative h-full min-h-0 overflow-hidden rounded-xl border border-green-300/20 bg-black/45 p-2">
+      {toast && (
+        <div className="pointer-events-none absolute right-3 top-3 z-50 max-w-[320px] rounded-xl border border-cyan-300/35 bg-black/90 px-3 py-2 text-xs font-bold text-cyan-100 shadow-[0_0_24px_rgba(0,245,255,.18)]">
+          {toast}
+        </div>
+      )}
       <BeatTransport
         midi={midi}
         selectedKit={activeKit}
