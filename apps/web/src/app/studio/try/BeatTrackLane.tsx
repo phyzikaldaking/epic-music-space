@@ -47,6 +47,10 @@ function loadStoredSounds(): StudioSoundAsset[] {
   }
 }
 
+function dispatchTimelinePlacement(sound: StudioSoundAsset) {
+  window.dispatchEvent(new CustomEvent("ems:studio-place-sound", { detail: { sound } }));
+}
+
 function BeatTrackLane({
   tracks,
   pads,
@@ -113,6 +117,7 @@ function BeatTrackLane({
 
   function handleDropSoundOnTimeline(sound: StudioSoundAsset) {
     onDropSoundOnTimeline?.(sound);
+    dispatchTimelinePlacement(sound);
     emit(`Placed ${sound.name} at the playhead.`);
   }
 
