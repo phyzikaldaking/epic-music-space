@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import BeatMachineClient from "./BeatMachineClient";
+import BeatMachineSmartClient from "./BeatMachineSmartClient";
 
 export const metadata: Metadata = {
-  title: "EMS Beat Machine | Epic Music Space",
-  description: "Dedicated EMS Beat Machine with 16-step sequencing, pattern tools, MIDI support, loop export, and arrangement workflow.",
+  title: "EMS Smart MPC | Epic Music Space",
+  description: "AI-assisted EMS Smart MPC with low-latency pads, sampler intelligence, tone guidance, frequency lanes, MIDI support, and beat production workflow.",
   openGraph: {
-    title: "EMS Beat Machine",
-    description: "Build beats with pads, instruments, pattern tools, MIDI support, and loop export in Epic Music Space.",
+    title: "EMS Smart MPC",
+    description: "Build beats with low-latency pads, AI sampler intelligence, tone guidance, frequency lanes, MIDI support, and loop export in Epic Music Space.",
     type: "website",
   },
 };
 
 export default function BeatMachinePage() {
-  return <BeatMachineClient />;
+  return <BeatMachineSmartClient />;
 }
