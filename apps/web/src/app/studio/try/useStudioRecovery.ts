@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { StudioAudioBufferRef, StudioClip } from "./studioWorkstationTypes";
+import type { StudioAudioBufferRef, StudioClip, StudioSoundAsset } from "./studioWorkstationTypes";
 
 type StudioSnapshotInput = {
   mode: string;
@@ -12,8 +12,13 @@ type StudioSnapshotInput = {
   playing: boolean;
   tracks: unknown[];
   clips?: StudioClip[];
+  placedClips?: StudioClip[];
   audioBuffers?: StudioAudioBufferRef[];
+  soundLibrary?: StudioSoundAsset[];
+  padAssignments?: Record<string, unknown>;
   workspaceLayout?: unknown;
+  selectedKit?: string | null;
+  selectedInstrument?: string | null;
 };
 
 type StudioSnapshot = {
@@ -25,14 +30,65 @@ type StudioSnapshot = {
 
 type RecoveryStatus = "idle" | "checking" | "saved" | "recoverable" | "restored" | "error";
 
+const SESSION_ID_KEY = "ems-studio-session-id";
+const PLACED_CLIPS_STORAGE_KEY = "ems-studio-placed-sound-clips";
+const SOUNDS_STORAGE_KEY = "ems-studio-sounds";
+const PAD_ASSIGNMENTS_STORAGE_KEY = "ems-studio-pad-assignments";
+const KIT_STORAGE_KEY = "ems-studio-selected-kit";
+const INSTRUMENT_STORAGE_KEY = "ems-studio-selected-instrument";
+
 function getSessionId() {
   if (typeof window === "undefined") return "ems-main-session";
-  const key = "ems-studio-session-id";
-  const existing = window.localStorage.getItem(key);
+  const existing = window.localStorage.getItem(SESSION_ID_KEY);
   if (existing) return existing;
   const created = `ems-${Date.now()}-${crypto.randomUUID()}`;
-  window.localStorage.setItem(key, created);
+  window.localStorage.setItem(SESSION_ID_KEY, created);
   return created;
+}
+
+function readJson<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function readLocalSessionAddons() {
+  if (typeof window === "undefined") {
+    return {
+      placedClips: [] as StudioClip[],
+      soundLibrary: [] as StudioSoundAsset[],
+      padAssignments: {} as Record<string, unknown>,
+      selectedKit: null as string | null,
+      selectedInstrument: null as string | null,
+    };
+  }
+  return {
+    placedClips: readJson<StudioClip[]>(PLACED_CLIPS_STORAGE_KEY, []),
+    soundLibrary: readJson<StudioSoundAsset[]>(SOUNDS_STORAGE_KEY, []),
+    padAssignments: readJson<Record<string, unknown>>(PAD_ASSIGNMENTS_STORAGE_KEY, {}),
+    selectedKit: window.localStorage.getItem(KIT_STORAGE_KEY),
+    selectedInstrument: window.localStorage.getItem(INSTRUMENT_STORAGE_KEY),
+  };
+}
+
+function restoreLocalSessionAddons(payload: Partial<StudioSnapshotInput>) {
+  if (typeof window === "undefined") return;
+  if (Array.isArray(payload.placedClips)) writeJson(PLACED_CLIPS_STORAGE_KEY, payload.placedClips);
+  if (Array.isArray(payload.soundLibrary)) writeJson(SOUNDS_STORAGE_KEY, payload.soundLibrary);
+  if (payload.padAssignments && typeof payload.padAssignments === "object") writeJson(PAD_ASSIGNMENTS_STORAGE_KEY, payload.padAssignments);
+  if (typeof payload.selectedKit === "string") window.localStorage.setItem(KIT_STORAGE_KEY, payload.selectedKit);
+  if (typeof payload.selectedInstrument === "string") window.localStorage.setItem(INSTRUMENT_STORAGE_KEY, payload.selectedInstrument);
+  window.dispatchEvent(new CustomEvent("ems:studio-cloud-restored", { detail: payload }));
 }
 
 export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (payload: Partial<StudioSnapshotInput>) => void) {
@@ -45,15 +101,31 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
 
   const save = useCallback(async () => {
     try {
+      const localAddons = readLocalSessionAddons();
+      const fullSnapshot: StudioSnapshotInput = {
+        ...snapshot,
+        placedClips: snapshot.placedClips ?? localAddons.placedClips,
+        soundLibrary: snapshot.soundLibrary ?? localAddons.soundLibrary,
+        padAssignments: snapshot.padAssignments ?? localAddons.padAssignments,
+        selectedKit: snapshot.selectedKit ?? localAddons.selectedKit,
+        selectedInstrument: snapshot.selectedInstrument ?? localAddons.selectedInstrument,
+      };
       const res = await fetch("/api/studio/session/snapshot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId,
           roomId: "ems-main-room",
-          ...snapshot,
+          ...fullSnapshot,
           playing: false,
-          metadata: { source: "studio-workstation-autosave", clipCount: snapshot.clips?.length ?? 0, bufferCount: snapshot.audioBuffers?.length ?? 0 },
+          metadata: {
+            source: "studio-workstation-autosave",
+            clipCount: fullSnapshot.clips?.length ?? 0,
+            placedClipCount: fullSnapshot.placedClips?.length ?? 0,
+            soundCount: fullSnapshot.soundLibrary?.length ?? 0,
+            padAssignmentCount: Object.keys(fullSnapshot.padAssignments ?? {}).length,
+            bufferCount: fullSnapshot.audioBuffers?.length ?? 0,
+          },
         }),
       });
       if (!res.ok) throw new Error(`Autosave failed ${res.status}`);
@@ -96,6 +168,7 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
 
   const restoreSnapshot = useCallback(() => {
     if (!recoverable?.payload) return;
+    restoreLocalSessionAddons(recoverable.payload);
     restoreRef.current(recoverable.payload);
     setStatus("restored");
   }, [recoverable]);
