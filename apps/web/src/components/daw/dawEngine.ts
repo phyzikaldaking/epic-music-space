@@ -3,13 +3,13 @@
  *
  * Architecture (signal flow per track):
  *
- *   [BufferSource | LiveMicSource]  →  EQ/Comp  →  VocalBus  →  Gain  →  Pan  →  ┐
- *                                                                         sends →  ├→  Shared Reverb/Delay Returns
- *   [BufferSource | LiveMicSource]  →  EQ/Comp  →  VocalBus  →  Gain  →  Pan  →  ┘
- *                                                           dry + returns → MasterGain → AnalyserNode → destination
+ *   [BufferSource | LiveMicSource]  â  EQ/Comp  â  VocalBus  â  Gain  â  Pan  â  â
+ *                                                                         sends â  ââ  Shared Reverb/Delay Returns
+ *   [BufferSource | LiveMicSource]  â  EQ/Comp  â  VocalBus  â  Gain  â  Pan  â  â
+ *                                                           dry + returns â MasterGain â AnalyserNode â destination
  *
  * The master AnalyserNode powers the output meter without forcing every
- * listener to wire their own. Tracks are just gain+pan nodes — playback
+ * listener to wire their own. Tracks are just gain+pan nodes â playback
  * sources are AudioBufferSourceNodes scheduled together at play() time
  * so all tracks stay sample-aligned with the transport.
  *
@@ -17,10 +17,21 @@
  * and delay amounts as sends into shared aux returns; EQ/comp remain
  * explicit per-track inserts.
  *
- * Recording: MediaRecorder per track, stored as Blob → decoded into an
+ * Recording: MediaRecorder per track, stored as Blob â decoded into an
  * AudioBuffer when recording stops. We hold blobs around for export
  * later (Phase 4 mastering).
  */
+
+// ⚠️  MIGRATION NEEDED — ScriptProcessorNode is deprecated (Chrome 2014).
+// Replace all ScriptProcessorNode usage (inputTap etc.) with AudioWorkletNode.
+// See: https://developer.chrome.com/blog/audio-worklet/
+// Priority: HIGH — ScriptProcessorNode runs on the main thread and causes audio
+// glitches under CPU load. AudioWorkletNode runs in a dedicated audio thread.
+// Estimated effort: 2–3 days. Worklet code goes in /public/worklets/*.js
+//
+// TODO: Also implement audio quantize (missing from this engine entirely).
+// TODO: Integrate RubberBand WASM for proper time-stretch/warp support.
+// See STUDIO_ROADMAP.md Tier 0 for full list of missing DAW features.
 
 import {
   type BeatLaneEqSetting,
@@ -43,7 +54,7 @@ import { persistTake, pruneStaleTakes } from "./takeIdbStore";
 
 export type TrackId = string;
 
-/** Three-band EQ identifier — single source of truth used by engine,
+/** Three-band EQ identifier â single source of truth used by engine,
  *  AI tool schemas, and UI props. Matches the engine's internal biquad
  *  layout (low shelf @ 200 Hz, mid bell @ 1 kHz, high shelf @ 5 kHz).
  *  All EQ-touching code paths import this type rather than re-declaring
@@ -51,11 +62,11 @@ export type TrackId = string;
 export type EqBand = "low" | "mid" | "high";
 
 export interface TrackFx {
-  /** EQ — three biquads acting as low shelf / mid bell / high shelf. */
+  /** EQ â three biquads acting as low shelf / mid bell / high shelf. */
   eqLowDb: number; // -12..+12 @ 200 Hz
   eqMidDb: number; // -12..+12 @ 1000 Hz, Q=1
   eqHighDb: number; // -12..+12 @ 5000 Hz
-  /** Compressor — DynamicsCompressor parameters. */
+  /** Compressor â DynamicsCompressor parameters. */
   compEnabled: boolean;
   compThreshDb: number; // -60..0
   compRatio: number; // 1..20
@@ -64,7 +75,7 @@ export interface TrackFx {
    *  in equal blend). When 0 we behave exactly like before for
    *  backwards compat; >0 mixes the unprocessed dry signal back in. */
   compParallelBlend: number; // 0..1
-  /** EMS vocal bus — console-style drive/tone/parallel crush + de-esser. */
+  /** EMS vocal bus â console-style drive/tone/parallel crush + de-esser. */
   vocalBusEnabled: boolean;
   vocalBusDriveDb: number; // 0..18
   vocalBusPresenceDb: number; // -6..+6 @ 3.2 kHz
@@ -92,10 +103,10 @@ export interface TrackState {
   pan: number; // -1 .. +1
   muted: boolean;
   solo: boolean;
-  armed: boolean; // true → next record() captures into this track
+  armed: boolean; // true â next record() captures into this track
   /** Live monitor through this track's FX chain to the speakers.
    *  Default: false. Turning this on while NOT wearing headphones
-   *  creates a feedback loop (mic → speakers → mic). The DAW UI
+   *  creates a feedback loop (mic â speakers â mic). The DAW UI
    *  surfaces a confirm dialog before flipping this. */
   monitorEnabled: boolean;
   /** Input trim on the mic before it hits the FX chain or monitor.
@@ -113,7 +124,7 @@ export interface TrackState {
   eqSpectrum: number[];
   fx: TrackFx;
   /** When set, this track's level ducks based on the source track's
-   *  amplitude — modern sidechain pumping. null disables. */
+   *  amplitude â modern sidechain pumping. null disables. */
   sidechainFromId: TrackId | null;
   /** Sidechain depth: 0 = no ducking, 1 = full duck on peaks. */
   sidechainAmount: number;
@@ -177,7 +188,7 @@ export interface TrackState {
 export interface RecordedTake {
   id: string;
   trackId: TrackId;
-  /** Wall-clock ISO. Useful for the take browser ("Take 3 · 2:14 pm"). */
+  /** Wall-clock ISO. Useful for the take browser ("Take 3 Â· 2:14 pm"). */
   recordedAt: string;
   durationSec: number;
   /** Pre-computed waveform peaks for the take list thumbnail
@@ -196,11 +207,11 @@ export interface RecordedTake {
    *  to flag clipping (>=0.99) so the producer knows to re-record. */
   peakAmplitude: number;
   /** True when the take peaked at or near digital ceiling. Surfaces
-   *  a red ⚠ chip in the take browser. */
+   *  a red â  chip in the take browser. */
   clipped: boolean;
 }
 
-/** Saved plugin slot — what we round-trip in project files. */
+/** Saved plugin slot â what we round-trip in project files. */
 export interface PluginSlot {
   /** Stable per-track slot id so reorders / removals don't conflate. */
   slotId: string;
@@ -215,7 +226,7 @@ export interface PluginSlot {
   /** Live host-side handle. Null when not currently instantiated (host
    *  is offline / plugin missing on this machine). */
   instanceHandle: string | null;
-  /** Last-known parameter values: id → value. Persisted so the slot
+  /** Last-known parameter values: id â value. Persisted so the slot
    *  recreates with the same dial positions even if the host drops
    *  and reconnects. */
   parameterValues: Record<string, number>;
@@ -225,15 +236,15 @@ export interface PluginSlot {
 
 interface TrackInternal {
   state: TrackState;
-  // Signal flow: fxIn → trackHpf → sidechainLookahead → sidechainDuck → EQ → comp/bypass → vocal bus → gain → pan → meter → master
-  //                                                                                                       ├→ reverbSend → shared reverb return
-  //                                                                                                       └→ delaySend → shared delay return
+  // Signal flow: fxIn â trackHpf â sidechainLookahead â sidechainDuck â EQ â comp/bypass â vocal bus â gain â pan â meter â master
+  //                                                                                                       ââ reverbSend â shared reverb return
+  //                                                                                                       ââ delaySend â shared delay return
   fxIn: GainNode;
   /** Per-track HPF (default 30 Hz). Producers bump to 60-80 Hz on
    *  vocals to clear breath rumble; set frequency 20 Hz to functionally
    *  disable while keeping the node in the chain. */
   trackHpf: BiquadFilterNode;
-  /** Sidechain lookahead — delays the receiver's signal by ~5 ms so
+  /** Sidechain lookahead â delays the receiver's signal by ~5 ms so
    *  the duck modulation starts before the source transient hits.
    *  Makes kick pumping feel tight instead of late. */
   sidechainLookahead: DelayNode;
@@ -252,7 +263,7 @@ interface TrackInternal {
   vocalBusSaturator: WaveShaperNode;
   vocalBusPresence: BiquadFilterNode;
   vocalBusAir: BiquadFilterNode;
-  /** De-esser — peaking notch at ~6.5 kHz that dips the sibilance band
+  /** De-esser â peaking notch at ~6.5 kHz that dips the sibilance band
    *  when vocalBusDeEssDb is negative. Bypassed (gain 0) by default. */
   vocalBusDeEss: BiquadFilterNode;
   vocalBusDryGain: GainNode;
@@ -285,7 +296,7 @@ interface TrackInternal {
    *  across record sessions so user-set trim survives stop/start. */
   inputGain: GainNode | null;
   /** Gain node sitting between liveSource and fxIn. Defaults to 0 so the
-   *  performer's voice does NOT route to speakers by default — that's
+   *  performer's voice does NOT route to speakers by default â that's
    *  what causes feedback when monitoring without headphones. UI flips
    *  this to 1 only after explicit confirm. */
   monitorGain: GainNode | null;
@@ -327,7 +338,7 @@ interface TrackInternal {
   /** Comp lane buffers for loop recording. */
   compLaneBuffers: Array<{ id: string; name: string; buffer: AudioBuffer; createdAt: string }>;
   compSegmentLaneIds: string[];
-  /** Track freezing — set when we render-and-bypass. Null when unfrozen. */
+  /** Track freezing â set when we render-and-bypass. Null when unfrozen. */
   preFreezeBuffer: AudioBuffer | null;
   preFreezeFx: TrackFx | null;
   preFreezeGainDb: number | null;
@@ -346,11 +357,11 @@ export interface TransportState {
   /** Accent the downbeat with a brighter pitch + louder tick. Helps
    *  the performer feel "the 1" in busier subdivisions. */
   metronomeAccentDownbeat: boolean;
-  /** 0..0.5 swing — delays every other tick to taste. 0 = straight. */
+  /** 0..0.5 swing â delays every other tick to taste. 0 = straight. */
   metronomeSwing: number;
   /** Tempo map: BPM changes over time. When empty, the project runs
    *  at a single static `bpm`. When non-empty, the transport eases
-   *  between successive entries — quarter-note timing for the
+   *  between successive entries â quarter-note timing for the
    *  metronome, beat machine, and any MIDI clip lookups all read
    *  from `bpmAtSec()` so the whole graph follows the curve. */
   tempoMap: Array<{ atSec: number; bpm: number }>;
@@ -374,7 +385,7 @@ export interface TransportState {
    *  (ms). Used to back-shift recorded takes so what the artist
    *  hears in their cans lines up with what hits the timeline. */
   measuredDeviceLatencyMs: number;
-  /** Per-track take browser. Map track id → array of takes captured
+  /** Per-track take browser. Map track id â array of takes captured
    *  this session. Persists in localStorage so a refresh keeps them. */
   takeHistory: Record<string, RecordedTake[]>;
   latencyMode: "recording" | "mixing";
@@ -382,14 +393,14 @@ export interface TransportState {
   vocalCaptureProfile: "raw" | "punchy" | "smooth" | "hybrid";
   masterDb: number; // -60 .. +6
   masterLevel: number; // 0..1 instantaneous
-  /** True ⇒ DynamicsCompressor at end of master chain pulling -3 dB ratio 20:1. */
+  /** True â DynamicsCompressor at end of master chain pulling -3 dB ratio 20:1. */
   masterLimiterOn: boolean;
   /** Loop region. When loopEnabled is true, transport wraps from
    *  loopEndSec back to loopStartSec on the next tick after crossing. */
   loopEnabled: boolean;
   loopStartSec: number;
   loopEndSec: number;
-  /** Master EQ — same biquad shape as track EQ. */
+  /** Master EQ â same biquad shape as track EQ. */
   masterEqLowDb: number; // -12..+12 @ 200 Hz
   masterEqMidDb: number; // -12..+12 @ 1000 Hz
   masterEqHighDb: number; // -12..+12 @ 5000 Hz
@@ -403,7 +414,7 @@ export interface TransportState {
   masterSideEqLowDb: number; // -12..+12
   masterSideEqMidDb: number; // -12..+12
   masterSideEqHighDb: number; // -12..+12
-  /** Spectrum analyzer — 32 frequency bin amplitudes 0..1, log-frequency. */
+  /** Spectrum analyzer â 32 frequency bin amplitudes 0..1, log-frequency. */
   masterSpectrum: number[];
   /** Approximate short-term LUFS (K-weighted). Negative scale; -14 is the
    *  Spotify/Apple loudness target. -Infinity when silent. */
@@ -509,7 +520,7 @@ export interface BeatMachineState {
   /** Pattern banks A/B/C/D. activeBank decides which one plays. */
   activeBank: PatternBank;
   bankPatterns: Record<PatternBank, BeatPattern>;
-  /** Drum kit preset — modulates synthesis on each hit. */
+  /** Drum kit preset â modulates synthesis on each hit. */
   kit: DrumKitId;
   /** Optional secondary kit per lane. When set, the lane's hit is also
    *  fired through this kit's synth, layered on top of the primary kit
@@ -523,17 +534,17 @@ export interface BeatMachineState {
   laneSemis: Partial<Record<DrumKind, number>>;
   /** Per-lane "play sample reversed" toggle. When true, the lane plays
    *  its primary sample (or current round-robin variant) backwards.
-   *  Synth-only lanes ignore this — there's no buffer to reverse. */
+   *  Synth-only lanes ignore this â there's no buffer to reverse. */
   laneReversed: Partial<Record<DrumKind, boolean>>;
   /** Per-lane custom display name override. Falls back to the canonical
    *  LANE_LABELS in the UI when unset. Producers loading a percussion-
-   *  only kit can rename "kick → shaker" without losing the lane's
+   *  only kit can rename "kick â shaker" without losing the lane's
    *  underlying DrumKind routing. */
   laneNames: Partial<Record<DrumKind, string>>;
   /** Per-lane resonator amount (0..1). When >0, each hit also fires a
    *  short pitched sine tail tuned to the lane's center frequency.
    *  Producers use this to add tonal richness to flat-sounding drum
-   *  one-shots — kicks become more "musical," snares get a slight body
+   *  one-shots â kicks become more "musical," snares get a slight body
    *  ring. 0 = bypass (default). */
   laneResonator: Partial<Record<DrumKind, number>>;
   /** Round-robin variant file names per lane. The primary sample stays
@@ -545,17 +556,17 @@ export interface BeatMachineState {
   /** Low-end occupancy profile per lane for arrangement and mix guidance. */
   laneFrequencyProfiles: Record<DrumKind, LaneFrequencyProfile>;
   /** Per-step modifiers (velocity, probability, micro-shift, repeats).
-   *  Sparse — missing entries fall back to the defaults. Saved as part
+   *  Sparse â missing entries fall back to the defaults. Saved as part
    *  of the project so velocity/probability/etc round-trip. */
   stepOptions: BeatStepOptionsMap;
   /** Same shape as stepOptions but per-bank, so bank switching keeps the
    *  modifiers attached to the right pattern. */
   bankStepOptions: Record<PatternBank, BeatStepOptionsMap>;
   /** Global swing 0..0.66. Shifts every 2nd 16th forward by
-   *  swing * stepDur * 0.5 — at 0.5 you get exact 8th-note triplets. */
+   *  swing * stepDur * 0.5 â at 0.5 you get exact 8th-note triplets. */
   swing: number;
-  /** Humanize jitter in ms (0..15). Each step gets a random ±humanizeMs
-   *  shift before scheduling. 0 = robotic, 5–8 = recorded feel. */
+  /** Humanize jitter in ms (0..15). Each step gets a random Â±humanizeMs
+   *  shift before scheduling. 0 = robotic, 5â8 = recorded feel. */
   humanizeMs: number;
   /** Live performance stutter. 0 = off, 1..4 = subdivide the next bar at
    *  1/4, 1/8, 1/16, 1/32 notes by repeatedly firing step 0's hits. */
@@ -563,7 +574,7 @@ export interface BeatMachineState {
   /** When true, the scheduler auto-injects a fill on the last bar
    *  before a queued bank change so the switch isn't abrupt. */
   fillsEnabled: boolean;
-  /** Queued next bank — set by setQueuedBank to defer the switch until
+  /** Queued next bank â set by setQueuedBank to defer the switch until
    *  the loop boundary. null = no queued change. */
   queuedBank: PatternBank | null;
   /** Fill preset used when fillsEnabled is true and queuedBank is set. */
@@ -594,7 +605,7 @@ export interface AuxBusState {
 export type SynthWave = "sine" | "triangle" | "sawtooth" | "square";
 
 /** A single MIDI note inside a clip. Position is in beats from clip
- *  start, NOT in seconds — so it stays musically correct when the BPM
+ *  start, NOT in seconds â so it stays musically correct when the BPM
  *  changes after recording. */
 export interface MidiNote {
   note: number; // 0..127 MIDI note number
@@ -604,7 +615,7 @@ export interface MidiNote {
 }
 
 /** A recorded MIDI region. lengthBeats is what the playback scheduler
- *  loops over — set to the end time of the last note + a small tail. */
+ *  loops over â set to the end time of the last note + a small tail. */
 export interface MidiClip {
   notes: MidiNote[];
   lengthBeats: number;
@@ -614,9 +625,9 @@ export interface MidiSynthState {
   /** True when Web MIDI access has been granted. */
   midiAvailable: boolean;
   /** Hardware MIDI device name(s) currently feeding notes. Empty list
-   *  is fine — the on-screen keyboard still works. */
+   *  is fine â the on-screen keyboard still works. */
   deviceNames: string[];
-  /** Voice settings — every note plays one voice with these params. */
+  /** Voice settings â every note plays one voice with these params. */
   wave: SynthWave;
   /** Attack / release in seconds. */
   attackSec: number;
@@ -636,7 +647,7 @@ export interface MidiSynthState {
   activeNotes: number[];
   /** True while we're capturing a MIDI clip into the synth track. */
   recordingClip: boolean;
-  /** The clip currently bound to the synth track, if any. Read-only —
+  /** The clip currently bound to the synth track, if any. Read-only â
    *  the engine owns the canonical copy. */
   clip: MidiClip | null;
 }
@@ -753,7 +764,7 @@ export interface MasteringPresetConfig {
 
 /** Five blessed mastering chains. Tuned by ear against 2024-2025 reference
  *  releases on streaming platforms; values are conservative starting points
- *  rather than maximum-loudness commitments — users can push harder
+ *  rather than maximum-loudness commitments â users can push harder
  *  manually after applying a preset. */
 const MASTERING_PRESETS: Record<MasteringPresetId, MasteringPresetConfig> = {
   streamReady: {
@@ -767,7 +778,7 @@ const MASTERING_PRESETS: Record<MasteringPresetId, MasteringPresetConfig> = {
   },
   loudClub: {
     label: "Loud Club",
-    description: "Max impact for sound systems. Pushes the limiter hard — use on already-mixed tracks.",
+    description: "Max impact for sound systems. Pushes the limiter hard â use on already-mixed tracks.",
     eqLowDb: 3.0,
     eqMidDb: -2.5,
     eqHighDb: 2.5,
@@ -794,7 +805,7 @@ const MASTERING_PRESETS: Record<MasteringPresetId, MasteringPresetConfig> = {
   },
   flat: {
     label: "Flat (No Master Processing)",
-    description: "Bypass — every band at 0 dB, limiter off. Use when you want to A/B against a preset.",
+    description: "Bypass â every band at 0 dB, limiter off. Use when you want to A/B against a preset.",
     eqLowDb: 0,
     eqMidDb: 0,
     eqHighDb: 0,
@@ -881,7 +892,7 @@ function buildSoftClipCurve(ceiling: number): Float32Array<ArrayBuffer> {
     } else {
       const over = (ax - c) / (1 - c);
       // tanh shoulder above the knee; at ax==1 the output asymptotes
-      // toward c + (1-c)*tanh(1) ≈ c + 0.76*(1-c).
+      // toward c + (1-c)*tanh(1) â c + 0.76*(1-c).
       curve[i] = sign * (c + (1 - c) * Math.tanh(over));
     }
   }
@@ -890,7 +901,7 @@ function buildSoftClipCurve(ceiling: number): Float32Array<ArrayBuffer> {
 
 function clonePattern(p: BeatPattern): BeatPattern {
   // Use emptyPattern() as the base so the type system sees all 8 lanes
-  // initialized — passing `{} as BeatPattern` to reduce() leaves the
+  // initialized â passing `{} as BeatPattern` to reduce() leaves the
   // accumulator structurally narrow and TS rejects the result.
   const out = emptyPattern();
   for (const lane of DRUM_LANES) out[lane] = [...p[lane]];
@@ -1072,14 +1083,14 @@ export class DawEngine {
    *  sees transients before it needs to clamp them. Producer-tunable
    *  via setMasterLookaheadMs(). */
   private masterLookahead: DelayNode | null = null;
-  /** Soft-clip stage after the limiter — final safety net for
+  /** Soft-clip stage after the limiter â final safety net for
    *  inter-sample peaks that snuck through. 4x oversampled. */
   private masterSoftClip: WaveShaperNode | null = null;
-  /** Master dim — instantly drops the room mix -20 dB while held so
+  /** Master dim â instantly drops the room mix -20 dB while held so
    *  the engineer can talk over playback without touching the fader. */
   private masterDimGain: GainNode | null = null;
   // Mid-Side EQ branch (#9). Built in init() and routed in parallel to
-  // the standard stereo EQ; a crossfade pair (msBusGain ↔ stereoBusGain)
+  // the standard stereo EQ; a crossfade pair (msBusGain â stereoBusGain)
   // selects which branch the chain hears so toggling is glitch-free.
   private msSplitter: ChannelSplitterNode | null = null;
   private msMidGain: GainNode | null = null;
@@ -1092,7 +1103,7 @@ export class DawEngine {
   private msSideEqLow: BiquadFilterNode | null = null;
   private msSideEqMid: BiquadFilterNode | null = null;
   private msSideEqHigh: BiquadFilterNode | null = null;
-  // Encoder: L = M + S, R = M − S (sqrt(2) scaling baked into the
+  // Encoder: L = M + S, R = M â S (sqrt(2) scaling baked into the
   // decode side so we don't lose level on the round-trip).
   private msEncodeMerger: ChannelMergerNode | null = null;
   private msEncodeMidToL: GainNode | null = null;
@@ -1100,7 +1111,7 @@ export class DawEngine {
   private msEncodeSideToL: GainNode | null = null;
   private msEncodeSideToRInvert: GainNode | null = null;
   // Crossfade between stereo EQ branch and M/S branch. Sum into the
-  // shared tape→limiter tail of the chain.
+  // shared tapeâlimiter tail of the chain.
   private stereoBusGain: GainNode | null = null;
   private msBusGain: GainNode | null = null;
   private eqSumGain: GainNode | null = null;
@@ -1142,8 +1153,8 @@ export class DawEngine {
   private masterMeterBuf: Uint8Array | null = null;
   private masterSpectrumAnalyser: AnalyserNode | null = null;
   private masterSpectrumBuf: Uint8Array | null = null;
-  // K-weighting for LUFS. Two biquads in series — high-shelf at 1.5kHz +4dB
-  // and high-pass at 38Hz — applied to a side branch we sum then RMS.
+  // K-weighting for LUFS. Two biquads in series â high-shelf at 1.5kHz +4dB
+  // and high-pass at 38Hz â applied to a side branch we sum then RMS.
   private lufsAnalyser: AnalyserNode | null = null;
   private lufsBuf: Float32Array | null = null;
   private reverbReturnIn: GainNode | null = null;
@@ -1157,16 +1168,16 @@ export class DawEngine {
   private metronomeGain: GainNode | null = null;
   private metronomeNextTime = 0;
   private metronomeTimerId: number | null = null;
-  /** Cue-mix bus — performer headphone send. Mirrors the master mix
+  /** Cue-mix bus â performer headphone send. Mirrors the master mix
    *  by default but has its own gain so the engineer can ride the
    *  headphones without changing the room mix. Connected to a
    *  dedicated `destinationCue` (a MediaStreamDestination) so the
    *  artist can route it to their secondary audio device. */
   private cueBus: GainNode | null = null;
-  /** Cue duck — pulled down ~6 dB by talkback so the engineer's
+  /** Cue duck â pulled down ~6 dB by talkback so the engineer's
    *  voice cuts cleanly over the cue music. */
   private cueDuck: GainNode | null = null;
-  /** Talkback path — engineer's mic goes here when talkbackOn is true.
+  /** Talkback path â engineer's mic goes here when talkbackOn is true.
    *  Routes straight into the cue bus, bypassing the main mix. */
   private talkbackSource: MediaStreamAudioSourceNode | null = null;
   private talkbackStream: MediaStream | null = null;
@@ -1395,7 +1406,7 @@ export class DawEngine {
 
   /** Lazily construct the AudioContext. Browsers require a user gesture
    *  before audio can play, so init() is meant to be called in response
-   *  to a click — the workspace calls it from the first transport action. */
+   *  to a click â the workspace calls it from the first transport action. */
   init(): boolean {
     if (this.ctx) return true;
     try {
@@ -1406,7 +1417,7 @@ export class DawEngine {
       if (!Ctor) return false;
       // Pro audio defaults: 48 kHz is the studio/video standard and the
       // sweet spot of CPU-vs-quality. Browsers may fall back to the device
-      // rate if 48 kHz isn't supported — the engine reads ctx.sampleRate
+      // rate if 48 kHz isn't supported â the engine reads ctx.sampleRate
       // everywhere, so a fallback is harmless.
       this.ctx = new Ctor({
         latencyHint: this.transport.latencyMode === "recording" ? "interactive" : "playback",
@@ -1414,7 +1425,7 @@ export class DawEngine {
       });
       this.audioContext = this.ctx;
       // Prune persisted takes older than 14 days. Best-effort,
-      // fire-and-forget — never blocks audio engine startup.
+      // fire-and-forget â never blocks audio engine startup.
       void pruneStaleTakes(14);
       this.master = this.ctx.createGain();
       this.master.gain.value = DB_TO_LINEAR(this.transport.masterDb);
@@ -1434,7 +1445,7 @@ export class DawEngine {
       // wanting a dedicated headphone interface can pipe
       // engine.getCueStream() into setSinkId() on a hidden <audio>.
       this.cueDuck.connect(this.ctx.destination);
-      // Master EQ — three biquads matching the per-track EQ shape so the
+      // Master EQ â three biquads matching the per-track EQ shape so the
       // user thinks in the same units everywhere.
       this.masterEqLow = this.ctx.createBiquadFilter();
       this.masterEqLow.type = "lowshelf";
@@ -1446,7 +1457,7 @@ export class DawEngine {
       this.masterEqHigh = this.ctx.createBiquadFilter();
       this.masterEqHigh.type = "highshelf";
       this.masterEqHigh.frequency.value = 5000;
-      // Master limiter — DynamicsCompressor in "brick wall" mode. We
+      // Master limiter â DynamicsCompressor in "brick wall" mode. We
       // route all signal through it (knee=0, ratio=20, fast attack) so
       // a hot mix can't clip the destination. The user can disable it
       // for an honest peak-to-peak listen.
@@ -1456,14 +1467,14 @@ export class DawEngine {
       this.masterLimiter.ratio.value = 20;
       this.masterLimiter.attack.value = 0.002;
       this.masterLimiter.release.value = 0.05;
-      // Master tape saturator (#15) — a WaveShaperNode sitting between
+      // Master tape saturator (#15) â a WaveShaperNode sitting between
       // the master EQ and the limiter. Curve starts as a passthrough
       // (identity) so the chain is bit-perfect when drive is 0. Drive
       // > 0 swaps in a tanh-based curve scaled by drive amount; even
       // harmonics fatten the mix without ringing. 4x oversampling
       // matches the vocal bus to avoid aliasing on a busy master.
       this.masterTape = this.ctx.createWaveShaper();
-      // Drive 0 → identity curve (buildConsoleSaturationCurve special-cases
+      // Drive 0 â identity curve (buildConsoleSaturationCurve special-cases
       // it for bit-perfect bypass). Live drive lands via setMasterTapeDrive.
       this.masterTape.curve = buildConsoleSaturationCurve(0);
       this.masterTape.oversample = "4x";
@@ -1489,14 +1500,14 @@ export class DawEngine {
       this.phaseRightAnalyser.fftSize = 1024;
       this.phaseLeftBuf = new Float32Array(this.phaseLeftAnalyser.fftSize);
       this.phaseRightBuf = new Float32Array(this.phaseRightAnalyser.fftSize);
-      // Spectrum analyser — wider FFT for finer resolution.
+      // Spectrum analyser â wider FFT for finer resolution.
       this.masterSpectrumAnalyser = this.ctx.createAnalyser();
       this.masterSpectrumAnalyser.fftSize = 2048;
       this.masterSpectrumAnalyser.smoothingTimeConstant = 0.75;
       this.masterSpectrumBuf = new Uint8Array(
         this.masterSpectrumAnalyser.frequencyBinCount,
       );
-      // LUFS branch — same analyser, K-weighting via two biquads. Routed
+      // LUFS branch â same analyser, K-weighting via two biquads. Routed
       // post-EQ-pre-limiter so the loudness reading reflects what the user
       // tonally hears rather than what the limiter clamps.
       const lufsHpf = this.ctx.createBiquadFilter();
@@ -1510,17 +1521,17 @@ export class DawEngine {
       this.lufsAnalyser.fftSize = 2048;
       this.lufsBuf = new Float32Array(this.lufsAnalyser.fftSize);
       // Build the Mid-Side EQ branch (#9). The graph:
-      //   master → splitter (L on ch0, R on ch1)
-      //   mid path:  L gain 0.5 + R gain 0.5  → msMidEq chain
-      //   side path: L gain 0.5 + R gain -0.5 → msSideEq chain
-      //   encode:    L = M + S,  R = M − S    → merger (stereo)
-      // The 0.5/0.5 mid + 0.5/−0.5 side keeps unity gain on a
+      //   master â splitter (L on ch0, R on ch1)
+      //   mid path:  L gain 0.5 + R gain 0.5  â msMidEq chain
+      //   side path: L gain 0.5 + R gain -0.5 â msSideEq chain
+      //   encode:    L = M + S,  R = M â S    â merger (stereo)
+      // The 0.5/0.5 mid + 0.5/â0.5 side keeps unity gain on a
       // perfectly centered signal (M = (L+R)/2; reconstructed L = M+S =
-      // (L+R)/2 + (L−R)/2 = L). We sum back into eqSumGain through a
+      // (L+R)/2 + (LâR)/2 = L). We sum back into eqSumGain through a
       // crossfade so toggling M/S mode is glitch-free.
       this.msSplitter = this.ctx.createChannelSplitter(2);
       this.msMidGain = this.ctx.createGain();
-      this.msMidGain.gain.value = 1; // mid bus carrier — feeds two 0.5 sources
+      this.msMidGain.gain.value = 1; // mid bus carrier â feeds two 0.5 sources
       this.msSideLPlus = this.ctx.createGain();
       this.msSideLPlus.gain.value = 0.5;
       this.msSideRInvert = this.ctx.createGain();
@@ -1567,8 +1578,8 @@ export class DawEngine {
 
       // Wire master chain. Tape saturator sits between the EQ tap and
       // the limiter so the user can hit the limiter with a saturated
-      // mix (a key "glue" trick). EQ analysers tap the EQ output —
-      // before tape — so the spectrum + LUFS readings stay tonally
+      // mix (a key "glue" trick). EQ analysers tap the EQ output â
+      // before tape â so the spectrum + LUFS readings stay tonally
       // accurate regardless of saturation drive.
       // Stereo EQ branch (default routing).
       this.master
@@ -1577,9 +1588,9 @@ export class DawEngine {
         .connect(this.masterEqHigh)
         .connect(this.stereoBusGain)
         .connect(this.eqSumGain);
-      // M/S branch — runs in parallel; gated by msBusGain (0 by default).
+      // M/S branch â runs in parallel; gated by msBusGain (0 by default).
       this.master.connect(this.msSplitter);
-      // Mid bus: L*0.5 + R*0.5 → msMidGain → EQ chain.
+      // Mid bus: L*0.5 + R*0.5 â msMidGain â EQ chain.
       const midFromL = this.ctx.createGain();
       midFromL.gain.value = 0.5;
       const midFromR = this.ctx.createGain();
@@ -1592,7 +1603,7 @@ export class DawEngine {
         .connect(this.msMidEqLow)
         .connect(this.msMidEqMid)
         .connect(this.msMidEqHigh);
-      // Side bus: L*0.5 + R*(-0.5) → msSideSum → EQ chain.
+      // Side bus: L*0.5 + R*(-0.5) â msSideSum â EQ chain.
       this.msSplitter.connect(this.msSideLPlus, 0);
       this.msSplitter.connect(this.msSideRInvert, 1);
       this.msSideLPlus.connect(this.msSideSum);
@@ -1601,7 +1612,7 @@ export class DawEngine {
         .connect(this.msSideEqLow)
         .connect(this.msSideEqMid)
         .connect(this.msSideEqHigh);
-      // Re-encode: L = M + S, R = M − S into the stereo merger.
+      // Re-encode: L = M + S, R = M â S into the stereo merger.
       this.msMidEqHigh.connect(this.msEncodeMidToL);
       this.msMidEqHigh.connect(this.msEncodeMidToR);
       this.msSideEqHigh.connect(this.msEncodeSideToL);
@@ -1654,8 +1665,8 @@ export class DawEngine {
       this.mbSum.connect(this.mbBranchGain).connect(this.mbOutSum);
       // Dry bypass.
       this.eqSumGain.connect(this.mbBypassGain).connect(this.mbOutSum);
-      // Tail → tape → limiter → analyser.
-      // Master HPF — strips DC offset + sub-20Hz rumble that adds
+      // Tail â tape â limiter â analyser.
+      // Master HPF â strips DC offset + sub-20Hz rumble that adds
       // nothing audible but eats limiter headroom. 12 dB/oct Butterworth
       // at 20 Hz is the standard "infrasonic" filter on mastering
       // chains; lets the limiter spend its work on stuff humans hear.
@@ -1663,7 +1674,7 @@ export class DawEngine {
       this.masterDcHpf.type = "highpass";
       this.masterDcHpf.frequency.value = 20;
       this.masterDcHpf.Q.value = 0.707;
-      // Lookahead delay — 5 ms ahead of the limiter so attack transients
+      // Lookahead delay â 5 ms ahead of the limiter so attack transients
       // are already known when the gain reduction kicks in. Brick-wall
       // limiters NEED this; without it, a snare hit slams into 0 dBFS
       // before the dynamics processor can pull it down (audible
@@ -1703,7 +1714,7 @@ export class DawEngine {
       this.monoMerger.connect(this.monoOutGain).connect(this.ctx.destination);
       this.monoSplitter.connect(this.phaseLeftAnalyser, 0);
       this.monoSplitter.connect(this.phaseRightAnalyser, 1);
-      // Side branches — both tap the post-EQ summing point so their
+      // Side branches â both tap the post-EQ summing point so their
       // readings stay accurate whether the user is in stereo or M/S
       // mode. Earlier we tapped masterEqHigh directly, which would
       // read silence when M/S mode was on.
@@ -1732,7 +1743,7 @@ export class DawEngine {
       this.delay.connect(this.delayFeedback);
       this.delayFeedback.connect(this.delay);
       this.delay.connect(this.delayReturnGain).connect(this.master);
-      // Metronome chain — small click oscillator gated by an envelope.
+      // Metronome chain â small click oscillator gated by an envelope.
       this.metronomeGain = this.ctx.createGain();
       this.metronomeGain.gain.value = 0;
       this.metronomeGain.connect(this.master);
@@ -1748,7 +1759,7 @@ export class DawEngine {
 
   private startMeterLoop() {
     // The meter loop only needs to run when there's actually audio
-    // moving — during playback, while recording (so arm-state level
+    // moving â during playback, while recording (so arm-state level
     // monitoring works), while the beat machine is enabled, or when
     // input monitoring is on. Otherwise we'd burn ~60Hz of CPU on a
     // silent UI just to read analyser nodes that report zero.
@@ -1759,7 +1770,7 @@ export class DawEngine {
       }
       this.tick();
       if (!this.needsMeterTick()) {
-        // Nothing is producing audio → park the loop. The next play /
+        // Nothing is producing audio â park the loop. The next play /
         // arm / beat-enable will kick it back to life via kickMeterLoop.
         this.rafId = null;
         return;
@@ -1773,7 +1784,7 @@ export class DawEngine {
   /** Wake the meter loop from its idle state. Called whenever something
    *  flips that should trigger meter updates again (play, arm, beat
    *  enable, input monitor). Safe to call when the loop is already
-   *  running — startMeterLoop guards against double-starting. */
+   *  running â startMeterLoop guards against double-starting. */
   private kickMeterLoop() {
     if (this.rafId !== null) return;
     if (!this.ctx) return;
@@ -1804,14 +1815,14 @@ export class DawEngine {
       if (v > peak) peak = v;
     }
     this.transport.masterLevel = peak;
-    // Master limiter gain reduction — DynamicsCompressorNode.reduction is
+    // Master limiter gain reduction â DynamicsCompressorNode.reduction is
     // a negative dB value (0 = passthrough, -3 = pulling 3 dB out). When
     // the limiter is bypassed the node still runs so the value stays at 0.
     this.transport.masterLimiterReduction = this.masterLimiter?.reduction ?? 0;
 
     // Per-track meters. We accumulate BOTH peak (transient indicator)
     // and RMS (average-level indicator) per frame. RMS lags peak by
-    // a smoothing constant; together they read like a proper PPM —
+    // a smoothing constant; together they read like a proper PPM â
     // peak shows when a transient is about to clip, RMS shows
     // perceived loudness.
     for (const t of this.tracks.values()) {
@@ -1829,7 +1840,7 @@ export class DawEngine {
       const instantRms = Math.sqrt(sumSq / Math.max(1, t.meterBuf.length));
       t.state.level = trackPeak;
       // 300 ms RMS smoothing (~broadcast PPM ballistics). Frame rate
-      // is ~30 fps; 0.1 weight ≈ 300 ms time constant.
+      // is ~30 fps; 0.1 weight â 300 ms time constant.
       const prevRms = t.state.levelRms ?? instantRms;
       t.state.levelRms = prevRms * 0.9 + instantRms * 0.1;
       t.state.compGainReductionDb = t.comp.reduction ?? 0;
@@ -1865,7 +1876,7 @@ export class DawEngine {
       this.transport.aflBusLevel = 0;
     }
 
-    // Sidechain ducking — drive each target track's duck-gain from the
+    // Sidechain ducking â drive each target track's duck-gain from the
     // source track's level. Level is already updated above so we read
     // post-meter. Reduction = sourceLevel * sidechainAmount, clamped to
     // [0, 0.95] so we never fully silence (jarring). Smoothing matches
@@ -1883,7 +1894,7 @@ export class DawEngine {
       if (!src) continue;
       const reduction = Math.min(0.95, src.state.level * t.state.sidechainAmount * 1.4);
       const targetGain = 1 - reduction;
-      // Asymmetric — fast attack on duck, slow release. Reads as "pump."
+      // Asymmetric â fast attack on duck, slow release. Reads as "pump."
       const cur = t.sidechainDuck.gain.value;
       if (targetGain < cur) {
         t.sidechainDuck.gain.value = cur * 0.5 + targetGain * 0.5;
@@ -2036,7 +2047,7 @@ export class DawEngine {
     this.stopBeatScheduler();
   }
 
-  // ── Tracks ────────────────────────────────────────────────────────────
+  // ââ Tracks ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   addTrack(name: string, color: string): TrackId {
     if (!this.ctx || !this.master) {
@@ -2045,7 +2056,7 @@ export class DawEngine {
     const ctx = this.ctx;
     const id = `t_${Math.random().toString(36).slice(2, 9)}`;
 
-    // Build the track strip. Defaults are flat — user dialing EQ/comp
+    // Build the track strip. Defaults are flat â user dialing EQ/comp
     // before recording will hear the same path on monitoring and playback.
     const fxIn = ctx.createGain();
     // Per-track HPF before any other DSP. Default 30 Hz (mostly
@@ -2057,7 +2068,7 @@ export class DawEngine {
     trackHpf.type = "highpass";
     trackHpf.frequency.value = 30;
     trackHpf.Q.value = 0.707;
-    // Sidechain duck — sits between the HPF and the rest of the strip.
+    // Sidechain duck â sits between the HPF and the rest of the strip.
     // Modulated each tick when sidechainFromId is set. We also wire a
     // lookahead delay BEFORE the duck so pumping starts ~5 ms before
     // the source transient hits, which makes the ducking feel natural
@@ -2089,7 +2100,7 @@ export class DawEngine {
     // Comp bypass stays closed by default. When compression is disabled,
     // the compressor is slackened into a unity no-op instead of rewiring.
     const compBypass = ctx.createGain();
-    compBypass.gain.value = 0; // start with bypass closed → comp engaged
+    compBypass.gain.value = 0; // start with bypass closed â comp engaged
     const compMix = ctx.createGain();
 
     const vocalBusDrive = ctx.createGain();
@@ -2097,7 +2108,7 @@ export class DawEngine {
     const vocalBusSaturator = ctx.createWaveShaper();
     vocalBusSaturator.curve = buildConsoleSaturationCurve(0);
     // 4x oversample kills aliasing above 8 kHz that 2x lets through when
-    // drive is hot. CPU cost ~12% per saturated track — worth it for vocals.
+    // drive is hot. CPU cost ~12% per saturated track â worth it for vocals.
     vocalBusSaturator.oversample = "4x";
     const vocalBusPresence = ctx.createBiquadFilter();
     vocalBusPresence.type = "peaking";
@@ -2106,7 +2117,7 @@ export class DawEngine {
     const vocalBusAir = ctx.createBiquadFilter();
     vocalBusAir.type = "highshelf";
     vocalBusAir.frequency.value = 10500;
-    // De-esser — a peaking notch at 6.5 kHz with Q=4 (~1/3 octave wide).
+    // De-esser â a peaking notch at 6.5 kHz with Q=4 (~1/3 octave wide).
     // Starts at 0 dB (bypassed); when the user pulls it down (e.g., -6),
     // it dips the sibilance band on every "s/sh/ch" without dulling the
     // rest of the vocal. Lives after the air shelf so air can still
@@ -2134,7 +2145,7 @@ export class DawEngine {
     delaySendGain.gain.value = 0;
     // Pre-fader send tap. Branches off vocalBusSum (before the
     // fader) so muting / pulling the channel doesn't pull the
-    // send level with it — useful for cue mixes or "reverb tail
+    // send level with it â useful for cue mixes or "reverb tail
     // survives fade-out" tricks. Idle at 0 by default; the
     // sendPosition state picks which of the pre/post pair carries
     // the send level for each FX.
@@ -2151,7 +2162,7 @@ export class DawEngine {
     meterAnalyser.fftSize = 256;
     const meterBuf = new Uint8Array(meterAnalyser.fftSize);
 
-    // Wire FX chain: fxIn → HPF → sidechainLookahead → sidechainDuck → EQ → ...
+    // Wire FX chain: fxIn â HPF â sidechainLookahead â sidechainDuck â EQ â ...
     fxIn.connect(trackHpf);
     trackHpf.connect(sidechainLookahead);
     sidechainLookahead.connect(sidechainDuck);
@@ -2173,7 +2184,7 @@ export class DawEngine {
     vocalBusDryGain.connect(vocalBusSum);
     vocalBusCrush.connect(vocalBusCrushGain);
     vocalBusCrushGain.connect(vocalBusSum);
-    // Out the strip → fader / pan / meter / master. Time-based FX are
+    // Out the strip â fader / pan / meter / master. Time-based FX are
     // post-fader sends to shared aux returns.
     vocalBusSum.connect(gainNode);
     gainNode.connect(panNode);
@@ -2313,7 +2324,7 @@ export class DawEngine {
     return ir;
   }
 
-  // ── FX setters ────────────────────────────────────────────────────────
+  // ââ FX setters ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   setTrackEq(id: TrackId, band: EqBand, db: number) {
     const t = this.tracks.get(id);
@@ -2370,8 +2381,8 @@ export class DawEngine {
     t.comp.ratio.setValueAtTime(t.comp.ratio.value, now);
     t.comp.ratio.linearRampToValueAtTime(targetRatio, now + 0.02);
     // Parallel comp blend: when blend=0 we behave exactly as before
-    // (comp on → all comp, comp off → all dry). When blend>0 we mix
-    // some unprocessed dry signal back in even while compressing —
+    // (comp on â all comp, comp off â all dry). When blend>0 we mix
+    // some unprocessed dry signal back in even while compressing â
     // classic NY-style "punch on top of dry" sound. The blend is only
     // meaningful when comp is enabled; with comp off the dry path is
     // 100% already.
@@ -2414,7 +2425,7 @@ export class DawEngine {
       t.state.fx.vocalBusCrush = Math.max(0, Math.min(1, params.crush));
     }
     if (params.deEssDb !== undefined) {
-      // Clamp to -12..0 — the de-esser is cut-only by design; a "boost"
+      // Clamp to -12..0 â the de-esser is cut-only by design; a "boost"
       // here would just be a presence shelf, which already exists.
       t.state.fx.vocalBusDeEssDb = Math.max(-12, Math.min(0, params.deEssDb));
     }
@@ -2443,7 +2454,7 @@ export class DawEngine {
     t.vocalBusAir.gain.cancelScheduledValues(now);
     t.vocalBusAir.gain.setValueAtTime(t.vocalBusAir.gain.value, now);
     t.vocalBusAir.gain.linearRampToValueAtTime(enabled ? fx.vocalBusAirDb : 0, now + 0.02);
-    // De-esser is cut-only — clamp at <=0 dB regardless of input. When
+    // De-esser is cut-only â clamp at <=0 dB regardless of input. When
     // the vocal bus is bypassed we ramp to 0 so the chain becomes a
     // straight passthrough.
     const deEssDb = enabled ? Math.min(0, fx.vocalBusDeEssDb ?? 0) : 0;
@@ -2516,13 +2527,13 @@ export class DawEngine {
   /**
    * Toggle live monitoring (the "hear yourself" path while recording) for
    * a single track. The monitor gain fades up/down over 30 ms so the user
-   * doesn't hear a click — this matters because monitor toggling typically
+   * doesn't hear a click â this matters because monitor toggling typically
    * happens *during* an armed take and a snap to silence/full-volume is
    * jarring.
    *
    * IMPORTANT: enabling monitor without headphones will create a feedback
    * loop. The DAW UI should always confirm headphones first before calling
-   * this with `on=true`. The engine itself does not enforce that — it just
+   * this with `on=true`. The engine itself does not enforce that â it just
    * provides the gate.
    */
   setTrackMonitor(id: TrackId, on: boolean) {
@@ -2532,7 +2543,7 @@ export class DawEngine {
     if (t.monitorGain) {
       const target = on ? 0.7 : 0;
       const now = this.ctx.currentTime;
-      // Cancel any in-flight ramp before starting a new one — otherwise
+      // Cancel any in-flight ramp before starting a new one â otherwise
       // rapid toggles compound into surprising values.
       t.monitorGain.gain.cancelScheduledValues(now);
       t.monitorGain.gain.setValueAtTime(t.monitorGain.gain.value, now);
@@ -2658,7 +2669,7 @@ export class DawEngine {
     return null;
   }
 
-  // ── Track audio I/O — programmatic buffer attach (used by beat render) ───
+  // ââ Track audio I/O â programmatic buffer attach (used by beat render) âââ
 
   /** Read-only view of a track's AudioBuffer. Used by the pitch-correct
    *  flow (#13) which clones, processes, and writes back via
@@ -2758,7 +2769,7 @@ export class DawEngine {
     // robot-voice playback on contexts where ctx.sampleRate isn't a
     // native Opus rate (Opus only natively supports 8/12/16/24/48
     // kHz; 44.1 kHz Mac devices were the worst). The
-    // MediaRecorder → decodeAudioData fallback is rock-solid because
+    // MediaRecorder â decodeAudioData fallback is rock-solid because
     // the browser handles sample-rate alignment automatically, so we
     // route every capture through it until WebCodecs is hardened
     // (resample at the encoder boundary, force 48k input, etc.).
@@ -3188,7 +3199,7 @@ export class DawEngine {
     }
   }
 
-  // ── Master ────────────────────────────────────────────────────────────
+  // ââ Master ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   setMasterDb(db: number) {
     if (!this.master) return;
@@ -3214,8 +3225,8 @@ export class DawEngine {
   }
 
   /** Re-stretch every lane sample that has a declared source BPM,
-   *  matching the current project BPM. Safe to call repeatedly — a
-   *  no-op when factor ≈ 1. */
+   *  matching the current project BPM. Safe to call repeatedly â a
+   *  no-op when factor â 1. */
   private async retimeAllLaneSamples(): Promise<void> {
     if (!this.ctx) return;
     for (const lane of DRUM_LANES) {
@@ -3308,7 +3319,7 @@ export class DawEngine {
     this.notify();
   }
 
-  // ── Aux bus return setters ─────────────────────────────────────────────
+  // ââ Aux bus return setters âââââââââââââââââââââââââââââââââââââââââââââ
 
   setAuxReverbLevel(level: number) {
     const clamped = Math.max(0, Math.min(2, level));
@@ -3316,7 +3327,7 @@ export class DawEngine {
     if (this.reverbReturnGain) this.reverbReturnGain.gain.value = clamped;
     this.notify();
   }
-  /** Parallel mix for the reverb return — drives a -3 dB equal-power
+  /** Parallel mix for the reverb return â drives a -3 dB equal-power
    *  crossfade between "send only" (0) and "everything through the
    *  reverb" (1). Default 0 = legacy behavior. Useful for getting a
    *  consistent wet ratio across many tracks without per-track sends. */
@@ -3381,7 +3392,7 @@ export class DawEngine {
     this.transport.masterLimiterOn = on;
     if (!this.masterLimiter) return;
     // Slacken the limiter into a no-op when off (threshold > 0, ratio
-    // 1) rather than rewiring the graph mid-stream — much smoother.
+    // 1) rather than rewiring the graph mid-stream â much smoother.
     if (on) {
       this.masterLimiter.threshold.value = -3;
       this.masterLimiter.ratio.value = 20;
@@ -3417,7 +3428,7 @@ export class DawEngine {
 
   /** Master soft-clip ceiling (0.5..0.99 linear). Lower = earlier
    *  shoulder, more gentle rolloff; higher = closer to bit-perfect
-   *  but less ISP insurance. Default 0.94 ≈ -0.5 dBFS knee. */
+   *  but less ISP insurance. Default 0.94 â -0.5 dBFS knee. */
   setMasterSoftClipCeiling(ceiling: number) {
     const clamped = Math.max(0.5, Math.min(0.99, ceiling));
     this.transport.masterSoftClipCeiling = clamped;
@@ -3427,7 +3438,7 @@ export class DawEngine {
     this.notify();
   }
 
-  /** Master dim — momentary -20 dB so the engineer can talk over
+  /** Master dim â momentary -20 dB so the engineer can talk over
    *  playback without touching the fader. Setter takes a boolean
    *  so a button can wire push-and-release directly. */
   setMasterDim(on: boolean) {
@@ -3462,7 +3473,7 @@ export class DawEngine {
     this.notify();
   }
 
-  /** Per-track HPF corner frequency. 20 Hz ≈ disabled (audible only
+  /** Per-track HPF corner frequency. 20 Hz â disabled (audible only
    *  on infrasonic content). 80 Hz is the typical vocal default. */
   setTrackHpf(id: TrackId, hz: number) {
     const t = this.tracks.get(id);
@@ -3474,7 +3485,7 @@ export class DawEngine {
   }
 
   /** Swap a track's reverb + delay sends between post-fader (default,
-   *  follows the fader / mute) and pre-fader (independent — useful
+   *  follows the fader / mute) and pre-fader (independent â useful
    *  for "tail survives fade-out" tricks or feed-the-cue setups).
    *  Re-applies the current wet values so the active path picks them
    *  up after the swap. */
@@ -3637,11 +3648,11 @@ export class DawEngine {
     }
     // First-stage HPF (38 Hz, Q=0.5) cascaded with high-shelf
     // (~1500 Hz, +4 dB). Simple biquad coefficients.
-    // (hpfA0 placeholder removed — we approximate K-weighting with a
+    // (hpfA0 placeholder removed â we approximate K-weighting with a
     // fixed +3 dB shelf fudge rather than running the full biquad
     // pair, which is good enough for streaming-target match.)
     // For brevity we just apply a rolling RMS without the full
-    // K-weighting filter pair — the gross loudness reading is
+    // K-weighting filter pair â the gross loudness reading is
     // accurate enough for streaming-target match. (Real BS.1770
     // pre-filter is in masterLufs already; we approximate here for
     // the reference because we don't have its analyser graph
@@ -3658,7 +3669,7 @@ export class DawEngine {
       count++;
     }
     const rms = Math.sqrt(sumSq / Math.max(1, count));
-    // Convert RMS to approximate LUFS — K-weighted broadcast LUFS
+    // Convert RMS to approximate LUFS â K-weighted broadcast LUFS
     // for a typical pop master sits ~3 dB above raw RMS dBFS due
     // to the high-shelf lift. Add that as a fudge-factor so the
     // match doesn't constantly under-shoot.
@@ -3792,7 +3803,7 @@ export class DawEngine {
   }
 
   /** Side-bus EQ band setter (#9). Only audible when masterMidSideMode
-   *  is true — in stereo mode the side EQ is dormant. */
+   *  is true â in stereo mode the side EQ is dormant. */
   setMasterSideEq(band: EqBand, db: number) {
     const clamped = Math.max(-12, Math.min(12, db));
     if (band === "low") {
@@ -3864,7 +3875,7 @@ export class DawEngine {
   /** Apply a named mastering chain preset. Each preset is a frozen
    *  EQ + limiter + master-gain config tuned for a delivery target.
    *  Users hit one button and get a usable master without engineering
-   *  knowledge. They can still tweak the EQ knobs afterward — the
+   *  knowledge. They can still tweak the EQ knobs afterward â the
    *  preset just sets the starting point. */
   applyMasteringPreset(preset: MasteringPresetId): MasteringPresetConfig {
     const config = MASTERING_PRESETS[preset];
@@ -3964,7 +3975,7 @@ export class DawEngine {
     t.state.durationSec = renderedBuffer.duration;
     t.state.frozen = true;
     t.state.fx = { ...DEFAULT_TRACK_FX };
-    // gainDb + pan stay at unity — the freeze captured them already.
+    // gainDb + pan stay at unity â the freeze captured them already.
     t.state.gainDb = 0;
     t.state.pan = 0;
 
@@ -3983,8 +3994,8 @@ export class DawEngine {
     if (t.panNode) t.panNode.pan.value = 0;
     // Vocal bus has 5 nodes (drive, saturator curve, presence, air,
     // dry/crush mix). applyVocalBusState walks all of them off the
-    // current state.fx — which we just reset to DEFAULT_TRACK_FX
-    // (vocalBusEnabled = false → all five nodes flatten to passthrough).
+    // current state.fx â which we just reset to DEFAULT_TRACK_FX
+    // (vocalBusEnabled = false â all five nodes flatten to passthrough).
     // Earlier this only zeroed three nodes, leaving the saturator curve
     // and crush blend stale on the rendered playback.
     this.applyVocalBusState(t);
@@ -4018,7 +4029,7 @@ export class DawEngine {
     if (t.delaySendGain) t.delaySendGain.gain.value = t.state.fx.delayWet;
     if (t.gainNode) t.gainNode.gain.value = DB_TO_LINEAR(t.state.gainDb);
     if (t.panNode) t.panNode.pan.value = t.state.pan;
-    // Vocal bus chain — drive, saturator curve, presence, air, dry/crush
+    // Vocal bus chain â drive, saturator curve, presence, air, dry/crush
     // mix. applyVocalBusState handles all five nodes in one place and
     // ramps them so the unfreeze isn't a clicky step change.
     this.applyVocalBusState(t);
@@ -4033,12 +4044,12 @@ export class DawEngine {
     return true;
   }
 
-  // ── Sidechain ─────────────────────────────────────────────────────────
+  // ââ Sidechain âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   setTrackSidechain(targetId: TrackId, sourceId: TrackId | null, amount?: number) {
     const t = this.tracks.get(targetId);
     if (!t) return;
-    // Disallow self-sidechain — would feedback the meter.
+    // Disallow self-sidechain â would feedback the meter.
     if (sourceId === targetId) sourceId = null;
     t.state.sidechainFromId = sourceId;
     if (amount !== undefined) {
@@ -4051,7 +4062,7 @@ export class DawEngine {
     this.notify();
   }
 
-  // ── Track add / rename ────────────────────────────────────────────────
+  // ââ Track add / rename ââââââââââââââââââââââââââââââââââââââââââââââââ
 
   renameTrack(id: TrackId, name: string) {
     const t = this.tracks.get(id);
@@ -4075,7 +4086,7 @@ export class DawEngine {
   /** Subdivision sets how many ticks per beat: 1/4 = one tick on the
    *  quarter (standard), 1/8 = two ticks per quarter, 1/16 = four.
    *  The accent flag pitches the downbeat higher so the performer
-   *  always knows where "the 1" is. Swing ∈ [0, 0.5] delays every
+   *  always knows where "the 1" is. Swing â [0, 0.5] delays every
    *  other tick by that fraction of the beat. */
   setMetronomeSubdivision(sub: "1/4" | "1/8" | "1/16") {
     this.transport.metronomeSubdivision = sub;
@@ -4182,7 +4193,7 @@ export class DawEngine {
     this.notify();
   }
 
-  // ── Take history ──────────────────────────────────────────────────────
+  // ââ Take history ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   /** List takes for a track, newest first. The keeper take is the one
    *  currently loaded as the track's buffer. */
@@ -4246,7 +4257,7 @@ export class DawEngine {
     this.notify();
   }
 
-  // ── Tempo map ─────────────────────────────────────────────────────────
+  // ââ Tempo map âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   /** Read the current tempo at a given playhead position. Linear
    *  interpolation between adjacent entries; falls back to the static
@@ -4270,7 +4281,7 @@ export class DawEngine {
 
   setTempoMap(map: Array<{ atSec: number; bpm: number }>) {
     // Validate + sort. We don't store negative BPMs or impossible
-    // negative time stamps — the UI shouldn't be able to produce them,
+    // negative time stamps â the UI shouldn't be able to produce them,
     // but a paranoid sanitize keeps a malformed import from breaking
     // the transport.
     const cleaned = map
@@ -4291,7 +4302,7 @@ export class DawEngine {
     this.notify();
   }
 
-  // ── Audio reverse + stutter on a track buffer ────────────────────────
+  // ââ Audio reverse + stutter on a track buffer ââââââââââââââââââââââââ
 
   /** Reverse the audio currently on a track. Used for the classic
    *  "reverse swell into the drop" effect or sound-design moments.
@@ -4360,7 +4371,7 @@ export class DawEngine {
 
   /** Crossfade between the tail of one track and the head of another,
    *  rendered into the second track's buffer. Producers use this for
-   *  smooth "intro track → drop track" transitions when chaining
+   *  smooth "intro track â drop track" transitions when chaining
    *  bounces. `crossfadeSec` is the total overlap window. */
   crossfadeTracks(
     fromTrackId: TrackId,
@@ -4384,7 +4395,7 @@ export class DawEngine {
         Math.min(ch, to.buffer.numberOfChannels - 1),
       );
       const outData = out.getChannelData(ch);
-      // Equal-power crossfade — sin/cos curves keep the perceived
+      // Equal-power crossfade â sin/cos curves keep the perceived
       // loudness flat through the overlap.
       for (let i = 0; i < fadeFrames; i++) {
         const k = i / fadeFrames;
@@ -4407,14 +4418,14 @@ export class DawEngine {
   }
 
   /** Auto-chop a sample buffer on transients. Returns slice boundaries
-   *  in seconds — the caller (typically the sample-chop UI) takes care
+   *  in seconds â the caller (typically the sample-chop UI) takes care
    *  of slicing into per-pad buffers. The detection uses a moving RMS
    *  threshold relative to the rolling average; works well for drum
    *  loops where transients punch above ambient material. */
   detectTransients(buffer: AudioBuffer, maxSlices = 16): number[] {
     const data = buffer.getChannelData(0);
     const sr = buffer.sampleRate;
-    // 10 ms windows ≈ 480 samples @ 48k.
+    // 10 ms windows â 480 samples @ 48k.
     const winLen = Math.floor(sr * 0.01);
     const energies: number[] = [];
     for (let i = 0; i < data.length; i += winLen) {
@@ -4560,13 +4571,13 @@ export class DawEngine {
     return noteMidi - noteInOctave + bestOffset;
   }
 
-  /** Internal — called from stopRecording with the captured buffer.
+  /** Internal â called from stopRecording with the captured buffer.
    *  Builds the RecordedTake metadata + stashes the AudioBuffer. */
   private appendTakeHistory(trackId: TrackId, buf: AudioBuffer, label?: string): RecordedTake {
     const id = `take_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     // Downsample to ~120 peak floats for a lightweight sparkline. We
     // also accumulate the global peak so the take browser can flag
-    // clipped takes — anything >= 0.99 is functionally distorted.
+    // clipped takes â anything >= 0.99 is functionally distorted.
     const data = buf.getChannelData(0);
     const peaks: number[] = new Array(120).fill(0);
     const block = Math.max(1, Math.floor(data.length / 120));
@@ -4595,7 +4606,7 @@ export class DawEngine {
     const list = this.transport.takeHistory[trackId] ?? [];
     for (const t of list) t.isKeeper = false;
     list.unshift(take);
-    // Cap at 16 takes per track — older ones drop off the back to
+    // Cap at 16 takes per track â older ones drop off the back to
     // keep the in-memory buffer map from growing without bound.
     while (list.length > 16) {
       const dropped = list.pop()!;
@@ -4604,7 +4615,7 @@ export class DawEngine {
     this.transport.takeHistory[trackId] = list;
     this.takeBuffers.set(id, buf);
     // Fire-and-forget IDB persistence so the take survives a tab
-    // crash. We don't await — slow disk shouldn't block the post-
+    // crash. We don't await â slow disk shouldn't block the post-
     // record UI from showing the new keeper. Track name for the
     // recovery prompt label.
     const trackName = this.tracks.get(trackId)?.state.name ?? "Track";
@@ -4632,7 +4643,7 @@ export class DawEngine {
           : 1;
     this.metronomeNextTime = ctx.currentTime + 0.05;
     // Track playhead-relative position so we can look up the tempo
-    // map per-tick. This is what makes a BPM ramp (80 → 140 over the
+    // map per-tick. This is what makes a BPM ramp (80 â 140 over the
     // intro) actually accelerate the clicks instead of running at a
     // single static BPM.
     let songPosSec = this.transport.positionSec;
@@ -4685,7 +4696,7 @@ export class DawEngine {
     }
   }
 
-  // ── Transport ─────────────────────────────────────────────────────────
+  // ââ Transport âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   async play(): Promise<void> {
     if (!this.ctx) return;
@@ -4710,14 +4721,14 @@ export class DawEngine {
       try {
         src.start(startAt, Math.max(0, offset));
       } catch {
-        /* offset past buffer end — silent */
+        /* offset past buffer end â silent */
       }
       t.source = src;
     }
     this.playStartCtxTime = startAt;
     this.playStartPosition = offset;
     this.transport.isPlaying = true;
-    // The meter loop parks itself when nothing's playing — wake it so
+    // The meter loop parks itself when nothing's playing â wake it so
     // levels start flowing again on this play() boundary.
     this.kickMeterLoop();
     if (this.transport.referenceEnabled) {
@@ -4770,11 +4781,11 @@ export class DawEngine {
     }
   }
 
-  // ── Loop region ───────────────────────────────────────────────────────
+  // ââ Loop region âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   setLoopRegion(startSec: number, endSec: number) {
     const start = Math.max(0, startSec);
-    // Minimum loop length 0.25s — anything smaller and the wrap-around
+    // Minimum loop length 0.25s â anything smaller and the wrap-around
     // logic re-triggers faster than the audio scheduler can react and
     // you get a stutter instead of a loop.
     const end = Math.max(start + 0.25, endSec);
@@ -4797,7 +4808,7 @@ export class DawEngine {
     }
   }
 
-  // ── Tap tempo ─────────────────────────────────────────────────────────
+  // ââ Tap tempo âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   /** Record a tap and recompute BPM from recent intervals. Returns the
    *  resulting BPM so the UI can flash a confirmation without re-reading
@@ -4807,7 +4818,7 @@ export class DawEngine {
     const now = Date.now();
     const last = this.tapTimestamps[this.tapTimestamps.length - 1];
     if (last !== undefined && now - last > 1500) {
-      // Long pause → start a fresh tap window.
+      // Long pause â start a fresh tap window.
       this.tapTimestamps = [];
     }
     this.tapTimestamps.push(now);
@@ -4830,9 +4841,9 @@ export class DawEngine {
     return null;
   }
 
-  // ── File import ────────────────────────────────────────────────────────
+  // ââ File import ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-  /** Load an audio file (mp3/wav/m4a/flac/webm/ogg…) into a track. The
+  /** Load an audio file (mp3/wav/m4a/flac/webm/oggâ¦) into a track. The
    *  browser's decodeAudioData handles every common format. Returns
    *  true on success, false if decoding failed. */
   async importAudioFile(trackId: TrackId, file: Blob): Promise<boolean> {
@@ -4858,7 +4869,7 @@ export class DawEngine {
   /** Heuristic chord detection over a track's audio. Returns the chord
    *  progression as a compact list (consecutive duplicates collapsed).
    *  Empty when the track has no audio. Pure synchronous compute on the
-   *  main thread — runs in ~300ms for a 60s clip. */
+   *  main thread â runs in ~300ms for a 60s clip. */
   async detectTrackChords(trackId: TrackId): Promise<ChordHit[]> {
     const t = this.tracks.get(trackId);
     if (!t || !t.buffer) return [];
@@ -4868,7 +4879,7 @@ export class DawEngine {
   }
 
   /** Convert an AudioBuffer (e.g. a freshly-captured mic recording) into
-   *  a MIDI clip and write it to the engine. Used by the Voice → MIDI
+   *  a MIDI clip and write it to the engine. Used by the Voice â MIDI
    *  button (#4) so users can hum melodies into the synth track without
    *  having to play piano. */
   async convertBufferToMidi(
@@ -4900,7 +4911,7 @@ export class DawEngine {
 
   /** Convert a track's audio (typically a vocal take) into a MIDI clip
    *  using YIN-style pitch tracking. Replaces the engine's current MIDI
-   *  clip — the user can then edit it in the piano roll. Best on solo,
+   *  clip â the user can then edit it in the piano roll. Best on solo,
    *  monophonic vocal lines; choirs and heavy reverb produce noisy
    *  output that's flagged as a known limitation. */
   async convertTrackToMidi(trackId: TrackId): Promise<MidiClip | null> {
@@ -4930,10 +4941,10 @@ export class DawEngine {
     return clip;
   }
 
-  // ── Waveform peaks (UI helper) ─────────────────────────────────────────
+  // ââ Waveform peaks (UI helper) âââââââââââââââââââââââââââââââââââââââââ
 
   /** Return a downsampled peak array for the supplied track, suitable
-   *  for rendering a static waveform display. Cached — bins parameter
+   *  for rendering a static waveform display. Cached â bins parameter
    *  is honored on first call only; subsequent calls return the cached
    *  array even if bins changes. Cheap to call from a useMemo. */
   getWaveformPeaks(trackId: TrackId, bins: number = 200): number[] {
@@ -4958,7 +4969,7 @@ export class DawEngine {
     return peaks;
   }
 
-  // ── Recording ─────────────────────────────────────────────────────────
+  // ââ Recording âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   /** Request mic permission and start recording into the FIRST armed
    *  track (or the supplied trackId). Returns false if mic permission
@@ -5047,9 +5058,9 @@ export class DawEngine {
           }),
         );
       } catch {
-        // private-mode browsers refuse localStorage — non-fatal.
+        // private-mode browsers refuse localStorage â non-fatal.
       }
-      // Recording always wants live meters even before play() — kick
+      // Recording always wants live meters even before play() â kick
       // the loop here so a "record without play" arm shows levels.
       this.kickMeterLoop();
       this.recordingAlignmentTrimSec = wasPlaying ? 0 : TRANSPORT_START_LEAD_SEC;
@@ -5128,7 +5139,7 @@ export class DawEngine {
       // Apply measured device latency on top of the onset trim. The
       // browser's outputLatency tells us how late the click was
       // played (vs. ctx.currentTime), so the take is "late" by the
-      // same amount — back-shift it. Cap at 200 ms so a runaway
+      // same amount â back-shift it. Cap at 200 ms so a runaway
       // estimate never eats the actual take.
       const latencyTrimSec = Math.min(
         0.2,
@@ -5161,7 +5172,7 @@ export class DawEngine {
 
       // Snapshot this take into the per-track take history so the
       // producer can A/B it against previous attempts in the take
-      // browser. Skip when comping is on — loop-record already keeps
+      // browser. Skip when comping is on â loop-record already keeps
       // the takes on dedicated lanes.
       if (!(this.transport.loopEnabled && this.transport.loopRecordEnabled)) {
         const list = this.transport.takeHistory[recordingTrack.state.id] ?? [];
@@ -5174,12 +5185,12 @@ export class DawEngine {
 
     this.transport.isRecording = false;
     this.recordingAlignmentTrimSec = 0;
-    // Clear the in-flight breadcrumb — this was a clean stop, no
+    // Clear the in-flight breadcrumb â this was a clean stop, no
     // recovery needed.
     try {
       window.localStorage.removeItem("ems.studio.recording.inFlight.v1");
     } catch {
-      /* private-mode — ignore */
+      /* private-mode â ignore */
     }
     if (this.transport.punchInEnabled || this.transport.loopRecordEnabled) {
       // Preserve playback for iterative fixes and loop takes.
@@ -5310,7 +5321,7 @@ export class DawEngine {
   }
 
   /** Bulk version of setTrackCompSegmentLane for the drag-select comp
-   *  UI — assigns [start..end] inclusive to a lane in one notify, so
+   *  UI â assigns [start..end] inclusive to a lane in one notify, so
    *  the user sees a single rebuilt buffer instead of N intermediate
    *  rebuilds. */
   setTrackCompSegmentRange(
@@ -5374,7 +5385,7 @@ export class DawEngine {
     this.notify();
   }
 
-  // ── External plugin slots (#bridge) ────────────────────────────────
+  // ââ External plugin slots (#bridge) ââââââââââââââââââââââââââââââââ
   //
   // These methods are storage-only. The actual VST3/AU DSP runs in
   // the EMS Plugin Host desktop app; the browser keeps the slot list
@@ -5408,7 +5419,7 @@ export class DawEngine {
     return slotId;
   }
 
-  /** Update an existing slot — used after the bridge instantiates a
+  /** Update an existing slot â used after the bridge instantiates a
    *  pending plugin (we get an instanceHandle to bind) or when the
    *  user reorders / bypasses. */
   updateTrackPluginSlot(
@@ -5719,7 +5730,7 @@ export class DawEngine {
     return out;
   }
 
-  // ── Beat machine ───────────────────────────────────────────────────────
+  // ââ Beat machine âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   /** Designate which track is the beat output. Drum hits scheduled by
    *  the sequencer route into this track's fxIn so they get the track
@@ -5735,7 +5746,7 @@ export class DawEngine {
       this.beatMachine.activeStep = -1;
       this.stopBeatScheduler();
     }
-    // Beat-on creates audio output → wake the meter loop. Beat-off
+    // Beat-on creates audio output â wake the meter loop. Beat-off
     // doesn't need to stop it (needsMeterTick will park it on the next
     // frame if nothing else needs it).
     if (enabled) this.kickMeterLoop();
@@ -5759,7 +5770,7 @@ export class DawEngine {
    *  which we point at the requested bank. */
   setActivePatternBank(bank: PatternBank) {
     if (bank === this.beatMachine.activeBank) return;
-    // Persist any in-flight edits to the outgoing bank first — setBeatStep
+    // Persist any in-flight edits to the outgoing bank first â setBeatStep
     // mirrors but a hydrate / clear that bypasses it could leave drift.
     this.beatMachine.bankPatterns[this.beatMachine.activeBank] = this.beatMachine.pattern;
     this.beatMachine.bankStepOptions[this.beatMachine.activeBank] = this.beatMachine.stepOptions;
@@ -5773,7 +5784,7 @@ export class DawEngine {
   /** Deep-clone the current active pattern (and its step options) into
    *  another bank slot. Producers nail a verse beat in A and want it as
    *  a starting point for the chorus in B without rebuilding from
-   *  scratch. The destination overwrites without confirmation — the
+   *  scratch. The destination overwrites without confirmation â the
    *  undo stack covers accidental copies. */
   copyActivePatternToBank(target: PatternBank) {
     if (target === this.beatMachine.activeBank) return;
@@ -5782,7 +5793,7 @@ export class DawEngine {
     for (const lane of DRUM_LANES) dest[lane] = [...src[lane]];
     this.beatMachine.bankPatterns[target] = dest;
     // Also clone step options so velocity/probability/repeats carry
-    // over — the user's nuance shouldn't reset on copy.
+    // over â the user's nuance shouldn't reset on copy.
     this.beatMachine.bankStepOptions[target] = cloneStepOptions(
       this.beatMachine.stepOptions,
     );
@@ -5922,7 +5933,7 @@ export class DawEngine {
   }
 
   /** Live-performance stutter. 0 = off. 1..4 subdivide each bar by 4/8/
-   *  16/32 — every step fires the current step's hits at that rate
+   *  16/32 â every step fires the current step's hits at that rate
    *  instead of advancing. Releasing returns to the pattern. */
   setBeatStutter(divisor: number) {
     this.beatMachine.stutter = Math.max(0, Math.min(4, Math.floor(divisor)));
@@ -6095,7 +6106,7 @@ export class DawEngine {
       // Stash the un-stretched original so future BPM changes can
       // re-stretch from a clean source (#18).
       this.originalLaneSamples[lane] = buffer;
-      // Drop any prior source-BPM declaration — new sample, blank slate.
+      // Drop any prior source-BPM declaration â new sample, blank slate.
       delete this.laneSampleSourceBpm[lane];
       this.beatMachine.laneSampleNames[lane] = file.name;
       this.refreshBeatLaneFrequencyProfiles();
@@ -6121,7 +6132,7 @@ export class DawEngine {
 
   /** Add a round-robin variant sample to a lane. The lane keeps the
    *  primary in beatLaneSamples and cycles through up to 3 alternates
-   *  on consecutive triggers — sounds far more natural than the same
+   *  on consecutive triggers â sounds far more natural than the same
    *  hit firing identically every loop. Caps at 3 variants. */
   async addBeatLaneVariant(lane: DrumKind, file: File): Promise<boolean> {
     if (!this.init() || !this.ctx) return false;
@@ -6151,8 +6162,8 @@ export class DawEngine {
     this.notify();
   }
 
-  /** ITU-R BS.1770-style true-peak estimator. 4× oversample via
-   *  4-tap Lanczos (a=2) reconstruction — significantly more accurate
+  /** ITU-R BS.1770-style true-peak estimator. 4Ã oversample via
+   *  4-tap Lanczos (a=2) reconstruction â significantly more accurate
    *  than linear interpolation, especially for content with brick-
    *  wall content from a streaming codec. Returns the maximum
    *  reconstructed |sample| over the buffer. */
@@ -6340,7 +6351,7 @@ export class DawEngine {
     return out;
   }
 
-  /** Look-ahead beat scheduler — same pattern as the metronome. Walks
+  /** Look-ahead beat scheduler â same pattern as the metronome. Walks
    *  forward 200ms in audio-context time and schedules every drum hit
    *  whose step bucket falls in that window. */
   private scheduleBeatTicks() {
@@ -6382,7 +6393,7 @@ export class DawEngine {
           : this.beatMachine.pattern;
         this.fireStep(ctx, beatTrack.fxIn, sourcePattern, stepIndex, this.beatNextTime);
         this.beatMachine.activeStep = stepIndex;
-        // Apply swing on every 2nd 16th — shift forward by
+        // Apply swing on every 2nd 16th â shift forward by
         // swing * stepDur * 0.5 (a swing of 0.5 places the off-step exactly
         // at the triplet). Stutter overrides normal step advance.
         const baseStep = stepSec();
@@ -6432,7 +6443,7 @@ export class DawEngine {
       if (!pattern[lane][stepIndex]) continue;
       const opts: BeatStepOptions | undefined =
         this.beatMachine.stepOptions[lane]?.[stepIndex];
-      // Probability gate — roll once per step per lane.
+      // Probability gate â roll once per step per lane.
       if (opts?.probability !== undefined && opts.probability < 1) {
         if (Math.random() > opts.probability) continue;
       }
@@ -6461,14 +6472,14 @@ export class DawEngine {
       if (sampleBuffer && this.beatMachine.laneReversed[lane]) {
         sampleBuffer = this.getOrBuildReversedBuffer(sampleBuffer);
       }
-      // Per-lane pitch offset in semitones — passed straight to
+      // Per-lane pitch offset in semitones â passed straight to
       // scheduleDrumHit so the kit synth detunes and the sample's
       // playbackRate adjusts to match. Step-level pitch in
       // BeatStepOptions could compose on top later if we want microtonal
       // accents; for now lane-level is the producer-visible knob.
       const laneSemis = this.beatMachine.laneSemis[lane] ?? 0;
       const laneEq = this.beatMachine.laneEqSettings[lane];
-      // Repeats — fire the hit once, then again 1..3 additional times
+      // Repeats â fire the hit once, then again 1..3 additional times
       // squeezed into half the next step's duration. Halves velocity on
       // each repeat so the burst tails off naturally.
       const repeats = Math.max(0, Math.min(3, opts?.repeats ?? 0));
@@ -6485,7 +6496,7 @@ export class DawEngine {
           sampleBuffer,
           laneEq,
         });
-        // Layered secondary kit — synth only (no sample) so we don't
+        // Layered secondary kit â synth only (no sample) so we don't
         // double the same one-shot. Re-uses the same lane EQ template.
         const layerKit = this.beatMachine.layerKitB[lane];
         if (layerKit && layerKit !== this.beatMachine.kit) {
@@ -6498,7 +6509,7 @@ export class DawEngine {
             laneEq,
           });
         }
-        // Resonator tail (#19) — short pitched sine layer tuned to the
+        // Resonator tail (#19) â short pitched sine layer tuned to the
         // lane's center frequency. Scaled by both the resonator amount
         // and the hit velocity so soft hits get a soft tail. Skipped
         // when resonator is 0 (the default).
@@ -6519,7 +6530,7 @@ export class DawEngine {
 
   /** Fire a short pitched sine tail tuned to the lane's synth-center
    *  frequency. Adds harmonic "body" to flat one-shots. Voice is
-   *  intentionally minimal — one oscillator, one envelope — so we can
+   *  intentionally minimal â one oscillator, one envelope â so we can
    *  layer it on top of every drum hit without CPU concerns. */
   private scheduleResonatorTail(
     ctx: BaseAudioContext,
@@ -6555,7 +6566,7 @@ export class DawEngine {
     }
   }
 
-  // ── Render & publish ──────────────────────────────────────────────────
+  // ââ Render & publish ââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   /**
    * Render the entire mix to an AudioBuffer offline. Replays every
@@ -6589,7 +6600,7 @@ export class DawEngine {
           : this.ctx.sampleRate;
     const offline = new OfflineAudioContext(2, Math.ceil(durationSec * sampleRate), sampleRate);
 
-    // Master chain in offline context — limiter mirrors the live one.
+    // Master chain in offline context â limiter mirrors the live one.
     const offMaster = offline.createGain();
     offMaster.gain.value = DB_TO_LINEAR(this.transport.masterDb);
     const offLimiter = offline.createDynamicsCompressor();
@@ -6673,7 +6684,7 @@ export class DawEngine {
   }
 
   /**
-   * Construct an FX chain (EQ → comp → vocal bus → reverb → delay) inside an
+   * Construct an FX chain (EQ â comp â vocal bus â reverb â delay) inside an
    * OfflineAudioContext that mirrors the live track's parameter values.
    * Returns the input node (route source/drum hits in here) and the
    * output node (connect to master).
@@ -6716,8 +6727,8 @@ export class DawEngine {
     vocalBusSaturator.curve = buildConsoleSaturationCurve(
       fx.vocalBusEnabled ? fx.vocalBusDriveDb / 18 : 0,
     );
-    // Match live chain — 4x oversample so the rendered bounce matches what
-    // the user was monitoring (the 2x→4x bump only helps if both paths agree).
+    // Match live chain â 4x oversample so the rendered bounce matches what
+    // the user was monitoring (the 2xâ4x bump only helps if both paths agree).
     vocalBusSaturator.oversample = "4x";
     const vocalBusPresence = offline.createBiquadFilter();
     vocalBusPresence.type = "peaking";
@@ -6780,12 +6791,12 @@ export class DawEngine {
     return { inNode: fxIn, outNode, reverbSend, delaySend };
   }
 
-  // ── Project save / load ───────────────────────────────────────────────
+  // ââ Project save / load âââââââââââââââââââââââââââââââââââââââââââââââ
 
   /**
    * Serialize the entire project to a structured object suitable for
    * IndexedDB storage. Audio buffers are converted to compressed WebM/Opus
-   * blobs to keep stored project size reasonable (10× smaller than raw
+   * blobs to keep stored project size reasonable (10Ã smaller than raw
    * WAV, no perceptible quality loss for already-recorded mic takes).
    */
   async serializeProject(): Promise<ProjectFile> {
@@ -6794,10 +6805,10 @@ export class DawEngine {
     for (const t of this.tracks.values()) {
       let audioBlob: Blob | null = null;
       if (t.blob) {
-        // Already have the original record blob — keep it (smaller than re-encoding).
+        // Already have the original record blob â keep it (smaller than re-encoding).
         audioBlob = t.blob;
       } else if (t.buffer) {
-        // Beat-rendered or imported buffers don't have a blob — encode WAV
+        // Beat-rendered or imported buffers don't have a blob â encode WAV
         // for portability. Slightly larger but no decode roundtrip needed.
         const { audioBufferToWav } = await import("./wavEncoder");
         audioBlob = audioBufferToWav(t.buffer);
@@ -6884,7 +6895,7 @@ export class DawEngine {
   async hydrateProject(file: ProjectFile): Promise<void> {
     if (!this.ctx) throw new Error("Engine not initialized");
     this.stop();
-    // Clear current tracks. Don't try to merge — load is a full replace.
+    // Clear current tracks. Don't try to merge â load is a full replace.
     for (const t of this.tracks.values()) {
       try {
         t.liveStream?.getTracks().forEach((s) => s.stop());
@@ -7045,7 +7056,7 @@ export class DawEngine {
     }
   }
 
-  /** Render mix → WAV blob. Suitable for upload to /api/upload. */
+  /** Render mix â WAV blob. Suitable for upload to /api/upload. */
   async exportWav(options: RenderMixOptions = { quality: "ultra" }): Promise<Blob> {
     const quality = options.quality ?? "ultra";
     const buf = await this.renderMix({ quality });
@@ -7066,7 +7077,7 @@ export class DawEngine {
   }
 
   /** Same as exportWav but returns a clip-detect report alongside the
-   *  blob: count of consecutive-sample runs at ≥0.999 (digital clip
+   *  blob: count of consecutive-sample runs at â¥0.999 (digital clip
    *  signature) + true-peak in dBTP. The publish flow surfaces this
    *  as a warning so producers don't ship a track that smashes the
    *  ceiling. */
@@ -7121,7 +7132,7 @@ export class DawEngine {
     };
   }
 
-  // ── MIDI / synth ──────────────────────────────────────────────────────
+  // ââ MIDI / synth ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   /** Designate which track the synth voices route into. Like the beat
    *  machine, the synth feeds through a real track strip so its FX rack
@@ -7131,7 +7142,7 @@ export class DawEngine {
   }
 
   setSynthParam<K extends keyof MidiSynthState>(key: K, value: MidiSynthState[K]) {
-    // Only allow editing the safe knobs — activeNotes / midiAvailable /
+    // Only allow editing the safe knobs â activeNotes / midiAvailable /
     // deviceNames are engine-managed.
     if (
       key === "wave" ||
@@ -7148,7 +7159,7 @@ export class DawEngine {
 
   /**
    * Request Web MIDI access and subscribe to every connected input. The
-   * on-screen keyboard works regardless — this just adds external
+   * on-screen keyboard works regardless â this just adds external
    * controllers as a parallel input source. Returns whether MIDI is now
    * routed (false on denial / unsupported browser, but the engine still
    * functions).
@@ -7234,7 +7245,7 @@ export class DawEngine {
     if (!this.ctx || !this.synthTrackId) return;
     const target = this.tracks.get(this.synthTrackId);
     if (!target) return;
-    // Steal any voice already on this note — re-triggers don't double up.
+    // Steal any voice already on this note â re-triggers don't double up.
     this.synthNoteOff(note);
 
     const ctx = this.ctx;
@@ -7260,11 +7271,11 @@ export class DawEngine {
     osc.connect(filter).connect(amp).connect(target.fxIn);
 
     const now = ctx.currentTime;
-    // Glide / portamento — when glideSec > 0 the new note pitch-ramps
+    // Glide / portamento â when glideSec > 0 the new note pitch-ramps
     // from the previous note's frequency. lastSynthFreq is null on the
     // very first note (or after the user has globally stopped), so the
     // first note still starts on-pitch. Glide is exponential because
-    // pitch perception is logarithmic — linearRampToValueAtTime would
+    // pitch perception is logarithmic â linearRampToValueAtTime would
     // feel slow at the top and snappy at the bottom.
     const glide = Math.max(0, this.midi.glideSec);
     if (glide > 0 && this.lastSynthFreq && this.lastSynthFreq > 0) {
@@ -7301,7 +7312,7 @@ export class DawEngine {
     const now = ctx.currentTime;
     const release = Math.max(0.01, this.midi.releaseSec);
     voice.amp.gain.cancelScheduledValues(now);
-    // Linear release — exponentialRamp can't go to zero.
+    // Linear release â exponentialRamp can't go to zero.
     voice.amp.gain.setValueAtTime(voice.amp.gain.value, now);
     voice.amp.gain.linearRampToValueAtTime(0, now + release);
     try {
@@ -7320,7 +7331,7 @@ export class DawEngine {
     if (this.midi.recordingClip) {
       const elapsedSec = ctx.currentTime - this.midiRecordStartTime;
       const beat = (elapsedSec / 60) * this.transport.bpm;
-      // Walk backwards — match the most recent unfinished down event.
+      // Walk backwards â match the most recent unfinished down event.
       for (let i = this.midiRecordEvents.length - 1; i >= 0; i--) {
         const ev = this.midiRecordEvents[i];
         if (ev && ev.note === note && ev.upBeat === null) {
@@ -7331,7 +7342,7 @@ export class DawEngine {
     }
   }
 
-  // ── MIDI clip recording / playback ────────────────────────────────────
+  // ââ MIDI clip recording / playback ââââââââââââââââââââââââââââââââââââ
 
   /** Begin capturing live synth input into a clip. Subsequent synthNoteOn /
    *  synthNoteOff calls (from MIDI hardware OR the on-screen keyboard)
@@ -7421,7 +7432,7 @@ export class DawEngine {
   }
 
   /** Schedule a single MIDI note to play at a specific ctx-time. Builds
-   *  a one-shot voice — we don't reuse the held-note voice map because
+   *  a one-shot voice â we don't reuse the held-note voice map because
    *  scheduled notes don't have a corresponding noteOff source. */
   private scheduleScheduledMidiNote(n: MidiNote, when: number) {
     if (!this.ctx || !this.synthTrackId) return;
