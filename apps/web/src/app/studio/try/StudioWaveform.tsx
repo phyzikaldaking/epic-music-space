@@ -13,6 +13,7 @@ type StudioWaveformProps = {
   row: number;
   tiles?: number;
   tileStart?: number;
+  playing?: boolean;
 };
 
 const waveformTileCache = new Map<string, WaveformTile>();
@@ -31,23 +32,20 @@ function getWaveformTile(row: number, tile: number): WaveformTile {
   const key = `${row}:${tile}`;
   const cached = waveformTileCache.get(key);
   if (cached) return cached;
-
   const value = {
     upperPoints: buildWavePoints(row, false, tile),
     lowerPoints: buildWavePoints(row, true, tile),
     pathKey: key,
   };
-
   waveformTileCache.set(key, value);
   if (waveformTileCache.size > MAX_WAVEFORM_TILES) {
     const oldest = waveformTileCache.keys().next().value;
     if (oldest) waveformTileCache.delete(oldest);
   }
-
   return value;
 }
 
-function StudioWaveform({ color, row, tiles = 1, tileStart = 0 }: StudioWaveformProps) {
+function StudioWaveform({ color, row, tiles = 1, tileStart = 0, playing = true }: StudioWaveformProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const safeTiles = Math.max(1, Math.min(8, tiles));
   const safeTileStart = Math.max(0, tileStart);
@@ -56,21 +54,42 @@ function StudioWaveform({ color, row, tiles = 1, tileStart = 0 }: StudioWaveform
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
-    if (typeof OffscreenCanvas !== "undefined") {
-      svg.dataset.renderer = "offscreen-ready";
-    } else {
-      svg.dataset.renderer = "svg-cached";
-    }
-  }, []);
+    svg.dataset.renderer = typeof OffscreenCanvas !== "undefined" ? "offscreen-ready" : "svg-cached";
+    let frame = 0;
+    let raf = 0;
+    const animate = () => {
+      frame += playing ? 1.35 : 0.28;
+      svg.style.setProperty("--wave-shift", `${-(frame % 120)}px`);
+      svg.style.setProperty("--wave-pulse", `${0.78 + Math.sin(frame / 12) * 0.18}`);
+      raf = window.requestAnimationFrame(animate);
+    };
+    raf = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(raf);
+  }, [playing]);
 
   return (
     <svg ref={svgRef} className="absolute inset-0 h-full w-full will-change-transform [contain:layout_paint]" preserveAspectRatio="none" viewBox={`0 0 ${100 * safeTiles} 40`} aria-hidden="true">
-      {tileData.map((tile, index) => (
-        <g key={tile.pathKey} transform={`translate(${index * 100} 0)`}>
-          <polyline points={tile.upperPoints} fill="none" stroke={color} strokeWidth="1.7" strokeLinecap="round" opacity=".95" />
-          <polyline points={tile.lowerPoints} fill="none" stroke={color} strokeWidth="1.1" strokeLinecap="round" opacity=".55" />
-        </g>
-      ))}
+      <defs>
+        <filter id={`wave-glow-${row}`} x="-20%" y="-80%" width="140%" height="260%">
+          <feGaussianBlur stdDeviation="2.8" result="coloredBlur" />
+          <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+      <g style={{ transform: "translate3d(var(--wave-shift, 0px), 0, 0)", opacity: "var(--wave-pulse, .88)" }} className="transition-opacity duration-200">
+        {tileData.map((tile, index) => (
+          <g key={tile.pathKey} transform={`translate(${index * 100} 0)`} filter={`url(#wave-glow-${row})`}>
+            <polyline points={tile.upperPoints} fill="none" stroke={color} strokeWidth="1.9" strokeLinecap="round" opacity=".98" />
+            <polyline points={tile.lowerPoints} fill="none" stroke={color} strokeWidth="1.15" strokeLinecap="round" opacity=".62" />
+          </g>
+        ))}
+        {tileData.map((tile, index) => (
+          <g key={`${tile.pathKey}-loop`} transform={`translate(${index * 100 + safeTiles * 100} 0)`} filter={`url(#wave-glow-${row})`}>
+            <polyline points={tile.upperPoints} fill="none" stroke={color} strokeWidth="1.9" strokeLinecap="round" opacity=".98" />
+            <polyline points={tile.lowerPoints} fill="none" stroke={color} strokeWidth="1.15" strokeLinecap="round" opacity=".62" />
+          </g>
+        ))}
+      </g>
+      <rect x="0" y="0" width="100%" height="40" fill="url(#none)" opacity="0" />
     </svg>
   );
 }
