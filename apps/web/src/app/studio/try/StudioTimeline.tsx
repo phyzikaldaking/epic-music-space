@@ -30,6 +30,7 @@ const VIEWPORT_HEIGHT = 420;
 const OVERSCAN = 5;
 const PLACED_CLIPS_STORAGE_KEY = "ems-studio-placed-sound-clips";
 const SOUNDS_STORAGE_KEY = "ems-studio-sounds";
+const DRAG_SOUND_STORAGE_KEY = "ems-studio-drag-sound";
 
 function safeLoadPlacedClips(): StudioClip[] {
   if (typeof window === "undefined") return [];
@@ -94,6 +95,11 @@ async function decodeSoundWaveform(sound: StudioSoundAsset) {
 function loadStoredSound(id: string): StudioSoundAsset | undefined {
   if (typeof window === "undefined") return undefined;
   try {
+    const dragSoundRaw = window.localStorage.getItem(DRAG_SOUND_STORAGE_KEY);
+    if (dragSoundRaw) {
+      const dragSound = JSON.parse(dragSoundRaw) as StudioSoundAsset;
+      if (dragSound?.id === id) return dragSound;
+    }
     const parsed = JSON.parse(window.localStorage.getItem(SOUNDS_STORAGE_KEY) ?? "[]") as StudioSoundAsset[];
     return parsed.find((sound) => sound.id === id);
   } catch {
