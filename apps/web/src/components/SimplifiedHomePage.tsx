@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import EMSWorldIntro from "@/components/EMSWorldIntro";
 
@@ -46,21 +48,18 @@ function PerformanceBackdrop() {
       <div className="absolute inset-x-[-10%] top-[-8%] h-[58vh] rotate-[-3deg] bg-[linear-gradient(110deg,transparent_0%,rgba(34,211,238,.26)_18%,transparent_34%,rgba(255,45,146,.22)_55%,transparent_70%,rgba(253,224,71,.17)_88%,transparent_100%)] blur-xl" />
       <div className="absolute left-[5%] top-[18%] h-[52vh] w-[28vw] min-w-[220px] rounded-full bg-[radial-gradient(circle,rgba(255,255,255,.22),rgba(255,45,146,.14)_32%,transparent_68%)] blur-2xl" />
       <div className="absolute right-[8%] top-[18%] h-[48vh] w-[30vw] min-w-[220px] rounded-full bg-[radial-gradient(circle,rgba(34,211,238,.2),rgba(34,211,238,.1)_38%,transparent_72%)] blur-2xl" />
-
       <div className="absolute bottom-[17%] left-[7%] hidden h-[56vh] w-[20vw] min-w-[210px] opacity-45 sm:block">
         <div className="absolute bottom-0 left-1/2 h-[42%] w-[35%] -translate-x-1/2 rounded-t-full bg-black/80 shadow-[0_0_48px_rgba(255,45,146,.25)]" />
         <div className="absolute bottom-[36%] left-1/2 h-[17%] w-[22%] -translate-x-1/2 rounded-full bg-black/90" />
         <div className="absolute bottom-[60%] left-[56%] h-[30%] w-[4px] rotate-[-13deg] rounded-full bg-cyan-200/45 shadow-[0_0_18px_rgba(34,211,238,.8)]" />
         <div className="absolute bottom-[69%] left-[62%] h-4 w-20 rounded-full bg-white/55 shadow-[0_0_20px_rgba(255,255,255,.65)]" />
       </div>
-
       <div className="absolute bottom-[14%] right-[6%] hidden h-[52vh] w-[26vw] min-w-[260px] opacity-40 lg:block">
         <div className="absolute bottom-0 h-[46%] w-full rounded-t-[3rem] border border-cyan-300/20 bg-black/70 shadow-[inset_0_0_40px_rgba(34,211,238,.12)]" />
         <div className="absolute bottom-[34%] left-[7%] h-[18%] w-[38%] rounded-xl border border-white/10 bg-cyan-300/10" />
         <div className="absolute bottom-[34%] right-[7%] h-[18%] w-[38%] rounded-xl border border-white/10 bg-pink-300/10" />
         <div className="absolute bottom-[48%] left-[18%] h-[24%] w-[64%] rounded-t-3xl border border-yellow-300/10 bg-black/85" />
       </div>
-
       <div className="absolute inset-x-0 bottom-[13%] flex justify-center gap-3 opacity-35">
         {Array.from({ length: 34 }, (_, index) => (
           <span key={index} className="block rounded-t-full bg-black/90" style={{ width: `${10 + (index % 4) * 2}px`, height: `${30 + ((index * 17) % 68)}px` }} />
