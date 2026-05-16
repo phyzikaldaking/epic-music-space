@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { listRecentStudioSnapshots, readStudioSnapshot, writeStudioSnapshot } from "@/lib/studioSnapshots";
+import {
+  duplicateStudioSnapshot,
+  listRecentStudioSnapshots,
+  readStudioSnapshot,
+  readStudioSnapshotById,
+  writeStudioSnapshot,
+} from "@/lib/studioSnapshots";
 import { checkCollabRateLimit, collabRateLimitHeaders } from "@/lib/collabRateLimit";
 
 export const dynamic = "force-dynamic";
@@ -26,17 +32,36 @@ const snapshotSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const duplicateSchema = z.object({
+  action: z.literal("duplicate"),
+  snapshotId: z.string().min(1).max(220),
+  newSessionId: z.string().min(1).max(160).regex(/^[a-zA-Z0-9_.:@-]+$/).optional(),
+});
+
+function makeNewSessionId() {
+  return `ems-copy-${Date.now()}-${crypto.randomUUID()}`;
+}
+
 export async function GET(request: Request) {
   const limit = checkCollabRateLimit(request, "studio-snapshot-read", 60, 60_000);
   if (!limit.allowed) return NextResponse.json({ error: "Too many snapshot reads" }, { status: 429, headers: collabRateLimitHeaders(limit) });
   const url = new URL(request.url);
   const sessionId = url.searchParams.get("sessionId");
+  const snapshotId = url.searchParams.get("snapshotId");
   const roomId = url.searchParams.get("roomId") ?? "ems-main-room";
+  const recentLimit = Math.min(10, Math.max(1, Number(url.searchParams.get("limit") ?? 5)));
+
+  if (snapshotId) {
+    const snapshot = await readStudioSnapshotById(snapshotId).catch(() => null);
+    return NextResponse.json({ snapshot, backend: snapshot ? "database" : "none" }, { headers: collabRateLimitHeaders(limit) });
+  }
+
   if (sessionId) {
     const snapshot = await readStudioSnapshot(sessionId).catch(() => null);
     return NextResponse.json({ snapshot, backend: snapshot ? "database" : "none" }, { headers: collabRateLimitHeaders(limit) });
   }
-  const recent = await listRecentStudioSnapshots(roomId, 5).catch(() => []);
+
+  const recent = await listRecentStudioSnapshots(roomId, recentLimit).catch(() => []);
   return NextResponse.json({ roomId, recent, backend: recent.length ? "database" : "none" }, { headers: collabRateLimitHeaders(limit) });
 }
 
@@ -44,6 +69,14 @@ export async function POST(request: Request) {
   const limit = checkCollabRateLimit(request, "studio-snapshot-write", 30, 60_000);
   if (!limit.allowed) return NextResponse.json({ error: "Too many snapshot writes" }, { status: 429, headers: collabRateLimitHeaders(limit) });
   const raw = await request.json().catch(() => ({}));
+
+  const duplicate = duplicateSchema.safeParse(raw);
+  if (duplicate.success) {
+    const newSessionId = duplicate.data.newSessionId ?? makeNewSessionId();
+    const snapshot = await duplicateStudioSnapshot(duplicate.data.snapshotId, newSessionId).catch(() => null);
+    return NextResponse.json({ ok: Boolean(snapshot), snapshot, newSessionId, backend: snapshot ? "database" : "none" }, { headers: collabRateLimitHeaders(limit) });
+  }
+
   const parsed = snapshotSchema.safeParse(raw);
   if (!parsed.success) return NextResponse.json({ error: "Invalid studio snapshot", issues: parsed.error.flatten() }, { status: 400, headers: collabRateLimitHeaders(limit) });
   const snapshot = await writeStudioSnapshot(parsed.data).catch(() => null);
