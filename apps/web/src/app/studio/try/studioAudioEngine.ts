@@ -22,6 +22,17 @@ export type StudioAudioEngine = {
 };
 
 let engine: StudioAudioEngine | null = null;
+const KIT_STORAGE_KEY = "ems-studio-selected-kit";
+const KIT_IDS = ["trap", "drill", "afro", "hyperpop", "boomBap", "lofi", "acoustic"] as const satisfies readonly DrumKitId[];
+
+function resolveKit(kit?: DrumKitId): DrumKitId {
+  if (kit && KIT_IDS.includes(kit)) return kit;
+  if (typeof window !== "undefined") {
+    const stored = window.localStorage.getItem(KIT_STORAGE_KEY) as DrumKitId | null;
+    if (stored && KIT_IDS.includes(stored)) return stored;
+  }
+  return "trap";
+}
 
 function createAudioContext() {
   const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -110,7 +121,7 @@ export function getStudioAudioEngine(): StudioAudioEngine {
     scheduleDrum: (event) => {
       if (context.state === "suspended") void context.resume();
       const bus = getStemBus(event.trackId);
-      scheduleDrumHit(context, bus.gain, event.kind, { kit: event.kit ?? "trap", when: event.when, velocity: event.velocity ?? 0.9 });
+      scheduleDrumHit(context, bus.gain, event.kind, { kit: resolveKit(event.kit), when: event.when, velocity: event.velocity ?? 0.9 });
     },
     scheduleMidiNote,
     automateGain: (trackId, points, startAt = context.currentTime) => applyAutomation(getStemBus(trackId).gain.gain, points, startAt),
@@ -118,7 +129,7 @@ export function getStudioAudioEngine(): StudioAudioEngine {
     playDrum: (kind, options) => {
       const bus = getStemBus(options?.trackId ?? "preview");
       if (context.state === "suspended") void context.resume();
-      scheduleDrumHit(context, bus.gain, kind, { kit: options?.kit ?? "trap", when: options?.when ?? context.currentTime, velocity: options?.velocity ?? 0.9 });
+      scheduleDrumHit(context, bus.gain, kind, { kit: resolveKit(options?.kit), when: options?.when ?? context.currentTime, velocity: options?.velocity ?? 0.9 });
     },
     now: () => context.currentTime,
     close: async () => {
