@@ -24,9 +24,9 @@
   --vc-night: #0a0420;
   --vc-deep: #1a0530;
   --vc-void: #050009;
-  --ems-transport-height: 72px;
-  --ems-workspace-min-width: clamp(1040px, 100vw, 1320px);
-  --ems-workspace-min-height: 820px;
+  --ems-transport-height: 52px;
+  --ems-workspace-min-width: clamp(980px, 100vw, 1280px);
+  --ems-workspace-min-height: 720px;
 }
 
 html,
@@ -132,9 +132,9 @@ textarea::placeholder {
   width: 100%;
   max-width: 100vw;
   min-width: 100%;
-  min-height: min(900px, calc(100dvh - 72px));
+  min-height: min(760px, calc(100dvh - 56px));
   overflow: auto !important;
-  border-radius: 24px;
+  border-radius: 18px;
 }
 
 .ems-scroll-x {
@@ -149,7 +149,7 @@ textarea::placeholder {
 
 .ems-studio-runtime-root {
   min-width: 100%;
-  min-height: min(900px, calc(100dvh - 72px));
+  min-height: min(760px, calc(100dvh - 56px));
 }
 
 .ems-studio-canvas,
@@ -162,9 +162,9 @@ textarea::placeholder {
 
 .ems-panel-scroll {
   max-height: none;
-  min-height: 480px;
+  min-height: 360px;
   min-width: 100%;
-  overflow: visible !important;
+  overflow: auto !important;
   overscroll-behavior: auto;
   scrollbar-gutter: stable both-edges;
   -webkit-overflow-scrolling: touch;
@@ -175,27 +175,33 @@ textarea::placeholder {
 [data-ems-workspace] .overflow-hidden,
 .ems-studio-runtime-root .overflow-hidden,
 .ems-workspace-scroll .overflow-hidden {
-  overflow: visible !important;
+  overflow: auto !important;
 }
 
 [data-studio-content] .overflow-x-hidden,
 [data-ems-workspace] .overflow-x-hidden,
 .ems-studio-runtime-root .overflow-x-hidden,
 .ems-workspace-scroll .overflow-x-hidden {
-  overflow-x: visible !important;
+  overflow-x: auto !important;
 }
 
 [data-studio-content] .overflow-y-hidden,
 [data-ems-workspace] .overflow-y-hidden,
 .ems-studio-runtime-root .overflow-y-hidden,
 .ems-workspace-scroll .overflow-y-hidden {
-  overflow-y: visible !important;
+  overflow-y: auto !important;
 }
 
 .ems-sticky-transport {
+  position: relative;
+  top: auto;
+  z-index: 40;
+}
+
+.ems-fl-dock {
   position: sticky;
-  top: max(0.25rem, env(safe-area-inset-top));
-  z-index: 50;
+  top: 0.25rem;
+  z-index: 45;
 }
 
 .ems-scroll-fade {
@@ -257,54 +263,4 @@ body::-webkit-scrollbar-thumb,
 [data-ems-workspace] input {
   position: relative;
   z-index: 2;
-}
-
-.vc-page {
-  background: var(--vc-void);
-  color: #fff;
-  font-family: Inter, system-ui, sans-serif;
-  overflow: visible !important;
-  min-width: 100%;
-}
-.vc-page::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: none;
-}
-.vc-nav { position: sticky; top: 0; z-index: 60; }
-
-@media (min-width: 1024px) {
-  body[data-studio-coach-docked] [data-studio-content],
-  body[data-studio-coach-docked] [data-ems-workspace] {
-    padding-right: 0 !important;
-    overflow: visible !important;
-  }
-}
-
-@media (max-width: 1280px) {
-  :root {
-    --ems-workspace-min-width: 1040px;
-    --ems-workspace-min-height: 760px;
-  }
-
-  .ems-sticky-transport {
-    position: relative;
-    top: auto;
-    z-index: 35;
-  }
-}
-
-@keyframes tube-pulse {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(255, 184, 77, 0.65), 0 0 14px 0 rgba(255, 184, 77, 0.25); }
-  50% { box-shadow: 0 0 0 2px rgba(255, 184, 77, 0.65), 0 0 22px 4px rgba(255, 184, 77, 0.35); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
 }
