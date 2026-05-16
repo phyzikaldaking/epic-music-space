@@ -97,6 +97,7 @@ function loadStoredSound(id: string): StudioSoundAsset | undefined {
 
 function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar, positionSec = 0, bpm = 92, runtime, selectedClipId, setSelectedClipId, updateTrack }: Props) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const activeAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const [zoom, setZoom] = useState(runtime?.zoom ?? 1);
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -137,6 +138,9 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
   }
 
   function deletePlacedClip(id: string) {
+    const audio = activeAudioRef.current.get(id);
+    if (audio) audio.pause();
+    activeAudioRef.current.delete(id);
     setPlacedClips((current) => {
       const next = current.filter((clip) => clip.id !== id);
       persistPlacedClips(next);
@@ -196,6 +200,49 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
     window.addEventListener("ems:studio-place-sound", onPlaceSound);
     return () => window.removeEventListener("ems:studio-place-sound", onPlaceSound);
   }, [positionSec, selectedTrack, tracks, bpm]);
+
+  useEffect(() => {
+    if (!playing) {
+      activeAudioRef.current.forEach((audio) => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
+      activeAudioRef.current.clear();
+      return;
+    }
+
+    clips.forEach((clip) => {
+      if (!clip.audioUrl || clip.muted) return;
+      const clipEnd = clip.startSec + clip.durationSec;
+      const active = positionSec >= clip.startSec && positionSec < clipEnd;
+      const current = activeAudioRef.current.get(clip.id);
+
+      if (active && !current) {
+        const audio = new Audio(clip.audioUrl);
+        audio.currentTime = Math.max(0, clip.offsetSec + positionSec - clip.startSec);
+        audio.play().catch(() => undefined);
+        activeAudioRef.current.set(clip.id, audio);
+        return;
+      }
+
+      if (active && current) {
+        const expected = Math.max(0, clip.offsetSec + positionSec - clip.startSec);
+        if (Math.abs(current.currentTime - expected) > 0.35) current.currentTime = expected;
+        return;
+      }
+
+      if (!active && current) {
+        current.pause();
+        current.currentTime = 0;
+        activeAudioRef.current.delete(clip.id);
+      }
+    });
+  }, [clips, playing, positionSec]);
+
+  useEffect(() => () => {
+    activeAudioRef.current.forEach((audio) => audio.pause());
+    activeAudioRef.current.clear();
+  }, []);
 
   useEffect(() => {
     if (!playing) return;
@@ -324,7 +371,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
   return (
     <section data-testid="studio-moving-timeline" className={`relative min-h-[360px] overflow-visible rounded-xl border border-white/12 bg-[#071015] [contain:layout_paint] ${playing ? "shadow-[0_0_38px_rgba(246,214,61,.14)]" : "shadow-[0_0_22px_rgba(34,211,238,.08)]"}`}>
       <div className="sticky top-0 z-[4] flex h-9 items-center justify-between border-b border-white/10 bg-[#071015]/95 px-3 text-[10px] uppercase tracking-widest text-white/45 backdrop-blur">
-        <span>Timeline · move · trim · duplicate · delete · snap 1/16</span>
+        <span>Timeline · move · trim · duplicate · delete · placed clip playback</span>
         <div className="flex items-center gap-2">
           <span className={`${playing ? "text-yellow-200" : "text-white/35"}`}>Bar {bar} · Beat {beatLabel}</span>
           <span className="text-white/35">{positionSec.toFixed(2)}s</span>
