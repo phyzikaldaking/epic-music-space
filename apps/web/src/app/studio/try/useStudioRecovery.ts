@@ -1,14 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { StudioAudioBufferRef, StudioClip } from "./studioWorkstationTypes";
 
 type StudioSnapshotInput = {
   mode: string;
   selectedTrack: string;
+  selectedClipId?: string | null;
   bpm: number;
   bar: number;
   playing: boolean;
   tracks: unknown[];
+  clips?: StudioClip[];
+  audioBuffers?: StudioAudioBufferRef[];
   workspaceLayout?: unknown;
 };
 
@@ -44,7 +48,13 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
       const res = await fetch("/api/studio/session/snapshot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, roomId: "ems-main-room", ...snapshot, playing: false, metadata: { source: "studio-workstation-autosave" } }),
+        body: JSON.stringify({
+          sessionId,
+          roomId: "ems-main-room",
+          ...snapshot,
+          playing: false,
+          metadata: { source: "studio-workstation-autosave", clipCount: snapshot.clips?.length ?? 0, bufferCount: snapshot.audioBuffers?.length ?? 0 },
+        }),
       });
       if (!res.ok) throw new Error(`Autosave failed ${res.status}`);
       const data = await res.json();
