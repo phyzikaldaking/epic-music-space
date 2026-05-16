@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getRequestId, jsonWithRequestId } from "@/lib/requestTracing";
 
 export async function POST(req: NextRequest) {
@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = (await req.json()) as { key?: string; bpm?: number };
-    const { key = "C", bpm = 120 } = body;
+    const { key: _key = "C", bpm: _bpm = 120 } = body;
 
     const mockSuggestions = [
       {

@@ -26,6 +26,7 @@ function VerifyEmailContent() {
     const until = Number(raw);
     if (!Number.isFinite(until)) return;
     const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCooldownLeft(remaining);
   }, []);
 

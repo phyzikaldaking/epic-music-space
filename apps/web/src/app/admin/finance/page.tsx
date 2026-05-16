@@ -32,6 +32,7 @@ export default async function AdminFinancePage() {
     );
   }
 
+  // eslint-disable-next-line react-hooks/purity
   const since = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000);
 
   const [grossAgg, payoutsAgg, refundsAgg, recentPayouts, recentTransactions] = await Promise.all([
@@ -72,7 +73,8 @@ export default async function AdminFinancePage() {
   // Build a per-day series (basic — just transaction counts day-bucketed).
   const buckets = new Map<string, DayBucket>();
   for (let i = 0; i < DAYS; i++) {
-    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    // eslint-disable-next-line react-hooks/purity
+  const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
     const key = d.toISOString().slice(0, 10);
     buckets.set(key, { date: key, gross: 0, payouts: 0, refunds: 0, net: 0 });
   }

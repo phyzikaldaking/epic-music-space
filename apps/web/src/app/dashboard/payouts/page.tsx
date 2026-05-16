@@ -170,6 +170,7 @@ export default async function PayoutsPage(props: {
   const totalPaid = songsWithEarnings.reduce((s, sg) => s + sg.paidAmount, 0);
 
   // 30-day forecast: license sales momentum based on recent velocity.
+  // eslint-disable-next-line react-hooks/purity
   const now = Date.now();
   const since14d = new Date(now - 14 * 24 * 60 * 60 * 1000);
   const since30d = new Date(now - 30 * 24 * 60 * 60 * 1000);

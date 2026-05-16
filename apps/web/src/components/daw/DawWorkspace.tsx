@@ -1466,7 +1466,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       unobserveSteps();
       handle.destroy();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [projectId]);
 
   // Refs let the Y.observe callback above read live values without

@@ -25,7 +25,7 @@ export async function extractWaveformPeaks(
 
   for (let i = 0; i < sampleCount; i++) {
     let sum = 0;
-    let blockStart = i * blockSize;
+    const blockStart = i * blockSize;
     for (let j = 0; j < blockSize; j++) {
       sum += Math.abs(rawData[blockStart + j]);
     }

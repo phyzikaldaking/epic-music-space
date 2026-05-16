@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/purity */
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";

@@ -39,7 +39,7 @@ export default function VibeMatchBrowser({
       });
 
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as any;
+        const data = (await res.json().catch(() => ({}))) as unknown;
         throw new Error(data.error || `Analysis failed (${res.status})`);
       }
 

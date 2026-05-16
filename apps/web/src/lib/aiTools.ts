@@ -218,7 +218,7 @@ function safeArgText(value: unknown): string {
   const cleaned = value.replace(
     // C0 (00–20), DEL+C1 (7F–9F), zero-width (200B–200F),
     // bidi embeds (202A–202E), bidi isolates (2066–2069), BOM (FEFF).
-    // eslint-disable-next-line no-control-regex
+     
     /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g,
     "",
   );

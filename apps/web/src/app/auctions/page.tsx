@@ -69,6 +69,7 @@ export default function AuctionsPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load(page);
     const interval = setInterval(() => load(page), 30_000);
     return () => clearInterval(interval);

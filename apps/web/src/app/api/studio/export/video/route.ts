@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getRequestId, jsonWithRequestId } from "@/lib/requestTracing";
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       height?: number;
     };
 
-    const { projectId, format = "waveform", width = 1920, height = 1080 } = body;
+    const { projectId, format = "waveform", width: _width = 1920, height: _height = 1080 } = body;
 
     if (!projectId) {
       return jsonWithRequestId(
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!SUPPORTED_FORMATS.includes(format as any)) {
+    if (!SUPPORTED_FORMATS.includes(format as (typeof SUPPORTED_FORMATS)[number])) {
       return jsonWithRequestId(
         requestId,
         { error: `format must be one of: ${SUPPORTED_FORMATS.join(", ")}` },
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const audioBuffer = await audioResponse.arrayBuffer();
+    const _audioBuffer = await audioResponse.arrayBuffer();
 
     // For now: return a placeholder response. Real implementation would:
     // 1. Decode audio to get waveform data

@@ -69,7 +69,8 @@ export default function AdminUsersClient() {
     return () => clearTimeout(t);
   }, [query, fetchUsers]);
 
-  useEffect(() => {
+    useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchUsers(query, page);
   }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 

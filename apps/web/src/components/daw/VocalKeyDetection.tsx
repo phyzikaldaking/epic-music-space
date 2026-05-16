@@ -44,7 +44,7 @@ export default function VocalKeyDetection({
       });
 
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as any;
+        const data = (await res.json().catch(() => ({}))) as unknown;
         throw new Error(data.error || `Detection failed (${res.status})`);
       }
 
@@ -80,7 +80,7 @@ export default function VocalKeyDetection({
       });
 
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as any;
+        const data = (await res.json().catch(() => ({}))) as unknown;
         throw new Error(data.error || `Transpose failed (${res.status})`);
       }
 

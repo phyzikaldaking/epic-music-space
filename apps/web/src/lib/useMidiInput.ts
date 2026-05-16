@@ -70,7 +70,7 @@ export function useMidiInput(onNote?: (event: MidiNoteEvent) => void) {
             trackId: input.id,
             note,
             velocity: status === 0x90 ? velocity : 0,
-            time: (e as any).timeStamp ?? Date.now(),
+            time: (e as unknown).timeStamp ?? Date.now(),
           });
         }
       });

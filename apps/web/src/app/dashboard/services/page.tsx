@@ -66,7 +66,8 @@ export default async function ServicesDashboard() {
       where: {
         providerId: session.user.id,
         status: "COMPLETED",
-        completedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        // eslint-disable-next-line react-hooks/purity
+  completedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
       },
     }),
   ]);

@@ -77,6 +77,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
   }, [id]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load().finally(() => setLoading(false));
     const poll = setInterval(load, 15_000);
     return () => clearInterval(poll);

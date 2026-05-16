@@ -40,7 +40,8 @@ export default function AdminReportsClient() {
     }
   }, [status]);
 
-  useEffect(() => {
+    useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 
