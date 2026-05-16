@@ -16,7 +16,7 @@ function deriveSpectrum(genre: string | null, bpm: number | null): number[] {
   // Base curve: natural smiley EQ shape
   const base = [80, 70, 60, 55, 50, 48, 45, 42, 40, 38, 36, 35, 33, 32, 30, 28, 26, 24, 22, 20];
 
-  // Genre overlays — shift energy toward characteristic zones
+  // Genre overlays â shift energy toward characteristic zones
   if (g.includes("trap") || g.includes("drill")) {
     // Heavy sub, scooped mids
     const overlay = [30, 25, 20, 15, 10, 5, 0, -2, -5, 0, 0, 5, 5, 3, 2, 2, 2, 1, 0, 0];
@@ -86,7 +86,7 @@ function deriveMixConfidence(song: {
   return Math.min(1, Math.max(0, score));
 }
 
-/** Normalize DB Role → ProductionPost authorRole */
+/** Normalize DB Role â ProductionPost authorRole */
 function toAuthorRole(role: string): "artist" | "producer" | "engineer" | "listener" {
   switch (role) {
     case "PRODUCER":
@@ -119,7 +119,7 @@ function publicGenre(value: string | null): string {
  * Optionally filter by ?filter=live (isLiveNow only) or ?filter=recommended
  * (mixConfidence >= 0.7).
  *
- * Auth is optional — anonymous visitors see the public feed.
+ * Auth is optional â anonymous visitors see the public feed.
  */
 export async function GET(req: NextRequest) {
   const ip =
@@ -129,6 +129,9 @@ export async function GET(req: NextRequest) {
 
   try {
     await moderateLimiter.consume(`prod-timeline:${ip}`);
+    } catch (err) {
+    console.error("[production-timeline] unhandled error", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   } catch {
     return NextResponse.json({ error: "Too many requests." }, { status: 429 });
   }
@@ -138,7 +141,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(20, Math.max(1, Number(url.searchParams.get("limit") ?? 10)));
   const cursor = url.searchParams.get("cursor") ?? undefined;
 
-  // Auth is optional — block-list filtering applies for authed users
+  // Auth is optional â block-list filtering applies for authed users
   const session = await auth();
   const viewerId = session?.user?.id;
 
