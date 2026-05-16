@@ -9,7 +9,19 @@ type RealtimeBridgeInput = {
 };
 
 type Operation = {
-  type: "state.patch" | "track.upsert" | "track.delete" | "transport.patch" | "selection.set" | "beat.pattern" | "midi.event" | "undo" | "redo";
+  type:
+    | "state.patch"
+    | "track.upsert"
+    | "track.delete"
+    | "clip.upsert"
+    | "clip.delete"
+    | "buffer.upsert"
+    | "transport.patch"
+    | "selection.set"
+    | "beat.pattern"
+    | "midi.event"
+    | "undo"
+    | "redo";
   target?: string;
   payload?: Record<string, unknown>;
 };
