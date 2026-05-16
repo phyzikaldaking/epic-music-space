@@ -8,9 +8,10 @@ import { useStudioMidiBridge } from "../try/useStudioMidiBridge";
 
 type BeatTrackKind = "drum" | "bass" | "melody" | "fx";
 type BeatTrack = { id: string; name: string; kind: BeatTrackKind; color: string; level: number; pan: number; muted: boolean; padKind: DrumKind; pattern: boolean[] };
+type PianoInstrument = DrumKind | "melody";
 type SavedPattern = { id: string; name: string; tracks: BeatTrack[]; bpm: number; swing: number; arrangement?: ArrangementSection[]; pianoNotes?: PianoNote[]; createdAt: string };
 type ArrangementSection = { id: string; name: string; color: string; patternId?: string; note: string };
-type PianoNote = { id: string; pitch: string; start: number; duration: number; velocity: number };
+type PianoNote = { id: string; pitch: string; start: number; duration: number; velocity: number; instrument: PianoInstrument };
 
 const DEFAULT_KIT: DrumKitId = "trap";
 const SESSION_ID = "ems-beat-machine-session";
@@ -18,6 +19,18 @@ const PROJECT_ID = "ems-default-project";
 const COLORS = ["#17fff4", "#ff34df", "#f6d63d", "#42ff56", "#a855ff", "#ff7a2f", "#23d4ff", "#ff4f8b"];
 const STEPS = Array.from({ length: 16 }, (_, index) => index + 1);
 const PIANO_PITCHES = ["C6", "B5", "A#5", "A5", "G#5", "G5", "F#5", "F5", "E5", "D#5", "D5", "C#5", "C5", "B4", "A#4", "A4", "G#4", "G4", "F#4", "F4", "E4", "D#4", "D4", "C#4", "C4"];
+const NOTE_INDEX = PIANO_PITCHES.slice().reverse().reduce<Record<string, number>>((acc, pitch, index) => { acc[pitch] = index; return acc; }, {});
+const PIANO_INSTRUMENTS: { label: string; value: PianoInstrument; color: string }[] = [
+  { label: "Melody", value: "melody", color: "#42ff56" },
+  { label: "Kick", value: "kick", color: "#17fff4" },
+  { label: "Snare", value: "snare", color: "#ff34df" },
+  { label: "Clap", value: "clap", color: "#f6d63d" },
+  { label: "Hi-Hat", value: "hat", color: "#42ff56" },
+  { label: "Open Hat", value: "openHat", color: "#a855ff" },
+  { label: "Perc", value: "perc", color: "#ff7a2f" },
+  { label: "808", value: "bass808", color: "#23d4ff" },
+  { label: "Crash", value: "crash", color: "#ff4f8b" },
+];
 const NOTE_FREQ: Record<string, number> = {
   C4: 261.63, "C#4": 277.18, D4: 293.66, "D#4": 311.13, E4: 329.63, F4: 349.23, "F#4": 369.99, G4: 392, "G#4": 415.3, A4: 440, "A#4": 466.16, B4: 493.88,
   C5: 523.25, "C#5": 554.37, D5: 587.33, "D#5": 622.25, E5: 659.25, F5: 698.46, "F#5": 739.99, G5: 783.99, "G#5": 830.61, A5: 880, "A#5": 932.33, B5: 987.77, C6: 1046.5,
@@ -40,18 +53,23 @@ const INITIAL_TRACKS: BeatTrack[] = [
   { id: "perc", name: "Perc Fill", kind: "fx", padKind: "perc", color: "#ff7a2f", level: 58, pan: 14, muted: false, pattern: STEPS.map((step) => [7, 11, 16].includes(step)) },
 ];
 const INITIAL_NOTES: PianoNote[] = [
-  { id: "n1", pitch: "C5", start: 0, duration: 2, velocity: 0.8 },
-  { id: "n2", pitch: "D#5", start: 2, duration: 2, velocity: 0.75 },
-  { id: "n3", pitch: "G5", start: 4, duration: 2, velocity: 0.82 },
-  { id: "n4", pitch: "A#5", start: 8, duration: 2, velocity: 0.72 },
+  { id: "n1", pitch: "C5", start: 0, duration: 2, velocity: 0.8, instrument: "melody" },
+  { id: "n2", pitch: "D#5", start: 2, duration: 2, velocity: 0.75, instrument: "melody" },
+  { id: "n3", pitch: "G5", start: 4, duration: 2, velocity: 0.82, instrument: "melody" },
+  { id: "n4", pitch: "C5", start: 8, duration: 1, velocity: 0.9, instrument: "kick" },
+  { id: "n5", pitch: "G5", start: 10, duration: 1, velocity: 0.75, instrument: "hat" },
 ];
 const INITIAL_SECTIONS: ArrangementSection[] = ["Intro", "Verse", "Hook", "Bridge", "Drop", "Breakdown", "Outro", "Alt Hook"].map((name, index) => ({ id: name.toLowerCase().replace(/\s+/g, "-"), name, color: COLORS[index % COLORS.length], note: "Drop saved patterns here." }));
 
 function isTypingTarget(target: EventTarget | null) { const el = target as HTMLElement | null; const tag = el?.tagName?.toLowerCase(); return tag === "input" || tag === "textarea" || tag === "select" || Boolean(el?.isContentEditable); }
 function cloneTracks(tracks: BeatTrack[]) { return tracks.map((track) => ({ ...track, pattern: [...track.pattern] })); }
 function cloneNotes(notes: PianoNote[]) { return notes.map((note) => ({ ...note })); }
-function normalizePattern(raw: any): SavedPattern | null { if (!raw || typeof raw !== "object" || !Array.isArray(raw.tracks)) return null; return { id: String(raw.id), name: String(raw.name ?? "Pattern"), tracks: raw.tracks as BeatTrack[], bpm: Number(raw.bpm ?? 92), swing: Number(raw.swing ?? 0), arrangement: Array.isArray(raw.arrangement) ? raw.arrangement as ArrangementSection[] : undefined, pianoNotes: Array.isArray(raw.pianoNotes) ? raw.pianoNotes as PianoNote[] : undefined, createdAt: String(raw.createdAt ?? raw.updatedAt ?? new Date().toISOString()) }; }
+function normalizeNote(note: any): PianoNote { return { id: String(note?.id ?? `note-${Date.now()}`), pitch: String(note?.pitch ?? "C5"), start: Number(note?.start ?? 0), duration: Number(note?.duration ?? 1), velocity: Number(note?.velocity ?? 0.75), instrument: (note?.instrument ?? "melody") as PianoInstrument }; }
+function normalizePattern(raw: any): SavedPattern | null { if (!raw || typeof raw !== "object" || !Array.isArray(raw.tracks)) return null; return { id: String(raw.id), name: String(raw.name ?? "Pattern"), tracks: raw.tracks as BeatTrack[], bpm: Number(raw.bpm ?? 92), swing: Number(raw.swing ?? 0), arrangement: Array.isArray(raw.arrangement) ? raw.arrangement as ArrangementSection[] : undefined, pianoNotes: Array.isArray(raw.pianoNotes) ? raw.pianoNotes.map(normalizeNote) : undefined, createdAt: String(raw.createdAt ?? raw.updatedAt ?? new Date().toISOString()) }; }
 function downloadText(filename: string, text: string, type = "application/json") { const blob = new Blob([text], { type }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url); }
+function pitchSemisFromC5(pitch: string) { return (NOTE_INDEX[pitch] ?? NOTE_INDEX.C5 ?? 12) - (NOTE_INDEX.C5 ?? 12); }
+function isDrumInstrument(value: PianoInstrument): value is DrumKind { return value !== "melody"; }
+function instrumentColor(value: PianoInstrument) { return PIANO_INSTRUMENTS.find((item) => item.value === value)?.color ?? "#42ff56"; }
 
 export default function BeatMachineClient() {
   const [playing, setPlaying] = useState(false);
@@ -61,6 +79,8 @@ export default function BeatMachineClient() {
   const [selectedTrack, setSelectedTrack] = useState("kick");
   const [tracks, setTracks] = useState<BeatTrack[]>(INITIAL_TRACKS);
   const [pianoNotes, setPianoNotes] = useState<PianoNote[]>(INITIAL_NOTES);
+  const [pianoInstrument, setPianoInstrument] = useState<PianoInstrument>("kick");
+  const [pianoVelocity, setPianoVelocity] = useState(0.82);
   const [currentStep, setCurrentStep] = useState(0);
   const [savedPatterns, setSavedPatterns] = useState<SavedPattern[]>([]);
   const [sections, setSections] = useState<ArrangementSection[]>(INITIAL_SECTIONS);
@@ -69,6 +89,8 @@ export default function BeatMachineClient() {
   const ctxRef = useRef<AudioContext | null>(null);
   const masterRef = useRef<GainNode | null>(null);
   const timerRef = useRef<number | null>(null);
+  const schedulerRef = useRef<number | null>(null);
+  const nextStepTimeRef = useRef(0);
   const stepRef = useRef(0);
   const tracksRef = useRef(tracks);
   const notesRef = useRef(pianoNotes);
@@ -118,7 +140,7 @@ export default function BeatMachineClient() {
     return ctx;
   }
 
-  const playPianoNote = useCallback((pitch: string, when?: number, duration = 0.28, velocity = 0.7) => {
+  const playMelodyNote = useCallback((pitch: string, when?: number, duration = 0.28, velocity = 0.7) => {
     const ctx = getCtx();
     if (ctx.state === "suspended") void ctx.resume();
     const now = when ?? ctx.currentTime;
@@ -139,25 +161,57 @@ export default function BeatMachineClient() {
     osc.stop(now + Math.max(0.1, duration + 0.04));
   }, []);
 
-  const firePad = useCallback((kind: DrumKind, label: string, velocity = 0.92, when?: number) => {
+  const playPianoNote = useCallback((note: PianoNote, when?: number, stepDuration = 0.16) => {
     const ctx = getCtx();
     if (ctx.state === "suspended") void ctx.resume();
-    scheduleDrumHit(ctx, masterRef.current ?? ctx.destination, kind, { kit: DEFAULT_KIT, when: when ?? ctx.currentTime, velocity });
+    const duration = stepDuration * Math.max(0.25, note.duration);
+    if (isDrumInstrument(note.instrument)) {
+      scheduleDrumHit(ctx, masterRef.current ?? ctx.destination, note.instrument, { kit: DEFAULT_KIT, when: when ?? ctx.currentTime, velocity: note.velocity, pitchSemis: pitchSemisFromC5(note.pitch) });
+    } else {
+      playMelodyNote(note.pitch, when, duration, note.velocity);
+    }
+  }, [playMelodyNote]);
+
+  const firePad = useCallback((kind: DrumKind, label: string, velocity = 0.92, when?: number, pitch = "C5") => {
+    const ctx = getCtx();
+    if (ctx.state === "suspended") void ctx.resume();
+    scheduleDrumHit(ctx, masterRef.current ?? ctx.destination, kind, { kit: DEFAULT_KIT, when: when ?? ctx.currentTime, velocity, pitchSemis: pitchSemisFromC5(pitch) });
     setActivePad(label);
     window.setTimeout(() => setActivePad(null), 120);
   }, []);
 
-  const playStep = useCallback((stepIndex: number) => {
+  const playStep = useCallback((stepIndex: number, when?: number) => {
     const ctx = getCtx();
     const stepDuration = 60 / bpmRef.current / 4;
     const swung = stepIndex % 2 === 1 ? (swingRef.current / 100) * stepDuration * 0.5 : 0;
-    const when = ctx.currentTime + 0.025 + swung;
-    tracksRef.current.forEach((track) => { if (!track.muted && track.pattern[stepIndex]) firePad(track.padKind, track.name, Math.max(0.1, track.level / 100), when); });
-    notesRef.current.filter((note) => note.start === stepIndex).forEach((note) => playPianoNote(note.pitch, when, stepDuration * note.duration, note.velocity));
+    const hitTime = (when ?? ctx.currentTime + 0.025) + swung;
+    tracksRef.current.forEach((track) => { if (!track.muted && track.pattern[stepIndex]) firePad(track.padKind, track.name, Math.max(0.1, track.level / 100), hitTime); });
+    notesRef.current.filter((note) => note.start === stepIndex).forEach((note) => playPianoNote(note, hitTime, stepDuration));
   }, [firePad, playPianoNote]);
 
-  function startSequencer() { const ctx = getCtx(); if (ctx.state === "suspended") void ctx.resume(); if (timerRef.current) window.clearInterval(timerRef.current); setPlaying(true); setNotice("Sequencer playing."); playStep(stepRef.current); timerRef.current = window.setInterval(() => { stepRef.current = (stepRef.current + 1) % 16; setCurrentStep(stepRef.current); playStep(stepRef.current); }, (60 / bpmRef.current / 4) * 1000); }
-  function stopSequencer() { if (timerRef.current) window.clearInterval(timerRef.current); timerRef.current = null; setPlaying(false); setNotice("Sequencer stopped."); }
+  function schedulerTick() {
+    const ctx = getCtx();
+    const stepDuration = 60 / bpmRef.current / 4;
+    while (nextStepTimeRef.current < ctx.currentTime + 0.12) {
+      playStep(stepRef.current, nextStepTimeRef.current);
+      setCurrentStep(stepRef.current);
+      stepRef.current = (stepRef.current + 1) % 16;
+      nextStepTimeRef.current += stepDuration;
+    }
+  }
+
+  function startSequencer() {
+    const ctx = getCtx();
+    if (ctx.state === "suspended") void ctx.resume();
+    if (schedulerRef.current) window.clearInterval(schedulerRef.current);
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    setPlaying(true);
+    setNotice("Low-latency piano-roll sequencer playing.");
+    nextStepTimeRef.current = ctx.currentTime + 0.035;
+    schedulerTick();
+    schedulerRef.current = window.setInterval(schedulerTick, 25);
+  }
+  function stopSequencer() { if (schedulerRef.current) window.clearInterval(schedulerRef.current); if (timerRef.current) window.clearInterval(timerRef.current); schedulerRef.current = null; timerRef.current = null; setPlaying(false); setNotice("Sequencer stopped."); }
   function toggleStep(trackId: string, stepIndex: number) { setTracks((current) => current.map((track) => track.id === trackId ? { ...track, pattern: track.pattern.map((step, index) => index === stepIndex ? !step : step) } : track)); }
   function updateTrack(trackId: string, patch: Partial<BeatTrack>) { setTracks((current) => current.map((track) => track.id === trackId ? { ...track, ...patch } : track)); }
   function addTrack(kind: BeatTrackKind) { const index = tracks.length + 1; const padKind: DrumKind = kind === "bass" ? "bass808" : kind === "fx" ? "perc" : kind === "melody" ? "openHat" : "kick"; const track: BeatTrack = { id: `beat-track-${Date.now()}`, name: kind === "bass" ? `808 ${index}` : kind === "melody" ? `Melody ${index}` : kind === "fx" ? `FX ${index}` : `Drum ${index}`, kind, padKind, color: COLORS[index % COLORS.length], level: 66, pan: 0, muted: false, pattern: STEPS.map((step) => kind === "drum" ? step % 4 === 1 : step === 1 || step === 9) }; setTracks((current) => [...current, track]); setSelectedTrack(track.id); setNotice(`${track.name} added.`); }
@@ -166,21 +220,23 @@ export default function BeatMachineClient() {
   function clearTrack() { setTracks((current) => current.map((track) => track.id === selected.id ? { ...track, pattern: STEPS.map(() => false) } : track)); setNotice(`${selected.name} cleared.`); }
   function randomFill() { setTracks((current) => current.map((track) => track.id === selected.id ? { ...track, pattern: STEPS.map((_, index) => index % 4 === 0 || Math.random() > 0.67) } : track)); setNotice(`Random fill added to ${selected.name}.`); }
   function humanizeHats() { setTracks((current) => current.map((track) => track.id.toLowerCase().includes("hat") || track.padKind === "hat" ? { ...track, pattern: track.pattern.map((step, index) => step || (index % 2 === 1 && Math.random() > 0.72)) } : track)); setSwing((value) => Math.min(60, value + 5)); setNotice("Hats humanized with extra ghost steps and swing."); }
-  function quantize() { setNotice("Pattern quantized to 16 steps."); }
-  function halfTime() { setTracks((current) => current.map((track) => ({ ...track, pattern: track.pattern.map((_, index) => Boolean(track.pattern[(index * 2) % 16])) }))); setNotice("Half-time pattern generated."); }
+  function quantize() { setPianoNotes((current) => current.map((note) => ({ ...note, start: Math.max(0, Math.min(15, Math.round(note.start))) }))); setNotice("Piano roll and pattern quantized to 16 steps."); }
+  function halfTime() { setTracks((current) => current.map((track) => ({ ...track, pattern: track.pattern.map((_, index) => Boolean(track.pattern[(index * 2) % 16])) }))); setPianoNotes((current) => current.map((note) => ({ ...note, start: Math.min(15, Math.floor(note.start / 2) * 2) }))); setNotice("Half-time pattern generated."); }
   function saveKit() { downloadText("ems-beat-kit.json", JSON.stringify({ tracks, pianoNotes, bpm, swing, savedAt: new Date().toISOString() }, null, 2)); setNotice("Kit downloaded as JSON."); }
   function exportLoop() { saveKit(); setNotice("Export preview queued as kit JSON. Full WAV export returns in the render pass."); }
   function dragPattern(event: React.DragEvent<HTMLButtonElement>, pattern: SavedPattern) { event.dataTransfer.setData("application/x-ems-pattern", pattern.id); }
   function dropPattern(event: React.DragEvent<HTMLDivElement>, sectionId: string) { event.preventDefault(); const patternId = event.dataTransfer.getData("application/x-ems-pattern"); const pattern = savedPatterns.find((item) => item.id === patternId); if (!pattern) return; setSections((current) => current.map((section) => section.id === sectionId ? { ...section, patternId, note: `${pattern.name} · ${pattern.bpm} BPM` } : section)); setNotice(`${pattern.name} assigned to ${sectionId}.`); }
-  function togglePianoNote(pitch: string, start: number) { const existing = pianoNotes.find((note) => note.pitch === pitch && note.start === start); if (existing) { setPianoNotes((current) => current.filter((note) => note.id !== existing.id)); return; } const note = { id: `note-${Date.now()}-${pitch}-${start}`, pitch, start, duration: 1, velocity: 0.75 }; setPianoNotes((current) => [...current, note]); playPianoNote(pitch); }
-  function clearPianoRoll() { setPianoNotes([]); setNotice("Piano roll cleared."); }
-  function seedPianoRoll() { setPianoNotes(INITIAL_NOTES.map((note) => ({ ...note, id: `${note.id}-${Date.now()}` }))); setNotice("Piano roll melody restored."); }
+  function togglePianoNote(pitch: string, start: number) { const existing = pianoNotes.find((note) => note.pitch === pitch && note.start === start && note.instrument === pianoInstrument); if (existing) { setPianoNotes((current) => current.filter((note) => note.id !== existing.id)); return; } const note: PianoNote = { id: `note-${Date.now()}-${pianoInstrument}-${pitch}-${start}`, pitch, start, duration: pianoInstrument === "melody" ? 1 : 0.5, velocity: pianoVelocity, instrument: pianoInstrument }; setPianoNotes((current) => [...current, note]); playPianoNote(note, undefined, 60 / bpm / 4); setNotice(`${pianoInstrument} note added at ${pitch}.`); }
+  function clearPianoRoll() { setPianoNotes((current) => current.filter((note) => note.instrument !== pianoInstrument)); setNotice(`${pianoInstrument} piano roll cleared.`); }
+  function clearAllPianoRoll() { setPianoNotes([]); setNotice("All piano-roll instruments cleared."); }
+  function seedPianoRoll() { setPianoNotes(INITIAL_NOTES.map((note) => ({ ...note, id: `${note.id}-${Date.now()}` }))); setNotice("Universal piano-roll pattern restored."); }
 
   useEffect(() => { function onKeyDown(event: KeyboardEvent) { if (isTypingTarget(event.target)) return; if (event.code === "Space" && !event.repeat) { event.preventDefault(); playing ? stopSequencer() : startSequencer(); } const pad = PADS[Number(event.key) - 1]; if (pad) firePad(pad.kind, pad.label); } window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [firePad, playing]);
-  useEffect(() => { if (playing) { stopSequencer(); startSequencer(); } return () => { if (timerRef.current) window.clearInterval(timerRef.current); }; }, [bpm]);
-  useEffect(() => () => { if (timerRef.current) window.clearInterval(timerRef.current); ctxRef.current?.close().catch(() => undefined); }, []);
+  useEffect(() => { if (playing) { stopSequencer(); startSequencer(); } return () => { if (schedulerRef.current) window.clearInterval(schedulerRef.current); if (timerRef.current) window.clearInterval(timerRef.current); }; }, [bpm]);
+  useEffect(() => () => { if (schedulerRef.current) window.clearInterval(schedulerRef.current); if (timerRef.current) window.clearInterval(timerRef.current); ctxRef.current?.close().catch(() => undefined); }, []);
 
   const midiGuard = midi.status === "unsupported" ? "MIDI unavailable. Pads and sequencer still work." : midi.status === "ready" ? `${midi.devices.length} MIDI device(s) ready.` : "MIDI optional.";
+  const selectedInstrumentColor = instrumentColor(pianoInstrument);
 
   return <StudioPageShell>
     <div className="mx-auto max-w-[1800px] px-2 py-2 sm:px-4">
@@ -205,9 +261,10 @@ export default function BeatMachineClient() {
             <Range label={`Swing ${swing}%`} min={0} max={60} value={swing} onChange={setSwing} />
             <Range label={`${selected.name} level ${selected.level}%`} min={0} max={100} value={selected.level} onChange={(value) => updateTrack(selected.id, { level: value })} />
             <Range label={`${selected.name} pan ${selected.pan}`} min={-50} max={50} value={selected.pan} onChange={(value) => updateTrack(selected.id, { pan: value })} />
+            <Range label={`Piano velocity ${Math.round(pianoVelocity * 100)}%`} min={20} max={115} value={Math.round(pianoVelocity * 100)} onChange={(value) => setPianoVelocity(value / 100)} />
           </Panel>
           <Panel title="Saved Patterns" tone="yellow">
-            <div className="grid max-h-56 gap-2 overflow-y-auto pr-1">{savedPatterns.length === 0 && <p className="text-sm text-white/45">Save a pattern, then drag it into the arranger.</p>}{savedPatterns.map((pattern) => <button key={pattern.id} draggable onDragStart={(event) => dragPattern(event, pattern)} onClick={() => { setTracks(cloneTracks(pattern.tracks)); setBpm(pattern.bpm); setSwing(pattern.swing); if (pattern.arrangement) setSections(pattern.arrangement); if (pattern.pianoNotes) setPianoNotes(pattern.pianoNotes); setNotice(`${pattern.name} loaded.`); }} className="block w-full rounded-xl border border-white/10 bg-[#071015] p-3 text-left"><b className="uppercase text-green-100">{pattern.name}</b><span className="ml-2 text-[10px] uppercase text-white/40">{pattern.bpm} BPM</span></button>)}</div>
+            <div className="grid max-h-56 gap-2 overflow-y-auto pr-1">{savedPatterns.length === 0 && <p className="text-sm text-white/45">Save a pattern, then drag it into the arranger.</p>}{savedPatterns.map((pattern) => <button key={pattern.id} draggable onDragStart={(event) => dragPattern(event, pattern)} onClick={() => { setTracks(cloneTracks(pattern.tracks)); setBpm(pattern.bpm); setSwing(pattern.swing); if (pattern.arrangement) setSections(pattern.arrangement); if (pattern.pianoNotes) setPianoNotes(pattern.pianoNotes.map(normalizeNote)); setNotice(`${pattern.name} loaded.`); }} className="block w-full rounded-xl border border-white/10 bg-[#071015] p-3 text-left"><b className="uppercase text-green-100">{pattern.name}</b><span className="ml-2 text-[10px] uppercase text-white/40">{pattern.bpm} BPM</span></button>)}</div>
           </Panel>
         </aside>
 
@@ -217,9 +274,10 @@ export default function BeatMachineClient() {
             <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/45 p-2"><div className="min-w-[920px] space-y-2"><div className="grid grid-cols-[150px_repeat(16,minmax(38px,1fr))] gap-2 text-center text-[10px] font-black uppercase tracking-widest text-white/35"><span className="text-left">Track</span>{STEPS.map((step) => <span key={step} className={currentStep + 1 === step ? "text-green-200" : ""}>{step}</span>)}</div>{tracks.map((track) => <div key={track.id} className="grid grid-cols-[150px_repeat(16,minmax(38px,1fr))] gap-2"><button onClick={() => setSelectedTrack(track.id)} className={`rounded-lg border px-3 py-2 text-left text-xs font-black uppercase ${selectedTrack === track.id ? "border-green-300/70 bg-green-300/10" : "border-white/10 bg-white/[.03]"}`} style={{ color: track.color }}>{track.name}</button>{track.pattern.map((enabled, index) => <button key={`${track.id}-${index}`} onClick={() => toggleStep(track.id, index)} className={`h-9 rounded-lg border transition ${currentStep === index ? "ring-2 ring-white/60" : ""}`} style={{ borderColor: enabled ? track.color : "rgba(255,255,255,.12)", background: enabled ? track.color : "rgba(255,255,255,.035)", boxShadow: enabled ? `0 0 14px ${track.color}55` : undefined }} aria-label={`${track.name} step ${index + 1}`} />)}</div>)}</div></div>
           </Panel>
 
-          <Panel title="Piano Roll" tone="green">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-white/45">Click cells to add/remove melody notes. Notes play with the sequencer and save inside patterns.</p><div className="flex gap-2"><button onClick={seedPianoRoll} className="rounded-lg border border-green-300/35 px-3 py-1 text-[10px] font-black uppercase text-green-100">Seed melody</button><button onClick={clearPianoRoll} className="rounded-lg border border-red-300/35 px-3 py-1 text-[10px] font-black uppercase text-red-100">Clear</button></div></div>
-            <div className="overflow-auto rounded-xl border border-white/10 bg-black/45"><div className="min-w-[960px] p-2"><div className="grid grid-cols-[70px_repeat(16,minmax(48px,1fr))] gap-1 text-[9px] font-black uppercase text-white/35"><span>Note</span>{STEPS.map((step) => <span key={step} className={`text-center ${currentStep + 1 === step ? "text-green-200" : ""}`}>{step}</span>)}</div>{PIANO_PITCHES.map((pitch) => <div key={pitch} className="mt-1 grid grid-cols-[70px_repeat(16,minmax(48px,1fr))] gap-1"><button onClick={() => playPianoNote(pitch)} className={`rounded border px-2 py-1 text-left text-[10px] font-black ${pitch.includes("#") ? "border-white/10 bg-black text-white/70" : "border-white/15 bg-white/[.06] text-white"}`}>{pitch}</button>{STEPS.map((step, index) => { const note = pianoNotes.find((item) => item.pitch === pitch && item.start === index); return <button key={`${pitch}-${step}`} onClick={() => togglePianoNote(pitch, index)} className={`h-7 rounded border ${currentStep === index ? "ring-1 ring-green-200" : ""}`} style={{ background: note ? "#42ff56" : pitch.includes("#") ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.055)", borderColor: note ? "#42ff56" : "rgba(255,255,255,.08)", boxShadow: note ? "0 0 12px rgba(66,255,86,.45)" : undefined }} aria-label={`${pitch} step ${step}`} />; })}</div>)}</div></div>
+          <Panel title="Universal Piano Roll" tone="green">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-white/45">Every instrument now runs through the piano roll. Select Kick, Clap, Hat, Perc, 808, Crash, or Melody, then click notes to transpose it.</p><div className="flex flex-wrap gap-2"><select value={pianoInstrument} onChange={(event) => setPianoInstrument(event.target.value as PianoInstrument)} className="rounded-lg border border-green-300/35 bg-black px-3 py-1 text-[10px] font-black uppercase text-green-100">{PIANO_INSTRUMENTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><button onClick={seedPianoRoll} className="rounded-lg border border-green-300/35 px-3 py-1 text-[10px] font-black uppercase text-green-100">Seed</button><button onClick={clearPianoRoll} className="rounded-lg border border-red-300/35 px-3 py-1 text-[10px] font-black uppercase text-red-100">Clear Selected</button><button onClick={clearAllPianoRoll} className="rounded-lg border border-red-300/35 px-3 py-1 text-[10px] font-black uppercase text-red-100">Clear All</button></div></div>
+            <div className="mb-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest text-white/45">{PIANO_INSTRUMENTS.map((item) => <button key={item.value} onClick={() => setPianoInstrument(item.value)} className={`rounded-full border px-3 py-1 ${pianoInstrument === item.value ? "bg-white/10" : "bg-black/30"}`} style={{ color: item.color, borderColor: pianoInstrument === item.value ? item.color : "rgba(255,255,255,.12)" }}>{item.label}</button>)}</div>
+            <div className="overflow-auto rounded-xl border border-white/10 bg-black/45"><div className="min-w-[960px] p-2"><div className="grid grid-cols-[70px_repeat(16,minmax(48px,1fr))] gap-1 text-[9px] font-black uppercase text-white/35"><span>Note</span>{STEPS.map((step) => <span key={step} className={`text-center ${currentStep + 1 === step ? "text-green-200" : ""}`}>{step}</span>)}</div>{PIANO_PITCHES.map((pitch) => <div key={pitch} className="mt-1 grid grid-cols-[70px_repeat(16,minmax(48px,1fr))] gap-1"><button onClick={() => { const preview: PianoNote = { id: `preview-${pitch}`, pitch, start: currentStep, duration: 1, velocity: pianoVelocity, instrument: pianoInstrument }; playPianoNote(preview, undefined, 60 / bpm / 4); }} className={`rounded border px-2 py-1 text-left text-[10px] font-black ${pitch.includes("#") ? "border-white/10 bg-black text-white/70" : "border-white/15 bg-white/[.06] text-white"}`}>{pitch}</button>{STEPS.map((step, index) => { const note = pianoNotes.find((item) => item.pitch === pitch && item.start === index && item.instrument === pianoInstrument); const allNotes = pianoNotes.filter((item) => item.pitch === pitch && item.start === index); const color = note ? selectedInstrumentColor : allNotes[0] ? instrumentColor(allNotes[0].instrument) : undefined; return <button key={`${pitch}-${step}`} onClick={() => togglePianoNote(pitch, index)} className={`relative h-7 rounded border ${currentStep === index ? "ring-1 ring-green-200" : ""}`} style={{ background: color ? color : pitch.includes("#") ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.055)", borderColor: color ?? "rgba(255,255,255,.08)", boxShadow: color ? `0 0 12px ${color}66` : undefined }} aria-label={`${pianoInstrument} ${pitch} step ${step}`}>{allNotes.length > 1 && <span className="absolute right-1 top-1 text-[8px] font-black text-black">{allNotes.length}</span>}</button>; })}</div>)}</div></div>
           </Panel>
 
           <section className="grid gap-3 lg:grid-cols-2">
