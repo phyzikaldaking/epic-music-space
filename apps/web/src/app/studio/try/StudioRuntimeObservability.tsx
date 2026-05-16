@@ -22,6 +22,11 @@ type RuntimeMetrics = {
   severity: RuntimeSeverity;
 };
 
+type ErrorBoundaryState = {
+  error: Error | null;
+  eventId: string | null;
+};
+
 const ENABLED = process.env.NEXT_PUBLIC_STUDIO_OBSERVABILITY !== "0";
 const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN;
 const EVENT_LIMIT = 20;
@@ -54,7 +59,6 @@ function pushRuntimeEvent(event: RuntimeEvent) {
   target.__EMS_RUNTIME_EVENTS__ = [event, ...(target.__EMS_RUNTIME_EVENTS__ ?? [])].slice(0, EVENT_LIMIT);
 
   if (SENTRY_DSN) {
-    // Production handoff point for Sentry browser SDK ingestion. The app can swap this console call for Sentry.captureMessage/captureException once @sentry/nextjs is installed and configured.
     console.warn("[EMS:SENTRY_HANDOFF]", event);
   }
 }
@@ -63,10 +67,10 @@ function createRuntimeEvent(type: RuntimeEvent["type"], message: string, severit
   return { type, message, route: getRoute(), timestamp: new Date().toISOString(), severity, detail };
 }
 
-class StudioRuntimeErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null; eventId: string | null }> {
-  state = { error: null, eventId: null };
+class StudioRuntimeErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { error: null, eventId: null };
 
-  static getDerivedStateFromError(error: Error) {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error, eventId: `${Date.now()}` };
   }
 
@@ -78,13 +82,14 @@ class StudioRuntimeErrorBoundary extends Component<{ children: ReactNode }, { er
   }
 
   render() {
-    if (!this.state.error) return this.props.children;
+    const error = this.state.error;
+    if (!error) return this.props.children;
     return (
       <section className="min-h-[520px] min-w-[960px] rounded-2xl border border-red-300/30 bg-red-950/30 p-6 text-white shadow-[0_0_40px_rgba(255,0,80,.18)]">
         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-red-200/75">Studio Runtime Guard</p>
         <h2 className="mt-2 text-3xl font-black uppercase tracking-wider text-red-100">Protected crash captured</h2>
         <p className="mt-3 max-w-3xl text-sm text-white/65">The broken Studio region was isolated so the rest of the app can keep running. Reload this screen after the next deployment or continue using another EMS section.</p>
-        <pre className="mt-4 max-h-44 overflow-auto rounded-xl border border-white/10 bg-black/60 p-3 text-xs text-red-100">{this.state.error.message}</pre>
+        <pre className="mt-4 max-h-44 overflow-auto rounded-xl border border-white/10 bg-black/60 p-3 text-xs text-red-100">{error.message || "Unknown Studio runtime error"}</pre>
         <div className="mt-4 flex flex-wrap gap-2">
           <button onClick={() => this.setState({ error: null, eventId: null })} className="rounded-full border border-cyan-300/40 bg-cyan-300/10 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-100">Try recover</button>
           <button onClick={() => window.location.reload()} className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-widest text-white/75">Reload Studio</button>
