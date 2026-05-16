@@ -17,10 +17,12 @@ function BeatPadGrid({ pads, activePad, onFirePad }: Props) {
         <button
           key={pad.label}
           onClick={() => onFirePad(pad.kind, pad.label)}
-          className={`h-20 rounded-lg border text-[10px] font-black uppercase transition ${activePad === pad.label ? "scale-95" : ""}`}
+          title={pad.soundName ? `${pad.label}: ${pad.soundName}` : pad.label}
+          className={`h-20 rounded-lg border px-2 text-[10px] font-black uppercase transition ${activePad === pad.label ? "scale-95" : ""}`}
           style={{ background: pad.color, borderColor: pad.color, color: "#061014" }}
         >
-          {pad.label}
+          <span className="block">{pad.label}</span>
+          {pad.soundName ? <span className="mt-1 block truncate text-[8px] opacity-75">{pad.soundName}</span> : null}
         </button>
       ))}
     </div>
