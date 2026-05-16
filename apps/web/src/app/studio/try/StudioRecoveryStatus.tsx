@@ -30,12 +30,12 @@ type RecentSnapshot = {
 const SESSION_ID_KEY = "ems-studio-session-id";
 
 function label(status: Props["status"]) {
-  if (status === "checking") return "Syncing cloud";
-  if (status === "saved") return "Saved to cloud";
-  if (status === "recoverable") return "Cloud restore available";
-  if (status === "restored") return "Restored from cloud";
-  if (status === "error") return "Cloud sync failed";
-  return "Cloud ready";
+  if (status === "checking") return "Autosaving";
+  if (status === "saved") return "Autosave on";
+  if (status === "recoverable") return "Recovery ready";
+  if (status === "restored") return "Restored";
+  if (status === "error") return "Local autosave active";
+  return "Autosave on";
 }
 
 function relativeTime(value: string | null | undefined) {
@@ -72,10 +72,10 @@ async function restoreSnapshotVersion(snapshotId: string) {
   const data = await res.json();
   const payload = data?.snapshot?.payload;
   if (!payload) throw new Error("Snapshot payload missing");
-  const ok = window.confirm("Restore this cloud snapshot? This replaces current local sounds, pads, and placed timeline clips.");
+  const ok = window.confirm("Restore this saved snapshot? This replaces current local sounds, pads, and placed timeline clips.");
   if (!ok) return;
   window.dispatchEvent(new CustomEvent("ems:studio-cloud-restored", { detail: payload }));
-  emitToast("Cloud snapshot version restored.");
+  emitToast("Saved snapshot version restored.");
 }
 
 async function duplicateSnapshot(snapshotId: string) {
@@ -96,8 +96,8 @@ export default function StudioRecoveryStatus({ status, lastSavedAt, canRestore, 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<RecentSnapshot[]>([]);
-  const tone = status === "error" ? "border-red-300/30 text-red-100" : status === "recoverable" ? "border-yellow-300/35 text-yellow-100" : status === "saved" || status === "restored" ? "border-green-300/30 text-green-100" : "border-cyan-300/30 text-cyan-100";
-  const backendLabel = status === "error" ? "Local preserved" : "Postgres cloud";
+  const tone = status === "error" ? "border-yellow-300/35 text-yellow-100" : status === "recoverable" ? "border-yellow-300/35 text-yellow-100" : status === "saved" || status === "restored" ? "border-green-300/30 text-green-100" : "border-cyan-300/30 text-cyan-100";
+  const backendLabel = status === "error" ? "Local backup" : "Cloud + local";
   const cloudHealthy = status !== "error";
 
   async function loadRecent() {
@@ -107,9 +107,9 @@ export default function StudioRecoveryStatus({ status, lastSavedAt, canRestore, 
       if (!res.ok) throw new Error("Recent snapshot fetch failed");
       const data = await res.json();
       setRecent(Array.isArray(data?.recent) ? data.recent : []);
-      emitToast(data?.backend === "database" ? "Cloud snapshot history loaded." : "No cloud snapshot history yet.");
+      emitToast(data?.backend === "database" ? "Saved session history loaded." : "No cloud history yet. Local autosave is active.");
     } catch {
-      emitToast("Could not load cloud snapshot history.");
+      emitToast("Could not load cloud history. Local autosave is still active.");
     } finally {
       setLoading(false);
     }
@@ -125,7 +125,7 @@ export default function StudioRecoveryStatus({ status, lastSavedAt, canRestore, 
     try {
       await restoreSnapshotVersion(snapshotId);
     } catch {
-      emitToast("Could not restore that snapshot version.");
+      emitToast("Could not restore that saved version.");
     }
   }
 
@@ -144,15 +144,16 @@ export default function StudioRecoveryStatus({ status, lastSavedAt, canRestore, 
         <button type="button" onClick={togglePanel} className="hidden lg:inline hover:text-white">
           {label(status)}
         </button>
+        <span className="rounded-full border border-green-300/20 bg-green-300/10 px-2 py-1 text-green-100">Auto-save ON</span>
         <span className="rounded-full border border-white/10 px-2 py-1 text-white/45">{backendLabel}</span>
         <span className="hidden max-w-[110px] truncate text-white/35 xl:inline">{relativeTime(lastSavedAt)}</span>
         {canRestore && (
           <button type="button" onClick={onRestore} className="rounded-full border border-yellow-300/35 px-2 py-1 text-yellow-100 hover:bg-yellow-300/10">
-            Restore Cloud
+            Restore Save
           </button>
         )}
         <button type="button" onClick={onSave} disabled={status === "checking"} className="rounded-full border border-cyan-300/25 px-2 py-1 text-cyan-100 hover:bg-cyan-300/10 disabled:opacity-45">
-          Save Cloud
+          Save Now
         </button>
         <button type="button" onClick={togglePanel} className="rounded-full border border-white/10 px-2 py-1 text-white/60 hover:bg-white/10">
           History
@@ -160,17 +161,21 @@ export default function StudioRecoveryStatus({ status, lastSavedAt, canRestore, 
       </div>
 
       {open && (
-        <div className="absolute right-0 top-11 z-[80] w-[360px] rounded-2xl border border-white/10 bg-[#071015]/98 p-3 text-white shadow-2xl backdrop-blur">
+        <div className="absolute right-0 top-11 z-[80] w-[370px] rounded-2xl border border-white/10 bg-[#071015]/98 p-3 text-white shadow-2xl backdrop-blur">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200/70">Current session health</p>
-              <p className={`mt-1 text-xs font-bold ${cloudHealthy ? "text-green-200" : "text-red-200"}`}>{cloudHealthy ? "Cloud available · Postgres-backed" : "Cloud unavailable · local fallback active"}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200/70">Current session protection</p>
+              <p className={`mt-1 text-xs font-bold ${cloudHealthy ? "text-green-200" : "text-yellow-200"}`}>{cloudHealthy ? "Auto-save writes to cloud and local backup" : "Cloud unavailable · local backup still active"}</p>
               <p className="mt-1 text-[10px] text-white/40">Status: {label(status)} · {relativeTime(lastSavedAt)}</p>
             </div>
             <button type="button" onClick={() => setOpen(false)} className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-white/50">Close</button>
           </div>
 
-          <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+          <div className="rounded-xl border border-green-300/15 bg-green-300/5 p-2 text-[10px] font-bold uppercase tracking-widest text-green-100/80">
+            Protected: local recovery snapshot, cloud snapshot, timed autosave, tab-close save, and return-session restore.
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">Last 5 cloud snapshots</p>
             <button type="button" onClick={loadRecent} disabled={loading} className="rounded-full border border-cyan-300/25 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-cyan-100 disabled:opacity-50">
               {loading ? "Loading" : "Refresh"}
@@ -178,7 +183,7 @@ export default function StudioRecoveryStatus({ status, lastSavedAt, canRestore, 
           </div>
 
           <div className="mt-2 max-h-[280px] space-y-2 overflow-y-auto pr-1">
-            {recent.length === 0 && <p className="rounded-xl border border-white/10 bg-white/[.03] p-3 text-xs text-white/45">No cloud snapshot versions yet. Hit Save Cloud to create one.</p>}
+            {recent.length === 0 && <p className="rounded-xl border border-white/10 bg-white/[.03] p-3 text-xs text-white/45">No cloud snapshot versions yet. Auto-save still keeps a local recovery copy automatically.</p>}
             {recent.map((snapshot) => {
               const counts = snapshotCounts(snapshot);
               const time = snapshot.updatedAt ?? snapshot.createdAt;
