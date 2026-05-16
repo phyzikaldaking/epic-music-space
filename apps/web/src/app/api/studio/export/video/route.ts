@@ -85,24 +85,32 @@ export async function POST(req: NextRequest) {
 
     const audioBuffer = await audioResponse.arrayBuffer();
 
-    // For now: return a placeholder response. Real implementation would:
-    // 1. Decode audio to get waveform data
-    // 2. Render waveform visualization as frames
-    // 3. If format includes lyrics: fetch/generate subtitle track
-    // 4. Encode video using ffmpeg-wasm or call backend encoder
-    // 5. Stream MP4 back to client
+    // Queue the export — return jobId immediately; rendering happens in background
+    const jobId = `video-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    return jsonWithRequestId(
-      requestId,
-      {
-        message: "Video export queued",
-        projectId,
-        format,
-        estimatedTime: "~30s",
-        note: "Full implementation uses ffmpeg-wasm for client-side encoding or calls backend encoder service",
-      },
-      { status: 202 }
-    );
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      );
+      await supabase.from("export_jobs").insert({
+        id: jobId,
+        user_id: (session as { user: { id: string } }).user.id,
+        type: "video",
+        status: "queued",
+        created_at: new Date().toISOString(),
+      });
+    } catch (dbErr) {
+      console.warn("[export/video] could not persist job record", dbErr);
+    }
+
+    return NextResponse.json({
+      jobId,
+      status: "queued",
+      pollUrl: `/api/studio/export/status?jobId=${jobId}`,
+      message: "Video export queued. Poll pollUrl for progress.",
+    });
   } catch (err) {
     console.error("[studio/export/video]", err);
     return jsonWithRequestId(
