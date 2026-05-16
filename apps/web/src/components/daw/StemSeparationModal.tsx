@@ -18,7 +18,6 @@ async function urlToAudioBuffer(url: string, ctx: AudioContext): Promise<AudioBu
 }
 
 async function audioBufferToBlob(buffer: AudioBuffer): Promise<Blob> {
-  // Encode to WAV in-browser via OfflineAudioContext render + manual WAV header
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const length = buffer.length;
@@ -29,13 +28,16 @@ async function audioBufferToBlob(buffer: AudioBuffer): Promise<Blob> {
   const headerSize = 44;
   const wav = new ArrayBuffer(headerSize + dataSize);
   const view = new DataView(wav);
-  const writeStr = (offset: number, str: string) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+
   writeStr(0, "RIFF");
   view.setUint32(4, 36 + dataSize, true);
   writeStr(8, "WAVE");
   writeStr(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
+  view.setUint16(20, 1, true);
   view.setUint16(22, numChannels, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, byteRate, true);
@@ -43,6 +45,7 @@ async function audioBufferToBlob(buffer: AudioBuffer): Promise<Blob> {
   view.setUint16(34, bytesPerSample * 8, true);
   writeStr(36, "data");
   view.setUint32(40, dataSize, true);
+
   let offset = 44;
   for (let i = 0; i < length; i++) {
     for (let ch = 0; ch < numChannels; ch++) {
@@ -68,13 +71,11 @@ export function StemSeparationModal({ engine, buffer, open, onClose, onStems }: 
     setProgress(5);
 
     try {
-      // Step 1: encode AudioBuffer → WAV blob
-      setStage("Encoding audio…");
+      setStage("Encoding audio...");
       const blob = await audioBufferToBlob(buffer);
       setProgress(15);
 
-      // Step 2: upload to storage via /api/upload
-      setStage("Uploading to cloud…");
+      setStage("Uploading to cloud...");
       const form = new FormData();
       form.append("file", blob, "stem-source.wav");
       const uploadResp = await fetch("/api/upload", { method: "POST", body: form });
@@ -82,8 +83,7 @@ export function StemSeparationModal({ engine, buffer, open, onClose, onStems }: 
       const { url: audioUrl } = await uploadResp.json();
       setProgress(30);
 
-      // Step 3: kick off Replicate Demucs job
-      setStage("Starting stem separation (Demucs)…");
+      setStage("Starting stem separation (Demucs)...");
       const startResp = await fetch("/api/studio/stem-separate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -96,19 +96,21 @@ export function StemSeparationModal({ engine, buffer, open, onClose, onStems }: 
       const { jobId } = await startResp.json();
       setProgress(35);
 
-      // Step 4: poll for completion
-      setStage("Separating stems (this takes 30–90s)…");
+      setStage("Separating stems. This takes 30-90s...");
       let attempts = 0;
       const maxAttempts = 90;
       while (attempts < maxAttempts) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, 2000));
         const pollResp = await fetch(`/api/studio/stem-separate/status?jobId=${jobId}`);
         const pollData = await pollResp.json();
 
         if (pollData.status === "succeeded" && pollData.stems) {
           setProgress(85);
-          setStage("Decoding stems…");
+          setStage("Decoding stems...");
           const ctx = engine.audioContext;
+          if (!ctx) {
+            throw new Error("Audio engine is not ready. Please start playback or reload the studio, then try again.");
+          }
           const [vocal, drums, bass, other] = await Promise.all([
             urlToAudioBuffer(pollData.stems.vocals, ctx),
             urlToAudioBuffer(pollData.stems.drums, ctx),
@@ -127,7 +129,7 @@ export function StemSeparationModal({ engine, buffer, open, onClose, onStems }: 
         }
 
         attempts++;
-        setProgress(35 + Math.min(attempts / maxAttempts * 50, 50));
+        setProgress(35 + Math.min((attempts / maxAttempts) * 50, 50));
       }
 
       if (attempts >= maxAttempts) throw new Error("Timed out waiting for separation");
@@ -160,7 +162,7 @@ export function StemSeparationModal({ engine, buffer, open, onClose, onStems }: 
         {!processing && !hasResult && (
           <div className="mb-6 text-sm text-white/60">
             <p>Separate your track into <strong className="text-white">Vocals, Drums, Bass,</strong> and <strong className="text-white">Other</strong> stems using AI (Demucs).</p>
-            <p className="mt-2 text-xs text-white/40">Takes 30–90 seconds. Requires REPLICATE_API_TOKEN to be configured.</p>
+            <p className="mt-2 text-xs text-white/40">Takes 30-90 seconds. Requires REPLICATE_API_TOKEN to be configured.</p>
           </div>
         )}
 
@@ -179,7 +181,7 @@ export function StemSeparationModal({ engine, buffer, open, onClose, onStems }: 
 
         {hasResult && (
           <div className="mb-4 space-y-2">
-            {STEM_LABELS.map(label => {
+            {STEM_LABELS.map((label) => {
               const key = label.toLowerCase();
               const url = stems[key === "vocals" ? "vocals" : key];
               return (
@@ -190,7 +192,7 @@ export function StemSeparationModal({ engine, buffer, open, onClose, onStems }: 
                       Download
                     </a>
                   ) : (
-                    <span className="text-xs text-white/30">—</span>
+                    <span className="text-xs text-white/30">-</span>
                   )}
                 </div>
               );
@@ -210,7 +212,7 @@ export function StemSeparationModal({ engine, buffer, open, onClose, onStems }: 
             disabled={!buffer || processing}
             className="rounded bg-purple-500 px-4 py-2 font-bold uppercase text-white text-sm hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {processing ? "Processing…" : hasResult ? "Re-separate" : "Separate Stems"}
+            {processing ? "Processing..." : hasResult ? "Re-separate" : "Separate Stems"}
           </button>
         </div>
       </div>
