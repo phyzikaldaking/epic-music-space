@@ -38,6 +38,8 @@ export type StudioClip = {
   source: "import" | "recording" | "generated" | "placeholder";
 };
 
+export type StudioSoundCategory = "drums" | "808" | "keys" | "synth" | "guitar" | "strings" | "brass" | "fx" | "melody" | "misc";
+
 export type StudioSoundAsset = {
   id: string;
   name: string;
@@ -45,6 +47,10 @@ export type StudioSoundAsset = {
   source: "upload" | "factory" | "generated";
   kit?: DrumKitId;
   instrument?: string;
+  category?: StudioSoundCategory;
+  key?: string;
+  bpm?: number;
+  size?: number;
   durationSec?: number;
   createdAt: string;
 };
