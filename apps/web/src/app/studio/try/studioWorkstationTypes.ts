@@ -31,6 +31,8 @@ export type StudioClip = {
   color?: string;
   waveform: WaveformPeaks;
   audioBufferId?: string;
+  audioUrl?: string;
+  soundAssetId?: string;
   muted?: boolean;
   selected?: boolean;
   source: "import" | "recording" | "generated" | "placeholder";
@@ -89,5 +91,5 @@ export type StudioRuntimeState = {
   selectedClipId: string | null;
 };
 
-export type StudioPad = { label: string; kind: DrumKind; color: string };
+export type StudioPad = { label: string; kind: DrumKind; color: string; soundUrl?: string; soundName?: string };
 export type StudioMidiBridge = ReturnType<typeof useStudioMidiBridge>;
