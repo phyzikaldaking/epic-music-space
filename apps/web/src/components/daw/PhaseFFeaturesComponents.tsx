@@ -10,8 +10,16 @@ function PreviewBadge() {
 }
 
 /** Genre effect chain presets — chains will be applied via DawEngine once FX routing ships */
-export function GenreEffectChains({ onSelectChain }: { onSelectChain?: (genre: string) => void }) {
+export function GenreEffectChains({
+  genre: selectedGenre,
+  onSelectChain,
+}: {
+  genre?: string;
+  onSelectChain?: (genre: string) => void;
+}) {
   const genres = ["Lo-Fi", "Trap", "EDM", "Jazz", "Cinematic", "R&B", "Pop", "Rock"] as const;
+  const normalizedSelectedGenre = selectedGenre?.toLowerCase();
+
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-4">
       <h3 className="mb-3 flex items-center text-sm font-bold text-white">
@@ -19,15 +27,22 @@ export function GenreEffectChains({ onSelectChain }: { onSelectChain?: (genre: s
         <PreviewBadge />
       </h3>
       <div className="flex flex-wrap gap-2">
-        {genres.map(genre => (
-          <button
-            key={genre}
-            onClick={() => onSelectChain?.(genre)}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70 transition-colors hover:border-purple-500/50 hover:bg-purple-500/10 hover:text-white"
-          >
-            {genre}
-          </button>
-        ))}
+        {genres.map((genre) => {
+          const isSelected = normalizedSelectedGenre === genre.toLowerCase();
+          return (
+            <button
+              key={genre}
+              onClick={() => onSelectChain?.(genre)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                isSelected
+                  ? "border-purple-500/60 bg-purple-500/20 text-white"
+                  : "border-white/10 bg-white/5 text-white/70 hover:border-purple-500/50 hover:bg-purple-500/10 hover:text-white"
+              }`}
+            >
+              {genre}
+            </button>
+          );
+        })}
       </div>
       <p className="mt-3 text-[11px] text-white/30">Full FX chain application coming with the FX routing update.</p>
     </div>
@@ -93,8 +108,8 @@ export function TrendingSamplePacks({ onSelectPack }: { onSelectPack?: (packId: 
 
   React.useEffect(() => {
     fetch("/api/stems/trending?limit=5")
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
         if (data?.packs) setPacks(data.packs);
       })
       .catch(() => {})
@@ -112,7 +127,7 @@ export function TrendingSamplePacks({ onSelectPack }: { onSelectPack?: (packId: 
         <p className="text-xs text-white/30">No trending packs available yet.</p>
       )}
       <div className="space-y-2">
-        {packs.map(pack => (
+        {packs.map((pack) => (
           <button
             key={pack.id}
             onClick={() => onSelectPack?.(pack.id)}
@@ -144,7 +159,7 @@ export function SocialListeningRoom({
       </h3>
       {hasListeners ? (
         <div className="flex -space-x-2">
-          {listeners.slice(0, 8).map(l => (
+          {listeners.slice(0, 8).map((l) => (
             <div
               key={l.id}
               title={l.name}
