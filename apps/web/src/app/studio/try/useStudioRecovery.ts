@@ -26,6 +26,7 @@ type StudioSnapshot = {
   payload?: Partial<StudioSnapshotInput> & { savedAt?: string };
   version?: number;
   updatedAt?: string;
+  backend?: string;
 };
 
 type RecoveryStatus = "idle" | "checking" | "saved" | "recoverable" | "restored" | "error";
@@ -81,6 +82,11 @@ function readLocalSessionAddons() {
   };
 }
 
+function localSessionHasWork() {
+  const local = readLocalSessionAddons();
+  return local.placedClips.length > 0 || local.soundLibrary.length > 0 || Object.keys(local.padAssignments).length > 0;
+}
+
 function restoreLocalSessionAddons(payload: Partial<StudioSnapshotInput>) {
   if (typeof window === "undefined") return;
   if (Array.isArray(payload.placedClips)) writeJson(PLACED_CLIPS_STORAGE_KEY, payload.placedClips);
@@ -101,6 +107,7 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
 
   const save = useCallback(async () => {
     try {
+      setStatus("checking");
       const localAddons = readLocalSessionAddons();
       const fullSnapshot: StudioSnapshotInput = {
         ...snapshot,
@@ -119,7 +126,7 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
           ...fullSnapshot,
           playing: false,
           metadata: {
-            source: "studio-workstation-autosave",
+            source: "studio-workstation-manual-or-autosave",
             clipCount: fullSnapshot.clips?.length ?? 0,
             placedClipCount: fullSnapshot.placedClips?.length ?? 0,
             soundCount: fullSnapshot.soundLibrary?.length ?? 0,
@@ -131,47 +138,77 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
       if (!res.ok) throw new Error(`Autosave failed ${res.status}`);
       const data = await res.json();
       const savedAt = data?.snapshot?.updatedAt ?? new Date().toISOString();
+      setRecoverable(data?.snapshot ?? null);
       setLastSavedAt(savedAt);
       setStatus("saved");
+      window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: data?.backend === "database" ? "Studio saved to cloud." : "Studio saved locally; cloud unavailable." } }));
     } catch {
       setStatus("error");
+      window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: "Cloud save failed. Local studio state is still preserved." } }));
     }
   }, [sessionId, snapshot]);
+
+  const fetchLatestSnapshot = useCallback(async () => {
+    const res = await fetch(`/api/studio/session/snapshot?sessionId=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Snapshot fetch failed ${res.status}`);
+    const data = await res.json();
+    const snapshotFromCloud = data?.snapshot as StudioSnapshot | null;
+    if (snapshotFromCloud?.payload) {
+      setRecoverable({ ...snapshotFromCloud, backend: data?.backend });
+      setLastSavedAt(snapshotFromCloud.updatedAt ?? null);
+      setStatus("recoverable");
+      return snapshotFromCloud;
+    }
+    setRecoverable(null);
+    setStatus("idle");
+    return null;
+  }, [sessionId]);
 
   useEffect(() => {
     let active = true;
     async function check() {
       try {
         setStatus("checking");
-        const res = await fetch(`/api/studio/session/snapshot?sessionId=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
-        const data = await res.json().catch(() => null);
+        const latest = await fetchLatestSnapshot();
         if (!active) return;
-        if (data?.snapshot?.payload) {
-          setRecoverable(data.snapshot);
-          setLastSavedAt(data.snapshot.updatedAt ?? null);
-          setStatus("recoverable");
-        } else {
-          setStatus("idle");
-        }
+        if (!latest?.payload) setStatus("idle");
       } catch {
         if (active) setStatus("error");
       }
     }
     void check();
     return () => { active = false; };
-  }, [sessionId]);
+  }, [fetchLatestSnapshot]);
 
   useEffect(() => {
     const id = window.setInterval(() => { void save(); }, 15000);
     return () => window.clearInterval(id);
   }, [save]);
 
-  const restoreSnapshot = useCallback(() => {
-    if (!recoverable?.payload) return;
-    restoreLocalSessionAddons(recoverable.payload);
-    restoreRef.current(recoverable.payload);
-    setStatus("restored");
-  }, [recoverable]);
+  const restoreSnapshot = useCallback(async () => {
+    try {
+      setStatus("checking");
+      const latest = await fetchLatestSnapshot();
+      if (!latest?.payload) {
+        window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: "No cloud session snapshot found yet." } }));
+        setStatus("idle");
+        return;
+      }
+      const hasLocalWork = localSessionHasWork();
+      const shouldRestore = !hasLocalWork || window.confirm("Restore from cloud? This will replace the current local sounds, custom pads, and placed timeline clips with the latest cloud snapshot.");
+      if (!shouldRestore) {
+        setStatus("recoverable");
+        return;
+      }
+      restoreLocalSessionAddons(latest.payload);
+      restoreRef.current(latest.payload);
+      setStatus("restored");
+      window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: "Studio restored from cloud." } }));
+    } catch {
+      setStatus("error");
+      window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: "Cloud restore failed. Local studio state was not changed." } }));
+    }
+  }, [fetchLatestSnapshot]);
 
   return { sessionId, status, lastSavedAt, recoverable, save, restoreSnapshot };
 }
