@@ -5,10 +5,19 @@ type StudioSnapshotPayload = {
   roomId?: string;
   mode?: string;
   selectedTrack?: string;
+  selectedClipId?: string | null;
   bpm?: number;
   bar?: number;
   playing?: boolean;
   tracks?: unknown[];
+  clips?: unknown[];
+  placedClips?: unknown[];
+  audioBuffers?: unknown[];
+  soundLibrary?: unknown[];
+  padAssignments?: Record<string, unknown>;
+  workspaceLayout?: unknown;
+  selectedKit?: string | null;
+  selectedInstrument?: string | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -47,10 +56,19 @@ function safePayload(payload: StudioSnapshotPayload) {
     roomId: payload.roomId ?? "ems-main-room",
     mode: payload.mode ?? "studio",
     selectedTrack: payload.selectedTrack ?? null,
+    selectedClipId: payload.selectedClipId ?? null,
     bpm: typeof payload.bpm === "number" ? payload.bpm : null,
     bar: typeof payload.bar === "number" ? payload.bar : null,
     playing: Boolean(payload.playing),
     tracks: Array.isArray(payload.tracks) ? payload.tracks : [],
+    clips: Array.isArray(payload.clips) ? payload.clips : [],
+    placedClips: Array.isArray(payload.placedClips) ? payload.placedClips : [],
+    audioBuffers: Array.isArray(payload.audioBuffers) ? payload.audioBuffers : [],
+    soundLibrary: Array.isArray(payload.soundLibrary) ? payload.soundLibrary : [],
+    padAssignments: payload.padAssignments && typeof payload.padAssignments === "object" ? payload.padAssignments : {},
+    workspaceLayout: payload.workspaceLayout ?? null,
+    selectedKit: payload.selectedKit ?? null,
+    selectedInstrument: payload.selectedInstrument ?? null,
     metadata: payload.metadata ?? {},
     savedAt: new Date().toISOString(),
   };
