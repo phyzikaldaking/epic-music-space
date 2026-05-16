@@ -1,8 +1,8 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState, type PointerEvent, type UIEvent, type WheelEvent } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent, type UIEvent, type WheelEvent } from "react";
 import StudioWaveform from "./StudioWaveform";
-import type { StudioClip, StudioRuntimeState, StudioTrack } from "./studioWorkstationTypes";
+import type { StudioClip, StudioRuntimeState, StudioSoundAsset, StudioTrack } from "./studioWorkstationTypes";
 
 type Props = {
   tracks: StudioTrack[];
@@ -22,17 +22,75 @@ const DEFAULT_ROW_HEIGHT = 56;
 const COLLAPSED_ROW_HEIGHT = 28;
 const VIEWPORT_HEIGHT = 420;
 const OVERSCAN = 5;
+const PLACED_CLIPS_STORAGE_KEY = "ems-studio-placed-sound-clips";
+
+function safeLoadPlacedClips(): StudioClip[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PLACED_CLIPS_STORAGE_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistPlacedClips(clips: StudioClip[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PLACED_CLIPS_STORAGE_KEY, JSON.stringify(clips.slice(-128)));
+}
+
+function createFallbackWaveform(durationSec: number) {
+  const total = 96;
+  return {
+    durationSec,
+    peaks: Array.from({ length: total }, (_, index) => {
+      const phase = index / total;
+      return Math.max(0.08, Math.min(0.95, Math.abs(Math.sin(phase * Math.PI * 8)) * (0.35 + phase * 0.5)));
+    }),
+  };
+}
+
+async function decodeSoundWaveform(sound: StudioSoundAsset) {
+  const fallbackDuration = sound.durationSec ?? 4;
+  if (typeof window === "undefined") return createFallbackWaveform(fallbackDuration);
+
+  try {
+    const response = await fetch(sound.url, { cache: "force-cache" });
+    if (!response.ok) throw new Error("Sound fetch failed");
+    const arrayBuffer = await response.arrayBuffer();
+    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const ctx = new Ctor({ latencyHint: "interactive" });
+    const audio = await ctx.decodeAudioData(arrayBuffer.slice(0));
+    const channel = audio.getChannelData(0);
+    const peakCount = 128;
+    const blockSize = Math.max(1, Math.floor(channel.length / peakCount));
+    const peaks = Array.from({ length: peakCount }, (_, index) => {
+      const start = index * blockSize;
+      const end = Math.min(channel.length, start + blockSize);
+      let max = 0;
+      for (let i = start; i < end; i += 1) max = Math.max(max, Math.abs(channel[i] ?? 0));
+      return Math.max(0.04, Math.min(1, max));
+    });
+    await ctx.close().catch(() => undefined);
+    return { durationSec: audio.duration, sampleRate: audio.sampleRate, peaks };
+  } catch {
+    return createFallbackWaveform(fallbackDuration);
+  }
+}
 
 function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar, positionSec = 0, bpm = 92, runtime, selectedClipId, setSelectedClipId, updateTrack }: Props) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [zoom, setZoom] = useState(runtime?.zoom ?? 1);
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [placedClips, setPlacedClips] = useState<StudioClip[]>(safeLoadPlacedClips);
   const pixelsPerSecond = runtime?.pixelsPerSecond ?? Math.round(72 * zoom);
   const secondsPerBeat = 60 / Math.max(1, bpm);
   const pixelsPerBeat = pixelsPerSecond * secondsPerBeat;
   const markerStep = Math.max(48, pixelsPerBeat * 4);
-  const clips = runtime?.clips ?? [];
+  const baseClips = runtime?.clips ?? [];
+  const baseClipIds = useMemo(() => new Set(baseClips.map((clip) => clip.id)), [baseClips]);
+  const clips = useMemo(() => [...baseClips, ...placedClips.filter((clip) => !baseClipIds.has(clip.id))], [baseClipIds, baseClips, placedClips]);
   const lastClipEnd = clips.reduce((max, clip) => Math.max(max, clip.startSec + clip.durationSec), 0);
   const timelineWidth = useMemo(() => Math.max(1180, Math.round(Math.max(64, positionSec + 64, lastClipEnd + 12) * pixelsPerSecond)), [lastClipEnd, pixelsPerSecond, positionSec]);
   const cursorX = Math.min(timelineWidth - 24, Math.max(24, positionSec * pixelsPerSecond));
@@ -52,6 +110,41 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
   const visibleTracks = useMemo(() => tracks.slice(startIndex, safeEndIndex), [tracks, startIndex, safeEndIndex]);
   const visibleTileStart = Math.max(0, Math.floor(scrollLeft / 240));
   const visibleTileCount = Math.min(8, Math.max(2, Math.ceil((viewportRef.current?.clientWidth ?? 900) / 240) + 2));
+
+  async function placeSoundOnTimeline(sound: StudioSoundAsset, startSec = positionSec, trackId = selectedTrack) {
+    const track = tracks.find((item) => item.id === trackId) ?? tracks.find((item) => item.id === selectedTrack) ?? tracks[0];
+    if (!track) return;
+    const waveform = await decodeSoundWaveform(sound);
+    const clip: StudioClip = {
+      id: `sound-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      trackId: track.id,
+      name: sound.name,
+      startSec: Math.max(0, startSec),
+      durationSec: Math.max(0.25, waveform.durationSec || sound.durationSec || 4),
+      offsetSec: 0,
+      color: track.color,
+      waveform,
+      muted: false,
+      source: sound.source === "generated" ? "generated" : "import",
+    };
+    setPlacedClips((current) => {
+      const next = [...current, clip];
+      persistPlacedClips(next);
+      return next;
+    });
+    setSelectedTrack(track.id);
+    setSelectedClipId?.(clip.id);
+    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `Placed ${sound.name} on ${track.name}.` } }));
+  }
+
+  useEffect(() => {
+    function onPlaceSound(event: Event) {
+      const custom = event as CustomEvent<{ sound?: StudioSoundAsset }>;
+      if (custom.detail?.sound) void placeSoundOnTimeline(custom.detail.sound, positionSec, selectedTrack);
+    }
+    window.addEventListener("ems:studio-place-sound", onPlaceSound);
+    return () => window.removeEventListener("ems:studio-place-sound", onPlaceSound);
+  }, [positionSec, selectedTrack, tracks]);
 
   useEffect(() => {
     if (!playing) return;
@@ -106,12 +199,39 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
     window.addEventListener("pointerup", onUp);
   }
 
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    if (event.dataTransfer.types.includes("application/x-ems-sound")) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    const id = event.dataTransfer.getData("application/x-ems-sound");
+    if (!id) return;
+    event.preventDefault();
+    const stored = (() => {
+      try {
+        const parsed = JSON.parse(window.localStorage.getItem("ems-studio-sounds") ?? "[]") as StudioSoundAsset[];
+        return parsed.find((sound) => sound.id === id);
+      } catch {
+        return undefined;
+      }
+    })();
+    if (!stored) return;
+    const viewport = viewportRef.current;
+    const rect = viewport?.getBoundingClientRect();
+    const x = rect ? event.clientX - rect.left + (viewport?.scrollLeft ?? 0) : cursorX;
+    const nextStartSec = Math.max(0, x / Math.max(1, pixelsPerSecond));
+    void placeSoundOnTimeline(stored, nextStartSec, selectedTrack);
+  }
+
   const beatLabel = Math.max(1, Math.floor(positionSec / Math.max(secondsPerBeat, 0.001)) + 1);
 
   return (
     <section data-testid="studio-moving-timeline" className={`relative min-h-[360px] overflow-visible rounded-xl border border-white/12 bg-[#071015] [contain:layout_paint] ${playing ? "shadow-[0_0_38px_rgba(246,214,61,.14)]" : "shadow-[0_0_22px_rgba(34,211,238,.08)]"}`}>
       <div className="sticky top-0 z-[4] flex h-9 items-center justify-between border-b border-white/10 bg-[#071015]/95 px-3 text-[10px] uppercase tracking-widest text-white/45 backdrop-blur">
-        <span>Engine-bound timeline · clips</span>
+        <span>Engine-bound timeline · clips · drag sounds here</span>
         <div className="flex items-center gap-2">
           <span className={`${playing ? "text-yellow-200" : "text-white/35"}`}>Bar {bar} · Beat {beatLabel}</span>
           <span className="text-white/35">{positionSec.toFixed(2)}s</span>
@@ -122,7 +242,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
         </div>
       </div>
 
-      <div ref={viewportRef} onWheel={handleWheel} onScroll={handleScroll} className="ems-scroll relative h-[420px] overflow-auto overscroll-auto">
+      <div ref={viewportRef} onWheel={handleWheel} onScroll={handleScroll} onDragOver={handleDragOver} onDrop={handleDrop} className="ems-scroll relative h-[420px] overflow-auto overscroll-auto">
         <div className="relative px-2 py-1" style={{ width: timelineWidth, height: Math.max(380, totalLaneHeight) }}>
           <div className="sticky top-0 z-[3] flex h-7 items-center border-b border-white/10 bg-[#071015]/95 px-3 text-[10px] uppercase tracking-widest text-white/45 backdrop-blur">
             {Array.from({ length: Math.ceil(timelineWidth / markerStep) + 2 }, (_, index) => <span key={index} style={{ width: markerStep }} className="shrink-0">{index + 1}</span>)}
