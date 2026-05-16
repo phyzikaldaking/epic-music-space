@@ -10,9 +10,9 @@ interface SmartLoop {
   reason: string;
 }
 
-export default function SmartLoopSuggestions({
-  projectKey,
-  projectBpm,
+export default function SmartLoopSuggestions({ projectKey,
+  projectBpm,,
+  onSelectLoop,
 }: {
   projectKey: string;
   projectBpm: number;
@@ -40,14 +40,14 @@ export default function SmartLoopSuggestions({
 
   return (
     <div className="rounded-lg border border-white/10 bg-[#0c0c12] p-4">
-      <h3 className="text-sm font-bold text-white mb-3">🎯 Smart Loop Suggestions</h3>
+      <h3 className="text-sm font-bold text-white mb-3">ð¯ Smart Loop Suggestions</h3>
 
       <button
         onClick={fetchSuggestions}
         disabled={loading}
         className="w-full px-4 py-2 text-xs font-bold rounded bg-tube-300 text-black hover:bg-tube-200 disabled:opacity-50 mb-3"
       >
-        {loading ? "Analyzing…" : "💡 Find Matching Loops"}
+        {loading ? "Analyzingâ¦" : "ð¡ Find Matching Loops"}
       </button>
 
       {suggestions.length > 0 && (
@@ -62,7 +62,7 @@ export default function SmartLoopSuggestions({
               </div>
               <p className="text-[10px] text-white/60 mb-1">{loop.reason}</p>
               <button
-                onClick={() => {}}
+                onClick={() => onSelectLoop?.(loop.id, loop.name)}
                 className="text-[10px] px-2 py-1 rounded border border-white/20 text-white hover:bg-white/10"
               >
                 + Add
