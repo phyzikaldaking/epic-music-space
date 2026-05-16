@@ -1,7 +1,9 @@
 .cleanStudio {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
   background: #06080c;
   --ems-wave: #23f7ff;
   --ems-wave-soft: rgba(35, 247, 255, 0.16);
@@ -64,7 +66,6 @@
   box-shadow: 0 0 8px var(--ems-wave);
 }
 
-/* The bright green placeholder blocks were reading like random notches. Keep them subtle and cyan. */
 .cleanStudio :global(.bg-green-400),
 .cleanStudio :global(.bg-emerald-400),
 .cleanStudio :global(.bg-green-300) {
@@ -74,6 +75,8 @@
 
 .cleanStudio :global([data-ems-workspace]) {
   isolation: isolate;
+  min-height: 100dvh;
+  overflow: visible !important;
 }
 
 .cleanStudio :global([data-ems-workspace] button),
@@ -85,4 +88,13 @@
 
 .cleanStudio :global([data-ems-workspace] [class*="shadow-"]) {
   filter: none;
+}
+
+.cleanStudio :global([data-testid="studio-screen-runtime"]),
+.cleanStudio :global([data-testid="studio-mode-zone"]),
+.cleanStudio :global([data-testid="studio-timeline-zone"]),
+.cleanStudio :global([data-testid="studio-inspector-zone"]),
+.cleanStudio :global([data-testid="studio-rack-zone"]),
+.cleanStudio :global([data-testid="studio-spectral-zone"]) {
+  overflow: visible !important;
 }
