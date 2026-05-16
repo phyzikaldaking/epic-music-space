@@ -36,6 +36,13 @@ const PAD_ASSIGNMENT_ORDER = ["KICK", "SNARE", "CLAP", "HAT", "OPEN", "PERC", "8
 
 type PadAssignment = { soundName: string; soundUrl: string; soundId: string };
 
+type CloudRestorePayload = {
+  soundLibrary?: StudioSoundAsset[];
+  padAssignments?: Record<string, PadAssignment>;
+  selectedKit?: string | null;
+  selectedInstrument?: string | null;
+};
+
 function safeStoredKit(value: string | null): DrumKitId {
   const valid = ["trap", "drill", "afro", "hyperpop", "boomBap", "lofi", "acoustic"] as const;
   return valid.includes(value as DrumKitId) ? (value as DrumKitId) : "trap";
@@ -123,6 +130,19 @@ function BeatTrackLane({
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem(INSTRUMENT_STORAGE_KEY, activeInstrument);
   }, [activeInstrument]);
+
+  useEffect(() => {
+    function handleCloudRestore(event: Event) {
+      const payload = (event as CustomEvent<CloudRestorePayload>).detail;
+      if (Array.isArray(payload?.soundLibrary)) setLocalSounds(payload.soundLibrary);
+      if (payload?.padAssignments && typeof payload.padAssignments === "object") setPadAssignments(payload.padAssignments);
+      if (payload?.selectedKit) setLocalKit(safeStoredKit(payload.selectedKit));
+      if (payload?.selectedInstrument) setLocalInstrument(payload.selectedInstrument);
+      emit("Cloud studio sounds restored.");
+    }
+    window.addEventListener("ems:studio-cloud-restored", handleCloudRestore);
+    return () => window.removeEventListener("ems:studio-cloud-restored", handleCloudRestore);
+  }, []);
 
   function handleKitChange(kit: DrumKitId) {
     setLocalKit(kit);
