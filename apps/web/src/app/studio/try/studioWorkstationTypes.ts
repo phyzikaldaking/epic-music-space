@@ -1,4 +1,4 @@
-import type { DrumKind } from "@/components/daw/beatMachine";
+import type { DrumKind, DrumKitId } from "@/components/daw/beatMachine";
 import type { useStudioMidiBridge } from "./useStudioMidiBridge";
 
 export type StudioMode = "studio" | "edit" | "mix" | "beat" | "collab" | "export";
@@ -36,6 +36,17 @@ export type StudioClip = {
   source: "import" | "recording" | "generated" | "placeholder";
 };
 
+export type StudioSoundAsset = {
+  id: string;
+  name: string;
+  url: string;
+  source: "upload" | "factory" | "generated";
+  kit?: DrumKitId;
+  instrument?: string;
+  durationSec?: number;
+  createdAt: string;
+};
+
 export type StudioTrack = {
   id: string;
   name: string;
@@ -50,6 +61,10 @@ export type StudioTrack = {
   height?: number;
   collapsed?: boolean;
   waveform?: WaveformPeaks;
+  soundKit?: DrumKitId;
+  instrumentPreset?: string;
+  customSoundUrl?: string;
+  sampleName?: string;
 };
 
 export type StudioTrackRuntime = StudioTrack & {
