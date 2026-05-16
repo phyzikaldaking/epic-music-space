@@ -7,27 +7,34 @@ import type { StudioTrack } from "./studioWorkstationTypes";
 type Props = {
   track: StudioTrack;
   selected: boolean;
+  playing?: boolean;
   onSelect: () => void;
   onUpdate: (patch: Partial<StudioTrack>) => void;
   bindMeter?: (trackId: string) => (element: HTMLDivElement | null) => void;
 };
 
-function StudioMixerChannel({ track, selected, onSelect, onUpdate, bindMeter }: Props) {
+function StudioMixerChannel({ track, selected, playing = false, onSelect, onUpdate, bindMeter }: Props) {
+  const meterState = playing && !track.muted ? "shadow-[0_0_18px_rgba(34,211,238,.24)]" : "";
+
   return (
     <div
       onClick={onSelect}
-      className={`flex min-h-[700px] flex-col rounded-lg border p-2 ${selected ? "bg-white/[.07]" : "bg-black/45"}`}
+      data-testid={`studio-mixer-channel-${track.id}`}
+      className={`flex min-h-[700px] flex-col rounded-lg border p-2 transition-shadow duration-200 ${selected ? "bg-white/[.07]" : "bg-black/45"} ${meterState}`}
       style={{
         borderColor: selected ? track.color : "rgba(255,255,255,.12)",
-        boxShadow: selected ? `0 0 12px ${track.color}28` : undefined,
+        boxShadow: selected ? `0 0 18px ${track.color}32` : undefined,
       }}
     >
-      <div className="truncate text-[10px] font-black uppercase tracking-widest" style={{ color: track.color }}>
-        {track.name}
+      <div className="flex items-center justify-between gap-2">
+        <div className="truncate text-[10px] font-black uppercase tracking-widest" style={{ color: track.color }}>
+          {track.name}
+        </div>
+        <span className={`h-2 w-2 rounded-full ${playing && !track.muted ? "animate-pulse bg-green-300 shadow-[0_0_12px_#86efac]" : "bg-white/20"}`} />
       </div>
 
-      <div className="mt-1 h-10 rounded bg-black/70">
-        <StudioWaveform color={track.color} row={1} />
+      <div className="mt-1 h-10 overflow-hidden rounded bg-black/70">
+        <StudioWaveform color={track.color} row={1} playing={playing || selected} />
       </div>
 
       <div className="mt-2 grid grid-cols-3 gap-1">
@@ -70,6 +77,7 @@ function StudioMixerChannel({ track, selected, onSelect, onUpdate, bindMeter }: 
             style={{
               height: `${track.muted ? 4 : track.meter}%`,
               background: track.color,
+              boxShadow: playing && !track.muted ? `0 0 18px ${track.color}` : undefined,
             }}
           />
         </div>
