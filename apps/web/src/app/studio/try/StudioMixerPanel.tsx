@@ -27,32 +27,28 @@ function templateForTrack(track: StudioTrack, index: number) {
   return { volume: 62, pan: index % 2 ? 8 : -8, meter: 52 };
 }
 
+function trackMeterLevel(track: StudioTrack, playing: boolean) {
+  if (track.muted || !playing) return 3;
+  const sourceLevel = typeof track.meter === "number" ? track.meter : 0;
+  const volumeLevel = typeof track.volume === "number" ? track.volume : 0;
+  const combined = Math.max(sourceLevel, volumeLevel * 0.92);
+  return Math.max(4, Math.min(98, combined));
+}
+
 function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedTrack, updateTrack }: Props) {
   const safeTracks = tracks.length ? tracks : [{ id: "empty-mix", name: "No Tracks Loaded", kind: "audio" as const, color: "#17fff4", volume: 0, pan: 0, muted: false, solo: false, armed: false, meter: 0, height: 72 }];
   const trackIds = useMemo(() => safeTracks.map((track) => track.id), [safeTracks]);
   const meters = useRafMeterBridge(trackIds);
-  const [masterPeak, setMasterPeak] = useState(72);
+  const [masterPeak, setMasterPeak] = useState(0);
 
   useEffect(() => {
-    let frame = 0;
-    let raf = 0;
-    const tick = () => {
-      frame += 1;
-      const now = performance.now();
-      let total = 0;
-      safeTracks.forEach((track, index) => {
-        const wave = Math.sin(now / (playing ? 120 : 420) + index * 0.83) * 22;
-        const bounce = Math.cos(now / (playing ? 180 : 620) + index * 1.41) * 14;
-        const base = playing ? 48 : 18;
-        const next = track.muted ? 4 : Math.max(8, Math.min(98, base + wave + bounce + ((index * 7 + frame) % 18)));
-        total += next;
-        meters.setMeterValue(track.id, next);
-      });
-      setMasterPeak(Math.max(12, Math.min(99, total / Math.max(1, safeTracks.length) + (playing ? Math.sin(now / 95) * 10 : 0))));
-      raf = window.requestAnimationFrame(tick);
-    };
-    raf = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(raf);
+    let total = 0;
+    safeTracks.forEach((track) => {
+      const next = trackMeterLevel(track, playing);
+      total += next;
+      meters.setMeterValue(track.id, next);
+    });
+    setMasterPeak(playing ? Math.max(0, Math.min(99, total / Math.max(1, safeTracks.length))) : 0);
   }, [meters, playing, safeTracks]);
 
   function autoMix() {
@@ -78,7 +74,7 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
         <div className="sticky top-0 z-20 flex min-h-14 items-center gap-3 border-b border-black/80 bg-[#161b1d]/98 px-3 py-2 shadow-[0_12px_24px_rgba(0,0,0,.48)] backdrop-blur">
           <div className="hidden min-w-[180px] md:block">
             <div className="font-mono text-[9px] font-black uppercase tracking-[0.28em] text-[#c7d4d6]">EMS SSL Console</div>
-            <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.14em] text-[#738085]">Faders / tone / sends</div>
+            <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.14em] text-[#738085]">Track meters / faders / sends</div>
           </div>
           <div className="rounded-sm border border-[#2d3538] bg-[#07090a] px-3 py-2 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-[#a7b5b8] shadow-[inset_0_0_14px_rgba(0,0,0,.75)]">
             {safeTracks.length} CH
