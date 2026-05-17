@@ -1,245 +1,263 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { scheduleDrumHit, type DrumKind, type DrumKitId } from "@/components/daw/beatMachine";
-import StudioPageShell from "@/components/studio/StudioPageShell";
-import { useStudioMidiBridge } from "../try/useStudioMidiBridge";
+import { useMemo, useState } from "react";
 
-type BeatTrackKind = "drum" | "bass" | "melody" | "fx";
-type BeatTrack = { id: string; name: string; kind: BeatTrackKind; color: string; level: number; pan: number; muted: boolean; padKind: DrumKind; pattern: boolean[] };
-type PianoInstrument = DrumKind | "melody";
-type FactoryCategory = "drums" | "808" | "keys" | "synth" | "guitar" | "strings" | "brass" | "fx" | "melody" | "misc";
-type FactorySound = { id: string; name: string; url: string; category: FactoryCategory; instrument?: string; bpm?: number; key?: string; size?: number };
-type PadAssignment = { name: string; url: string; size?: number; type?: string; assignedAt: string; sliceStart?: number; sliceDuration?: number; fadeIn?: number; fadeOut?: number; normalizeGain?: number };
-type PadAssignments = Partial<Record<DrumKind, PadAssignment>>;
-type DecodedPadBuffers = Partial<Record<DrumKind, AudioBuffer>>;
-type PianoNote = { id: string; pitch: string; start: number; duration: number; velocity: number; instrument: PianoInstrument };
-type ChopMode = "equal" | "transient" | "beatGrid" | "manual" | "silence" | "barBased";
-type TimeMode = "normal" | "stretch" | "pitch" | "vinyl";
-type SnapDivision = 0 | 4 | 8 | 16 | 32;
-type SamplerChop = { id: string; name: string; index: number; start: number; duration: number; pad?: DrumKind; transientScore?: number };
-type SamplerAnalysis = {
-  name: string;
-  duration: number;
-  sampleRate: number;
-  channels: number;
-  estimatedBitDepth: number;
-  estimatedBitrateKbps: number;
-  sourceBpm: number;
-  targetBpm: number;
-  bars: number;
-  beats: number;
-  stretchRatio: number;
-  detectedKey: string;
-  detectedKeyConfidence: number;
-  trimStart: number;
-  trimEnd: number;
-  normalizeGain: number;
-  waveformPeaks: number[];
-  transients: number[];
-  chops: SamplerChop[];
-  url: string;
-  buffer: AudioBuffer;
-};
+type BeatMachineView = "machine" | "sampler" | "piano" | "sounds";
+type Pad = { name: string; color: string; key: string; active?: boolean };
+type StepRow = { name: string; color: string; pattern: number[] };
+type SoundCard = { name: string; bpm: number; key: string; color: string; type: string };
 
-const DEFAULT_KIT: DrumKitId = "trap";
-const SESSION_ID = "ems-beat-machine-session";
-const PAD_ASSIGNMENTS_STORAGE_KEY = "ems-beat-machine-pad-assignments-v3";
-const COLORS = ["#17fff4", "#ff34df", "#f6d63d", "#42ff56", "#a855ff", "#ff7a2f", "#23d4ff", "#ff4f8b"];
-const STEPS = Array.from({ length: 16 }, (_, index) => index + 1);
-const PIANO_PITCHES = ["C6", "B5", "A#5", "A5", "G#5", "G5", "F#5", "F5", "E5", "D#5", "D5", "C#5", "C5", "B4", "A#4", "A4", "G#4", "G4", "F#4", "F4", "E4", "D#4", "D4", "C#4", "C4"];
-const NOTE_INDEX = PIANO_PITCHES.slice().reverse().reduce<Record<string, number>>((acc, pitch, index) => { acc[pitch] = index; return acc; }, {});
-const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const NOTE_FREQ: Record<string, number> = {
-  C4: 261.63, "C#4": 277.18, D4: 293.66, "D#4": 311.13, E4: 329.63, F4: 349.23, "F#4": 369.99, G4: 392, "G#4": 415.3, A4: 440, "A#4": 466.16, B4: 493.88,
-  C5: 523.25, "C#5": 554.37, D5: 587.33, "D#5": 622.25, E5: 659.25, F5: 698.46, "F#5": 739.99, G5: 783.99, "G#5": 830.61, A5: 880, "A#5": 932.33, B5: 987.77, C6: 1046.5,
-};
-const PADS: { label: string; kind: DrumKind; color: string; hotkey: string }[] = [
-  { label: "Kick", kind: "kick", color: "#17fff4", hotkey: "1" },
-  { label: "Snare", kind: "snare", color: "#ff34df", hotkey: "2" },
-  { label: "Clap", kind: "clap", color: "#f6d63d", hotkey: "3" },
-  { label: "Hat", kind: "hat", color: "#42ff56", hotkey: "4" },
-  { label: "Open", kind: "openHat", color: "#a855ff", hotkey: "5" },
-  { label: "Perc", kind: "perc", color: "#ff7a2f", hotkey: "6" },
-  { label: "808", kind: "bass808", color: "#23d4ff", hotkey: "7" },
-  { label: "Crash", kind: "crash", color: "#ff4f8b", hotkey: "8" },
-];
-const PIANO_INSTRUMENTS: { label: string; value: PianoInstrument; color: string }[] = [{ label: "Melody", value: "melody", color: "#42ff56" }, ...PADS.map((pad) => ({ label: pad.label, value: pad.kind, color: pad.color }))];
-const LIBRARY_CATEGORIES: { label: string; value: "all" | FactoryCategory }[] = [
-  { label: "All", value: "all" }, { label: "Pianos / Keys", value: "keys" }, { label: "Synths", value: "synth" }, { label: "Guitars", value: "guitar" },
-  { label: "Strings", value: "strings" }, { label: "Brass", value: "brass" }, { label: "Melodies", value: "melody" }, { label: "Drums", value: "drums" }, { label: "808", value: "808" }, { label: "FX", value: "fx" },
-];
-const INITIAL_TRACKS: BeatTrack[] = [
-  { id: "kick", name: "Kick", kind: "drum", padKind: "kick", color: "#17fff4", level: 88, pan: 0, muted: false, pattern: STEPS.map((step) => [1, 5, 9, 13].includes(step)) },
-  { id: "snare", name: "Snare / Clap", kind: "drum", padKind: "snare", color: "#ff34df", level: 76, pan: 0, muted: false, pattern: STEPS.map((step) => [5, 13].includes(step)) },
-  { id: "hat", name: "Hi-Hats", kind: "drum", padKind: "hat", color: "#42ff56", level: 64, pan: 8, muted: false, pattern: STEPS.map((step) => step % 2 === 1) },
-  { id: "bass", name: "808 Bass", kind: "bass", padKind: "bass808", color: "#f6d63d", level: 82, pan: -4, muted: false, pattern: STEPS.map((step) => [1, 4, 9, 12, 15].includes(step)) },
-  { id: "melody", name: "Melody One-Shots", kind: "melody", padKind: "openHat", color: "#42ff56", level: 70, pan: 0, muted: false, pattern: STEPS.map(() => false) },
-];
-const INITIAL_NOTES: PianoNote[] = [
-  { id: "n1", pitch: "C5", start: 0, duration: 2, velocity: 0.8, instrument: "melody" },
-  { id: "n2", pitch: "D#5", start: 2, duration: 2, velocity: 0.75, instrument: "melody" },
-  { id: "n3", pitch: "G5", start: 4, duration: 2, velocity: 0.82, instrument: "melody" },
-  { id: "n4", pitch: "C5", start: 8, duration: 1, velocity: 0.9, instrument: "kick" },
-  { id: "n5", pitch: "G5", start: 10, duration: 1, velocity: 0.75, instrument: "hat" },
+const pads: Pad[] = [
+  { name: "KICK", color: "#20f7ff", key: "1", active: true },
+  { name: "SNARE", color: "#20f7ff", key: "2" },
+  { name: "HAT", color: "#a75cff", key: "3" },
+  { name: "CLAP", color: "#a75cff", key: "4" },
+  { name: "808", color: "#20f7ff", key: "Q" },
+  { name: "PERC", color: "#20f7ff", key: "W" },
+  { name: "RIM", color: "#a75cff", key: "E" },
+  { name: "SHAKER", color: "#a75cff", key: "R" },
+  { name: "TOM", color: "#20f7ff", key: "A" },
+  { name: "CONGA", color: "#20f7ff", key: "S", active: true },
+  { name: "BONGO", color: "#ff31df", key: "D" },
+  { name: "MARIMBA", color: "#ff31df", key: "F" },
+  { name: "VOX", color: "#20f7ff", key: "Z" },
+  { name: "FX", color: "#f2c85b", key: "X" },
+  { name: "LOOP", color: "#f2c85b", key: "C" },
+  { name: "CRASH", color: "#f2c85b", key: "V" },
 ];
 
-function isTypingTarget(target: EventTarget | null) { const el = target as HTMLElement | null; const tag = el?.tagName?.toLowerCase(); return tag === "input" || tag === "textarea" || tag === "select" || Boolean(el?.isContentEditable); }
-function pitchSemisFromC5(pitch: string) { return (NOTE_INDEX[pitch] ?? NOTE_INDEX.C5 ?? 12) - (NOTE_INDEX.C5 ?? 12); }
-function isDrumInstrument(value: PianoInstrument): value is DrumKind { return value !== "melody"; }
-function instrumentColor(value: PianoInstrument) { return PIANO_INSTRUMENTS.find((item) => item.value === value)?.color ?? "#42ff56"; }
-function downloadText(filename: string, text: string, type = "application/json") { const blob = new Blob([text], { type }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url); }
-function downloadUrl(url: string, filename: string) { const a = document.createElement("a"); a.href = url; a.download = filename; a.target = "_blank"; a.rel = "noreferrer"; a.click(); }
-function formatSeconds(value: number) { return `${value.toFixed(2)}s`; }
-function clamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
-function pitchRatioFromSemis(semis: number) { return Math.pow(2, semis / 12); }
-function normalizePadAssignments(raw: unknown): PadAssignments { if (!raw || typeof raw !== "object") return {}; const input = raw as Record<string, Partial<PadAssignment>>; return PADS.reduce<PadAssignments>((acc, pad) => { const item = input[pad.kind]; if (item?.url && item?.name) acc[pad.kind] = { name: String(item.name), url: String(item.url), size: Number(item.size ?? 0), type: String(item.type ?? "audio/*"), assignedAt: String(item.assignedAt ?? new Date().toISOString()), sliceStart: typeof item.sliceStart === "number" ? item.sliceStart : undefined, sliceDuration: typeof item.sliceDuration === "number" ? item.sliceDuration : undefined, fadeIn: typeof item.fadeIn === "number" ? item.fadeIn : undefined, fadeOut: typeof item.fadeOut === "number" ? item.fadeOut : undefined, normalizeGain: typeof item.normalizeGain === "number" ? item.normalizeGain : undefined }; return acc; }, {}); }
-function loadStoredAssignments(): PadAssignments { if (typeof window === "undefined") return {}; try { return normalizePadAssignments(JSON.parse(window.localStorage.getItem(PAD_ASSIGNMENTS_STORAGE_KEY) ?? "{}")); } catch { return {}; } }
-function fileToDataUrl(file: File) { return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error ?? new Error("Could not read audio file.")); reader.readAsDataURL(file); }); }
-async function decodeAudioUrl(ctx: AudioContext, url: string) { const res = await fetch(url); const arrayBuffer = await res.arrayBuffer(); return ctx.decodeAudioData(arrayBuffer.slice(0)); }
-function monoAt(buffer: AudioBuffer, index: number) { let sum = 0; for (let ch = 0; ch < buffer.numberOfChannels; ch += 1) sum += buffer.getChannelData(ch)[index] ?? 0; return sum / Math.max(1, buffer.numberOfChannels); }
-function buildWaveformPeaks(buffer: AudioBuffer, count = 640) { const peaks: number[] = []; const step = Math.max(1, Math.floor(buffer.length / count)); for (let i = 0; i < count; i += 1) { let max = 0; const start = i * step; const end = Math.min(buffer.length, start + step); for (let j = start; j < end; j += 1) max = Math.max(max, Math.abs(monoAt(buffer, j))); peaks.push(Number(max.toFixed(4))); } return peaks; }
-function detectSilenceTrim(buffer: AudioBuffer, threshold = 0.018) { const step = Math.max(1, Math.floor(buffer.sampleRate * 0.01)); let start = 0; let end = buffer.length - 1; for (let i = 0; i < buffer.length; i += step) { if (Math.abs(monoAt(buffer, i)) > threshold) { start = i; break; } } for (let i = buffer.length - 1; i > 0; i -= step) { if (Math.abs(monoAt(buffer, i)) > threshold) { end = i; break; } } return { trimStart: start / buffer.sampleRate, trimEnd: Math.max(start / buffer.sampleRate + 0.05, end / buffer.sampleRate) }; }
-function detectNormalizeGain(buffer: AudioBuffer) { let peak = 0; for (let i = 0; i < buffer.length; i += Math.max(1, Math.floor(buffer.length / 80000))) peak = Math.max(peak, Math.abs(monoAt(buffer, i))); return peak > 0 ? clamp(0.92 / peak, 0.25, 6) : 1; }
-function detectTransients(buffer: AudioBuffer, trimStart = 0, trimEnd = buffer.duration) { const win = Math.max(128, Math.floor(buffer.sampleRate * 0.012)); const hop = Math.max(64, Math.floor(win / 2)); const energies: number[] = []; const times: number[] = []; const startSample = Math.floor(trimStart * buffer.sampleRate); const endSample = Math.min(buffer.length, Math.floor(trimEnd * buffer.sampleRate)); for (let start = startSample; start < endSample - win; start += hop) { let energy = 0; for (let i = start; i < start + win; i += 1) { const v = monoAt(buffer, i); energy += v * v; } energies.push(Math.sqrt(energy / win)); times.push(start / buffer.sampleRate); } const mean = energies.reduce((a, b) => a + b, 0) / Math.max(1, energies.length); const threshold = Math.max(mean * 1.65, 0.025); const transients: number[] = []; for (let i = 2; i < energies.length - 2; i += 1) { const rising = energies[i] > energies[i - 1] * 1.22 && energies[i] > threshold; const peak = energies[i] >= energies[i - 1] && energies[i] >= energies[i + 1]; if (rising && peak && (!transients.length || times[i] - transients[transients.length - 1] > 0.075)) transients.push(times[i]); } return transients.slice(0, 64); }
-function estimateBpmFromTransients(transients: number[], fallback: number) { const intervals: number[] = []; for (let i = 1; i < transients.length; i += 1) { const d = transients[i] - transients[i - 1]; if (d > 0.12 && d < 2.2) intervals.push(d); } if (!intervals.length) return fallback; intervals.sort((a, b) => a - b); const median = intervals[Math.floor(intervals.length / 2)] || intervals[0]; let bpm = Math.round(60 / median); while (bpm < 70) bpm *= 2; while (bpm > 180) bpm = Math.round(bpm / 2); return clamp(bpm, 40, 240); }
-function estimateKey(buffer: AudioBuffer, trimStart = 0, trimEnd = Math.min(buffer.duration, 12)) { const start = Math.floor(trimStart * buffer.sampleRate); const end = Math.min(buffer.length, Math.floor(trimEnd * buffer.sampleRate)); const hop = Math.max(64, Math.floor(buffer.sampleRate / 22050)); let last = monoAt(buffer, start); let crossings = 0; for (let i = start + hop; i < end; i += hop) { const v = monoAt(buffer, i); if ((last <= 0 && v > 0) || (last >= 0 && v < 0)) crossings += 1; last = v; } const seconds = Math.max(0.1, (end - start) / buffer.sampleRate); const estimatedHz = clamp((crossings / seconds) / 2, 55, 1760); const midi = Math.round(69 + 12 * Math.log2(estimatedHz / 440)); const noteIndex = ((midi % 12) + 12) % 12; return { key: `${NOTE_NAMES[noteIndex]} ${midi % 24 < 12 ? "minor" : "major"}`, confidence: 0.52 }; }
-function makeChops(mode: ChopMode, buffer: AudioBuffer, count: number, bars: number, trimStart: number, trimEnd: number, transients: number[], snap: SnapDivision, bpm: number) { const duration = Math.max(0.05, trimEnd - trimStart); const snapSec = snap ? (60 / Math.max(40, bpm)) * (4 / snap) : 0; const snapTime = (time: number) => snapSec ? trimStart + Math.round((time - trimStart) / snapSec) * snapSec : time; let starts: number[] = []; if (mode === "transient" || mode === "silence") starts = transients.filter((t) => t >= trimStart && t <= trimEnd).slice(0, count); else if (mode === "beatGrid") { const beat = 60 / Math.max(40, bpm); for (let t = trimStart; t < trimEnd - 0.02; t += beat) starts.push(t); } else if (mode === "barBased") { const bar = 60 / Math.max(40, bpm) * 4; for (let t = trimStart; t < trimEnd - 0.02; t += bar / Math.max(1, count / Math.max(1, bars))) starts.push(t); } else { const slice = duration / Math.max(1, count); starts = Array.from({ length: Math.max(1, count) }, (_, i) => trimStart + i * slice); } starts = Array.from(new Set(starts.map((t) => Number(clamp(snapTime(t), trimStart, trimEnd - 0.02).toFixed(4))))).sort((a, b) => a - b).slice(0, Math.max(1, count)); if (!starts.length) starts = [trimStart]; return starts.map((start, index) => { const nextStart = starts[index + 1] ?? trimEnd; return { id: `chop-${Date.now()}-${index}`, name: `Chop ${index + 1}`, index, start, duration: Math.max(0.025, nextStart - start), pad: PADS[index]?.kind, transientScore: transients.includes(start) ? 1 : undefined }; }); }
+const rows: StepRow[] = [
+  { name: "kick", color: "#20f7ff", pattern: [1, 5, 9, 13] },
+  { name: "snare", color: "#ff31df", pattern: [5, 13] },
+  { name: "hat", color: "#20f7ff", pattern: [1, 3, 5, 7, 9, 11, 13, 15] },
+  { name: "808", color: "#f2c85b", pattern: [1, 4, 9, 12, 15] },
+  { name: "perc", color: "#a75cff", pattern: [3, 7, 10, 14] },
+  { name: "vox", color: "#16e59a", pattern: [8, 16] },
+];
 
-function WaveformEditor({ analysis, zoom, snap, onMove, onPlay, onSelectTrim }: { analysis: SamplerAnalysis; zoom: number; snap: SnapDivision; onMove: (index: number, start: number) => void; onPlay: (chop: SamplerChop) => void; onSelectTrim: (start: number, end: number) => void }) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const width = Math.max(720, Math.round(analysis.waveformPeaks.length * 2.5 * zoom));
-  function clientToTime(clientX: number) { const rect = wrapRef.current?.getBoundingClientRect(); if (!rect) return 0; const x = clamp(clientX - rect.left + (wrapRef.current?.scrollLeft ?? 0), 0, width); const raw = (x / width) * analysis.duration; const snapSec = snap ? (60 / Math.max(40, analysis.targetBpm)) * (4 / snap) : 0; return snapSec ? Math.round(raw / snapSec) * snapSec : raw; }
-  return <div ref={wrapRef} className="relative h-52 overflow-auto rounded-xl border border-cyan-300/20 bg-black/65" onDoubleClick={(event) => { const t = clientToTime(event.clientX); onSelectTrim(Math.min(t, analysis.trimEnd - 0.05), analysis.trimEnd); }}>
-    <div className="relative h-full" style={{ width }}>
-      <svg viewBox={`0 0 ${width} 170`} preserveAspectRatio="none" className="absolute inset-x-0 top-4 h-[170px] w-full"><line x1="0" x2={width} y1="85" y2="85" stroke="rgba(255,255,255,.18)" />{analysis.waveformPeaks.map((peak, index) => { const x = (index / analysis.waveformPeaks.length) * width; const h = Math.max(1, peak * 78); return <rect key={index} x={x} y={85 - h} width={Math.max(1, width / analysis.waveformPeaks.length - 1)} height={h * 2} fill="rgba(35,247,255,.72)" />; })}{analysis.transients.map((t, index) => <line key={`tr-${index}`} x1={(t / analysis.duration) * width} x2={(t / analysis.duration) * width} y1="4" y2="166" stroke="rgba(255,214,61,.65)" strokeDasharray="3 4" />)}</svg>
-      <div className="absolute top-0 h-full bg-green-300/10" style={{ left: `${(analysis.trimStart / analysis.duration) * 100}%`, width: `${((analysis.trimEnd - analysis.trimStart) / analysis.duration) * 100}%` }} />
-      {analysis.chops.map((chop, index) => <button key={chop.id} type="button" onClick={() => onPlay(chop)} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (event.buttons === 1) onMove(index, clientToTime(event.clientX)); }} className="absolute top-0 h-full w-[3px] bg-pink-300 shadow-[0_0_10px_rgba(255,52,223,.9)]" style={{ left: `${(chop.start / analysis.duration) * 100}%` }} title={`${chop.name} ${formatSeconds(chop.start)}`} />)}
+const notes = [
+  { pitch: "C6", start: 2, len: 3, color: "#20f7ff" },
+  { pitch: "A5", start: 4, len: 2, color: "#b943ff" },
+  { pitch: "F5", start: 1, len: 3, color: "#20f7ff" },
+  { pitch: "D#5", start: 6, len: 2, color: "#b943ff" },
+  { pitch: "C5", start: 8, len: 4, color: "#20f7ff" },
+  { pitch: "A4", start: 12, len: 4, color: "#32f46a" },
+  { pitch: "F4", start: 4, len: 7, color: "#32f46a" },
+  { pitch: "D4", start: 10, len: 5, color: "#32f46a" },
+  { pitch: "C4", start: 0, len: 2, color: "#b943ff" },
+];
+
+const soundCards: SoundCard[] = [
+  { name: "HARD_KICK_01", bpm: 140, key: "C#m", color: "#f2c85b", type: "KICK" },
+  { name: "DARK_SNARE_07", bpm: 129, key: "G#m", color: "#20f7ff", type: "SNARE" },
+  { name: "DEEP_808_12", bpm: 152, key: "F", color: "#16e59a", type: "808" },
+  { name: "VOCAL_BAD_05", bpm: 90, key: "G#m", color: "#ff31df", type: "VOX" },
+  { name: "LOFI_MELODY_02", bpm: 85, key: "F", color: "#ff31df", type: "MELODY" },
+  { name: "BRIGHT_CLAP_04", bpm: 160, key: "B", color: "#20c8ff", type: "CLAP" },
+  { name: "MOODY_PAD_05", bpm: 90, key: "Am", color: "#ff31df", type: "PAD" },
+  { name: "TRAP_PERC_HIT_62", bpm: 109, key: "Cm", color: "#16e59a", type: "PERC" },
+  { name: "BRIGHT_CHOP_03", bpm: 118, key: "D", color: "#20c8ff", type: "CHOP" },
+];
+
+const chopCards = ["VOCAL_OOH", "VOCAL_AAH", "VOCAL_TAKE_01", "DRUM_SNARE"];
+const pianoKeys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B", "C2", "C#2", "D2"];
+const waveform = Array.from({ length: 130 }, (_, index) => Math.abs(Math.sin(index * 0.35) * Math.cos(index * 0.09)) * (index < 14 || index > 122 ? 0.14 : 1));
+
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <section className={cn("rounded-[18px] border border-white/12 bg-[#141719]/92 shadow-[inset_0_1px_0_rgba(255,255,255,.12),0_18px_50px_rgba(0,0,0,.38)]", className)}>{children}</section>;
+}
+
+function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+  return <div className="flex h-10 items-center justify-between border-b border-white/10 px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white/86"><span>{children}</span>{right}</div>;
+}
+
+function MicroButton({ children, active = false, onClick }: { children: React.ReactNode; active?: boolean; onClick?: () => void }) {
+  return <button onClick={onClick} className={cn("rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] transition", active ? "border-cyan-300 bg-cyan-300 text-black shadow-[0_0_18px_rgba(32,247,255,.36)]" : "border-white/12 bg-white/[0.045] text-white/62 hover:border-cyan-300/50 hover:text-cyan-100")}>{children}</button>;
+}
+
+function NeonPad({ pad, selected, onClick }: { pad: Pad; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group relative aspect-square overflow-hidden rounded-xl border bg-gradient-to-b from-[#2c2d2f] to-[#101112] p-3 text-left transition hover:-translate-y-0.5"
+      style={{ borderColor: selected || pad.active ? pad.color : "rgba(255,255,255,.18)", boxShadow: selected || pad.active ? `0 0 22px ${pad.color}66, inset 0 0 20px ${pad.color}18` : "inset 0 1px 0 rgba(255,255,255,.08)" }}
+    >
+      <span className="absolute inset-x-3 top-3 h-px bg-white/18" />
+      <span className="grid h-full place-items-center text-[13px] font-black tracking-[0.08em] text-white/88">{pad.name}</span>
+      <span className="absolute bottom-2 right-2 font-mono text-[10px] text-white/42">{pad.key}</span>
+    </button>
+  );
+}
+
+function Waveform({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={cn("relative overflow-hidden rounded-xl border border-cyan-300/18 bg-black/58", compact ? "h-20" : "h-64")}>
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.055)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.045)_1px,transparent_1px)] bg-[size:100%_32px,48px_100%]" />
+      <div className="absolute inset-x-0 top-1/2 h-px bg-cyan-200/35" />
+      <svg viewBox="0 0 130 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+        <defs>
+          <linearGradient id="emsWave" x1="0" x2="1"><stop offset="0" stopColor="#20f7ff" /><stop offset="0.62" stopColor="#20f7ff" /><stop offset="1" stopColor="#ff31df" /></linearGradient>
+        </defs>
+        {waveform.map((peak, index) => <rect key={index} x={index} y={50 - peak * 42} width="0.58" height={Math.max(1, peak * 84)} rx="0.3" fill="url(#emsWave)" opacity={0.88} />)}
+        {[15, 25, 34, 48, 58, 72, 83, 94, 104, 113].map((x, i) => <line key={i} x1={x} x2={x} y1="8" y2="92" stroke={i % 2 ? "#f2c85b" : "#20f7ff"} strokeDasharray="1 2" opacity="0.65" />)}
+      </svg>
+      <div className="absolute left-[45%] top-0 h-full w-px bg-cyan-300 shadow-[0_0_18px_rgba(32,247,255,.9)]" />
+      {!compact && <div className="absolute left-3 top-3 rounded-md border border-white/12 bg-black/65 px-2 py-1 font-mono text-[10px] text-white/62">VOCAL_HOOK_01.wav · 44.1kHz / 24-bit / KEY:Cm / BPM:87</div>}
     </div>
-  </div>;
+  );
 }
 
-export default function BeatMachineProClient() {
-  const [playing, setPlaying] = useState(false);
-  const [bpm, setBpm] = useState(92);
-  const [swing, setSwing] = useState(18);
-  const [activePad, setActivePad] = useState<string | null>(null);
-  const [tracks, setTracks] = useState<BeatTrack[]>(INITIAL_TRACKS);
-  const [selectedTrack, setSelectedTrack] = useState("kick");
-  const [pianoNotes, setPianoNotes] = useState<PianoNote[]>(INITIAL_NOTES);
-  const [pianoInstrument, setPianoInstrument] = useState<PianoInstrument>("kick");
-  const [pianoVelocity, setPianoVelocity] = useState(0.82);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [notice, setNotice] = useState("Beat machine ready.");
-  const [selectedAssignPad, setSelectedAssignPad] = useState<DrumKind>("kick");
-  const [padAssignments, setPadAssignments] = useState<PadAssignments>({});
-  const [decodedPadBuffers, setDecodedPadBuffers] = useState<DecodedPadBuffers>({});
-  const [melodyAssignment, setMelodyAssignment] = useState<PadAssignment | null>(null);
-  const [melodyBuffer, setMelodyBuffer] = useState<AudioBuffer | null>(null);
-  const [factorySounds, setFactorySounds] = useState<FactorySound[]>([]);
-  const [factoryLoading, setFactoryLoading] = useState(false);
-  const [soundQuery, setSoundQuery] = useState("");
-  const [soundCategory, setSoundCategory] = useState<"all" | FactoryCategory>("keys");
-  const [samplerAnalysis, setSamplerAnalysis] = useState<SamplerAnalysis | null>(null);
-  const [samplerBars, setSamplerBars] = useState(4);
-  const [samplerChops, setSamplerChops] = useState(8);
-  const [samplerTargetBpm, setSamplerTargetBpm] = useState(92);
-  const [samplerMode, setSamplerMode] = useState<ChopMode>("transient");
-  const [samplerZoom, setSamplerZoom] = useState(1);
-  const [snapDivision, setSnapDivision] = useState<SnapDivision>(16);
-  const [fadeIn, setFadeIn] = useState(0.005);
-  const [fadeOut, setFadeOut] = useState(0.012);
-  const [pitchShiftSemis, setPitchShiftSemis] = useState(0);
-  const [timeMode, setTimeMode] = useState<TimeMode>("normal");
-  const [padRepeatEnabled, setPadRepeatEnabled] = useState(true);
-  const [repeatDivision, setRepeatDivision] = useState(16);
-  const [selectedRepeatPitch, setSelectedRepeatPitch] = useState("C5");
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
-  const melodyUploadInputRef = useRef<HTMLInputElement | null>(null);
-  const kitImportInputRef = useRef<HTMLInputElement | null>(null);
-  const samplerInputRef = useRef<HTMLInputElement | null>(null);
-  const ctxRef = useRef<AudioContext | null>(null);
-  const masterRef = useRef<GainNode | null>(null);
-  const schedulerRef = useRef<number | null>(null);
-  const repeatRef = useRef<number | null>(null);
-  const nextStepTimeRef = useRef(0);
-  const stepRef = useRef(0);
-  const tracksRef = useRef(tracks);
-  const notesRef = useRef(pianoNotes);
-  const buffersRef = useRef(decodedPadBuffers);
-  const assignmentsRef = useRef(padAssignments);
-  const melodyBufferRef = useRef<AudioBuffer | null>(null);
-  const bpmRef = useRef(bpm);
-  const swingRef = useRef(swing);
-  const midi = useStudioMidiBridge(SESSION_ID);
-  const visibleSounds = useMemo(() => factorySounds.filter((sound) => (soundCategory === "all" || sound.category === soundCategory) && (!soundQuery || `${sound.name} ${sound.category} ${sound.instrument ?? ""} ${sound.key ?? ""}`.toLowerCase().includes(soundQuery.toLowerCase()))), [factorySounds, soundCategory, soundQuery]);
-  const selected = useMemo(() => tracks.find((track) => track.id === selectedTrack) ?? tracks[0], [selectedTrack, tracks]);
-  const selectedInstrumentColor = instrumentColor(pianoInstrument);
-
-  useEffect(() => { tracksRef.current = tracks; }, [tracks]);
-  useEffect(() => { notesRef.current = pianoNotes; }, [pianoNotes]);
-  useEffect(() => { buffersRef.current = decodedPadBuffers; }, [decodedPadBuffers]);
-  useEffect(() => { assignmentsRef.current = padAssignments; }, [padAssignments]);
-  useEffect(() => { melodyBufferRef.current = melodyBuffer; }, [melodyBuffer]);
-  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
-  useEffect(() => { swingRef.current = swing; }, [swing]);
-  useEffect(() => { const stored = loadStoredAssignments(); setPadAssignments(stored); void decodeAssignments(stored); void loadFactorySounds(); }, []);
-  useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem(PAD_ASSIGNMENTS_STORAGE_KEY, JSON.stringify(padAssignments)); }, [padAssignments]);
-
-  function getCtx() { if (ctxRef.current && ctxRef.current.state !== "closed") return ctxRef.current; const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext; if (!Ctor) throw new Error("AudioContext unavailable"); const ctx = new Ctor({ latencyHint: "interactive", sampleRate: 48000 }); const gain = ctx.createGain(); gain.gain.value = 0.86; gain.connect(ctx.destination); ctxRef.current = ctx; masterRef.current = gain; return ctx; }
-  async function loadFactorySounds() { setFactoryLoading(true); try { const res = await fetch("/api/studio/sounds/library?limit=250", { cache: "no-store" }); const data = await res.json().catch(() => null); if (!res.ok || !Array.isArray(data?.sounds)) throw new Error(data?.error ?? "Sound library unavailable"); setFactorySounds(data.sounds as FactorySound[]); setNotice(`Loaded ${data.sounds.length} one-shots from audio-assets.`); } catch (error) { setNotice(error instanceof Error ? error.message : "One-shot library failed to load."); } finally { setFactoryLoading(false); } }
-  async function decodeAssignments(assignments: PadAssignments) { const ctx = getCtx(); if (ctx.state === "suspended") void ctx.resume(); const next: DecodedPadBuffers = {}; await Promise.all(PADS.map(async (pad) => { const assignment = assignments[pad.kind]; if (!assignment?.url) return; try { next[pad.kind] = await decodeAudioUrl(ctx, assignment.url); } catch { /* synth fallback */ } })); setDecodedPadBuffers(next); }
-  function playSampleBuffer(buffer: AudioBuffer, when?: number, pitch = "C5", velocity = 0.82, offset = 0, duration?: number, gainBoost = 1, rateOverride?: number) { const ctx = getCtx(); if (ctx.state === "suspended") void ctx.resume(); const startAt = when ?? ctx.currentTime; const source = ctx.createBufferSource(); const gain = ctx.createGain(); source.buffer = buffer; const pitchRate = pitchRatioFromSemis(pitchSemisFromC5(pitch) + (timeMode === "pitch" ? pitchShiftSemis : 0)); const stretchRate = timeMode === "stretch" && samplerAnalysis ? samplerAnalysis.sourceBpm / Math.max(40, samplerAnalysis.targetBpm) : 1; const vinylRate = timeMode === "vinyl" ? pitchRatioFromSemis(pitchShiftSemis) * (rateOverride ?? 1) : (rateOverride ?? 1); source.playbackRate.setValueAtTime(timeMode === "stretch" ? stretchRate : pitchRate * vinylRate, startAt); gain.gain.setValueAtTime(0.0001, startAt); gain.gain.linearRampToValueAtTime(Math.max(0.01, Math.min(1.6, velocity * gainBoost)), startAt + fadeIn); if (duration && duration > fadeOut) gain.gain.linearRampToValueAtTime(0.0001, startAt + duration); source.connect(gain); gain.connect(masterRef.current ?? ctx.destination); source.start(startAt, Math.max(0, offset), duration && duration > 0 ? duration : undefined); }
-  async function assignUrlToPad(assignment: PadAssignment, pad: DrumKind = selectedAssignPad) { setPadAssignments((current) => ({ ...current, [pad]: assignment })); try { const buffer = await decodeAudioUrl(getCtx(), assignment.url); setDecodedPadBuffers((current) => ({ ...current, [pad]: buffer })); setNotice(`${assignment.name} assigned to ${pad}.`); playPadBufferOrSynth(pad, 0.92, undefined, "C5", buffer, assignment); } catch { setNotice(`${assignment.name} assigned to ${pad}, but decode failed. Synth fallback remains active.`); } }
-  async function assignFileToPad(file: File, pad: DrumKind = selectedAssignPad) { if (!file.type.startsWith("audio/")) { setNotice("Please upload an audio file for the pad."); return; } await assignUrlToPad({ name: file.name, url: await fileToDataUrl(file), size: file.size, type: file.type, assignedAt: new Date().toISOString() }, pad); }
-  async function assignFactorySoundToPad(sound: FactorySound, pad: DrumKind = selectedAssignPad) { await assignUrlToPad({ name: sound.name, url: sound.url, size: sound.size, type: "audio/*", assignedAt: new Date().toISOString() }, pad); }
-  async function setMelodySound(sound: FactorySound | PadAssignment) { const assignment: PadAssignment = { name: sound.name, url: sound.url, size: "size" in sound ? sound.size : undefined, type: "audio/*", assignedAt: new Date().toISOString() }; setMelodyAssignment(assignment); try { const buffer = await decodeAudioUrl(getCtx(), assignment.url); setMelodyBuffer(buffer); setPianoInstrument("melody"); setNotice(`${assignment.name} selected as melody one-shot.`); playSampleBuffer(buffer); } catch { setNotice(`${assignment.name} selected, but decode failed. Melody synth fallback remains active.`); } }
-  async function assignMelodyFile(file: File) { if (!file.type.startsWith("audio/")) { setNotice("Please upload an audio file for melody."); return; } await setMelodySound({ name: file.name, url: await fileToDataUrl(file), size: file.size, type: file.type, assignedAt: new Date().toISOString() }); }
-  function clearPadAssignment(pad: DrumKind) { setPadAssignments((current) => { const next = { ...current }; delete next[pad]; return next; }); setDecodedPadBuffers((current) => { const next = { ...current }; delete next[pad]; return next; }); setNotice(`${pad} returned to built-in synth sound.`); }
-  function playPadBufferOrSynth(kind: DrumKind, velocity = 0.92, when?: number, pitch = "C5", overrideBuffer?: AudioBuffer, overrideAssignment?: PadAssignment) { const buffer = overrideBuffer ?? buffersRef.current[kind]; const assignment = overrideAssignment ?? assignmentsRef.current[kind]; if (buffer && assignment?.sliceDuration) playSampleBuffer(buffer, when, pitch, velocity, assignment.sliceStart ?? 0, assignment.sliceDuration, assignment.normalizeGain ?? 1); else if (buffer) playSampleBuffer(buffer, when, pitch, velocity, 0, undefined, assignment?.normalizeGain ?? 1); else { const ctx = getCtx(); scheduleDrumHit(ctx, masterRef.current ?? ctx.destination, kind, { kit: DEFAULT_KIT, when: when ?? ctx.currentTime, velocity, pitchSemis: pitchSemisFromC5(pitch) }); } }
-  const firePad = useCallback((kind: DrumKind, label: string, velocity = 0.92, when?: number, pitch = "C5") => { if (getCtx().state === "suspended") void getCtx().resume(); playPadBufferOrSynth(kind, velocity, when, pitch); setActivePad(label); window.setTimeout(() => setActivePad(null), 90); }, []);
-  function stopPadRepeat() { if (repeatRef.current) window.clearInterval(repeatRef.current); repeatRef.current = null; }
-  function startPadRepeat(kind: DrumKind, label: string) { firePad(kind, label, 0.95, undefined, selectedRepeatPitch); if (!padRepeatEnabled) return; stopPadRepeat(); const intervalMs = Math.max(35, (60_000 / Math.max(40, bpmRef.current)) * (4 / repeatDivision)); repeatRef.current = window.setInterval(() => firePad(kind, label, 0.9, undefined, selectedRepeatPitch), intervalMs); }
-  const playMelodyNote = useCallback((pitch: string, when?: number, duration = 0.28, velocity = 0.7) => { if (melodyBufferRef.current) { playSampleBuffer(melodyBufferRef.current, when, pitch, velocity); return; } const ctx = getCtx(); if (ctx.state === "suspended") void ctx.resume(); const now = when ?? ctx.currentTime; const osc = ctx.createOscillator(); const gain = ctx.createGain(); const filter = ctx.createBiquadFilter(); osc.type = "triangle"; osc.frequency.value = NOTE_FREQ[pitch] ?? 440; filter.type = "lowpass"; filter.frequency.value = 3600; gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(Math.max(0.02, velocity * 0.22), now + 0.012); gain.gain.exponentialRampToValueAtTime(0.0001, now + Math.max(0.08, duration)); osc.connect(filter); filter.connect(gain); gain.connect(masterRef.current ?? ctx.destination); osc.start(now); osc.stop(now + Math.max(0.1, duration + 0.04)); }, []);
-  const playPianoNote = useCallback((note: PianoNote, when?: number, stepDuration = 0.16) => { const duration = stepDuration * Math.max(0.25, note.duration); if (isDrumInstrument(note.instrument)) playPadBufferOrSynth(note.instrument, note.velocity, when, note.pitch); else playMelodyNote(note.pitch, when, duration, note.velocity); }, [playMelodyNote]);
-  const playStep = useCallback((stepIndex: number, when?: number) => { const ctx = getCtx(); const stepDuration = 60 / bpmRef.current / 4; const swung = stepIndex % 2 === 1 ? (swingRef.current / 100) * stepDuration * 0.5 : 0; const hitTime = (when ?? ctx.currentTime + 0.025) + swung; tracksRef.current.forEach((track) => { if (!track.muted && track.pattern[stepIndex]) firePad(track.padKind, track.name, Math.max(0.1, track.level / 100), hitTime); }); notesRef.current.filter((note) => note.start === stepIndex).forEach((note) => playPianoNote(note, hitTime, stepDuration)); }, [firePad, playPianoNote]);
-  function schedulerTick() { const ctx = getCtx(); const stepDuration = 60 / bpmRef.current / 4; while (nextStepTimeRef.current < ctx.currentTime + 0.12) { playStep(stepRef.current, nextStepTimeRef.current); setCurrentStep(stepRef.current); stepRef.current = (stepRef.current + 1) % 16; nextStepTimeRef.current += stepDuration; } }
-  function startSequencer() { const ctx = getCtx(); if (ctx.state === "suspended") void ctx.resume(); if (schedulerRef.current) window.clearInterval(schedulerRef.current); setPlaying(true); setNotice("Low-latency MPC sequencer playing."); nextStepTimeRef.current = ctx.currentTime + 0.035; schedulerTick(); schedulerRef.current = window.setInterval(schedulerTick, 25); }
-  function stopSequencer() { if (schedulerRef.current) window.clearInterval(schedulerRef.current); schedulerRef.current = null; setPlaying(false); setNotice("Sequencer stopped."); }
-  function buildAnalysis(name: string, url: string, buffer: AudioBuffer, nextTrimStart?: number, nextTrimEnd?: number, nextMode = samplerMode) { const silence = detectSilenceTrim(buffer); const trimStart = typeof nextTrimStart === "number" ? nextTrimStart : silence.trimStart; const trimEnd = typeof nextTrimEnd === "number" ? nextTrimEnd : silence.trimEnd; const transients = detectTransients(buffer, trimStart, trimEnd); const duration = buffer.duration; const beats = samplerBars * 4; const durationBpm = Math.round((beats * 60) / Math.max(0.1, trimEnd - trimStart)); const sourceBpm = estimateBpmFromTransients(transients, durationBpm); const key = estimateKey(buffer, trimStart, Math.min(trimEnd, trimStart + 12)); const normalizeGain = detectNormalizeGain(buffer); const chops = makeChops(nextMode, buffer, samplerChops, samplerBars, trimStart, trimEnd, transients, snapDivision, sourceBpm); return { name, duration, sampleRate: buffer.sampleRate, channels: buffer.numberOfChannels, estimatedBitDepth: 16, estimatedBitrateKbps: Math.round((buffer.sampleRate * buffer.numberOfChannels * 16) / 1000), sourceBpm, targetBpm: samplerTargetBpm, bars: samplerBars, beats, stretchRatio: samplerTargetBpm / Math.max(1, sourceBpm), detectedKey: key.key, detectedKeyConfidence: key.confidence, trimStart, trimEnd, normalizeGain, waveformPeaks: buildWaveformPeaks(buffer), transients, chops, url, buffer }; }
-  async function analyzeSamplerFile(file: File) { if (!file.type.startsWith("audio/")) { setNotice("Upload an audio file for the AI sampler."); return; } const url = await fileToDataUrl(file); const buffer = await decodeAudioUrl(getCtx(), url); const analysis = buildAnalysis(file.name, url, buffer); setSamplerAnalysis(analysis); setBpm(analysis.targetBpm); setNotice(`AI Sampler: ${analysis.detectedKey}, ${analysis.sourceBpm} BPM, ${analysis.transients.length} transients, ${analysis.chops.length} chops.`); }
-  function rechopSampler(mode = samplerMode) { const current = samplerAnalysis; if (!current) return; const analysis = buildAnalysis(current.name, current.url, current.buffer, current.trimStart, current.trimEnd, mode); setSamplerAnalysis(analysis); setNotice(`${mode} chop mode created ${analysis.chops.length} chops.`); }
-  function removeSilence() { if (!samplerAnalysis) return; const silence = detectSilenceTrim(samplerAnalysis.buffer, 0.018); const analysis = buildAnalysis(samplerAnalysis.name, samplerAnalysis.url, samplerAnalysis.buffer, silence.trimStart, silence.trimEnd); setSamplerAnalysis(analysis); setNotice(`Silence removed: ${formatSeconds(silence.trimStart)} to ${formatSeconds(silence.trimEnd)}.`); }
-  function normalizeSample() { if (!samplerAnalysis) return; const gain = detectNormalizeGain(samplerAnalysis.buffer); setSamplerAnalysis({ ...samplerAnalysis, normalizeGain: gain }); setNotice(`Normalize gain set to x${gain.toFixed(2)}.`); }
-  function moveChop(index: number, start: number) { if (!samplerAnalysis) return; const starts = samplerAnalysis.chops.map((chop, i) => i === index ? clamp(start, samplerAnalysis.trimStart, samplerAnalysis.trimEnd - 0.02) : chop.start).sort((a, b) => a - b); const chops = starts.map((s, i) => ({ ...samplerAnalysis.chops[i], index: i, name: `Chop ${i + 1}`, start: s, duration: Math.max(0.025, (starts[i + 1] ?? samplerAnalysis.trimEnd) - s), pad: PADS[i]?.kind })); setSamplerAnalysis({ ...samplerAnalysis, chops }); }
-  function updateTrim(start: number, end: number) { if (!samplerAnalysis) return; const analysis = buildAnalysis(samplerAnalysis.name, samplerAnalysis.url, samplerAnalysis.buffer, clamp(start, 0, samplerAnalysis.duration - 0.05), clamp(end, start + 0.05, samplerAnalysis.duration)); setSamplerAnalysis(analysis); }
-  async function assignChopToPad(chop: SamplerChop, pad: DrumKind = chop.pad ?? selectedAssignPad) { if (!samplerAnalysis) return; await assignUrlToPad({ name: `${samplerAnalysis.name} · ${chop.name}`, url: samplerAnalysis.url, type: "audio/*", assignedAt: new Date().toISOString(), sliceStart: chop.start, sliceDuration: chop.duration, fadeIn, fadeOut, normalizeGain: samplerAnalysis.normalizeGain }, pad); }
-  async function assignAllChopsToPads() { if (!samplerAnalysis) return; for (const chop of samplerAnalysis.chops.slice(0, PADS.length)) await assignChopToPad(chop, PADS[chop.index]?.kind ?? selectedAssignPad); setNotice("Sampler chops assigned across pads 1-8."); }
-  function exportSamplerMap() { if (!samplerAnalysis) return; downloadText("ems-ai-sampler-map.json", JSON.stringify({ sample: samplerAnalysis.name, duration: samplerAnalysis.duration, sourceBpm: samplerAnalysis.sourceBpm, targetBpm: samplerAnalysis.targetBpm, detectedKey: samplerAnalysis.detectedKey, sampleRate: samplerAnalysis.sampleRate, trimStart: samplerAnalysis.trimStart, trimEnd: samplerAnalysis.trimEnd, normalizeGain: samplerAnalysis.normalizeGain, mode: samplerMode, snapDivision, fadeIn, fadeOut, timeMode, pitchShiftSemis, chops: samplerAnalysis.chops }, null, 2)); }
-  function toggleStep(trackId: string, stepIndex: number) { setTracks((current) => current.map((track) => track.id === trackId ? { ...track, pattern: track.pattern.map((step, index) => index === stepIndex ? !step : step) } : track)); }
-  function updateTrack(trackId: string, patch: Partial<BeatTrack>) { setTracks((current) => current.map((track) => track.id === trackId ? { ...track, ...patch } : track)); }
-  function addTrack(kind: BeatTrackKind) { const index = tracks.length + 1; const padKind: DrumKind = kind === "bass" ? "bass808" : kind === "fx" ? "perc" : kind === "melody" ? "openHat" : "kick"; const track: BeatTrack = { id: `beat-track-${Date.now()}`, name: kind === "bass" ? `808 ${index}` : kind === "melody" ? `Melody ${index}` : kind === "fx" ? `FX ${index}` : `Drum ${index}`, kind, padKind, color: COLORS[index % COLORS.length], level: 66, pan: 0, muted: false, pattern: STEPS.map((step) => kind === "drum" ? step % 4 === 1 : false) }; setTracks((current) => [...current, track]); setSelectedTrack(track.id); }
-  function togglePianoNote(pitch: string, start: number) { const existing = pianoNotes.find((note) => note.pitch === pitch && note.start === start && note.instrument === pianoInstrument); if (existing) { setPianoNotes((current) => current.filter((note) => note.id !== existing.id)); return; } const note: PianoNote = { id: `note-${Date.now()}-${pianoInstrument}-${pitch}-${start}`, pitch, start, duration: pianoInstrument === "melody" ? 1 : 0.5, velocity: pianoVelocity, instrument: pianoInstrument }; setPianoNotes((current) => [...current, note]); playPianoNote(note, undefined, 60 / bpm / 4); }
-  function exportKit() { downloadText("ems-mpc-ai-sampler-kit.json", JSON.stringify({ version: 4, bpm, swing, padAssignments, melodyAssignment, pianoNotes, tracks, sampler: samplerAnalysis ? { name: samplerAnalysis.name, sourceBpm: samplerAnalysis.sourceBpm, targetBpm: samplerAnalysis.targetBpm, key: samplerAnalysis.detectedKey, bars: samplerAnalysis.bars, trimStart: samplerAnalysis.trimStart, trimEnd: samplerAnalysis.trimEnd, chops: samplerAnalysis.chops } : null, exportedAt: new Date().toISOString() }, null, 2)); }
-  async function importKitFile(file: File) { try { const parsed = JSON.parse(await file.text()); const assignments = normalizePadAssignments(parsed.padAssignments ?? {}); setPadAssignments(assignments); if (Array.isArray(parsed.pianoNotes)) setPianoNotes(parsed.pianoNotes); if (Array.isArray(parsed.tracks)) setTracks(parsed.tracks); if (typeof parsed.bpm === "number") setBpm(parsed.bpm); if (typeof parsed.swing === "number") setSwing(parsed.swing); await decodeAssignments(assignments); setNotice("Custom MPC kit imported."); } catch { setNotice("Kit import failed. Upload an EMS kit JSON."); } }
-  useEffect(() => { function onKeyDown(event: KeyboardEvent) { if (isTypingTarget(event.target)) return; if (event.code === "Space" && !event.repeat) { event.preventDefault(); playing ? stopSequencer() : startSequencer(); } const pad = PADS[Number(event.key) - 1]; if (pad) firePad(pad.kind, pad.label); } window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [firePad, playing]);
-  useEffect(() => { if (playing) { stopSequencer(); startSequencer(); } return () => { if (schedulerRef.current) window.clearInterval(schedulerRef.current); }; }, [bpm]);
-  useEffect(() => () => { if (schedulerRef.current) window.clearInterval(schedulerRef.current); stopPadRepeat(); ctxRef.current?.close().catch(() => undefined); }, []);
-  const midiGuard = midi.status === "ready" ? `${midi.devices.length} MIDI device(s) ready.` : midi.status === "unsupported" ? "MIDI unavailable. Pads still work." : "MIDI optional.";
-
-  return <StudioPageShell><div className="mx-auto max-w-[1900px] px-2 py-2 sm:px-4"><input ref={uploadInputRef} type="file" accept="audio/*" className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void assignFileToPad(file); event.currentTarget.value = ""; }} /><input ref={melodyUploadInputRef} type="file" accept="audio/*" className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void assignMelodyFile(file); event.currentTarget.value = ""; }} /><input ref={kitImportInputRef} type="file" accept="application/json,.json" className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void importKitFile(file); event.currentTarget.value = ""; }} /><input ref={samplerInputRef} type="file" accept="audio/*" className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void analyzeSamplerFile(file); event.currentTarget.value = ""; }} />
-    <header className="mb-2 rounded-xl border border-green-300/20 bg-[#080d10]/90 p-2 shadow-[0_0_24px_rgba(23,255,244,.08)] backdrop-blur"><div className="flex flex-wrap items-center gap-2"><Link href="/studio/try" className="rounded-lg border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-100">← Studio</Link><h1 className="mr-auto text-lg font-black uppercase tracking-wider sm:text-2xl">Beat Machine · Pro AI Sampler</h1><button onClick={playing ? stopSequencer : startSequencer} className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-widest ${playing ? "border-pink-300 bg-pink-400/20 text-pink-100" : "border-green-300 bg-green-300/15 text-green-100"}`}>{playing ? "Stop" : "Play"}</button><button onClick={() => samplerInputRef.current?.click()} className="rounded-lg border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-100">Upload Sample</button><button onClick={() => void loadFactorySounds()} className="rounded-lg border border-green-300/35 bg-green-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-green-100">{factoryLoading ? "Loading" : "Load Sounds"}</button><button onClick={exportKit} className="rounded-lg border border-pink-300/35 bg-pink-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-pink-100">Export Kit</button><button onClick={() => kitImportInputRef.current?.click()} className="rounded-lg border border-purple-300/35 bg-purple-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-purple-100">Import Kit</button><button onClick={midi.connect} className="rounded-lg border border-green-300/35 bg-green-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-green-100">MIDI</button></div><div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white/45"><span className="rounded-full border border-white/10 px-3 py-1">Step {currentStep + 1}</span><span className="rounded-full border border-white/10 px-3 py-1">{notice}</span><span className="rounded-full border border-white/10 px-3 py-1">{midiGuard}</span></div></header>
-    <section className="grid gap-3 xl:grid-cols-[450px_minmax(0,1fr)]"><aside className="space-y-3"><Panel title="AI Sampler Pro" tone="cyan"><p className="mb-3 text-xs leading-5 text-white/55">Real decoded waveform, transients, chop modes, snap, trims, fades, normalize, silence removal, key/BPM detection, pitch/tempo/vinyl controls.</p><div className="mb-3 grid grid-cols-2 gap-2"><button onClick={() => samplerInputRef.current?.click()} className="rounded-xl border border-cyan-300/35 bg-cyan-300/10 px-3 py-3 text-xs font-black uppercase text-cyan-100">Upload Sample</button><button onClick={() => rechopSampler()} className="rounded-xl border border-green-300/35 bg-green-300/10 px-3 py-3 text-xs font-black uppercase text-green-100">Apply Chop</button></div><div className="grid grid-cols-2 gap-2 text-xs"><Range label={`Bars ${samplerBars}`} min={1} max={8} value={samplerBars} onChange={setSamplerBars} /><Range label={`Chops ${samplerChops}`} min={2} max={16} value={samplerChops} onChange={setSamplerChops} /><Range label={`Target ${samplerTargetBpm} BPM`} min={60} max={180} value={samplerTargetBpm} onChange={setSamplerTargetBpm} /><Range label={`Zoom ${samplerZoom.toFixed(1)}x`} min={1} max={6} value={samplerZoom} onChange={setSamplerZoom} /><Range label={`Fade In ${Math.round(fadeIn * 1000)}ms`} min={0} max={100} value={Math.round(fadeIn * 1000)} onChange={(v) => setFadeIn(v / 1000)} /><Range label={`Fade Out ${Math.round(fadeOut * 1000)}ms`} min={0} max={160} value={Math.round(fadeOut * 1000)} onChange={(v) => setFadeOut(v / 1000)} /><Range label={`Pitch ${pitchShiftSemis} semis`} min={-12} max={12} value={pitchShiftSemis} onChange={setPitchShiftSemis} /><label className="block"><span className="text-xs font-black uppercase text-white/50">Chop Mode</span><select value={samplerMode} onChange={(e) => { const mode = e.target.value as ChopMode; setSamplerMode(mode); setTimeout(() => rechopSampler(mode), 0); }} className="mt-2 w-full rounded-lg border border-white/10 bg-black px-2 py-2 text-xs"><option value="equal">Equal</option><option value="transient">Transient</option><option value="beatGrid">Beat Grid</option><option value="manual">Manual</option><option value="silence">Silence Detect</option><option value="barBased">Bar-Based</option></select></label><label className="block"><span className="text-xs font-black uppercase text-white/50">Snap</span><select value={snapDivision} onChange={(e) => { setSnapDivision(Number(e.target.value) as SnapDivision); setTimeout(() => rechopSampler(), 0); }} className="mt-2 w-full rounded-lg border border-white/10 bg-black px-2 py-2 text-xs"><option value={0}>Off</option><option value={4}>1/4</option><option value={8}>1/8</option><option value={16}>1/16</option><option value={32}>1/32</option></select></label><label className="block"><span className="text-xs font-black uppercase text-white/50">Tempo/Pitch</span><select value={timeMode} onChange={(e) => setTimeMode(e.target.value as TimeMode)} className="mt-2 w-full rounded-lg border border-white/10 bg-black px-2 py-2 text-xs"><option value="normal">Normal</option><option value="stretch">Time Stretch</option><option value="pitch">Pitch Shift</option><option value="vinyl">Vinyl Mode</option></select></label></div>{samplerAnalysis ? <div className="mt-3 rounded-xl border border-white/10 bg-black/35 p-3"><b className="block truncate text-sm uppercase text-cyan-100">{samplerAnalysis.name}</b><div className="mt-2 grid grid-cols-2 gap-2 text-[10px] uppercase text-white/55"><span>Length {formatSeconds(samplerAnalysis.duration)}</span><span>{samplerAnalysis.sampleRate} Hz</span><span>{samplerAnalysis.channels} ch</span><span>{samplerAnalysis.estimatedBitrateKbps} kbps</span><span>Key {samplerAnalysis.detectedKey}</span><span>BPM {samplerAnalysis.sourceBpm} → {samplerAnalysis.targetBpm}</span><span>{samplerAnalysis.transients.length} transients</span><span>Norm x{samplerAnalysis.normalizeGain.toFixed(2)}</span></div><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={removeSilence} className="rounded-lg border border-yellow-300/30 px-2 py-2 text-[10px] font-black uppercase text-yellow-100">Remove Silence</button><button onClick={normalizeSample} className="rounded-lg border border-green-300/30 px-2 py-2 text-[10px] font-black uppercase text-green-100">Normalize</button><button onClick={assignAllChopsToPads} className="rounded-lg border border-cyan-300/30 px-2 py-2 text-[10px] font-black uppercase text-cyan-100">Assign 1-8</button><button onClick={exportSamplerMap} className="rounded-lg border border-pink-300/30 px-2 py-2 text-[10px] font-black uppercase text-pink-100">Export Map</button></div><div className="mt-3 grid grid-cols-2 gap-2"><Range label={`Trim Start ${formatSeconds(samplerAnalysis.trimStart)}`} min={0} max={Math.max(1, Math.floor(samplerAnalysis.duration * 100))} value={Math.round(samplerAnalysis.trimStart * 100)} onChange={(v) => updateTrim(v / 100, samplerAnalysis.trimEnd)} /><Range label={`Trim End ${formatSeconds(samplerAnalysis.trimEnd)}`} min={1} max={Math.max(1, Math.floor(samplerAnalysis.duration * 100))} value={Math.round(samplerAnalysis.trimEnd * 100)} onChange={(v) => updateTrim(samplerAnalysis.trimStart, v / 100)} /></div></div> : <p className="rounded-xl border border-white/10 bg-white/[.03] p-3 text-sm text-white/45">No sample loaded yet. Upload a song/sample/loop and the pro sampler appears here.</p>}</Panel>
-    <Panel title="MPC Pad Repeat / Roll" tone="yellow"><div className="grid grid-cols-2 gap-2"><button onClick={() => setPadRepeatEnabled(!padRepeatEnabled)} className={`rounded-xl border px-3 py-3 text-xs font-black uppercase ${padRepeatEnabled ? "border-green-300 bg-green-300/10 text-green-100" : "border-white/10 text-white/45"}`}>{padRepeatEnabled ? "Repeat On" : "Repeat Off"}</button><select value={repeatDivision} onChange={(event) => setRepeatDivision(Number(event.target.value))} className="rounded-xl border border-white/10 bg-black px-3 py-3 text-xs"><option value={4}>1/4</option><option value={8}>1/8</option><option value={16}>1/16</option><option value={32}>1/32</option><option value={64}>1/64</option></select></div><select value={selectedRepeatPitch} onChange={(event) => setSelectedRepeatPitch(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black px-3 py-3 text-xs">{PIANO_PITCHES.slice().reverse().map((pitch) => <option key={pitch} value={pitch}>{pitch}</option>)}</select><p className="mt-2 text-xs text-white/45">Hold any pad below to roll in tempo.</p></Panel>
-    <Panel title="Pads / Assignments" tone="green"><div className="grid grid-cols-2 gap-2">{PADS.map((pad) => { const assigned = padAssignments[pad.kind]; return <button key={pad.kind} onMouseDown={() => startPadRepeat(pad.kind, pad.label)} onMouseUp={stopPadRepeat} onMouseLeave={stopPadRepeat} onTouchStart={() => startPadRepeat(pad.kind, pad.label)} onTouchEnd={stopPadRepeat} className={`min-h-24 rounded-xl border p-3 text-left transition ${activePad === pad.label ? "scale-95" : "hover:scale-[.98]"}`} style={{ background: pad.color, borderColor: pad.color, color: "#061014", boxShadow: activePad === pad.label ? `0 0 22px ${pad.color}` : undefined }}><span className="block text-lg font-black uppercase">{pad.label}</span><span className="block text-[10px] font-black uppercase opacity-70">Key {pad.hotkey} · {assigned ? assigned.name : "Synth"}</span></button>; })}</div><div className="mt-2 grid gap-2">{PADS.map((pad) => <div key={`assign-${pad.kind}`} className="grid grid-cols-[54px_1fr_repeat(3,54px)] items-center gap-2 rounded-lg border border-white/10 bg-black/30 p-2"><button onClick={() => { setSelectedAssignPad(pad.kind); setPianoInstrument(pad.kind); }} className="rounded-lg px-2 py-2 text-xs font-black text-black" style={{ background: pad.color }}>{pad.hotkey}</button><span className="truncate text-[10px] uppercase text-white/55">{padAssignments[pad.kind]?.name ?? "Built-in"}</span><button onClick={() => { setSelectedAssignPad(pad.kind); uploadInputRef.current?.click(); }} className="text-[9px] uppercase text-yellow-100">Upload</button><button onClick={() => firePad(pad.kind, pad.label)} className="text-[9px] uppercase text-cyan-100">Play</button><button onClick={() => clearPadAssignment(pad.kind)} className="text-[9px] uppercase text-red-100">Clear</button></div>)}</div></Panel></aside>
-    <main className="min-w-0 space-y-3">{samplerAnalysis ? <Panel title="True Waveform / Manual Chop Editor" tone="cyan"><WaveformEditor analysis={samplerAnalysis} zoom={samplerZoom} snap={snapDivision} onMove={moveChop} onPlay={(chop) => playSampleBuffer(samplerAnalysis.buffer, undefined, "C5", 0.9, chop.start, chop.duration, samplerAnalysis.normalizeGain)} onSelectTrim={updateTrim} /><div className="mt-3 grid max-h-48 gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-4">{samplerAnalysis.chops.map((chop) => <div key={chop.id} className="rounded-lg border border-white/10 bg-white/[.03] p-2"><div className="flex items-center justify-between gap-2"><span className="text-[10px] font-black uppercase text-white/70">{chop.name} · {formatSeconds(chop.start)}</span><button onClick={() => playSampleBuffer(samplerAnalysis.buffer, undefined, "C5", 0.9, chop.start, chop.duration, samplerAnalysis.normalizeGain)} className="rounded border border-cyan-300/25 px-2 py-1 text-[10px] uppercase text-cyan-100">Play</button></div><div className="mt-2 grid grid-cols-4 gap-1">{PADS.slice(0, 4).map((pad) => <button key={`${chop.id}-${pad.kind}`} onClick={() => void assignChopToPad(chop, pad.kind)} className="rounded border border-white/10 px-1 py-1 text-[9px] uppercase text-white/55">{pad.hotkey} {pad.label}</button>)}</div></div>)}</div></Panel> : null}
-    <Panel title="One-Shot / Melody Browser" tone="green"><div className="mb-2 flex gap-2"><input value={soundQuery} onChange={(event) => setSoundQuery(event.target.value)} placeholder="Search piano, keys, synth, guitar, sample..." className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black px-3 py-2 text-xs" /><select value={soundCategory} onChange={(event) => setSoundCategory(event.target.value as "all" | FactoryCategory)} className="rounded-lg border border-white/10 bg-black px-2 py-2 text-xs">{LIBRARY_CATEGORIES.map((cat) => <option key={cat.value} value={cat.value}>{cat.label}</option>)}</select></div><div className="grid max-h-56 gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">{visibleSounds.length === 0 && <p className="rounded-xl border border-white/10 bg-white/[.03] p-3 text-sm text-white/45">No sounds showing yet. Click Load Sounds or upload new melodies.</p>}{visibleSounds.map((sound) => <div key={sound.id} className="rounded-xl border border-white/10 bg-[#071015] p-2"><b className="block truncate text-xs uppercase text-green-100">{sound.name}</b><span className="text-[10px] uppercase text-white/40">{sound.category} · {sound.instrument ?? "one-shot"}{sound.key ? ` · ${sound.key}` : ""}{sound.bpm ? ` · ${sound.bpm} BPM` : ""}</span><div className="mt-2 grid grid-cols-4 gap-2"><button onClick={() => void setMelodySound(sound)} className="rounded border border-green-300/30 px-2 py-1 text-[10px] uppercase text-green-100">Melody</button><button onClick={() => void assignFactorySoundToPad(sound)} className="rounded border border-yellow-300/30 px-2 py-1 text-[10px] uppercase text-yellow-100">Pad</button><button onClick={() => { void decodeAudioUrl(getCtx(), sound.url).then((buffer) => playSampleBuffer(buffer)); }} className="rounded border border-cyan-300/30 px-2 py-1 text-[10px] uppercase text-cyan-100">Play</button><button onClick={() => downloadUrl(sound.url, sound.name)} className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase text-white/60">DL</button></div></div>)}</div></Panel>
-    <Panel title="Universal Piano Roll" tone="green"><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-white/45">Melody one-shots, drums, sampler chops, and pads all play from the same piano roll.</p><div className="flex flex-wrap gap-2"><select value={pianoInstrument} onChange={(event) => setPianoInstrument(event.target.value as PianoInstrument)} className="rounded-lg border border-green-300/35 bg-black px-3 py-1 text-[10px] font-black uppercase text-green-100">{PIANO_INSTRUMENTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><button onClick={() => setPianoNotes([])} className="rounded-lg border border-red-300/35 px-3 py-1 text-[10px] font-black uppercase text-red-100">Clear Roll</button></div></div><div className="overflow-auto rounded-xl border border-white/10 bg-black/45"><div className="min-w-[960px] p-2"><div className="grid grid-cols-[70px_repeat(16,minmax(48px,1fr))] gap-1 text-[9px] font-black uppercase text-white/35"><span>Note</span>{STEPS.map((step) => <span key={step} className={`text-center ${currentStep + 1 === step ? "text-green-200" : ""}`}>{step}</span>)}</div>{PIANO_PITCHES.map((pitch) => <div key={pitch} className="mt-1 grid grid-cols-[70px_repeat(16,minmax(48px,1fr))] gap-1"><button onClick={() => { const preview: PianoNote = { id: `preview-${pitch}`, pitch, start: currentStep, duration: 1, velocity: pianoVelocity, instrument: pianoInstrument }; playPianoNote(preview, undefined, 60 / bpm / 4); }} className={`rounded border px-2 py-1 text-left text-[10px] font-black ${pitch.includes("#") ? "border-white/10 bg-black text-white/70" : "border-white/15 bg-white/[.06] text-white"}`}>{pitch}</button>{STEPS.map((step, index) => { const note = pianoNotes.find((item) => item.pitch === pitch && item.start === index && item.instrument === pianoInstrument); const allNotes = pianoNotes.filter((item) => item.pitch === pitch && item.start === index); const color = note ? selectedInstrumentColor : allNotes[0] ? instrumentColor(allNotes[0].instrument) : undefined; return <button key={`${pitch}-${step}`} onClick={() => togglePianoNote(pitch, index)} className={`relative h-7 rounded border ${currentStep === index ? "ring-1 ring-green-200" : ""}`} style={{ background: color ? color : pitch.includes("#") ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.055)", borderColor: color ?? "rgba(255,255,255,.08)", boxShadow: color ? `0 0 12px ${color}66` : undefined }} aria-label={`${pianoInstrument} ${pitch} step ${step}`}>{allNotes.length > 1 && <span className="absolute right-1 top-1 text-[8px] font-black text-black">{allNotes.length}</span>}</button>; })}</div>)}</div></div></Panel>
-    <Panel title="16-Step Sequencer" tone="cyan"><div className="mb-3 flex flex-wrap gap-2"><button onClick={() => addTrack("drum")} className="rounded-lg border border-cyan-300/35 px-3 py-2 text-xs font-black uppercase text-cyan-100">+ Drum</button><button onClick={() => addTrack("bass")} className="rounded-lg border border-yellow-300/35 px-3 py-2 text-xs font-black uppercase text-yellow-100">+ 808</button><button onClick={() => addTrack("melody")} className="rounded-lg border border-green-300/35 px-3 py-2 text-xs font-black uppercase text-green-100">+ Melody</button><button onClick={exportKit} className="rounded-lg border border-pink-300/35 px-3 py-2 text-xs font-black uppercase text-pink-100">Export Kit</button><button onClick={() => kitImportInputRef.current?.click()} className="rounded-lg border border-purple-300/35 px-3 py-2 text-xs font-black uppercase text-purple-100">Import</button></div><div className="overflow-x-auto rounded-xl border border-white/10 bg-black/45 p-2"><div className="min-w-[920px] space-y-2"><div className="grid grid-cols-[150px_repeat(16,minmax(38px,1fr))] gap-2 text-center text-[10px] font-black uppercase tracking-widest text-white/35"><span className="text-left">Track</span>{STEPS.map((step) => <span key={step} className={currentStep + 1 === step ? "text-green-200" : ""}>{step}</span>)}</div>{tracks.map((track) => <div key={track.id} className="grid grid-cols-[150px_repeat(16,minmax(38px,1fr))] gap-2"><button onClick={() => setSelectedTrack(track.id)} className={`rounded-lg border px-3 py-2 text-left text-xs font-black uppercase ${selectedTrack === track.id ? "border-green-300/70 bg-green-300/10" : "border-white/10 bg-white/[.03]"}`} style={{ color: track.color }}>{track.name}</button>{track.pattern.map((enabled, index) => <button key={`${track.id}-${index}`} onClick={() => toggleStep(track.id, index)} className={`h-9 rounded-lg border transition ${currentStep === index ? "ring-2 ring-white/60" : ""}`} style={{ borderColor: enabled ? track.color : "rgba(255,255,255,.12)", background: enabled ? track.color : "rgba(255,255,255,.035)", boxShadow: enabled ? `0 0 14px ${track.color}55` : undefined }} aria-label={`${track.name} step ${index + 1}`} />)}</div>)}</div></div></Panel>
-    <section className="grid gap-3 lg:grid-cols-2"><Panel title="Groove / Mixer" tone="yellow"><Range label={`BPM ${bpm}`} min={60} max={180} value={bpm} onChange={setBpm} /><Range label={`Swing ${swing}%`} min={0} max={60} value={swing} onChange={setSwing} /><Range label={`Piano velocity ${Math.round(pianoVelocity * 100)}%`} min={20} max={115} value={Math.round(pianoVelocity * 100)} onChange={(value) => setPianoVelocity(value / 100)} />{selected && <Range label={`${selected.name} level ${selected.level}%`} min={0} max={100} value={selected.level} onChange={(value) => updateTrack(selected.id, { level: value })} />}</Panel><Panel title="MPC Tools" tone="pink"><div className="grid grid-cols-2 gap-2"><Tool label="Random Fill" onClick={() => setTracks((current) => current.map((track) => track.id === selectedTrack ? { ...track, pattern: track.pattern.map((_, index) => index % 4 === 0 || Math.random() > 0.67) } : track))} /><Tool label="Humanize Hats" onClick={() => setSwing((value) => Math.min(60, value + 5))} /><Tool label="Quantize Roll" onClick={() => setPianoNotes((current) => current.map((note) => ({ ...note, start: Math.round(note.start) })))} /><Tool label="Half Time" onClick={() => setBpm((value) => Math.max(60, Math.round(value / 2)))} /><Tool label="Export Sampler" onClick={exportSamplerMap} /><Tool label="Assign Chops" onClick={() => void assignAllChopsToPads()} /></div></Panel></section></main></section></div></StudioPageShell>;
+function StepSequencer({ selectedPad }: { selectedPad: string }) {
+  return (
+    <Panel className="overflow-hidden">
+      <SectionTitle right={<span className="font-mono text-cyan-200">140 BPM</span>}>Step Sequencer</SectionTitle>
+      <div className="p-3">
+        <div className="mb-2 grid gap-1 pl-20" style={{ gridTemplateColumns: "repeat(16,minmax(0,1fr))" }}>
+          {Array.from({ length: 16 }, (_, i) => <span key={i} className="text-center font-mono text-[8px] text-white/38">{i + 1}</span>)}
+        </div>
+        <div className="space-y-1.5">
+          {rows.map((row) => (
+            <div key={row.name} className="grid items-center gap-2" style={{ gridTemplateColumns: "70px 1fr" }}>
+              <span className={cn("truncate font-mono text-[10px] uppercase", selectedPad.toLowerCase().startsWith(row.name) ? "text-cyan-200" : "text-white/52")}>{row.name}</span>
+              <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(16,minmax(0,1fr))" }}>
+                {Array.from({ length: 16 }, (_, i) => {
+                  const on = row.pattern.includes(i + 1);
+                  return <button key={i} className="h-7 rounded-[4px] border border-white/8 bg-white/[0.035]" style={on ? { backgroundColor: row.color, boxShadow: `0 0 12px ${row.color}80`, borderColor: row.color } : undefined} />;
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
 }
 
-function Panel({ title, tone, children }: { title: string; tone: "green" | "cyan" | "yellow" | "pink"; children: ReactNode }) { const color = tone === "green" ? "text-green-200/70 border-green-300/20" : tone === "cyan" ? "text-cyan-200/70 border-cyan-300/20" : tone === "yellow" ? "text-yellow-200/70 border-yellow-300/20" : "text-pink-200/70 border-pink-300/20"; return <section className={`rounded-2xl border bg-black/45 p-3 ${color}`}><p className="mb-3 text-[10px] font-black uppercase tracking-[0.24em]">{title}</p>{children}</section>; }
-function Range({ label, min, max, value, onChange }: { label: string; min: number; max: number; value: number; onChange: (value: number) => void }) { return <label className="mb-3 block"><span className="text-xs font-black uppercase text-white/50">{label}</span><input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} className="mt-2 w-full accent-cyan-300" /></label>; }
-function Tool({ label, onClick }: { label: string; onClick: () => void }) { return <button onClick={onClick} className="rounded-xl border border-white/10 bg-white/[.04] px-3 py-3 text-xs font-black uppercase tracking-widest text-white/70 hover:border-cyan-300/40 hover:text-cyan-100">{label}</button>; }
+function PianoRollMini() {
+  return (
+    <Panel className="overflow-hidden">
+      <SectionTitle>Piano Roll</SectionTitle>
+      <div className="grid h-[190px] grid-cols-[50px_1fr] p-3">
+        <div className="grid grid-rows-8 overflow-hidden rounded-l-md border border-white/10 bg-black/40">
+          {["C6", "B5", "A5", "G5", "F5", "E5", "D5", "C5"].map((key) => <div key={key} className="border-b border-black/50 bg-white text-right pr-1 font-mono text-[8px] text-black last:border-b-0">{key}</div>)}
+        </div>
+        <div className="relative overflow-hidden rounded-r-md border border-l-0 border-white/10 bg-[#101314] bg-[linear-gradient(rgba(255,255,255,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.06)_1px,transparent_1px)] bg-[size:100%_23px,36px_100%]">
+          <div className="absolute left-[50%] top-0 h-full w-px bg-cyan-300 shadow-[0_0_10px_#20f7ff]" />
+          {notes.slice(0, 7).map((note, i) => <span key={i} className="absolute h-4 rounded-sm" style={{ left: `${note.start * 6}%`, top: `${(i + 1) * 20}px`, width: `${note.len * 5}%`, backgroundColor: note.color, boxShadow: `0 0 12px ${note.color}66` }} />)}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function MachineView({ selectedPad, setSelectedPad }: { selectedPad: string; setSelectedPad: (pad: string) => void }) {
+  return (
+    <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden xl:grid-cols-[430px_160px_1fr]">
+      <Panel className="overflow-hidden p-3">
+        <div className="mb-3 flex items-center justify-between px-1 font-mono text-[10px] uppercase text-white/45"><span>Pad Bank A · Velocity 92 · Swing 20%</span><span className="text-cyan-200">BPM: 140</span></div>
+        <div className="grid grid-cols-4 gap-3">{pads.map((pad) => <NeonPad key={pad.name} pad={pad} selected={selectedPad === pad.name} onClick={() => setSelectedPad(pad.name)} />)}</div>
+      </Panel>
+
+      <Panel className="overflow-hidden p-3">
+        <SectionTitle right={<span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_12px_#20f7ff]" />}>Per-Pad Controls</SectionTitle>
+        <div className="mt-4 space-y-4 px-1">
+          {["TUNE", "PAN", "FILTER", "DECAY"].map((label, i) => <div key={label} className="flex items-center justify-between"><span className="text-[10px] font-black text-white/55">{label}</span><span className="grid h-10 w-10 place-items-center rounded-full border border-white/12 bg-[radial-gradient(circle_at_35%_35%,#f2c85b,#28200c_55%,#080808)] shadow-[inset_0_1px_0_rgba(255,255,255,.45)]"><span className="h-4 w-px origin-bottom rounded bg-black/70" style={{ transform: `rotate(${i * 28 - 30}deg)` }} /></span></div>)}
+          <div className="rounded-xl border border-white/10 bg-black/30 p-3"><p className="mb-2 text-[10px] font-black uppercase text-cyan-100">Choke Group</p><div className="grid grid-cols-2 gap-2 text-[9px] text-white/55"><span>● Drill</span><span>● House</span><span>● Lo-Fi</span><span>● AI Mix</span></div></div>
+        </div>
+      </Panel>
+
+      <div className="grid min-h-0 gap-3 overflow-hidden">
+        <StepSequencer selectedPad={selectedPad} />
+        <PianoRollMini />
+        <Panel className="overflow-hidden p-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <MicroButton active>Generate</MicroButton><MicroButton>Triplet</MicroButton><MicroButton>Trap</MicroButton><MicroButton active>Flip</MicroButton>
+            <span className="ml-auto rounded-full border border-lime-300/50 bg-lime-300 px-3 py-1 text-[10px] font-black uppercase text-black">AI Mix</span>
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function SamplerView() {
+  return (
+    <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-3 overflow-hidden">
+      <Panel className="overflow-hidden p-4">
+        <Waveform />
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <MicroButton active>Auto Chop</MicroButton><MicroButton>Extract One-Shots</MicroButton><MicroButton>Save To My Sounds</MicroButton><MicroButton>Assign To Pad</MicroButton><MicroButton>Send To Timeline</MicroButton>
+          <span className="ml-auto text-[10px] uppercase tracking-[0.12em] text-white/45">Transient mode · 24-bit · 4 markers detected</span>
+        </div>
+      </Panel>
+      <div className="grid min-h-0 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-3">
+        <Panel className="overflow-auto p-4"><SectionTitle>One-Shot Preview Cards</SectionTitle><div className="mt-4 space-y-3">{chopCards.map((name, i) => <div key={name} className="flex items-center gap-3 rounded-xl border border-cyan-300/45 bg-black/32 p-3"><span className="grid h-12 w-12 place-items-center rounded-md border border-cyan-300/40 bg-cyan-300/10"><span className="h-4 w-8 rounded-full bg-cyan-300/70" /></span><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white/86">{name}</b><span className="font-mono text-[10px] text-white/45">BPM:87 / KEY:Cm / 0:0{i + 1}.234s</span></span><span className="text-white/42">☰</span></div>)}</div></Panel>
+        <Panel className="overflow-auto p-4"><SectionTitle>AI Suggestions / Smart Extract</SectionTitle><div className="mt-4 grid grid-cols-3 gap-2">{["Vocal Ooh", "Down Loop", "Tail FX"].map((name, i) => <div key={name} className="rounded-lg border border-fuchsia-400/50 bg-fuchsia-400/8 p-3"><Waveform compact /><p className="mt-2 truncate text-[9px] uppercase text-fuchsia-100/75">{name}</p></div>)}</div><div className="mt-5 space-y-4 text-[11px] text-white/62"><div className="flex justify-between"><span>Sample Rate</span><b className="text-cyan-200">44.1kHz</b></div><div className="flex justify-between"><span>Chop Mode</span><b className="text-cyan-200">Transient 24-bit</b></div><div><div className="mb-1 flex justify-between"><span>Bit Depth</span><b>75%</b></div><div className="h-1.5 rounded bg-white/10"><div className="h-full w-3/4 rounded bg-cyan-300" /></div></div><MicroButton active>Extract Stems</MicroButton></div></Panel>
+        <Panel className="overflow-auto p-4"><SectionTitle>Sample Info / Keyboard</SectionTitle><div className="mt-6 grid grid-cols-[repeat(15,minmax(0,1fr))] gap-0 overflow-hidden rounded-lg border border-white/10">{pianoKeys.map((key) => <span key={key} className={cn("h-16 border-r border-black/40 text-center text-[8px] text-black last:border-r-0", key.includes("#") ? "bg-black text-white" : "bg-white", key === "C#" && "!bg-cyan-300", key === "G#" && "!bg-fuchsia-400", key === "A" && "!bg-[#f2c85b]")}>{key}</span>)}</div><div className="mt-6 space-y-2 text-center text-[11px] uppercase text-white/55"><p>Root Note: <b className="text-white">C3</b></p><p>Key: <b className="text-white">Cm (92%)</b></p><p>BPM: <b className="text-white">87.0 (98%)</b></p><p>Warp Mode: <b className="text-white">Pro</b></p></div></Panel>
+      </div>
+    </div>
+  );
+}
+
+function PianoView() {
+  const pitches = ["C6", "B5", "A#5", "A5", "G5", "F#5", "F5", "E5", "D5", "C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4"];
+  return (
+    <Panel className="min-h-0 flex-1 overflow-hidden p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2"><MicroButton active>Quantize</MicroButton><MicroButton active>Snap</MicroButton><MicroButton>Sharp</MicroButton><MicroButton>Duplicate</MicroButton><MicroButton>Delete</MicroButton><MicroButton>Undo</MicroButton><MicroButton>Velocity</MicroButton><span className="ml-auto text-[10px] uppercase text-cyan-200">Scale: C Minor</span></div>
+      <div className="grid h-[calc(100dvh-190px)] min-h-[560px] grid-cols-[96px_1fr] overflow-hidden rounded-2xl border border-white/12 bg-black/35">
+        <div className="grid" style={{ gridTemplateRows: `repeat(${pitches.length},minmax(0,1fr))` }}>{pitches.map((pitch) => <div key={pitch} className="border-b border-black/70 bg-white pr-2 text-right font-mono text-[10px] text-black last:border-b-0">{pitch}</div>)}</div>
+        <div className="relative overflow-auto bg-[#101314] bg-[linear-gradient(rgba(255,255,255,.065)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.06)_1px,transparent_1px)] bg-[size:100%_32px,48px_100%]">
+          <div className="absolute left-[47%] top-0 h-full w-px bg-cyan-300 shadow-[0_0_18px_#20f7ff]" />
+          <div className="absolute left-[72%] top-0 h-full w-px bg-rose-400 shadow-[0_0_18px_rgba(251,113,133,.7)]" />
+          {notes.concat(notes.map((n, i) => ({ ...n, start: n.start + 8, color: i % 2 ? "#32f46a" : n.color }))).map((note, i) => <span key={i} className="absolute h-6 rounded-sm px-2 text-[9px] font-black text-black" style={{ left: `${note.start * 6}%`, top: `${(i % pitches.length) * 32 + 9}px`, width: `${note.len * 6}%`, backgroundColor: note.color, boxShadow: `0 0 16px ${note.color}75` }}>{note.pitch.replace(/[0-9]/g, "")}</span>)}
+          <div className="absolute bottom-0 left-0 right-0 h-24 border-t border-white/12 bg-black/45 p-3"><div className="mb-2 text-[10px] uppercase text-white/55">Velocity</div><div className="flex h-12 items-end gap-1">{Array.from({ length: 48 }, (_, i) => <span key={i} className="w-2 rounded-t bg-cyan-300" style={{ height: `${10 + ((i * 7) % 38)}px`, opacity: i % 5 ? 0.75 : 1 }} />)}</div></div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function SoundsView() {
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => soundCards.filter((sound) => sound.name.toLowerCase().includes(query.toLowerCase()) || sound.type.toLowerCase().includes(query.toLowerCase())), [query]);
+  return (
+    <Panel className="min-h-0 flex-1 overflow-hidden p-4">
+      <div className="mb-4 flex flex-wrap items-center gap-3"><div><p className="text-[12px] font-black uppercase tracking-[0.18em] text-cyan-300">EMS Smart Studio</p><h2 className="text-3xl font-black uppercase tracking-tight text-cyan-200">My Sounds</h2></div><label className="min-w-[260px] flex-1 rounded-full border border-cyan-300/60 bg-black/45 px-5 py-3 shadow-[0_0_22px_rgba(32,247,255,.18)]"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sounds, kits, loops..." className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/42" /></label><MicroButton active>Upload</MicroButton><MicroButton>Save Custom Kit</MicroButton></div>
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1">{["All", "Kick", "Snares 75", "Hats 75", "Percs 60", "Melodies 25", "Extracted One-Shots", "Vocals", "Co-Producer"].map((filter, i) => <MicroButton key={filter} active={i === 1}>{filter}</MicroButton>)}</div>
+      <div className="grid min-h-0 gap-4 overflow-hidden lg:grid-cols-[1fr_260px]">
+        <div className="grid max-h-[calc(100dvh-240px)] grid-cols-1 gap-4 overflow-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">{filtered.map((sound) => <div key={sound.name} className="rounded-2xl border border-white/12 bg-[#191c1e] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,.08)]"><div className="mb-5 grid h-24 place-items-center rounded-xl bg-black/24"><span className="h-12 w-32 rounded-lg" style={{ backgroundColor: sound.color, boxShadow: `0 0 22px ${sound.color}55` }}><Waveform compact /></span></div><p className="truncate text-[12px] font-black uppercase text-white/86">{sound.name}</p><div className="mt-2 flex flex-wrap gap-2 font-mono text-[10px]"><span className="rounded bg-[#f2c85b] px-2 py-0.5 text-black">{sound.bpm}</span><span className="rounded bg-white/12 px-2 py-0.5 text-white/70">{sound.key}</span><span className="rounded bg-violet-500 px-2 py-0.5 text-white">{sound.type}</span></div></div>)}</div>
+        <aside className="rounded-2xl border border-white/12 bg-black/32 p-5"><h3 className="text-sm font-black uppercase text-white/82">Upload / Save</h3><button className="mt-4 w-full rounded-lg border border-cyan-300 bg-cyan-300/10 py-3 text-sm font-black uppercase text-cyan-200">Upload</button><button className="mt-3 w-full rounded-lg border border-[#f2c85b] bg-[#f2c85b]/10 py-3 text-sm font-black uppercase text-[#f2c85b]">Save Custom Kit</button><div className="mt-6 text-[11px] uppercase text-white/52"><p>Cloud Saved</p><div className="mt-2 h-1.5 rounded bg-white/10"><div className="h-full w-1/3 rounded bg-cyan-300" /></div><p className="mt-2">2.4 GB / 10 GB used</p></div><div className="mt-8 space-y-3 text-[11px] text-white/58"><b className="block text-white/80">Recently Added</b><p>HARD_KICK_01 · 15 min ago</p><p>DARK_CHOP_03 · 15 min ago</p><p>BRIGHT_CLAP_04 · 22 min ago</p></div></aside>
+      </div>
+    </Panel>
+  );
+}
+
+export default function BeatMachineProClient({ initialView = "machine" }: { initialView?: BeatMachineView }) {
+  const [view, setView] = useState<BeatMachineView>(initialView);
+  const [selectedPad, setSelectedPad] = useState("KICK");
+  const views: { id: BeatMachineView; label: string }[] = [{ id: "machine", label: "Beat Machine" }, { id: "sampler", label: "Sampler" }, { id: "piano", label: "Piano Roll" }, { id: "sounds", label: "Sounds" }];
+
+  return (
+    <div className="h-dvh overflow-hidden bg-[#070808] text-white [background-image:radial-gradient(circle_at_top,rgba(32,247,255,.12),transparent_34%),linear-gradient(135deg,rgba(255,255,255,.035)_25%,transparent_25%),linear-gradient(45deg,rgba(255,255,255,.025)_25%,transparent_25%)] [background-size:auto,18px_18px,18px_18px]">
+      <div className="mx-auto flex h-full max-w-[1680px] flex-col gap-3 p-3">
+        <header className="shrink-0 rounded-[22px] border border-white/12 bg-[#111416]/96 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,.12),0_16px_40px_rgba(0,0,0,.42)]">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="mr-2 min-w-[220px] rounded-xl border border-white/12 bg-black/25 px-4 py-2"><span className="text-2xl font-black tracking-tight text-cyan-300">EMS</span><span className="ml-2 text-sm font-medium text-white/82">Smart Studio</span></div>
+            <nav className="flex flex-wrap gap-2">{views.map((item) => <button key={item.id} onClick={() => setView(item.id)} className={cn("rounded-lg border px-4 py-2 text-[11px] font-black uppercase tracking-[0.12em] transition", view === item.id ? "border-cyan-300 bg-cyan-300 text-black shadow-[0_0_18px_rgba(32,247,255,.45)]" : "border-white/12 bg-white/[0.04] text-white/62 hover:border-cyan-300/50 hover:text-cyan-100")}>{item.label}</button>)}</nav>
+            <div className="ml-auto flex items-center gap-2"><MicroButton>Preview</MicroButton><MicroButton>Loop</MicroButton><MicroButton>Key/BPM Detect</MicroButton><button className="rounded-full border border-white/18 bg-white/[0.04] px-3 py-2 font-mono text-xs text-white/70">−</button><button className="rounded-full border border-white/18 bg-white/[0.04] px-3 py-2 font-mono text-xs text-white/70">+</button></div>
+          </div>
+        </header>
+        <main className="min-h-0 flex flex-1 overflow-hidden">
+          {view === "machine" && <MachineView selectedPad={selectedPad} setSelectedPad={setSelectedPad} />}
+          {view === "sampler" && <SamplerView />}
+          {view === "piano" && <PianoView />}
+          {view === "sounds" && <SoundsView />}
+        </main>
+      </div>
+    </div>
+  );
+}
