@@ -463,6 +463,204 @@ body::-webkit-scrollbar-thumb,
     rgba(0,0,0,.48) !important;
 }
 
+/* Deep edit-window pass: compact Pro Tools-style timeline frame */
+[data-testid="studio-moving-timeline"] {
+  min-height: 520px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(0,240,255,.32) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.012) 18%, transparent 42%),
+    repeating-linear-gradient(135deg, rgba(255,255,255,.025) 0 1px, transparent 1px 7px),
+    linear-gradient(180deg, #151b1f 0%, #070a0d 42%, #010203 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 0 0 1px rgba(255,255,255,.04),
+    inset 0 -32px 80px rgba(0,0,0,.55),
+    0 24px 80px rgba(0,0,0,.56),
+    0 0 32px rgba(0,240,255,.12) !important;
+}
+
+[data-testid="studio-moving-timeline"]::before {
+  content: "EMS EDIT";
+  pointer-events: none;
+  position: absolute;
+  left: 14px;
+  top: 10px;
+  z-index: 7;
+  border: 1px solid rgba(0,240,255,.28);
+  border-radius: 6px;
+  background: rgba(0,0,0,.42);
+  padding: 4px 8px;
+  font: 900 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .22em;
+  color: rgba(180,250,255,.9);
+  text-shadow: 0 0 14px rgba(0,240,255,.75);
+}
+
+[data-testid="studio-moving-timeline"]::after {
+  content: "SELECT  TRIM  GRAB  FADE  SPLIT  GRID  SNAP";
+  pointer-events: none;
+  position: absolute;
+  left: 96px;
+  top: 10px;
+  z-index: 7;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 6px;
+  background: rgba(255,255,255,.035);
+  padding: 4px 10px;
+  font: 900 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .16em;
+  color: rgba(255,255,255,.46);
+}
+
+[data-testid="studio-moving-timeline"] > div:first-child {
+  height: 44px !important;
+  padding-left: 420px !important;
+  padding-right: 10px !important;
+  border-bottom: 1px solid rgba(0,240,255,.22) !important;
+  background:
+    linear-gradient(90deg, #080b0e 0%, #171e23 16%, #07090c 54%, #151b20 100%) !important;
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,.05), 0 8px 18px rgba(0,0,0,.35) !important;
+}
+
+[data-testid="studio-moving-timeline"] > div:first-child > span:first-child {
+  max-width: 260px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: rgba(255,255,255,.36) !important;
+}
+
+[data-testid="studio-moving-timeline"] > div:first-child button {
+  min-height: 24px !important;
+  border-radius: 5px !important;
+  background: rgba(0,240,255,.06) !important;
+  border-color: rgba(0,240,255,.22) !important;
+  box-shadow: inset 0 0 10px rgba(0,0,0,.72), 0 0 12px rgba(0,240,255,.08) !important;
+  font: 900 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+}
+
+[data-testid="studio-moving-timeline"] > .ems-scroll {
+  height: calc(100dvh - 235px) !important;
+  min-height: 470px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  background:
+    linear-gradient(180deg, rgba(0,240,255,.035), transparent 18%),
+    linear-gradient(90deg, rgba(0,0,0,.88), rgba(6,12,14,.92) 22%, rgba(0,0,0,.94)) !important;
+  box-shadow: inset 0 0 38px rgba(0,0,0,.85) !important;
+}
+
+[data-testid="studio-moving-timeline"] > .ems-scroll > div > div.sticky {
+  height: 30px !important;
+  padding-left: 168px !important;
+  background: linear-gradient(180deg, rgba(22,30,36,.96), rgba(5,8,10,.96)) !important;
+  border-bottom: 1px solid rgba(0,240,255,.18) !important;
+  box-shadow: 0 6px 16px rgba(0,0,0,.35) !important;
+}
+
+[data-testid="studio-moving-timeline"] > .ems-scroll > div > div.sticky::before {
+  content: "TRACKS";
+  position: sticky;
+  left: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 154px;
+  height: 100%;
+  margin-left: -168px;
+  margin-right: 14px;
+  border-right: 1px solid rgba(0,240,255,.16);
+  color: rgba(0,240,255,.65);
+  font: 900 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .2em;
+  background: rgba(0,0,0,.64);
+}
+
+[data-testid="studio-moving-timeline"] > .ems-scroll > div > div:nth-child(2) {
+  opacity: .72 !important;
+  background-image:
+    linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,240,255,.105) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px) !important;
+  background-size: 100% 28px, 96px 100%, 24px 100% !important;
+}
+
+[data-testid="studio-moving-timeline"] .group.relative.mb-1.flex {
+  margin-bottom: 2px !important;
+  border-radius: 4px !important;
+  border-color: rgba(255,255,255,.09) !important;
+  background: rgba(255,255,255,.018) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035) !important;
+}
+
+[data-testid="studio-moving-timeline"] .group.relative.mb-1.flex:hover {
+  background: rgba(0,240,255,.035) !important;
+}
+
+[data-testid="studio-moving-timeline"] .sticky.left-0.z-\[4\] {
+  width: 154px !important;
+  border-right: 1px solid rgba(0,240,255,.18) !important;
+  background:
+    linear-gradient(90deg, rgba(19,26,31,.98), rgba(5,8,10,.96)) !important;
+  box-shadow: inset -12px 0 20px rgba(0,0,0,.4), 7px 0 18px rgba(0,0,0,.25) !important;
+  font: 900 9px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+}
+
+[data-testid="studio-moving-timeline"] .sticky.left-0.z-\[4\]::after {
+  content: "M  S  R  AI";
+  display: block;
+  width: max-content;
+  margin-top: 5px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 999px;
+  background: rgba(0,0,0,.46);
+  padding: 2px 6px;
+  color: rgba(255,255,255,.38);
+  font: 900 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .18em;
+}
+
+[data-testid="studio-moving-timeline"] [data-testid^="studio-clip-"] {
+  border-radius: 5px !important;
+  border: 1px solid rgba(0,240,255,.32) !important;
+  background:
+    linear-gradient(180deg, rgba(0,240,255,.17), rgba(0,0,0,.72) 32%, rgba(0,0,0,.82)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 0 22px rgba(0,240,255,.08),
+    0 0 18px rgba(0,240,255,.12) !important;
+}
+
+[data-testid="studio-moving-timeline"] [data-testid^="studio-clip-"]:nth-of-type(2n) {
+  border-color: rgba(255,45,203,.32) !important;
+  background:
+    linear-gradient(180deg, rgba(255,45,203,.16), rgba(0,0,0,.72) 32%, rgba(0,0,0,.82)) !important;
+}
+
+[data-testid="studio-moving-timeline"] [data-testid^="studio-clip-"] > div:first-of-type {
+  height: 18px !important;
+  background: rgba(255,255,255,.075) !important;
+  font: 900 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  letter-spacing: .14em !important;
+}
+
+[data-testid="studio-moving-timeline"] [data-testid="studio-playhead"] {
+  width: 1px !important;
+  background: var(--ems-gold) !important;
+  box-shadow: 0 0 24px rgba(255,209,102,.9), 0 0 4px rgba(255,255,255,.9) !important;
+}
+
+[data-testid="studio-moving-timeline"] [data-testid="studio-playhead"] > div:last-child {
+  transform: translateX(12px);
+  border-radius: 4px !important;
+  font: 900 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  color: rgba(255,209,102,.92) !important;
+}
+
+[data-testid="studio-moving-timeline"] .absolute.bottom-2.right-3 {
+  display: none !important;
+}
+
 @media (max-width: 900px) {
   [data-studio-content] .grid,
   [data-ems-workspace] .grid {
@@ -480,5 +678,14 @@ body::-webkit-scrollbar-thumb,
     grid-auto-flow: column !important;
     grid-auto-columns: minmax(44px, 1fr) !important;
     overflow-x: auto !important;
+  }
+
+  [data-testid="studio-moving-timeline"] > div:first-child {
+    padding-left: 10px !important;
+  }
+
+  [data-testid="studio-moving-timeline"]::before,
+  [data-testid="studio-moving-timeline"]::after {
+    display: none !important;
   }
 }
