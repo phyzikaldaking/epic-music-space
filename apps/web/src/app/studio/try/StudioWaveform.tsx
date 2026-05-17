@@ -5,7 +5,7 @@ import type { WaveformPeaks } from "./studioWorkstationTypes";
 
 type StudioWaveformProps = {
   color: string;
-  row: number;
+  row?: number;
   tiles?: number;
   tileStart?: number;
   playing?: boolean;
