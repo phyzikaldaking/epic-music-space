@@ -25,7 +25,7 @@
   --vc-deep: #1a0530;
   --vc-void: #050009;
   --ems-transport-height: 52px;
-  --ems-workspace-min-width: min(100vw, 1120px);
+  --ems-workspace-min-width: min(100%, 1120px);
   --ems-workspace-min-height: 640px;
   --ems-cyan: #00f0ff;
   --ems-magenta: #ff2dcb;
@@ -36,14 +36,22 @@
   --ems-carbon: #050607;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html,
 body {
   min-height: 100%;
-  min-width: 100%;
-  overflow-x: auto !important;
-  overflow-y: auto !important;
-  overscroll-behavior: auto;
-  scrollbar-gutter: stable both-edges;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -57,7 +65,7 @@ body,
 #__next,
 main,
 [data-nextjs-scroll-focus-boundary] {
-  overflow: visible !important;
+  max-width: 100%;
 }
 
 main,
@@ -67,7 +75,16 @@ article,
 [data-route],
 [data-studio-content],
 [data-ems-workspace] {
-  max-width: none;
+  min-width: 0;
+  max-width: 100%;
+}
+
+img,
+svg,
+video,
+canvas,
+iframe {
+  max-width: 100%;
 }
 
 input,
@@ -113,22 +130,27 @@ textarea::placeholder {
   isolation: isolate;
   position: relative;
   min-height: 100vh;
-  min-width: 100%;
-  overflow: visible !important;
-  overscroll-behavior: auto;
-  scrollbar-gutter: stable both-edges;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+  overflow-y: visible;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+  scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x pan-y;
+  touch-action: pan-y;
 }
 
 .ems-scroll,
 .ems-scroll-x,
 .ems-scroll-y,
 .ems-workspace-scroll {
-  overscroll-behavior: auto;
-  scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x pan-y;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ems-scroll {
@@ -137,25 +159,25 @@ textarea::placeholder {
 
 .ems-workspace-scroll {
   width: 100%;
-  max-width: 100vw;
-  min-width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: min(680px, calc(100dvh - 48px));
-  overflow: auto !important;
+  overflow: auto;
   border-radius: 18px;
 }
 
 .ems-scroll-x {
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
 }
 
 .ems-scroll-y {
-  overflow-x: visible;
+  overflow-x: clip;
   overflow-y: auto;
 }
 
 .ems-studio-runtime-root {
-  min-width: 100%;
+  min-width: 0;
   min-height: min(680px, calc(100dvh - 48px));
 }
 
@@ -163,40 +185,48 @@ textarea::placeholder {
 [data-studio-content] > .w-max,
 [data-ems-workspace] > .w-max {
   width: 100%;
-  min-width: min(100%, var(--ems-workspace-min-width));
-  max-width: none;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ems-panel-scroll {
   max-height: none;
   min-height: 280px;
-  min-width: 100%;
-  overflow: auto !important;
-  overscroll-behavior: auto;
-  scrollbar-gutter: stable both-edges;
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x pan-y;
+}
+
+/* Keep horizontal overflow inside the actual workstation instead of pushing the whole site off-axis. */
+[data-studio-content] .w-max,
+[data-ems-workspace] .w-max,
+.ems-studio-runtime-root .w-max,
+.ems-workspace-scroll .w-max {
+  max-width: none;
 }
 
 [data-studio-content] .overflow-hidden,
 [data-ems-workspace] .overflow-hidden,
 .ems-studio-runtime-root .overflow-hidden,
 .ems-workspace-scroll .overflow-hidden {
-  overflow: auto !important;
+  overflow: hidden !important;
 }
 
 [data-studio-content] .overflow-x-hidden,
 [data-ems-workspace] .overflow-x-hidden,
 .ems-studio-runtime-root .overflow-x-hidden,
 .ems-workspace-scroll .overflow-x-hidden {
-  overflow-x: auto !important;
+  overflow-x: hidden !important;
 }
 
 [data-studio-content] .overflow-y-hidden,
 [data-ems-workspace] .overflow-y-hidden,
 .ems-studio-runtime-root .overflow-y-hidden,
 .ems-workspace-scroll .overflow-y-hidden {
-  overflow-y: auto !important;
+  overflow-y: hidden !important;
 }
 
 .ems-sticky-transport {
@@ -272,7 +302,7 @@ body::-webkit-scrollbar-thumb,
   z-index: 2;
 }
 
-/* Studio repair overrides: reduce blocker chrome and make every workstation section reachable. */
+/* Studio repair overrides: keep large workstation surfaces contained instead of drifting the viewport. */
 [data-studio-content] .min-w-\[1080px\],
 [data-ems-workspace] .min-w-\[1080px\],
 [data-studio-content] .min-w-\[1180px\],
@@ -285,7 +315,7 @@ body::-webkit-scrollbar-thumb,
 [data-ems-workspace] .min-w-\[760px\],
 [data-studio-content] .min-w-\[680px\],
 [data-ems-workspace] .min-w-\[680px\] {
-  min-width: min(100%, 100vw) !important;
+  min-width: 0 !important;
 }
 
 [data-studio-content] .grid-cols-\[76px_minmax\(980px\,1fr\)\],
@@ -518,174 +548,4 @@ body::-webkit-scrollbar-thumb,
   padding-left: 420px !important;
   padding-right: 10px !important;
   border-bottom: 1px solid rgba(0,240,255,.22) !important;
-  background:
-    linear-gradient(90deg, #080b0e 0%, #171e23 16%, #07090c 54%, #151b20 100%) !important;
-  box-shadow: inset 0 -1px 0 rgba(255,255,255,.05), 0 8px 18px rgba(0,0,0,.35) !important;
-}
-
-[data-testid="studio-moving-timeline"] > div:first-child > span:first-child {
-  max-width: 260px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: rgba(255,255,255,.36) !important;
-}
-
-[data-testid="studio-moving-timeline"] > div:first-child button {
-  min-height: 24px !important;
-  border-radius: 5px !important;
-  background: rgba(0,240,255,.06) !important;
-  border-color: rgba(0,240,255,.22) !important;
-  box-shadow: inset 0 0 10px rgba(0,0,0,.72), 0 0 12px rgba(0,240,255,.08) !important;
-  font: 900 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
-}
-
-[data-testid="studio-moving-timeline"] > .ems-scroll {
-  height: calc(100dvh - 235px) !important;
-  min-height: 470px !important;
-  border-radius: 8px !important;
-  border: 1px solid rgba(255,255,255,.08) !important;
-  background:
-    linear-gradient(180deg, rgba(0,240,255,.035), transparent 18%),
-    linear-gradient(90deg, rgba(0,0,0,.88), rgba(6,12,14,.92) 22%, rgba(0,0,0,.94)) !important;
-  box-shadow: inset 0 0 38px rgba(0,0,0,.85) !important;
-}
-
-[data-testid="studio-moving-timeline"] > .ems-scroll > div > div.sticky {
-  height: 30px !important;
-  padding-left: 168px !important;
-  background: linear-gradient(180deg, rgba(22,30,36,.96), rgba(5,8,10,.96)) !important;
-  border-bottom: 1px solid rgba(0,240,255,.18) !important;
-  box-shadow: 0 6px 16px rgba(0,0,0,.35) !important;
-}
-
-[data-testid="studio-moving-timeline"] > .ems-scroll > div > div.sticky::before {
-  content: "TRACKS";
-  position: sticky;
-  left: 0;
-  display: inline-grid;
-  place-items: center;
-  width: 154px;
-  height: 100%;
-  margin-left: -168px;
-  margin-right: 14px;
-  border-right: 1px solid rgba(0,240,255,.16);
-  color: rgba(0,240,255,.65);
-  font: 900 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: .2em;
-  background: rgba(0,0,0,.64);
-}
-
-[data-testid="studio-moving-timeline"] > .ems-scroll > div > div:nth-child(2) {
-  opacity: .72 !important;
-  background-image:
-    linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,240,255,.105) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px) !important;
-  background-size: 100% 28px, 96px 100%, 24px 100% !important;
-}
-
-[data-testid="studio-moving-timeline"] .group.relative.mb-1.flex {
-  margin-bottom: 2px !important;
-  border-radius: 4px !important;
-  border-color: rgba(255,255,255,.09) !important;
-  background: rgba(255,255,255,.018) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.035) !important;
-}
-
-[data-testid="studio-moving-timeline"] .group.relative.mb-1.flex:hover {
-  background: rgba(0,240,255,.035) !important;
-}
-
-[data-testid="studio-moving-timeline"] .sticky.left-0.z-\[4\] {
-  width: 154px !important;
-  border-right: 1px solid rgba(0,240,255,.18) !important;
-  background:
-    linear-gradient(90deg, rgba(19,26,31,.98), rgba(5,8,10,.96)) !important;
-  box-shadow: inset -12px 0 20px rgba(0,0,0,.4), 7px 0 18px rgba(0,0,0,.25) !important;
-  font: 900 9px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
-}
-
-[data-testid="studio-moving-timeline"] .sticky.left-0.z-\[4\]::after {
-  content: "M  S  R  AI";
-  display: block;
-  width: max-content;
-  margin-top: 5px;
-  border: 1px solid rgba(255,255,255,.1);
-  border-radius: 999px;
-  background: rgba(0,0,0,.46);
-  padding: 2px 6px;
-  color: rgba(255,255,255,.38);
-  font: 900 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: .18em;
-}
-
-[data-testid="studio-moving-timeline"] [data-testid^="studio-clip-"] {
-  border-radius: 5px !important;
-  border: 1px solid rgba(0,240,255,.32) !important;
-  background:
-    linear-gradient(180deg, rgba(0,240,255,.17), rgba(0,0,0,.72) 32%, rgba(0,0,0,.82)) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.12),
-    inset 0 0 22px rgba(0,240,255,.08),
-    0 0 18px rgba(0,240,255,.12) !important;
-}
-
-[data-testid="studio-moving-timeline"] [data-testid^="studio-clip-"]:nth-of-type(2n) {
-  border-color: rgba(255,45,203,.32) !important;
-  background:
-    linear-gradient(180deg, rgba(255,45,203,.16), rgba(0,0,0,.72) 32%, rgba(0,0,0,.82)) !important;
-}
-
-[data-testid="studio-moving-timeline"] [data-testid^="studio-clip-"] > div:first-of-type {
-  height: 18px !important;
-  background: rgba(255,255,255,.075) !important;
-  font: 900 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
-  letter-spacing: .14em !important;
-}
-
-[data-testid="studio-moving-timeline"] [data-testid="studio-playhead"] {
-  width: 1px !important;
-  background: var(--ems-gold) !important;
-  box-shadow: 0 0 24px rgba(255,209,102,.9), 0 0 4px rgba(255,255,255,.9) !important;
-}
-
-[data-testid="studio-moving-timeline"] [data-testid="studio-playhead"] > div:last-child {
-  transform: translateX(12px);
-  border-radius: 4px !important;
-  font: 900 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
-  color: rgba(255,209,102,.92) !important;
-}
-
-[data-testid="studio-moving-timeline"] .absolute.bottom-2.right-3 {
-  display: none !important;
-}
-
-@media (max-width: 900px) {
-  [data-studio-content] .grid,
-  [data-ems-workspace] .grid {
-    min-width: 0 !important;
-  }
-
-  [data-studio-content] .grid-cols-\[76px_minmax\(980px\,1fr\)\],
-  [data-ems-workspace] .grid-cols-\[76px_minmax\(980px\,1fr\)\] {
-    grid-template-columns: 1fr !important;
-  }
-
-  [data-studio-content] aside.sticky,
-  [data-ems-workspace] aside.sticky {
-    display: grid !important;
-    grid-auto-flow: column !important;
-    grid-auto-columns: minmax(44px, 1fr) !important;
-    overflow-x: auto !important;
-  }
-
-  [data-testid="studio-moving-timeline"] > div:first-child {
-    padding-left: 10px !important;
-  }
-
-  [data-testid="studio-moving-timeline"]::before,
-  [data-testid="studio-moving-timeline"]::after {
-    display: none !important;
-  }
 }
