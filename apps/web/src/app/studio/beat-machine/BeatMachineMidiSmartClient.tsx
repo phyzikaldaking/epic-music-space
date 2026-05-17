@@ -5,7 +5,7 @@ import BeatMachineProClient from "./BeatMachineProClient";
 
 type BankId = "A" | "B" | "C" | "D";
 type PadRole = "kick" | "snare" | "hat" | "808" | "sample" | "melody" | "fx" | "empty";
-type SmartSound = { id: string; name: string; url: string; instrument?: string; source?: string; createdAt?: string };
+type SmartSound = { id: string; name: string; url: string; instrument?: string; source?: string; createdAt?: string; category?: string; durationSec?: number; sampleRate?: number; sourceFile?: string };
 type SmartPad = { id: string; bank: BankId; number: number; name: string; role: PadRole; soundName?: string; soundUrl?: string; tune: number; gain: number; pan: number; reverse: boolean; trimStart: number; trimEnd: number; chokeGroup: string; color: string };
 type SmartNote = { id: string; padId: string; step: number; length: number; velocity: number; selected?: boolean };
 type HistoryEntry = { notes: SmartNote[]; label: string; at: string };
@@ -203,6 +203,28 @@ export default function BeatMachineMidiSmartClient() {
   useEffect(() => { window.localStorage.setItem(MY_SOUNDS_KEY, JSON.stringify(mySounds)); }, [mySounds]);
 
   useEffect(() => {
+    function onSoundAdded(event: Event) {
+      const sound = (event as CustomEvent<{ sound?: SmartSound }>).detail?.sound;
+      if (!sound?.url) return;
+      setMySounds((current) => Array.from(new Map([sound, ...current].map((item) => [item.url || item.id, item])).values()).slice(0, 250));
+      setStatus(`${sound.name} added to My Sounds.`);
+    }
+    function onAssignSelectedPad(event: Event) {
+      const sound = (event as CustomEvent<{ sound?: SmartSound }>).detail?.sound;
+      if (!sound?.url) return;
+      setMySounds((current) => Array.from(new Map([sound, ...current].map((item) => [item.url || item.id, item])).values()).slice(0, 250));
+      assignSoundToPad(sound, selectedPadId);
+      setStatus(`${sound.name} assigned to ${selectedPadId}.`);
+    }
+    window.addEventListener("ems:smart-mpc-sound-added", onSoundAdded);
+    window.addEventListener("ems:smart-mpc-assign-selected-pad", onAssignSelectedPad);
+    return () => {
+      window.removeEventListener("ems:smart-mpc-sound-added", onSoundAdded);
+      window.removeEventListener("ems:smart-mpc-assign-selected-pad", onAssignSelectedPad);
+    };
+  }, [selectedPadId]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
       const isMacCommand = event.metaKey || event.ctrlKey;
@@ -283,7 +305,7 @@ export default function BeatMachineMidiSmartClient() {
     const existing = notes.find((note) => note.padId === selectedPad.id && note.step === step);
     if (existing && selectOnly) {
       setNotes((current) => current.map((note) => ({ ...note, selected: note.id === existing.id ? !note.selected : note.selected })));
-      setStatus(`${existing.selected ? "Deselected" : "Selected"} MIDI note on ${selectedPad.id} step ${step + 1}.`);
+    setStatus(`${existing.selected ? "Deselected" : "Selected"} MIDI note on ${selectedPad.id} step ${step + 1}.`);
       return;
     }
     if (existing) {
