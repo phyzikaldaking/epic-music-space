@@ -33,7 +33,7 @@ export default function StudioScreenRuntime({ mode, activeLabel, timeline, inspe
     <section
       data-testid="studio-screen-runtime"
       data-studio-mode={mode}
-      className="min-h-[calc(100dvh-112px)] w-full min-w-0 overflow-visible rounded-xl border border-white/10 bg-[#071015]/80 p-2"
+      className="min-h-[calc(100dvh-112px)] w-full min-w-0 overflow-auto rounded-xl border border-white/10 bg-[#071015]/80 p-2"
     >
       <header className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[.03] px-3 py-2">
         <div className="min-w-0">
@@ -48,19 +48,19 @@ export default function StudioScreenRuntime({ mode, activeLabel, timeline, inspe
       </header>
 
       {isStudio && timeline ? (
-        <div className="grid min-h-[calc(100dvh-190px)] min-w-0 grid-rows-[minmax(300px,auto)_1fr] gap-2 overflow-visible">
-          <div data-testid="studio-timeline-zone" className="min-h-[300px] overflow-visible rounded-xl">{timeline}</div>
-          <div className="grid min-h-[520px] min-w-0 grid-cols-1 gap-2 overflow-visible xl:grid-cols-[240px_minmax(0,1fr)_220px]">
-            <div data-testid="studio-inspector-zone" className="hidden overflow-visible xl:block">{inspector}</div>
-            <main data-testid="studio-mode-zone" className="min-w-0 overflow-visible rounded-xl border border-white/10 bg-black/20 p-2">{children}</main>
-            <div data-testid="studio-rack-zone" className="hidden overflow-visible xl:block">{rack}</div>
+        <div className="grid min-h-[calc(100dvh-190px)] min-w-0 grid-rows-[minmax(300px,auto)_1fr] gap-2 overflow-auto">
+          <div data-testid="studio-timeline-zone" className="min-h-[300px] min-w-0 overflow-auto rounded-xl">{timeline}</div>
+          <div className="grid min-h-[520px] min-w-0 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[240px_minmax(0,1fr)_220px]">
+            <div data-testid="studio-inspector-zone" className="hidden min-w-0 overflow-auto xl:block">{inspector}</div>
+            <main data-testid="studio-mode-zone" className="min-w-0 overflow-auto rounded-xl border border-white/10 bg-black/20 p-2">{children}</main>
+            <div data-testid="studio-rack-zone" className="hidden min-w-0 overflow-auto xl:block">{rack}</div>
           </div>
         </div>
       ) : (
-        <main data-testid="studio-mode-zone" className="min-h-[calc(100dvh-190px)] min-w-0 overflow-visible rounded-xl border border-white/10 bg-black/25 p-2">{children}</main>
+        <main data-testid="studio-mode-zone" className="min-h-[calc(100dvh-190px)] min-w-0 overflow-auto rounded-xl border border-white/10 bg-black/25 p-2">{children}</main>
       )}
 
-      {spectral ? <div data-testid="studio-spectral-zone" className="mt-2 min-w-0 overflow-visible">{spectral}</div> : null}
+      {spectral ? <div data-testid="studio-spectral-zone" className="mt-2 min-w-0 overflow-auto">{spectral}</div> : null}
     </section>
   );
 }
