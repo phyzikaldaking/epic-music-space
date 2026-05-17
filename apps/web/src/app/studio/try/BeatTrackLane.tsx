@@ -21,6 +21,7 @@ type Props = {
   onFirePad: (kind: DrumKind, label: string) => void;
   onAddTrack: (kind?: StudioTrackKind) => void;
   onSelectTrack: (id: string) => void;
+  onUpdateTrack?: (id: string, patch: Partial<StudioTrack>) => void;
   onKitChange?: (kit: DrumKitId) => void;
   onInstrumentChange?: (instrument: string) => void;
   onSoundUploaded?: (sound: StudioSoundAsset) => void;
@@ -93,6 +94,18 @@ function trackKindForPad(label: string): StudioTrackKind {
   return "audio";
 }
 
+function aiMixPatch(track: StudioTrack, index = 0): Partial<StudioTrack> {
+  const name = `${track.name} ${track.kind}`.toLowerCase();
+  if (name.includes("kick") || name.includes("drum")) return { volume: 84, pan: 0, meter: 86 };
+  if (name.includes("808") || name.includes("bass")) return { volume: 76, pan: 0, meter: 74 };
+  if (name.includes("snare") || name.includes("clap")) return { volume: 72, pan: 0, meter: 68 };
+  if (name.includes("hat") || name.includes("open") || name.includes("perc")) return { volume: 56, pan: index % 2 ? 18 : -18, meter: 54 };
+  if (name.includes("vocal") || name.includes("vox") || name.includes("lead")) return { volume: 82, pan: 0, meter: 80 };
+  if (name.includes("fx")) return { volume: 48, pan: index % 2 ? 28 : -28, meter: 42 };
+  if (name.includes("keys") || name.includes("melody") || name.includes("pad") || name.includes("instrument")) return { volume: 60, pan: index % 2 ? 14 : -14, meter: 54 };
+  return { volume: 62, pan: index % 2 ? 8 : -8, meter: 52 };
+}
+
 function BeatTrackLane({
   tracks,
   pads,
@@ -105,6 +118,7 @@ function BeatTrackLane({
   onFirePad,
   onAddTrack,
   onSelectTrack,
+  onUpdateTrack,
   onKitChange,
   onInstrumentChange,
   onSoundUploaded,
@@ -129,6 +143,18 @@ function BeatTrackLane({
     notify?.(message);
     setToast(message);
     window.setTimeout(() => setToast(null), 2400);
+  }
+
+  function updateTrack(track: StudioTrack, patch: Partial<StudioTrack>) {
+    onUpdateTrack?.(track.id, patch);
+    if (!onUpdateTrack) emit("Track controls are ready, but this studio route needs the update bridge enabled.");
+  }
+
+  function aiMixTrack(track: StudioTrack, index: number) {
+    const patch = aiMixPatch(track, index);
+    updateTrack(track, patch);
+    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `AI mixed ${track.name}.` } }));
+    emit(`AI mixed ${track.name}: gain, pan, and meter target adjusted.`);
   }
 
   useEffect(() => {
@@ -239,7 +265,7 @@ function BeatTrackLane({
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/55 px-3 py-2">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-green-200/70">Beat workspace</p>
-          <p className="text-[10px] text-white/40">Pads, sound browser, sequencer, full piano roll, and beat-to-session stems.</p>
+          <p className="text-[10px] text-white/40">Pads, sound browser, sequencer, full piano roll, solo/mute, per-track AI mix, and beat-to-session stems.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={sendBeatStemsToSession} className="rounded-lg border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-300/15">
@@ -268,9 +294,9 @@ function BeatTrackLane({
           <BeatPadGrid pads={visiblePads} activePad={activePad} onFirePad={handleFirePad} />
         </div>
         <div className="min-h-0 min-w-0 overflow-auto rounded-xl border border-white/10 bg-black/20 p-2">
-          <VirtualTrackList tracks={tracks} rowHeight={104} height={520}>
+          <VirtualTrackList tracks={tracks} rowHeight={144} height={560}>
             {(track, row) => (
-              <BeatSequencerRow key={track.id} track={track} index={row} selected={selectedTrack === track.id} onSelect={() => onSelectTrack(track.id)} />
+              <BeatSequencerRow key={track.id} track={track} index={row} selected={selectedTrack === track.id} onSelect={() => onSelectTrack(track.id)} onUpdate={(patch) => updateTrack(track, patch)} onAiMix={() => aiMixTrack(track, row)} />
             )}
           </VirtualTrackList>
         </div>
