@@ -37,17 +37,18 @@ function templateForTrack(track: StudioTrack, index: number) {
 }
 
 function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedTrack, updateTrack }: Props) {
-  const trackIds = useMemo(() => tracks.map((track) => track.id), [tracks]);
+  const safeTracks = tracks.length ? tracks : [{ id: "empty-mix", name: "No Tracks Loaded", kind: "audio" as const, color: "#17fff4", volume: 0, pan: 0, muted: false, solo: false, armed: false, meter: 0, height: 72 }];
+  const trackIds = useMemo(() => safeTracks.map((track) => track.id), [safeTracks]);
   const meters = useRafMeterBridge(trackIds);
   const [masterPeak, setMasterPeak] = useState(72);
   const [aiStatus, setAiStatus] = useState("AI Engineer ready. Press Auto Mix to build a starting mix template.");
   const buses = useMemo(() => [
-    { name: "DRUM BUS", level: tracks.filter((track) => ["drum", "bass"].includes(track.kind)).length, color: "#17fff4" },
-    { name: "MUSIC BUS", level: tracks.filter((track) => ["melody", "instrument", "midi"].includes(track.kind)).length, color: "#42ff56" },
-    { name: "VOCAL BUS", level: tracks.filter((track) => track.kind === "vocal").length, color: "#ff34df" },
-    { name: "FX BUS", level: tracks.filter((track) => track.kind === "fx").length, color: "#a855ff" },
-    { name: "MASTER", level: tracks.length, color: "#f6d63d" },
-  ], [tracks]);
+    { name: "DRUM BUS", level: safeTracks.filter((track) => ["drum", "bass"].includes(track.kind)).length, color: "#17fff4" },
+    { name: "MUSIC BUS", level: safeTracks.filter((track) => ["melody", "instrument", "midi"].includes(track.kind)).length, color: "#42ff56" },
+    { name: "VOCAL BUS", level: safeTracks.filter((track) => track.kind === "vocal").length, color: "#ff34df" },
+    { name: "FX BUS", level: safeTracks.filter((track) => track.kind === "fx").length, color: "#a855ff" },
+    { name: "MASTER", level: safeTracks.length, color: "#f6d63d" },
+  ], [safeTracks]);
 
   useEffect(() => {
     let frame = 0;
@@ -56,7 +57,7 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
       frame += 1;
       const now = performance.now();
       let total = 0;
-      tracks.forEach((track, index) => {
+      safeTracks.forEach((track, index) => {
         const wave = Math.sin(now / (playing ? 120 : 420) + index * 0.83) * 22;
         const bounce = Math.cos(now / (playing ? 180 : 620) + index * 1.41) * 14;
         const base = playing ? 48 : 18;
@@ -64,12 +65,12 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
         total += next;
         meters.setMeterValue(track.id, next);
       });
-      setMasterPeak(Math.max(12, Math.min(99, total / Math.max(1, tracks.length) + (playing ? Math.sin(now / 95) * 10 : 0))));
+      setMasterPeak(Math.max(12, Math.min(99, total / Math.max(1, safeTracks.length) + (playing ? Math.sin(now / 95) * 10 : 0))));
       raf = window.requestAnimationFrame(tick);
     };
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [meters, playing, tracks]);
+  }, [meters, playing, safeTracks]);
 
   function autoMix() {
     tracks.forEach((track, index) => updateTrack(track.id, templateForTrack(track, index)));
@@ -78,6 +79,7 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
   }
 
   function autoMixTrack(track: StudioTrack, index: number) {
+    if (track.id === "empty-mix") return;
     updateTrack(track.id, templateForTrack(track, index));
     setAiStatus(`AI Engineer mixed ${track.name}: gain, pan, and meter target set for its role.`);
     window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `AI mixed ${track.name}.` } }));
@@ -89,8 +91,8 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
   }
 
   return (
-    <section data-testid="studio-live-mixer" className={`min-h-[720px] min-w-[1180px] overflow-visible rounded-xl border border-cyan-300/20 bg-[#05080b] p-2 ${playing ? "shadow-[0_0_48px_rgba(34,211,238,.18)]" : "shadow-[0_0_28px_rgba(255,255,255,.06)]"}`}>
-      <header className="mb-2 rounded-xl border border-white/10 bg-black/65 px-3 py-3">
+    <section data-testid="studio-live-mixer" className={`relative block min-h-[calc(100dvh-190px)] w-full min-w-0 overflow-hidden rounded-xl border border-cyan-300/25 bg-[#05080b] p-2 ${playing ? "shadow-[0_0_48px_rgba(34,211,238,.18)]" : "shadow-[0_0_28px_rgba(255,255,255,.06)]"}`}>
+      <header className="sticky top-0 z-20 mb-2 rounded-xl border border-white/10 bg-black/90 px-3 py-3 backdrop-blur">
         <div className="flex flex-wrap items-center gap-3">
           <div className="mr-auto">
             <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-200/70">AI Engineer Mixer</p>
@@ -104,20 +106,20 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
           </div>
           <span className="text-[10px] font-black uppercase tracking-widest text-white/45">Master {Math.round(masterPeak)}%</span>
         </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-5">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {buses.map((bus) => <div key={bus.name} className="rounded-lg border border-white/10 bg-white/[.035] p-2">
             <div className="flex items-center justify-between"><b className="text-[10px] uppercase" style={{ color: bus.color }}>{bus.name}</b><span className="text-[9px] text-white/35">{bus.level} ch</span></div>
             <div className="mt-2 h-1.5 rounded-full bg-white/10"><div className="h-full rounded-full" style={{ width: `${Math.min(100, bus.level * 18)}%`, background: bus.color }} /></div>
           </div>)}
         </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="rounded-lg border border-green-300/15 bg-green-300/[.04] px-3 py-2 text-xs font-bold text-green-100/80">{aiStatus}</div>
           <div className="rounded-lg border border-yellow-300/15 bg-yellow-300/[.04] px-3 py-2 text-[10px] font-black uppercase leading-4 text-yellow-100/80">{MIX_TEMPLATE.join(" · ")}</div>
         </div>
       </header>
-      <div className="ems-scroll min-h-[900px] overflow-x-auto pb-8 pr-8">
-        <div className="flex min-w-max gap-2">
-          {tracks.map((track, index) => (
+      <div className="ems-scroll h-[calc(100dvh-385px)] min-h-[560px] w-full min-w-0 overflow-auto rounded-xl border border-white/10 bg-black/35 p-2">
+        <div className="flex w-max min-w-full items-stretch gap-2 pb-6">
+          {safeTracks.map((track, index) => (
             <StudioMixerChannel
               key={track.id}
               track={track}
@@ -126,7 +128,7 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
               playing={playing}
               bindMeter={meters.bindMeter}
               onSelect={() => setSelectedTrack(track.id)}
-              onUpdate={(patch) => updateTrack(track.id, patch)}
+              onUpdate={(patch) => track.id !== "empty-mix" && updateTrack(track.id, patch)}
               onAiMix={() => autoMixTrack(track, index)}
             />
           ))}
