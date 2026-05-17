@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const STEPS = Array.from({ length: 16 }, (_, index) => index);
 const PATTERNS = ["A", "B", "C", "D"] as const;
@@ -49,6 +49,13 @@ export default function FLBeatMachineClient() {
   const [channels, setChannels] = useState<Channel[]>(STARTER_CHANNELS);
   const [selectedTemplate, setSelectedTemplate] = useState("trap");
   const activeSteps = useMemo(() => channels.reduce((sum, channel) => sum + channel.patterns[activePattern].filter(Boolean).length, 0), [channels, activePattern]);
+
+  useEffect(() => {
+    if (!playing) return;
+    const stepMs = (60_000 / Math.max(40, bpm)) / 4;
+    const id = window.setInterval(() => setPlayhead((value) => (value + 1) % STEPS.length), stepMs);
+    return () => window.clearInterval(id);
+  }, [playing, bpm]);
 
   function updateChannel(id: string, patch: Partial<Channel>) {
     setChannels((current) => current.map((channel) => channel.id === id ? { ...channel, ...patch } : channel));
@@ -112,75 +119,69 @@ export default function FLBeatMachineClient() {
   }
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-6">
-      <div className="rounded-[28px] border border-[#2b3438] bg-[#090c0e] shadow-[0_28px_80px_rgba(0,0,0,.72),inset_0_1px_0_rgba(255,255,255,.08)]">
-        <header className="flex flex-col gap-4 border-b border-black/80 bg-[#171d20] p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.28em] text-[#92a2a7]">EMS Channel Rack</p>
-            <h1 className="mt-1 text-2xl font-black uppercase tracking-wide text-white">FL-Style Beat Machine</h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => setPlaying((value) => !value)} className={`rounded-xl px-5 py-3 text-sm font-black uppercase tracking-widest ${playing ? "bg-red-400 text-black" : "bg-[#42ff56] text-black"}`}>{playing ? "Stop" : "Play"}</button>
-            <button onClick={() => setPlayhead((value) => (value + 1) % 16)} className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-black uppercase text-white/70">Step</button>
-            <label className="rounded-xl border border-white/10 bg-black/35 px-3 py-2 font-mono text-xs text-white/60">BPM <input type="number" value={bpm} min={60} max={220} onChange={(event) => setBpm(Number(event.target.value))} className="ml-2 w-16 bg-transparent font-black text-white outline-none" /></label>
-            <label className="rounded-xl border border-white/10 bg-black/35 px-3 py-2 font-mono text-xs text-white/60">Swing {swing}% <input type="range" value={swing} min={0} max={60} onChange={(event) => setSwing(Number(event.target.value))} className="ml-2 align-middle accent-[#42ff56]" /></label>
+    <section className="w-full px-2 py-2 sm:px-3">
+      <div className="mx-auto max-w-[1500px] overflow-hidden rounded-xl border border-[#2b3438] bg-[#090c0e] shadow-[0_18px_48px_rgba(0,0,0,.62),inset_0_1px_0_rgba(255,255,255,.08)]">
+        <header className="sticky top-0 z-20 flex min-h-12 flex-wrap items-center gap-2 border-b border-black/80 bg-[#171d20] px-3 py-2">
+          <button onClick={() => setPlaying((value) => !value)} className={`h-9 rounded-lg px-4 text-xs font-black uppercase tracking-widest ${playing ? "bg-red-400 text-black" : "bg-[#42ff56] text-black"}`}>{playing ? "Stop" : "Play"}</button>
+          <button onClick={() => setPlayhead((value) => (value + 1) % 16)} className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-[10px] font-black uppercase text-white/70">Step</button>
+          <label className="h-9 rounded-lg border border-white/10 bg-black/35 px-3 py-2 font-mono text-[10px] text-white/60">BPM <input type="number" value={bpm} min={60} max={220} onChange={(event) => setBpm(Number(event.target.value))} className="ml-2 w-14 bg-transparent font-black text-white outline-none" /></label>
+          <label className="hidden h-9 items-center rounded-lg border border-white/10 bg-black/35 px-3 font-mono text-[10px] text-white/60 sm:flex">Swing {swing}% <input type="range" value={swing} min={0} max={60} onChange={(event) => setSwing(Number(event.target.value))} className="ml-2 w-20 accent-[#42ff56]" /></label>
+          <div className="ml-auto flex items-center gap-1">
+            {PATTERNS.map((pattern) => <button key={pattern} onClick={() => setActivePattern(pattern)} className={`h-9 w-10 rounded-md border font-mono text-xs font-black ${activePattern === pattern ? "border-[#42ff56] bg-[#42ff56] text-black" : "border-white/10 bg-black/35 text-white/60"}`}>{pattern}</button>)}
           </div>
         </header>
 
-        <div className="grid gap-0 lg:grid-cols-[220px_1fr]">
-          <aside className="border-b border-black/80 bg-[#111619] p-4 lg:border-b-0 lg:border-r">
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.24em] text-white/40">Templates</p>
-            <div className="mt-3 grid gap-2">
-              {TEMPLATES.map((template) => <button key={template.id} onClick={() => applyTemplate(template.id)} className={`rounded-xl border px-3 py-3 text-left text-xs font-black uppercase tracking-widest ${selectedTemplate === template.id ? "border-[#42ff56]/60 bg-[#42ff56]/12 text-[#caffca]" : "border-white/10 bg-white/[0.03] text-white/60"}`}>{template.label}<span className="ml-2 text-white/30">{template.bpm}</span></button>)}
+        <div className="flex min-h-[calc(100dvh-104px)] flex-col lg:flex-row">
+          <aside className="order-2 grid gap-2 border-t border-black/80 bg-[#111619] p-2 lg:order-1 lg:w-44 lg:border-r lg:border-t-0">
+            <div className="grid grid-cols-4 gap-1 lg:grid-cols-1">
+              {TEMPLATES.map((template) => <button key={template.id} onClick={() => applyTemplate(template.id)} className={`rounded-md border px-2 py-2 text-left text-[10px] font-black uppercase tracking-widest ${selectedTemplate === template.id ? "border-[#42ff56]/60 bg-[#42ff56]/12 text-[#caffca]" : "border-white/10 bg-white/[0.03] text-white/60"}`}>{template.label}<span className="ml-1 text-white/30">{template.bpm}</span></button>)}
             </div>
-            <div className="mt-6 grid gap-2">
-              <button onClick={randomFill} className="rounded-xl border border-pink-300/35 bg-pink-300/10 px-3 py-3 text-xs font-black uppercase tracking-widest text-pink-100">Random Fill</button>
-              <button onClick={hatRoll} className="rounded-xl border border-yellow-300/35 bg-yellow-300/10 px-3 py-3 text-xs font-black uppercase tracking-widest text-yellow-100">Hat Roll</button>
-              <button onClick={clonePattern} className="rounded-xl border border-cyan-300/35 bg-cyan-300/10 px-3 py-3 text-xs font-black uppercase tracking-widest text-cyan-100">Clone Pattern</button>
-              <button onClick={exportLoop} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-xs font-black uppercase tracking-widest text-white/70">Export Loop</button>
-              <button onClick={exportMidi} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-xs font-black uppercase tracking-widest text-white/70">MIDI Export</button>
+            <div className="grid grid-cols-5 gap-1 lg:grid-cols-1">
+              <button onClick={randomFill} className="rounded-md border border-pink-300/30 bg-pink-300/10 px-2 py-2 text-[9px] font-black uppercase tracking-widest text-pink-100">Fill</button>
+              <button onClick={hatRoll} className="rounded-md border border-yellow-300/30 bg-yellow-300/10 px-2 py-2 text-[9px] font-black uppercase tracking-widest text-yellow-100">Hat Roll</button>
+              <button onClick={clonePattern} className="rounded-md border border-cyan-300/30 bg-cyan-300/10 px-2 py-2 text-[9px] font-black uppercase tracking-widest text-cyan-100">Clone</button>
+              <button onClick={exportLoop} className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-2 text-[9px] font-black uppercase tracking-widest text-white/70">Loop</button>
+              <button onClick={exportMidi} className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-2 text-[9px] font-black uppercase tracking-widest text-white/70">MIDI</button>
             </div>
           </aside>
 
-          <main className="overflow-auto bg-[radial-gradient(circle_at_top,#172327,#050708_55%,#000)] p-4">
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              {PATTERNS.map((pattern) => <button key={pattern} onClick={() => setActivePattern(pattern)} className={`h-10 w-14 rounded-lg border font-mono text-sm font-black ${activePattern === pattern ? "border-[#42ff56] bg-[#42ff56] text-black" : "border-white/10 bg-black/35 text-white/60"}`}>{pattern}</button>)}
-              <div className="ml-auto rounded-xl border border-white/10 bg-black/35 px-3 py-2 font-mono text-xs uppercase text-white/45">{activeSteps} active steps</div>
-            </div>
-
-            <div className="min-w-[980px] overflow-hidden rounded-2xl border border-black/80 bg-[#111619] shadow-[inset_0_0_30px_rgba(0,0,0,.75)]">
-              <div className="grid grid-cols-[210px_80px_80px_1fr] border-b border-black/80 bg-[#20282b] px-3 py-2 font-mono text-[9px] font-black uppercase tracking-widest text-white/35">
-                <span>Channel</span><span>Level</span><span>Pan</span><span>Steps</span>
+          <main className="order-1 min-w-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_top,#172327,#050708_55%,#000)] p-2 lg:order-2">
+            <div className="min-w-[900px] overflow-hidden rounded-lg border border-black/80 bg-[#111619] shadow-[inset_0_0_30px_rgba(0,0,0,.75)]">
+              <div className="grid grid-cols-[190px_68px_68px_1fr] border-b border-black/80 bg-[#20282b] px-2 py-1.5 font-mono text-[8px] font-black uppercase tracking-widest text-white/35">
+                <span>Channel</span><span>Level</span><span>Pan</span>
+                <div className="grid grid-cols-16 gap-1">
+                  {STEPS.map((step) => <div key={step} className={`text-center ${step === playhead ? "text-[#42ff56]" : "text-white/35"}`}>{step + 1}</div>)}
+                </div>
               </div>
               {channels.map((channel) => (
-                <div key={channel.id} className="grid grid-cols-[210px_80px_80px_1fr] items-center border-b border-black/60 px-3 py-2 last:border-b-0 hover:bg-white/[0.025]">
+                <div key={channel.id} className="grid grid-cols-[190px_68px_68px_1fr] items-center border-b border-black/60 px-2 py-1.5 last:border-b-0 hover:bg-white/[0.025]">
                   <div className="flex items-center gap-2">
                     <button onClick={() => updateChannel(channel.id, { muted: !channel.muted })} className={`h-7 w-7 rounded border border-black/80 text-[10px] font-black ${channel.muted ? "bg-red-400 text-black" : "bg-[#252d30] text-white/45"}`}>M</button>
                     <button onClick={() => updateChannel(channel.id, { solo: !channel.solo })} className={`h-7 w-7 rounded border border-black/80 text-[10px] font-black ${channel.solo ? "bg-yellow-300 text-black" : "bg-[#252d30] text-white/45"}`}>S</button>
                     <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: channel.color }} />
                     <div>
                       <p className="font-mono text-xs font-black uppercase text-white">{channel.name}</p>
-                      <p className="font-mono text-[9px] uppercase text-white/32">{channel.type}</p>
+                      <p className="font-mono text-[8px] uppercase text-white/32">{channel.type}</p>
                     </div>
                   </div>
-                  <input type="range" min={0} max={100} value={channel.level} onChange={(event) => updateChannel(channel.id, { level: Number(event.target.value) })} className="w-16 accent-[#42ff56]" />
-                  <input type="range" min={-50} max={50} value={channel.pan} onChange={(event) => updateChannel(channel.id, { pan: Number(event.target.value) })} className="w-16 accent-[#23d4ff]" />
-                  <div className="grid grid-cols-16 gap-1">
+                  <input type="range" min={0} max={100} value={channel.level} onChange={(event) => updateChannel(channel.id, { level: Number(event.target.value) })} className="w-14 accent-[#42ff56]" />
+                  <input type="range" min={-50} max={50} value={channel.pan} onChange={(event) => updateChannel(channel.id, { pan: Number(event.target.value) })} className="w-14 accent-[#23d4ff]" />
+                  <div className="relative grid grid-cols-16 gap-1">
                     {STEPS.map((step) => {
                       const active = channel.patterns[activePattern][step];
                       const current = step === playhead;
                       const glide = channel.id === "bass" && channel.glide[step];
-                      return <button key={step} onClick={() => toggleStep(channel.id, step)} className={`relative h-9 rounded border text-[9px] font-black ${active ? "border-black bg-[#f0b84a] text-black shadow-[0_0_12px_rgba(240,184,74,.4)]" : "border-black/70 bg-[#252d30] text-white/20"} ${current ? "ring-2 ring-[#42ff56]" : ""}`}>{step + 1}{glide && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#23d4ff]" />}</button>;
+                      return <button key={step} onClick={() => toggleStep(channel.id, step)} className={`relative h-8 rounded-sm border text-[8px] font-black ${active ? "border-black bg-[#f0b84a] text-black shadow-[0_0_10px_rgba(240,184,74,.36)]" : "border-black/70 bg-[#252d30] text-white/20"} ${current ? "outline outline-2 outline-[#42ff56]" : ""}`}>{glide && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[#23d4ff]" />}</button>;
                     })}
                   </div>
                 </div>
               ))}
             </div>
 
-            <section className="mt-4 grid gap-4 lg:grid-cols-3">
-              <div className="rounded-2xl border border-white/10 bg-black/35 p-4"><p className="font-mono text-[10px] font-black uppercase tracking-widest text-cyan-200/70">808 Glide</p><p className="mt-2 text-sm text-white/55">Blue dots mark slide steps. Full pitch glide automation comes next.</p></div>
-              <div className="rounded-2xl border border-white/10 bg-black/35 p-4"><p className="font-mono text-[10px] font-black uppercase tracking-widest text-pink-200/70">Piano Roll Dock</p><p className="mt-2 text-sm text-white/55">Reserved lower dock for melodic notes, 808 pitch, and chop editing.</p></div>
-              <div className="rounded-2xl border border-white/10 bg-black/35 p-4"><p className="font-mono text-[10px] font-black uppercase tracking-widest text-yellow-200/70">Pattern Arranger</p><p className="mt-2 text-sm text-white/55">Arrange intro, verse, hook, bridge, and outro from pattern blocks.</p></div>
+            <section className="mt-2 grid gap-2 text-xs text-white/50 lg:grid-cols-3">
+              <div className="rounded-lg border border-white/10 bg-black/35 p-2"><b className="text-cyan-200/80">808 Glide</b> Blue dots mark slide steps.</div>
+              <div className="rounded-lg border border-white/10 bg-black/35 p-2"><b className="text-pink-200/80">Piano Roll</b> Dock reserved below rack.</div>
+              <div className="rounded-lg border border-white/10 bg-black/35 p-2"><b className="text-yellow-200/80">Arranger</b> Pattern blocks come next.</div>
             </section>
           </main>
         </div>
