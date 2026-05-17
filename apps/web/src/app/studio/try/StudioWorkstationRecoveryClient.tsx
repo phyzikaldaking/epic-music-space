@@ -33,6 +33,8 @@ type FullscreenPanel = "mixer" | "beat" | "editor" | "timeline" | "mastering" | 
 type SplitView = "none" | "beat-mixer" | "editor-mixer" | "timeline-spectral";
 type FloatingPanel = "plugins" | "spectral" | "mixer" | "chat" | "ai" | "notes";
 type WorkspaceLayout = { layoutPreset: LayoutPreset; fullscreenPanel: FullscreenPanel; splitView: SplitView; floatingPanels: FloatingPanel[] };
+type BeatStem = { id?: string; label: string; name?: string; soundUrl?: string; soundId?: string; kind?: TrackKind; volume?: number; pan?: number; mixTemplate?: string };
+type BeatStemsEventDetail = { stems?: BeatStem[]; kit?: string; instrument?: string; autoMix?: boolean };
 
 const DEFAULT_KIT: DrumKitId = "trap";
 const PROJECT_ID = "ems-default-project";
@@ -89,6 +91,21 @@ function safeLayout(value: unknown): WorkspaceLayout | null {
 }
 function trackNameForKind(kind: TrackKind, index: number) { if (kind === "audio") return `Audio ${index}`; if (kind === "instrument") return `Instrument ${index}`; if (kind === "midi") return `MIDI ${index}`; if (kind === "drum") return `Drum ${index}`; if (kind === "bass") return `Bass ${index}`; if (kind === "vocal") return `Vocal ${index}`; if (kind === "fx") return `FX ${index}`; return `Melody ${index}`; }
 function notify(message: string) { if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message } })); }
+function safeTrackKind(value: unknown, label = ""): TrackKind {
+  const valid: TrackKind[] = ["audio", "instrument", "midi", "drum", "melody", "bass", "vocal", "fx"];
+  if (typeof value === "string" && valid.includes(value as TrackKind)) return value as TrackKind;
+  return label === "808" ? "bass" : ["KICK", "SNARE", "CLAP", "HAT", "OPEN", "PERC", "CRASH"].includes(label) ? "drum" : "audio";
+}
+function stemMixPatch(stem: BeatStem, index: number): Pick<StudioTrack, "volume" | "pan" | "meter"> {
+  const label = `${stem.label} ${stem.name ?? ""}`.toLowerCase();
+  if (label.includes("kick")) return { volume: 84, pan: 0, meter: 86 };
+  if (label.includes("808") || label.includes("bass")) return { volume: 76, pan: 0, meter: 74 };
+  if (label.includes("snare") || label.includes("clap")) return { volume: 72, pan: 0, meter: 68 };
+  if (label.includes("hat") || label.includes("open") || label.includes("perc")) return { volume: 56, pan: index % 2 ? 18 : -18, meter: 54 };
+  if (label.includes("crash") || label.includes("fx")) return { volume: 48, pan: index % 2 ? 28 : -28, meter: 42 };
+  return { volume: 62, pan: index % 2 ? 8 : -8, meter: 52 };
+}
+function stemColor(label: string, index: number) { return PADS.find((pad) => pad.label === label)?.color ?? COLORS[index % COLORS.length]; }
 
 export default function StudioWorkstationRecoveryClient() {
   const [mode, setMode] = useState<Mode>("studio");
@@ -152,18 +169,56 @@ export default function StudioWorkstationRecoveryClient() {
   function firePad(kind: DrumKind, label: string) { getStudioAudioEngine().playDrum(kind, { kit: DEFAULT_KIT, velocity: 0.9 }); setActivePad(label); void realtime.push({ type: "beat.pattern", target: label, payload: { kind, label, bpm, bar: transport.bar, positionSec: transport.positionSec } }); window.setTimeout(() => setActivePad(null), 120); }
   function updateTrack(id: string, patch: Partial<StudioTrack>) { setTracks((current) => { const next = current.map((track) => track.id === id ? { ...track, ...patch } : track); const changed = next.find((track) => track.id === id); undoRedo.record("Track change", current, next); void realtime.push({ type: "track.upsert", target: id, payload: changed ?? { id, ...patch } }); return next; }); }
   function addTrack(kind: TrackKind = "audio") { const index = tracks.length + 1; const track: StudioTrack = { id: `track-${Date.now()}`, name: trackNameForKind(kind, index), kind, color: COLORS[index % COLORS.length], volume: 62, pan: 0, muted: false, solo: false, armed: kind !== "audio" && kind !== "fx", meter: 24, height: kind === "audio" ? 72 : kind === "midi" ? 64 : 60, collapsed: false }; setTracks((current) => { const master = current.find((item) => item.id === "master"); const next = master ? [...current.filter((item) => item.id !== "master"), track, master] : [...current, track]; undoRedo.record("Add track", current, next); return next; }); void realtime.push({ type: "track.upsert", target: track.id, payload: track }); selectTrack(track.id); activateMode(kind === "audio" || kind === "vocal" ? "edit" : "beat"); }
+  function ingestBeatStems(detail: BeatStemsEventDetail) {
+    const stems = Array.isArray(detail.stems) ? detail.stems : [];
+    if (!stems.length) return;
+    const createdAt = Date.now();
+    setTracks((current) => {
+      const master = current.find((item) => item.id === "master");
+      const existing = current.filter((item) => item.id !== "master");
+      const nextStems = stems.map((stem, index): StudioTrack => {
+        const mix = stemMixPatch(stem, index);
+        const kind = safeTrackKind(stem.kind, stem.label);
+        return {
+          id: `stem-${stem.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${createdAt}-${index}`,
+          name: `${stem.label} Stem`,
+          kind,
+          color: stemColor(stem.label, index),
+          volume: typeof stem.volume === "number" ? stem.volume : mix.volume,
+          pan: typeof stem.pan === "number" ? stem.pan : mix.pan,
+          muted: false,
+          solo: false,
+          armed: false,
+          meter: mix.meter,
+          height: kind === "bass" ? 64 : kind === "drum" ? 60 : 72,
+          collapsed: false,
+          customSoundUrl: stem.soundUrl,
+          sampleName: stem.name ?? `${stem.label} Stem`,
+        };
+      });
+      const next = master ? [...existing, ...nextStems, master] : [...existing, ...nextStems];
+      undoRedo.record("Import beat stems", current, next);
+      nextStems.forEach((track) => void realtime.push({ type: "track.upsert", target: track.id, payload: track }));
+      return next;
+    });
+    setSelectedTrack(`stem-${stems[0].label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${createdAt}-0`);
+    setMode("mix");
+    setWorkspaceLayout((current) => ({ ...current, splitView: "beat-mixer", fullscreenPanel: null, layoutPreset: "engineer" }));
+    notify(`Loaded ${stems.length} named beat stems into the studio mixer.`);
+  }
   function armSelectedTrack() { updateTrack(selectedTrack, { armed: true }); activateMode("edit"); notify("Track armed. Import or record real audio to create a clip."); }
   function openAudioImport() { importInputRef.current?.click(); }
   async function importAudioFile(file: File) { const track = tracks.find((item) => item.id === selectedTrack) ?? tracks[0]; if (!track) return; const engine = getStudioAudioEngine(); if (engine.context.state === "suspended") await engine.context.resume(); const { bufferRef, clip } = await decodeFileToClip(file, engine.context, track, Math.max(0, transport.positionSec)); setAudioBuffers((current) => [...current, bufferRef]); setClips((current) => [...current, clip]); setSelectedClipId(clip.id); void realtime.push({ type: "clip.upsert", target: clip.id, payload: clip }); notify(`Imported ${file.name} as a real decoded clip.`); }
 
   useEffect(() => { function onKeyDown(event: KeyboardEvent) { if (isTypingTarget(event.target)) return; if (event.code === "Space" && !event.repeat) { event.preventDefault(); togglePlay(); } const pad = PADS[Number(event.key) - 1]; if (pad) firePad(pad.kind, pad.label); } window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [transport.playing, transport.bar, transport.positionSec, bpm]);
+  useEffect(() => { function onBeatStems(event: Event) { ingestBeatStems((event as CustomEvent<BeatStemsEventDetail>).detail ?? {}); } window.addEventListener("ems:beat-stems-to-session", onBeatStems); return () => window.removeEventListener("ems:beat-stems-to-session", onBeatStems); }, []);
   useEffect(() => { void realtime.push({ type: "transport.patch", payload: { playing: transport.playing, bpm, bar: transport.bar, positionSec: transport.positionSec } }); }, [transport.playing, transport.bar, transport.positionSec, bpm]);
   useEffect(() => () => { getStudioAudioEngine().close().catch(() => undefined); }, []);
 
   const timelineNode = <StudioProfiler id="studio-timeline"><StudioTelemetryProfiler id="timeline" onRender={telemetry.onRender}><StudioTimeline tracks={tracks} selectedTrack={selectedTrack} setSelectedTrack={selectTrack} playing={transport.playing} bar={transport.bar} positionSec={transport.positionSec} bpm={bpm} runtime={runtimeState} selectedClipId={selectedClipId} setSelectedClipId={setSelectedClipId} updateTrack={updateTrack} /></StudioTelemetryProfiler></StudioProfiler>;
   const mixerNode = <StudioProfiler id="studio-mixer"><StudioTelemetryProfiler id="mixer" onRender={telemetry.onRender}><LazyStudioMixerPanel tracks={tracks} selectedTrack={selectedTrack} playing={transport.playing} setSelectedTrack={selectTrack} updateTrack={updateTrack} /></StudioTelemetryProfiler></StudioProfiler>;
   const editorNode = <LazyStudioEditorPanel tracks={tracks} selectedTrack={selectedTrack} setSelectedTrack={selectTrack} addTrack={addTrack} />;
-  const beatNode = <StudioProfiler id="studio-beat"><LazyBeatTrackLane tracks={instrumentTracks} pads={PADS} activePad={activePad} selectedTrack={selectedTrack} midi={midi} onFirePad={firePad} onAddTrack={addTrack} onSelectTrack={selectTrack} /></StudioProfiler>;
+  const beatNode = <StudioProfiler id="studio-beat"><LazyBeatTrackLane tracks={instrumentTracks} pads={PADS} activePad={activePad} selectedTrack={selectedTrack} midi={midi} onFirePad={firePad} onAddTrack={addTrack} onSelectTrack={selectTrack} onUpdateTrack={updateTrack} /></StudioProfiler>;
   const spectralNode = <StudioTelemetryProfiler id="spectral-meter" onRender={telemetry.onRender}><LazyStudioSpectralSuitePanel /></StudioTelemetryProfiler>;
   const activeRuntimeMode: StudioRuntimeMode = workspaceLayout.fullscreenPanel === "mastering" ? "mastering" : mode;
   const activeLabel = workspaceLayout.fullscreenPanel ?? (workspaceLayout.splitView !== "none" ? workspaceLayout.splitView : mode);
