@@ -72,34 +72,43 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
   }
 
   return (
-    <section data-testid="studio-live-mixer" className={`relative block h-[calc(100dvh-142px)] w-full min-w-0 overflow-hidden rounded-lg p-1 ${EMS_VISUAL_SYSTEM.shell.console}`}>
-      <div className={`sticky top-0 z-20 flex min-h-10 items-center gap-2 rounded-md border border-white/10 px-2 py-1 backdrop-blur ${EMS_VISUAL_SYSTEM.shell.rail}`}>
-        <button onClick={autoMix} className={`rounded border px-3 py-1.5 ${EMS_VISUAL_SYSTEM.text.tiny} ${EMS_VISUAL_SYSTEM.button.cyan}`}>AI Mix All</button>
-        <button onClick={resetSolosMutes} className={`rounded border px-3 py-1.5 ${EMS_VISUAL_SYSTEM.text.tiny} ${EMS_VISUAL_SYSTEM.button.idle}`}>Clear M/S</button>
-        <div className="ml-2 hidden h-5 w-24 items-center justify-center rounded-sm border border-cyan-300/20 bg-black/50 font-mono text-[8px] font-black uppercase tracking-[0.22em] text-cyan-100/80 md:flex">EMS</div>
-        <div className="ml-auto flex items-center gap-2">
-          <span className={`h-2.5 w-2.5 rounded-full ${playing ? "animate-pulse bg-green-300 shadow-[0_0_14px_#86efac]" : "bg-white/20"}`} />
-          <div className="h-6 w-52 overflow-hidden rounded-sm border border-cyan-300/25 bg-black/75 p-0.5 shadow-[inset_0_0_14px_rgba(0,0,0,.85)]">
-            <div className="h-full rounded-[2px] bg-gradient-to-r from-green-300 via-yellow-300 to-pink-400 transition-[width] duration-75" style={{ width: `${masterPeak}%` }} />
+    <section data-testid="studio-live-mixer" className="relative block h-[calc(100dvh-142px)] w-full min-w-0 overflow-hidden rounded-xl border border-[#31383b] bg-[#050708] p-2 shadow-[0_24px_70px_rgba(0,0,0,.72),inset_0_1px_0_rgba(255,255,255,.08),inset_0_-24px_60px_rgba(0,0,0,.62)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(116,140,146,.18),transparent_34%),radial-gradient(circle_at_10%_100%,rgba(34,211,238,.10),transparent_28%),linear-gradient(180deg,rgba(255,255,255,.035),transparent_18%,rgba(0,0,0,.35))]" />
+      <div className="relative z-10 flex h-full min-h-0 flex-col rounded-lg border border-black/80 bg-[#0a0d0f] shadow-[inset_0_0_0_1px_rgba(255,255,255,.04),inset_0_0_40px_rgba(0,0,0,.75)]">
+        <div className="sticky top-0 z-20 flex min-h-14 items-center gap-3 border-b border-black/80 bg-[#161b1d]/98 px-3 py-2 shadow-[0_12px_24px_rgba(0,0,0,.48)] backdrop-blur">
+          <div className="hidden min-w-[180px] md:block">
+            <div className="font-mono text-[9px] font-black uppercase tracking-[0.28em] text-[#c7d4d6]">EMS SSL Console</div>
+            <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.14em] text-[#738085]">Faders / tone / sends</div>
           </div>
-          <span className="w-16 text-right font-mono text-[9px] font-black uppercase tracking-widest text-white/45">{Math.round(masterPeak)}%</span>
+          <div className="rounded-sm border border-[#2d3538] bg-[#07090a] px-3 py-2 font-mono text-[9px] font-black uppercase tracking-[0.18em] text-[#a7b5b8] shadow-[inset_0_0_14px_rgba(0,0,0,.75)]">
+            {safeTracks.length} CH
+          </div>
+          <button onClick={autoMix} className={`rounded border px-3 py-1.5 ${EMS_VISUAL_SYSTEM.text.tiny} ${EMS_VISUAL_SYSTEM.button.cyan}`}>AI Mix All</button>
+          <button onClick={resetSolosMutes} className={`rounded border px-3 py-1.5 ${EMS_VISUAL_SYSTEM.text.tiny} ${EMS_VISUAL_SYSTEM.button.idle}`}>Clear M/S</button>
+          <div className="ml-auto flex items-center gap-2">
+            <span className={`h-2.5 w-2.5 rounded-full ${playing ? "animate-pulse bg-green-300 shadow-[0_0_14px_#86efac]" : "bg-white/20"}`} />
+            <div className="h-7 w-52 overflow-hidden rounded-sm border border-[#334045] bg-black/80 p-0.5 shadow-[inset_0_0_14px_rgba(0,0,0,.85)]">
+              <div className="h-full rounded-[2px] bg-gradient-to-r from-green-300 via-yellow-300 to-red-500 transition-[width] duration-75" style={{ width: `${masterPeak}%` }} />
+            </div>
+            <span className="w-16 text-right font-mono text-[9px] font-black uppercase tracking-widest text-white/45">{Math.round(masterPeak)}%</span>
+          </div>
         </div>
-      </div>
-      <div className="ems-scroll h-[calc(100%-44px)] w-full min-w-0 overflow-auto rounded-md border border-white/10 bg-[radial-gradient(circle_at_top,#10202a_0%,#030507_42%,#000_100%)] p-1">
-        <div className="flex min-h-full w-max min-w-full items-stretch gap-1 pb-4">
-          {safeTracks.map((track, index) => (
-            <StudioMixerChannel
-              key={track.id}
-              track={track}
-              channelIndex={index + 1}
-              selected={selectedTrack === track.id}
-              playing={playing}
-              bindMeter={meters.bindMeter}
-              onSelect={() => setSelectedTrack(track.id)}
-              onUpdate={(patch) => track.id !== "empty-mix" && updateTrack(track.id, patch)}
-              onAiMix={() => autoMixTrack(track, index)}
-            />
-          ))}
+        <div className="ems-scroll min-h-0 flex-1 overflow-auto border-t border-white/5 bg-[radial-gradient(circle_at_top,#182226_0%,#070a0c_42%,#000_100%)] p-3">
+          <div className="flex min-h-full w-max min-w-full items-stretch gap-2 pb-5">
+            {safeTracks.map((track, index) => (
+              <StudioMixerChannel
+                key={track.id}
+                track={track}
+                channelIndex={index + 1}
+                selected={selectedTrack === track.id}
+                playing={playing}
+                bindMeter={meters.bindMeter}
+                onSelect={() => setSelectedTrack(track.id)}
+                onUpdate={(patch) => track.id !== "empty-mix" && updateTrack(track.id, patch)}
+                onAiMix={() => autoMixTrack(track, index)}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </section>
