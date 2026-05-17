@@ -41,13 +41,12 @@ function StudioTransportBar({
   onSave,
   onRestore,
 }: Props) {
-  const realtimeClass = realtimeStatus === "conflict" ? "border-yellow-300/35 text-yellow-100" : realtimeStatus === "error" ? "border-red-300/35 text-red-100" : "border-cyan-300/30 text-cyan-100";
+  const transportPercent = Math.min(100, Math.max(0, bar / 1.28));
+  const syncProblem = realtimeStatus === "conflict" || realtimeStatus === "error";
 
   return (
-    <header className="flex min-h-[38px] shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-[#10151b]/90 px-2 py-1 shadow-[inset_0_0_10px_rgba(255,255,255,.03)] backdrop-blur">
-      <Link href="/" title="Home" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-cyan-300/30 bg-cyan-300/10 text-cyan-200">⌂</Link>
-      <div className="hidden rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[9px] uppercase tracking-widest text-white/55 md:block">EMS</div>
-
+    <header className="flex min-h-10 shrink-0 items-center gap-2 border-b border-black/80 bg-[#11171a] px-3 py-1.5 shadow-[0_10px_24px_rgba(0,0,0,.35)]">
+      <Link href="/" title="Home" className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-black/45 text-[11px] text-white/60">⌂</Link>
       <button
         type="button"
         onClick={(event) => {
@@ -56,28 +55,39 @@ function StudioTransportBar({
           onTogglePlay();
         }}
         title={playing ? "Stop" : "Play"}
-        className={`h-8 w-8 shrink-0 rounded-full border text-xs font-black ${playing ? "border-pink-300 bg-pink-500/20 text-pink-100" : "border-cyan-300 bg-cyan-300/15 text-cyan-100"}`}
+        className={`h-8 w-12 shrink-0 rounded-md border font-mono text-xs font-black ${playing ? "border-red-300/50 bg-red-400 text-black" : "border-green-300/50 bg-green-300 text-black"}`}
       >
-        {playing ? "■" : "▶"}
+        {playing ? "STOP" : "PLAY"}
       </button>
-      <button type="button" disabled={!canUndo} onClick={onUndo} title="Undo" className="hidden h-8 rounded-full border border-white/10 px-2 text-[9px] font-black uppercase tracking-widest text-white/60 disabled:opacity-30 sm:block">↶</button>
-      <button type="button" disabled={!canRedo} onClick={onRedo} title="Redo" className="hidden h-8 rounded-full border border-white/10 px-2 text-[9px] font-black uppercase tracking-widest text-white/60 disabled:opacity-30 sm:block">↷</button>
+      <button type="button" disabled={!canUndo} onClick={onUndo} title="Undo" className="h-8 w-8 rounded-md border border-white/10 bg-black/35 text-[10px] font-black text-white/60 disabled:opacity-25">↶</button>
+      <button type="button" disabled={!canRedo} onClick={onRedo} title="Redo" className="h-8 w-8 rounded-md border border-white/10 bg-black/35 text-[10px] font-black text-white/60 disabled:opacity-25">↷</button>
 
-      <div className="pointer-events-none mx-1 h-4 min-w-[70px] flex-1 rounded-sm border border-white/10 bg-black/55 p-0.5" aria-hidden="true">
-        <div className="h-full rounded-sm bg-cyan-300" style={{ width: `${Math.min(100, Math.max(2, bar / 1.28))}%` }} />
+      <div className="grid h-8 w-20 shrink-0 place-items-center rounded-md border border-white/10 bg-black/50 font-mono text-xs font-black text-cyan-100">{bpm} BPM</div>
+      <div className="flex h-8 shrink-0 items-center rounded-md border border-white/10 bg-black/40 px-1">
+        <button type="button" onClick={() => onChangeBpm(-1)} className="h-6 w-6 rounded bg-white/5 text-white/70">-</button>
+        <button type="button" onClick={() => onChangeBpm(1)} className="h-6 w-6 rounded bg-white/5 text-white/70">+</button>
       </div>
 
-      <span className={`hidden h-8 items-center rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-widest lg:flex ${realtimeClass}`}>{realtimeStatus} r{realtimeRevision}</span>
-      <Link href="/studio/beat-machine" title="Beat Machine" className="hidden h-8 rounded-full border border-yellow-300/30 px-2 py-2 text-[9px] font-black uppercase tracking-widest text-yellow-100 md:block">🥁</Link>
-      <Link href="/studio/export" title="Export" className="hidden h-8 rounded-full border border-green-300/30 px-2 py-2 text-[9px] font-black uppercase tracking-widest text-green-100 lg:block">⬇</Link>
+      <div className="mx-1 min-w-[160px] flex-1">
+        <div className="mb-1 flex items-center justify-between font-mono text-[8px] uppercase tracking-[0.18em] text-white/32">
+          <span>Timeline</span>
+          <span>{Math.round(transportPercent)}%</span>
+        </div>
+        <div className="h-2 rounded-sm border border-black/80 bg-black/70 p-px" aria-hidden="true">
+          <div className="h-full rounded-[2px] bg-cyan-300 transition-[width] duration-75" style={{ width: `${transportPercent}%` }} />
+        </div>
+      </div>
+
+      {syncProblem && (
+        <span className="hidden rounded-md border border-yellow-300/35 bg-yellow-300/10 px-2 py-1 font-mono text-[9px] font-black uppercase tracking-widest text-yellow-100 lg:inline-flex">
+          Sync {realtimeRevision}
+        </span>
+      )}
+
+      <Link href="/studio/beat-machine" title="Beat Machine" className="hidden h-8 rounded-md border border-white/10 bg-black/35 px-2 py-2 text-[9px] font-black uppercase tracking-widest text-white/60 md:block">Beat</Link>
+      <Link href="/studio/export" title="Export" className="hidden h-8 rounded-md border border-white/10 bg-black/35 px-2 py-2 text-[9px] font-black uppercase tracking-widest text-white/60 lg:block">Export</Link>
 
       <StudioRecoveryStatus status={recoveryStatus as never} lastSavedAt={lastSavedAt} canRestore={canRestore} onSave={onSave} onRestore={onRestore} />
-
-      <div className="flex h-8 shrink-0 items-center rounded-full border border-white/10 bg-black/40 px-1">
-        <button type="button" onClick={() => onChangeBpm(-1)} className="h-6 w-6 rounded-full bg-white/5">-</button>
-        <span className="w-10 text-center font-mono text-xs font-black text-cyan-100">{bpm}</span>
-        <button type="button" onClick={() => onChangeBpm(1)} className="h-6 w-6 rounded-full bg-white/5">+</button>
-      </div>
     </header>
   );
 }
