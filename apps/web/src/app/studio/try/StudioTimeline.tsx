@@ -24,6 +24,8 @@ type CloudRestorePayload = {
   selectedTrack?: string | null;
 };
 
+type TimelineTool = "select" | "trim" | "grab" | "fade" | "split" | "pencil" | "snap";
+
 const DEFAULT_ROW_HEIGHT = 56;
 const COLLAPSED_ROW_HEIGHT = 28;
 const VIEWPORT_HEIGHT = 420;
@@ -32,6 +34,15 @@ const PLACED_CLIPS_STORAGE_KEY = "ems-studio-placed-sound-clips";
 const SOUNDS_STORAGE_KEY = "ems-studio-sounds";
 const DRAG_SOUND_STORAGE_KEY = "ems-studio-drag-sound";
 const MIN_CLIP_DURATION = 0.125;
+const TOOLBAR: { id: TimelineTool; icon: string; label: string }[] = [
+  { id: "select", icon: "↖", label: "Select" },
+  { id: "trim", icon: "⇤", label: "Trim" },
+  { id: "grab", icon: "✋", label: "Grab" },
+  { id: "fade", icon: "◢", label: "Fade" },
+  { id: "split", icon: "✂", label: "Split" },
+  { id: "pencil", icon: "✎", label: "Pencil" },
+  { id: "snap", icon: "▦", label: "Snap" },
+];
 
 function safeLoadPlacedClips(): StudioClip[] {
   if (typeof window === "undefined") return [];
@@ -112,10 +123,44 @@ function notify(message: string) {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message } }));
 }
 
+function trackAiMixPatch(track: StudioTrack, index: number): Partial<StudioTrack> {
+  const label = `${track.name} ${track.kind}`.toLowerCase();
+  if (label.includes("kick") || label.includes("drum")) return { volume: 84, pan: 0, meter: 86 };
+  if (label.includes("808") || label.includes("bass")) return { volume: 76, pan: 0, meter: 74 };
+  if (label.includes("snare") || label.includes("clap")) return { volume: 72, pan: 0, meter: 68 };
+  if (label.includes("hat") || label.includes("perc")) return { volume: 56, pan: index % 2 ? 18 : -18, meter: 55 };
+  if (label.includes("vocal") || label.includes("vox") || label.includes("lead")) return { volume: 82, pan: 0, meter: 80 };
+  if (label.includes("fx")) return { volume: 48, pan: index % 2 ? 28 : -28, meter: 42 };
+  if (label.includes("melody") || label.includes("keys") || label.includes("pad") || label.includes("instrument")) return { volume: 60, pan: index % 2 ? 14 : -14, meter: 54 };
+  return { volume: 62, pan: index % 2 ? 8 : -8, meter: 52 };
+}
+
+function clipColorFor(clip: StudioClip, track: StudioTrack) {
+  const source = `${clip.source ?? ""} ${clip.name}`.toLowerCase();
+  if (source.includes("generated") || source.includes("ai")) return "#9cff2e";
+  if (source.includes("vocal") || source.includes("vox")) return "#ff2dcb";
+  if (source.includes("808") || source.includes("bass")) return "#ffd166";
+  if (source.includes("kick") || source.includes("snare") || source.includes("hat") || source.includes("perc")) return "#00f0ff";
+  if (track.kind === "vocal") return "#ff2dcb";
+  if (track.kind === "bass") return "#ffd166";
+  if (track.kind === "fx") return "#a855ff";
+  return clip.color ?? track.color ?? "#00f0ff";
+}
+
+function clipBackground(color: string, active: boolean) {
+  return `linear-gradient(180deg, ${color}${active ? "44" : "2e"}, rgba(0,0,0,.76) 34%, rgba(0,0,0,.9)), linear-gradient(90deg, ${color}12, transparent 54%)`;
+}
+
+function metersForTrack(track: StudioTrack, index: number) {
+  const fallback = Math.max(10, Math.min(96, (track.meter ?? 28) + (index % 4) * 3));
+  return track.muted ? 4 : fallback;
+}
+
 function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar, positionSec = 0, bpm = 92, runtime, selectedClipId, setSelectedClipId, updateTrack }: Props) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const activeAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const [zoom, setZoom] = useState(runtime?.zoom ?? 1);
+  const [tool, setTool] = useState<TimelineTool>("select");
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [placedClips, setPlacedClips] = useState<StudioClip[]>(safeLoadPlacedClips);
@@ -130,7 +175,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
   const lastClipEnd = clips.reduce((max, clip) => Math.max(max, clip.startSec + clip.durationSec), 0);
   const timelineWidth = useMemo(() => Math.max(1180, Math.round(Math.max(64, positionSec + 64, lastClipEnd + 12) * pixelsPerSecond)), [lastClipEnd, pixelsPerSecond, positionSec]);
   const cursorX = Math.min(timelineWidth - 24, Math.max(24, positionSec * pixelsPerSecond));
-  const rowMetrics = useMemo(() => tracks.map((track) => ({ id: track.id, height: track.collapsed ? COLLAPSED_ROW_HEIGHT : Math.max(36, Math.min(220, track.height ?? DEFAULT_ROW_HEIGHT)) })), [tracks]);
+  const rowMetrics = useMemo(() => tracks.map((track) => ({ id: track.id, height: track.collapsed ? COLLAPSED_ROW_HEIGHT : Math.max(48, Math.min(220, track.height ?? DEFAULT_ROW_HEIGHT)) })), [tracks]);
   const offsets = useMemo(() => {
     let top = 0;
     return rowMetrics.map((row) => {
@@ -217,6 +262,21 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
     notify("Split clip at playhead.");
   }
 
+  function updateTrackSafe(track: StudioTrack, patch: Partial<StudioTrack>) {
+    updateTrack?.(track.id, patch);
+    if (!updateTrack) notify("Track update bridge is not available on this route yet.");
+  }
+
+  function aiMixTrack(track: StudioTrack, index: number) {
+    updateTrackSafe(track, trackAiMixPatch(track, index));
+    notify(`AI mixed ${track.name}.`);
+  }
+
+  function selectTool(nextTool: TimelineTool) {
+    setTool(nextTool);
+    notify(`${nextTool.toUpperCase()} tool selected.`);
+  }
+
   async function placeSoundOnTimeline(sound: StudioSoundAsset, startSec = positionSec, trackId = selectedTrack) {
     const track = tracks.find((item) => item.id === trackId) ?? tracks.find((item) => item.id === selectedTrack) ?? tracks[0];
     if (!track) return;
@@ -228,7 +288,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
       startSec: snapToGrid(startSec, bpm),
       durationSec: Math.max(0.25, waveform.durationSec || sound.durationSec || 4),
       offsetSec: 0,
-      color: track.color,
+      color: clipColorFor({ name: sound.name, source: sound.source === "generated" ? "generated" : "import" } as StudioClip, track),
       waveform,
       audioUrl: sound.url,
       soundAssetId: sound.id,
@@ -506,16 +566,31 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
 
   return (
     <section data-testid="studio-moving-timeline" className={`relative min-h-[360px] overflow-visible rounded-xl border border-white/12 bg-[#071015] [contain:layout_paint] ${playing ? "shadow-[0_0_38px_rgba(246,214,61,.14)]" : "shadow-[0_0_22px_rgba(34,211,238,.08)]"}`}>
-      <div className="sticky top-0 z-[4] flex h-9 items-center justify-between border-b border-white/10 bg-[#071015]/95 px-3 text-[10px] uppercase tracking-widest text-white/45 backdrop-blur">
-        <span>Timeline · select · drag · trim · fade · split · nudge · duplicate · delete</span>
-        <div className="flex items-center gap-2">
-          {selectedClip ? <span className="hidden text-yellow-100 md:inline">Selected: {selectedClip.name}</span> : null}
+      <div className="sticky top-0 z-[4] flex min-h-12 flex-wrap items-center gap-2 border-b border-white/10 bg-[#071015]/95 px-3 py-2 text-[10px] uppercase tracking-widest text-white/45 backdrop-blur">
+        <div className="flex items-center gap-1 rounded-md border border-cyan-300/20 bg-black/45 p-1">
+          {TOOLBAR.map((item) => (
+            <button
+              key={item.id}
+              title={item.label}
+              onClick={() => selectTool(item.id)}
+              className={`grid h-8 w-8 place-items-center rounded border text-sm ${tool === item.id ? "border-cyan-300 bg-cyan-300/18 text-cyan-100 shadow-[0_0_16px_rgba(0,240,255,.22)]" : "border-white/10 bg-white/[.03] text-white/45 hover:text-white"}`}
+            >
+              {item.icon}
+            </button>
+          ))}
+        </div>
+        <span className="rounded border border-white/10 bg-white/[.035] px-2 py-1 text-white/45">Tool: {tool}</span>
+        {selectedClip ? <span className="hidden max-w-[260px] truncate rounded border border-yellow-300/20 bg-yellow-300/10 px-2 py-1 text-yellow-100 md:inline">Selected: {selectedClip.name}</span> : null}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <button disabled={!selectedClip || !isPlacedClip(selectedClip.id)} onClick={splitSelectedClip} className="rounded border border-pink-300/25 px-2 py-1 text-pink-100 disabled:opacity-30">split ⌘E</button>
           <button disabled={!selectedClip || !isPlacedClip(selectedClip.id)} onClick={() => selectedClip && duplicatePlacedClip(selectedClip)} className="rounded border border-green-300/25 px-2 py-1 text-green-100 disabled:opacity-30">dup ⌘D</button>
           <button disabled={!selectedClipId || !isPlacedClip(selectedClipId)} onClick={() => selectedClipId && deletePlacedClip(selectedClipId)} className="rounded border border-red-300/25 px-2 py-1 text-red-100 disabled:opacity-30">del</button>
           <span className={`${playing ? "text-yellow-200" : "text-white/35"}`}>Bar {bar} · Beat {beatLabel}</span>
           <span className="text-white/35">{positionSec.toFixed(2)}s</span>
-          <span className="text-white/35">Zoom {Math.round(zoom * 100)}%</span>
+          <label className="flex items-center gap-2 rounded border border-cyan-300/20 bg-black/45 px-2 py-1 text-cyan-100">
+            Zoom {Math.round(zoom * 100)}%
+            <input aria-label="Timeline zoom" type="range" min="0.45" max="3" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} className="w-28 accent-cyan-300" />
+          </label>
           <button onClick={() => setZoom((value) => Math.max(0.45, Number((value - 0.1).toFixed(2))))} className="rounded border border-white/10 px-2 py-1 text-white/55">-</button>
           <button onClick={() => setZoom((value) => Math.min(3, Number((value + 0.1).toFixed(2))))} className="rounded border border-white/10 px-2 py-1 text-white/55">+</button>
           <button onClick={fitToWindow} className="rounded border border-cyan-300/25 px-2 py-1 text-cyan-100">fit</button>
@@ -542,6 +617,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
               const selected = selectedTrack === track.id;
               const rowHeight = rowMetrics[absoluteIndex]?.height ?? DEFAULT_ROW_HEIGHT;
               const trackClips = clips.filter((clip) => clip.trackId === track.id);
+              const meter = metersForTrack(track, absoluteIndex);
               return (
                 <div
                   key={track.id}
@@ -549,9 +625,22 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
                   className={`group relative mb-1 flex items-center overflow-hidden rounded-md border text-left transition-transform duration-150 will-change-transform hover:translate-x-0.5 ${selected ? "border-cyan-300/70 bg-cyan-300/8 shadow-[0_0_18px_rgba(34,211,238,.16)]" : "border-white/8 bg-white/[.025]"}`}
                   style={{ width: timelineWidth - 16, height: rowHeight }}
                 >
-                  <span className="sticky left-0 z-[4] h-full w-32 shrink-0 border-r border-white/10 bg-[#071015]/95 px-2 py-2 text-[10px] font-black uppercase tracking-widest backdrop-blur" style={{ color: track.color }}>
-                    {track.name}<span className="block text-[8px] text-white/35">{track.kind}</span>
-                  </span>
+                  <div className="sticky left-0 z-[4] flex h-full w-40 shrink-0 gap-2 border-r border-cyan-300/20 bg-[#071015]/95 px-2 py-1.5 text-[10px] font-black uppercase tracking-widest backdrop-blur" style={{ color: track.color }}>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate">{track.name}</div>
+                      <div className="mt-0.5 text-[8px] text-white/35">{track.kind}</div>
+                      <div className="mt-1 grid grid-cols-4 gap-1">
+                        <button onClick={(event) => { event.stopPropagation(); updateTrackSafe(track, { muted: !track.muted }); }} className={`rounded border px-1 py-0.5 text-[8px] ${track.muted ? "border-pink-300 bg-pink-300/20 text-pink-100" : "border-white/10 bg-black/35 text-white/45"}`}>M</button>
+                        <button onClick={(event) => { event.stopPropagation(); updateTrackSafe(track, { solo: !track.solo }); }} className={`rounded border px-1 py-0.5 text-[8px] ${track.solo ? "border-yellow-300 bg-yellow-300/20 text-yellow-100" : "border-white/10 bg-black/35 text-white/45"}`}>S</button>
+                        <button onClick={(event) => { event.stopPropagation(); updateTrackSafe(track, { armed: !track.armed }); }} className={`rounded border px-1 py-0.5 text-[8px] ${track.armed ? "border-red-300 bg-red-300/20 text-red-100" : "border-white/10 bg-black/35 text-white/45"}`}>R</button>
+                        <button onClick={(event) => { event.stopPropagation(); aiMixTrack(track, absoluteIndex); }} className="rounded border border-cyan-300/30 bg-cyan-300/10 px-1 py-0.5 text-[8px] text-cyan-100">AI</button>
+                      </div>
+                      <div className="mt-1 flex items-center gap-1 text-[7px] text-white/30"><span>VOL {track.volume}</span><span>PAN {track.pan}</span></div>
+                    </div>
+                    <div className="relative h-full w-2 rounded bg-black/70 ring-1 ring-white/10">
+                      <div className="absolute bottom-0 left-0 right-0 rounded bg-gradient-to-t from-green-400 via-yellow-300 to-pink-400" style={{ height: `${meter}%` }} />
+                    </div>
+                  </div>
                   <div className="relative h-full flex-1">
                     {!track.collapsed && trackClips.length === 0 ? <StudioWaveform color={track.color} row={row} tiles={visibleTileCount} tileStart={visibleTileStart} playing={playing || selected} waveform={track.waveform} /> : null}
                     {!track.collapsed && trackClips.map((clip: StudioClip) => {
@@ -561,6 +650,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
                       const editable = isPlacedClip(clip.id);
                       const fadeInWidth = Math.min(width * 0.48, (clip.fadeInSec ?? 0) * pixelsPerSecond);
                       const fadeOutWidth = Math.min(width * 0.48, (clip.fadeOutSec ?? 0) * pixelsPerSecond);
+                      const clipColor = clipColorFor(clip, track);
                       return (
                         <button
                           key={clip.id}
@@ -573,8 +663,8 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
                             if (editable) updatePlacedClip(clip.id, { selected: true });
                           }}
                           data-testid={`studio-clip-${clip.id}`}
-                          className={`absolute top-1 bottom-1 overflow-hidden rounded-lg border bg-black/70 text-left shadow-[0_0_16px_rgba(0,0,0,.3)] ${active ? "border-yellow-300/80 ring-2 ring-yellow-300/30" : "border-white/15"}`}
-                          style={{ left, width }}
+                          className={`absolute top-1 bottom-1 overflow-hidden rounded-lg border text-left ${active ? "ring-2 ring-yellow-300/35" : ""}`}
+                          style={{ left, width, borderColor: active ? "rgba(253,224,71,.9)" : `${clipColor}77`, background: clipBackground(clipColor, active), boxShadow: active ? `0 0 24px ${clipColor}55` : `0 0 16px ${clipColor}22` }}
                         >
                           {editable && <span onPointerDown={(event) => beginClipTrim(event, clip, "start")} className="absolute left-0 top-0 z-30 h-full w-2 cursor-ew-resize bg-cyan-300/35" title="Trim start" />}
                           {editable && <span onPointerDown={(event) => beginClipTrim(event, clip, "end")} className="absolute right-0 top-0 z-30 h-full w-2 cursor-ew-resize bg-cyan-300/35" title="Trim end" />}
@@ -583,7 +673,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
                           <div className="pointer-events-none absolute bottom-0 top-5 z-10 bg-gradient-to-r from-black/75 to-transparent" style={{ width: fadeInWidth }} />
                           <div className="pointer-events-none absolute bottom-0 top-5 right-0 z-10 bg-gradient-to-l from-black/75 to-transparent" style={{ width: fadeOutWidth }} />
                           <div className="flex h-5 items-center justify-between bg-white/[.06] px-2 text-[9px] font-black uppercase tracking-widest text-white/65">
-                            <span className="truncate" style={{ color: clip.color ?? track.color }}>{clip.name}</span>
+                            <span className="truncate" style={{ color: clipColor }}>{clip.name}</span>
                             {active && editable ? (
                               <span className="flex shrink-0 gap-1">
                                 <span onClick={(event) => { event.stopPropagation(); splitSelectedClip(); }} className="rounded border border-pink-300/35 px-1 text-pink-100">split</span>
@@ -593,14 +683,14 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
                             ) : <span>{clip.source}</span>}
                           </div>
                           <div className="relative h-[calc(100%-1.25rem)]">
-                            <StudioWaveform color={clip.color ?? track.color} row={row} playing={playing || active} waveform={clip.waveform} />
+                            <StudioWaveform color={clipColor} row={row} playing={playing || active} waveform={clip.waveform} />
                             {active ? <div className="absolute bottom-1 left-2 rounded bg-black/70 px-2 py-0.5 text-[9px] uppercase text-yellow-100">{clip.startSec.toFixed(2)}s · {clip.durationSec.toFixed(2)}s · in {(clip.fadeInSec ?? 0).toFixed(2)} · out {(clip.fadeOutSec ?? 0).toFixed(2)}</div> : null}
                           </div>
                         </button>
                       );
                     })}
                   </div>
-                  <div onPointerDown={(event) => beginResize(event, track)} className="absolute bottom-0 left-32 right-0 z-[5] h-2 cursor-ns-resize bg-transparent group-hover:bg-cyan-300/25" aria-hidden="true" />
+                  <div onPointerDown={(event) => beginResize(event, track)} className="absolute bottom-0 left-40 right-0 z-[5] h-2 cursor-ns-resize bg-transparent group-hover:bg-cyan-300/25" aria-hidden="true" />
                 </div>
               );
             })}
@@ -608,11 +698,8 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
         </div>
       </div>
 
-      <div className={`absolute right-3 top-12 rounded-full border px-2 py-1 text-[10px] font-black uppercase will-change-transform ${playing ? "animate-pulse border-green-300/35 bg-green-300/10 text-green-200" : "border-white/10 bg-white/[.04] text-white/40"}`}>
+      <div className={`absolute right-3 top-14 rounded-full border px-2 py-1 text-[10px] font-black uppercase will-change-transform ${playing ? "animate-pulse border-green-300/35 bg-green-300/10 text-green-200" : "border-white/10 bg-white/[.04] text-white/40"}`}>
         {playing ? "Playing" : "Idle"}
-      </div>
-      <div className="absolute bottom-2 right-3 rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/45">
-        Shortcuts: del erase · arrows nudge · shift+arrows big nudge · ⌘D duplicate · ⌘E split · ⌘+/- zoom
       </div>
     </section>
   );
