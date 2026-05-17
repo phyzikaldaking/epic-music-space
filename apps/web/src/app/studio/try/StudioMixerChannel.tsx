@@ -11,6 +11,7 @@ type Props = {
   channelIndex?: number;
   onSelect: () => void;
   onUpdate: (patch: Partial<StudioTrack>) => void;
+  onAiMix?: () => void;
   bindMeter?: (trackId: string) => (element: HTMLDivElement | null) => void;
 };
 
@@ -25,7 +26,7 @@ function busFor(track: StudioTrack) {
   return track.name.toLowerCase().includes("master") ? "MASTER" : "AUX BUS";
 }
 
-function StudioMixerChannel({ track, selected, playing = false, channelIndex = 1, onSelect, onUpdate, bindMeter }: Props) {
+function StudioMixerChannel({ track, selected, playing = false, channelIndex = 1, onSelect, onUpdate, onAiMix, bindMeter }: Props) {
   const meterState = playing && !track.muted ? "shadow-[0_0_18px_rgba(34,211,238,.24)]" : "";
   const bus = busFor(track);
 
@@ -33,7 +34,7 @@ function StudioMixerChannel({ track, selected, playing = false, channelIndex = 1
     <div
       onClick={onSelect}
       data-testid={`studio-mixer-channel-${track.id}`}
-      className={`flex h-[880px] w-[148px] shrink-0 flex-col rounded-xl border p-2 transition-shadow duration-200 ${selected ? "bg-white/[.075]" : "bg-black/55"} ${meterState}`}
+      className={`flex h-[920px] w-[148px] shrink-0 flex-col rounded-xl border p-2 transition-shadow duration-200 ${selected ? "bg-white/[.075]" : "bg-black/55"} ${meterState}`}
       style={{
         borderColor: selected ? track.color : "rgba(255,255,255,.12)",
         boxShadow: selected ? `0 0 20px ${track.color}36` : undefined,
@@ -53,6 +54,16 @@ function StudioMixerChannel({ track, selected, playing = false, channelIndex = 1
       <div className="mt-2 h-10 overflow-hidden rounded bg-black/75 ring-1 ring-white/10">
         <StudioWaveform color={track.color} row={1} playing={playing || selected} />
       </div>
+
+      <button
+        onClick={(event) => {
+          event.stopPropagation();
+          onAiMix?.();
+        }}
+        className="mt-2 rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-2 py-2 text-[9px] font-black uppercase tracking-widest text-cyan-100"
+      >
+        AI Mix Track
+      </button>
 
       <div className="mt-2 grid gap-1">
         {INSERTS.map((insert, index) => <button key={insert} onClick={(event) => event.stopPropagation()} className={`rounded border px-2 py-1 text-[8px] font-black uppercase ${index < 2 ? "border-cyan-300/25 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[.03] text-white/35"}`}>{insert}</button>)}
