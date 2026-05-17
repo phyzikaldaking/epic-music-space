@@ -31,6 +31,7 @@ const OVERSCAN = 5;
 const PLACED_CLIPS_STORAGE_KEY = "ems-studio-placed-sound-clips";
 const SOUNDS_STORAGE_KEY = "ems-studio-sounds";
 const DRAG_SOUND_STORAGE_KEY = "ems-studio-drag-sound";
+const MIN_CLIP_DURATION = 0.125;
 
 function safeLoadPlacedClips(): StudioClip[] {
   if (typeof window === "undefined") return [];
@@ -107,6 +108,10 @@ function loadStoredSound(id: string): StudioSoundAsset | undefined {
   }
 }
 
+function notify(message: string) {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message } }));
+}
+
 function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar, positionSec = 0, bpm = 92, runtime, selectedClipId, setSelectedClipId, updateTrack }: Props) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const activeAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -121,6 +126,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
   const baseClips = runtime?.clips ?? [];
   const baseClipIds = useMemo(() => new Set(baseClips.map((clip) => clip.id)), [baseClips]);
   const clips = useMemo(() => [...baseClips, ...placedClips.filter((clip) => !baseClipIds.has(clip.id))], [baseClipIds, baseClips, placedClips]);
+  const selectedClip = useMemo(() => clips.find((clip) => clip.id === selectedClipId) ?? null, [clips, selectedClipId]);
   const lastClipEnd = clips.reduce((max, clip) => Math.max(max, clip.startSec + clip.durationSec), 0);
   const timelineWidth = useMemo(() => Math.max(1180, Math.round(Math.max(64, positionSec + 64, lastClipEnd + 12) * pixelsPerSecond)), [lastClipEnd, pixelsPerSecond, positionSec]);
   const cursorX = Math.min(timelineWidth - 24, Math.max(24, positionSec * pixelsPerSecond));
@@ -141,24 +147,29 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
   const visibleTileStart = Math.max(0, Math.floor(scrollLeft / 240));
   const visibleTileCount = Math.min(8, Math.max(2, Math.ceil((viewportRef.current?.clientWidth ?? 900) / 240) + 2));
 
-  function updatePlacedClip(id: string, patch: Partial<StudioClip>) {
+  function commitPlacedClips(updater: (current: StudioClip[]) => StudioClip[]) {
     setPlacedClips((current) => {
-      const next = current.map((clip) => clip.id === id ? { ...clip, ...patch } : clip);
+      const next = updater(current);
       persistPlacedClips(next);
       return next;
     });
+  }
+
+  function updatePlacedClip(id: string, patch: Partial<StudioClip>) {
+    commitPlacedClips((current) => current.map((clip) => clip.id === id ? { ...clip, ...patch } : clip));
+  }
+
+  function isPlacedClip(id: string) {
+    return placedClips.some((clip) => clip.id === id);
   }
 
   function deletePlacedClip(id: string) {
     const audio = activeAudioRef.current.get(id);
     if (audio) audio.pause();
     activeAudioRef.current.delete(id);
-    setPlacedClips((current) => {
-      const next = current.filter((clip) => clip.id !== id);
-      persistPlacedClips(next);
-      return next;
-    });
+    commitPlacedClips((current) => current.filter((clip) => clip.id !== id));
     setSelectedClipId?.(null);
+    notify("Deleted selected clip.");
   }
 
   function duplicatePlacedClip(clip: StudioClip) {
@@ -167,13 +178,43 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
       id: `clip-copy-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name: `${clip.name} copy`,
       startSec: snapToGrid(clip.startSec + secondsPerBeat, bpm),
+      selected: true,
     };
-    setPlacedClips((current) => {
-      const next = [...current, copy];
-      persistPlacedClips(next);
-      return next;
-    });
+    commitPlacedClips((current) => [...current.map((item) => ({ ...item, selected: false })), copy]);
     setSelectedClipId?.(copy.id);
+    notify("Duplicated clip.");
+  }
+
+  function nudgeSelectedClip(direction: -1 | 1, large = false) {
+    if (!selectedClipId || !isPlacedClip(selectedClipId)) return;
+    const amount = large ? secondsPerBeat : secondsPerBeat / 4;
+    updatePlacedClip(selectedClipId, { startSec: snapToGrid(Math.max(0, (selectedClip?.startSec ?? 0) + direction * amount), bpm) });
+    notify(`${direction < 0 ? "Nudged left" : "Nudged right"}.`);
+  }
+
+  function splitSelectedClip() {
+    if (!selectedClip || !isPlacedClip(selectedClip.id)) return;
+    const splitAt = positionSec;
+    const clipEnd = selectedClip.startSec + selectedClip.durationSec;
+    if (splitAt <= selectedClip.startSec + MIN_CLIP_DURATION || splitAt >= clipEnd - MIN_CLIP_DURATION) {
+      notify("Move playhead inside the clip before splitting.");
+      return;
+    }
+    const leftDuration = splitAt - selectedClip.startSec;
+    const rightDuration = clipEnd - splitAt;
+    const rightClip: StudioClip = {
+      ...selectedClip,
+      id: `clip-split-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: `${selectedClip.name} split`,
+      startSec: splitAt,
+      offsetSec: selectedClip.offsetSec + leftDuration,
+      durationSec: rightDuration,
+      fadeInSec: 0,
+      selected: true,
+    };
+    commitPlacedClips((current) => current.flatMap((clip) => clip.id === selectedClip.id ? [{ ...clip, durationSec: leftDuration, selected: false }, rightClip] : [{ ...clip, selected: false }]));
+    setSelectedClipId?.(rightClip.id);
+    notify("Split clip at playhead.");
   }
 
   async function placeSoundOnTimeline(sound: StudioSoundAsset, startSec = positionSec, trackId = selectedTrack) {
@@ -192,16 +233,15 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
       audioUrl: sound.url,
       soundAssetId: sound.id,
       muted: false,
+      selected: true,
+      fadeInSec: 0.01,
+      fadeOutSec: 0.01,
       source: sound.source === "generated" ? "generated" : "import",
     };
-    setPlacedClips((current) => {
-      const next = [...current, clip];
-      persistPlacedClips(next);
-      return next;
-    });
+    commitPlacedClips((current) => [...current.map((item) => ({ ...item, selected: false })), clip]);
     setSelectedTrack(track.id);
     setSelectedClipId?.(clip.id);
-    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `Placed ${sound.name} on ${track.name}.` } }));
+    notify(`Placed ${sound.name} on ${track.name}.`);
   }
 
   useEffect(() => {
@@ -226,11 +266,56 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
       persistPlacedClips(payload.placedClips);
       if (typeof payload.selectedTrack === "string") setSelectedTrack(payload.selectedTrack);
       if (typeof payload.selectedClipId === "string" || payload.selectedClipId === null) setSelectedClipId?.(payload.selectedClipId ?? null);
-      window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `Restored ${payload.placedClips.length} timeline clips from cloud.` } }));
+      notify(`Restored ${payload.placedClips.length} timeline clips from cloud.`);
     }
     window.addEventListener("ems:studio-cloud-restored", onCloudRestore);
     return () => window.removeEventListener("ems:studio-cloud-restored", onCloudRestore);
   }, [setSelectedClipId, setSelectedTrack]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) return;
+      const command = event.metaKey || event.ctrlKey;
+      if ((event.key === "Backspace" || event.key === "Delete") && selectedClipId) {
+        event.preventDefault();
+        if (isPlacedClip(selectedClipId)) deletePlacedClip(selectedClipId);
+        return;
+      }
+      if (command && event.key.toLowerCase() === "d" && selectedClip) {
+        event.preventDefault();
+        if (isPlacedClip(selectedClip.id)) duplicatePlacedClip(selectedClip);
+        return;
+      }
+      if (command && event.key.toLowerCase() === "e") {
+        event.preventDefault();
+        splitSelectedClip();
+        return;
+      }
+      if (event.key === "ArrowLeft" && selectedClipId) {
+        event.preventDefault();
+        nudgeSelectedClip(-1, event.shiftKey);
+        return;
+      }
+      if (event.key === "ArrowRight" && selectedClipId) {
+        event.preventDefault();
+        nudgeSelectedClip(1, event.shiftKey);
+        return;
+      }
+      if (command && event.key === "=") {
+        event.preventDefault();
+        setZoom((value) => Math.min(3, Number((value + 0.1).toFixed(2))));
+        return;
+      }
+      if (command && event.key === "-") {
+        event.preventDefault();
+        setZoom((value) => Math.max(0.45, Number((value - 0.1).toFixed(2))));
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedClip, selectedClipId, placedClips, positionSec, secondsPerBeat]);
 
   useEffect(() => {
     if (!playing) {
@@ -332,11 +417,12 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
     event.preventDefault();
     event.stopPropagation();
     setSelectedClipId?.(clip.id);
+    setSelectedTrack(clip.trackId);
     const startX = event.clientX;
     const originalStart = clip.startSec;
     const onMove = (move: globalThis.PointerEvent) => {
       const deltaSec = (move.clientX - startX) / Math.max(1, pixelsPerSecond);
-      updatePlacedClip(clip.id, { startSec: snapToGrid(originalStart + deltaSec, bpm) });
+      updatePlacedClip(clip.id, { startSec: snapToGrid(originalStart + deltaSec, bpm), selected: true });
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
@@ -357,17 +443,36 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
     const onMove = (move: globalThis.PointerEvent) => {
       const deltaSec = (move.clientX - startX) / Math.max(1, pixelsPerSecond);
       if (side === "start") {
-        const maxStart = originalStart + originalDuration - 0.25;
+        const maxStart = originalStart + originalDuration - MIN_CLIP_DURATION;
         const nextStart = snapToGrid(Math.min(maxStart, Math.max(0, originalStart + deltaSec)), bpm);
         const startDelta = Math.max(0, nextStart - originalStart);
         updatePlacedClip(clip.id, {
           startSec: nextStart,
           offsetSec: Math.max(0, originalOffset + startDelta),
-          durationSec: Math.max(0.25, originalDuration - startDelta),
+          durationSec: Math.max(MIN_CLIP_DURATION, originalDuration - startDelta),
         });
       } else {
-        updatePlacedClip(clip.id, { durationSec: Math.max(0.25, snapToGrid(originalDuration + deltaSec, bpm)) });
+        updatePlacedClip(clip.id, { durationSec: Math.max(MIN_CLIP_DURATION, snapToGrid(originalDuration + deltaSec, bpm)) });
       }
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  function beginClipFade(event: PointerEvent<HTMLSpanElement>, clip: StudioClip, side: "in" | "out") {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedClipId?.(clip.id);
+    const startX = event.clientX;
+    const original = side === "in" ? clip.fadeInSec ?? 0 : clip.fadeOutSec ?? 0;
+    const onMove = (move: globalThis.PointerEvent) => {
+      const deltaSec = (move.clientX - startX) / Math.max(1, pixelsPerSecond);
+      const next = Math.max(0, Math.min(clip.durationSec * 0.5, original + (side === "in" ? deltaSec : -deltaSec)));
+      updatePlacedClip(clip.id, side === "in" ? { fadeInSec: Number(next.toFixed(3)) } : { fadeOutSec: Number(next.toFixed(3)) });
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
@@ -402,8 +507,12 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
   return (
     <section data-testid="studio-moving-timeline" className={`relative min-h-[360px] overflow-visible rounded-xl border border-white/12 bg-[#071015] [contain:layout_paint] ${playing ? "shadow-[0_0_38px_rgba(246,214,61,.14)]" : "shadow-[0_0_22px_rgba(34,211,238,.08)]"}`}>
       <div className="sticky top-0 z-[4] flex h-9 items-center justify-between border-b border-white/10 bg-[#071015]/95 px-3 text-[10px] uppercase tracking-widest text-white/45 backdrop-blur">
-        <span>Timeline · move · trim · duplicate · delete · placed clip playback</span>
+        <span>Timeline · select · drag · trim · fade · split · nudge · duplicate · delete</span>
         <div className="flex items-center gap-2">
+          {selectedClip ? <span className="hidden text-yellow-100 md:inline">Selected: {selectedClip.name}</span> : null}
+          <button disabled={!selectedClip || !isPlacedClip(selectedClip.id)} onClick={splitSelectedClip} className="rounded border border-pink-300/25 px-2 py-1 text-pink-100 disabled:opacity-30">split ⌘E</button>
+          <button disabled={!selectedClip || !isPlacedClip(selectedClip.id)} onClick={() => selectedClip && duplicatePlacedClip(selectedClip)} className="rounded border border-green-300/25 px-2 py-1 text-green-100 disabled:opacity-30">dup ⌘D</button>
+          <button disabled={!selectedClipId || !isPlacedClip(selectedClipId)} onClick={() => selectedClipId && deletePlacedClip(selectedClipId)} className="rounded border border-red-300/25 px-2 py-1 text-red-100 disabled:opacity-30">del</button>
           <span className={`${playing ? "text-yellow-200" : "text-white/35"}`}>Bar {bar} · Beat {beatLabel}</span>
           <span className="text-white/35">{positionSec.toFixed(2)}s</span>
           <span className="text-white/35">Zoom {Math.round(zoom * 100)}%</span>
@@ -449,7 +558,9 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
                       const left = Math.max(0, clip.startSec * pixelsPerSecond);
                       const width = Math.max(48, clip.durationSec * pixelsPerSecond);
                       const active = selectedClipId === clip.id;
-                      const editable = placedClips.some((item) => item.id === clip.id);
+                      const editable = isPlacedClip(clip.id);
+                      const fadeInWidth = Math.min(width * 0.48, (clip.fadeInSec ?? 0) * pixelsPerSecond);
+                      const fadeOutWidth = Math.min(width * 0.48, (clip.fadeOutSec ?? 0) * pixelsPerSecond);
                       return (
                         <button
                           key={clip.id}
@@ -459,17 +570,23 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
                             event.stopPropagation();
                             setSelectedTrack(track.id);
                             setSelectedClipId?.(clip.id);
+                            if (editable) updatePlacedClip(clip.id, { selected: true });
                           }}
                           data-testid={`studio-clip-${clip.id}`}
                           className={`absolute top-1 bottom-1 overflow-hidden rounded-lg border bg-black/70 text-left shadow-[0_0_16px_rgba(0,0,0,.3)] ${active ? "border-yellow-300/80 ring-2 ring-yellow-300/30" : "border-white/15"}`}
                           style={{ left, width }}
                         >
-                          {editable && <span onPointerDown={(event) => beginClipTrim(event, clip, "start")} className="absolute left-0 top-0 z-20 h-full w-2 cursor-ew-resize bg-cyan-300/35" />}
-                          {editable && <span onPointerDown={(event) => beginClipTrim(event, clip, "end")} className="absolute right-0 top-0 z-20 h-full w-2 cursor-ew-resize bg-cyan-300/35" />}
+                          {editable && <span onPointerDown={(event) => beginClipTrim(event, clip, "start")} className="absolute left-0 top-0 z-30 h-full w-2 cursor-ew-resize bg-cyan-300/35" title="Trim start" />}
+                          {editable && <span onPointerDown={(event) => beginClipTrim(event, clip, "end")} className="absolute right-0 top-0 z-30 h-full w-2 cursor-ew-resize bg-cyan-300/35" title="Trim end" />}
+                          {editable && <span onPointerDown={(event) => beginClipFade(event, clip, "in")} className="absolute left-2 top-0 z-40 h-4 w-4 cursor-ew-resize rounded-br-lg border-b border-r border-green-200/70 bg-green-300/40" title="Fade in" />}
+                          {editable && <span onPointerDown={(event) => beginClipFade(event, clip, "out")} className="absolute right-2 top-0 z-40 h-4 w-4 cursor-ew-resize rounded-bl-lg border-b border-l border-green-200/70 bg-green-300/40" title="Fade out" />}
+                          <div className="pointer-events-none absolute bottom-0 top-5 z-10 bg-gradient-to-r from-black/75 to-transparent" style={{ width: fadeInWidth }} />
+                          <div className="pointer-events-none absolute bottom-0 top-5 right-0 z-10 bg-gradient-to-l from-black/75 to-transparent" style={{ width: fadeOutWidth }} />
                           <div className="flex h-5 items-center justify-between bg-white/[.06] px-2 text-[9px] font-black uppercase tracking-widest text-white/65">
                             <span className="truncate" style={{ color: clip.color ?? track.color }}>{clip.name}</span>
                             {active && editable ? (
                               <span className="flex shrink-0 gap-1">
+                                <span onClick={(event) => { event.stopPropagation(); splitSelectedClip(); }} className="rounded border border-pink-300/35 px-1 text-pink-100">split</span>
                                 <span onClick={(event) => { event.stopPropagation(); duplicatePlacedClip(clip); }} className="rounded border border-green-300/35 px-1 text-green-100">dup</span>
                                 <span onClick={(event) => { event.stopPropagation(); deletePlacedClip(clip.id); }} className="rounded border border-red-300/35 px-1 text-red-100">del</span>
                               </span>
@@ -477,6 +594,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
                           </div>
                           <div className="relative h-[calc(100%-1.25rem)]">
                             <StudioWaveform color={clip.color ?? track.color} row={row} playing={playing || active} waveform={clip.waveform} />
+                            {active ? <div className="absolute bottom-1 left-2 rounded bg-black/70 px-2 py-0.5 text-[9px] uppercase text-yellow-100">{clip.startSec.toFixed(2)}s · {clip.durationSec.toFixed(2)}s · in {(clip.fadeInSec ?? 0).toFixed(2)} · out {(clip.fadeOutSec ?? 0).toFixed(2)}</div> : null}
                           </div>
                         </button>
                       );
@@ -492,6 +610,9 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
 
       <div className={`absolute right-3 top-12 rounded-full border px-2 py-1 text-[10px] font-black uppercase will-change-transform ${playing ? "animate-pulse border-green-300/35 bg-green-300/10 text-green-200" : "border-white/10 bg-white/[.04] text-white/40"}`}>
         {playing ? "Playing" : "Idle"}
+      </div>
+      <div className="absolute bottom-2 right-3 rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/45">
+        Shortcuts: del erase · arrows nudge · shift+arrows big nudge · ⌘D duplicate · ⌘E split · ⌘+/- zoom
       </div>
     </section>
   );
