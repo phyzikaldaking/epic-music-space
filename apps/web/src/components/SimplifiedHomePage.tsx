@@ -4,219 +4,219 @@ import Link from "next/link";
 import EMSWorldIntro from "@/components/EMSWorldIntro";
 
 const worldCards = [
-  { title: "Studio", body: "Record, arrange, mix, and save sessions in your own creative room.", href: "/studio/try", icon: "🎙️" },
-  { title: "Beats", body: "Browse sounds, build patterns, open the piano roll, and cook with producers.", href: "/studio/beat-machine", icon: "🥁" },
-  { title: "Marketplace", body: "Sell beats, kits, services, licenses, templates, and creative work.", href: "/marketplace", icon: "💿" },
-  { title: "Events", body: "Host listening rooms, battles, drops, and performance moments.", href: "/events", icon: "🌃" },
+  {
+    title: "Studio",
+    body: "Desktop-first AI music creation built for hip-hop and R&B creators. Record vocals, arrange tracks, export stems, and finish real records.",
+    href: "/studio/try",
+    icon: "🎙️",
+  },
+  {
+    title: "Mobile Flow",
+    body: "Start ideas on your phone, review sessions anywhere, and move projects into the full desktop studio when it is time to finish.",
+    href: "/get-the-app",
+    icon: "📱",
+  },
+  {
+    title: "Marketplace",
+    body: "Sell beats, loops, templates, licenses, engineering, and creative services directly to artists and producers.",
+    href: "/marketplace",
+    icon: "💿",
+  },
+  {
+    title: "Collaboration",
+    body: "Premium creator collaboration with shared sessions, stem exchange, review tools, and pro workflows.",
+    href: "/studio/try",
+    icon: "🤝",
+  },
 ];
 
-const lanes = [
-  ["Artists", "Upload music, host rooms, sell licenses, and grow fans.", "/auth/signup?role=ARTIST"],
-  ["Producers", "Sell beats, kits, loops, templates, and collaboration work.", "/marketplace"],
-  ["Engineers", "Offer mixing, mastering, tuning, and session services.", "/services"],
-  ["Fans", "Discover songs, vote, follow, and support creators early.", "/explore"],
-] as const;
-
-const trustPoints = [
-  "Artists keep their masters",
-  "Clear licensing terms",
-  "Secure creator sessions",
-  "Built for music creators",
+const doctrine = [
+  "Hip-hop & R&B first",
+  "Desktop web is the full studio",
+  "Phone is for fast creation and review",
+  "Artist-friendly commercial rights",
+  "Premium-quality exports and stems",
+  "Collaboration for Pro and Studio tiers",
 ];
 
-function BassWaveform() {
-  return (
-    <div className="absolute inset-x-0 bottom-0 z-[2] flex h-32 items-end justify-center gap-1 opacity-75 sm:h-44" aria-hidden="true">
-      {Array.from({ length: 96 }, (_, index) => {
-        const height = 14 + ((index * 31) % 92) + Math.sin(index / 3) * 22;
-        return (
-          <span
-            key={index}
-            className="ems-home-wave block w-1 rounded-full bg-cyan-300/55 shadow-[0_0_14px_rgba(34,211,238,.7)]"
-            style={{ height: `${Math.max(10, height)}px`, animationDelay: `${index * 22}ms` }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function PerformanceBackdrop() {
-  return (
-    <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,rgba(255,45,146,.18),transparent_25%),radial-gradient(circle_at_20%_45%,rgba(34,211,238,.18),transparent_28%),linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.94))]" />
-      <div className="absolute inset-x-[-10%] top-[-8%] h-[58vh] rotate-[-3deg] bg-[linear-gradient(110deg,transparent_0%,rgba(34,211,238,.26)_18%,transparent_34%,rgba(255,45,146,.22)_55%,transparent_70%,rgba(253,224,71,.17)_88%,transparent_100%)] blur-xl" />
-      <div className="absolute left-[5%] top-[18%] h-[52vh] w-[28vw] min-w-[220px] rounded-full bg-[radial-gradient(circle,rgba(255,255,255,.22),rgba(255,45,146,.14)_32%,transparent_68%)] blur-2xl" />
-      <div className="absolute right-[8%] top-[18%] h-[48vh] w-[30vw] min-w-[220px] rounded-full bg-[radial-gradient(circle,rgba(34,211,238,.2),rgba(34,211,238,.1)_38%,transparent_72%)] blur-2xl" />
-      <div className="absolute bottom-[17%] left-[7%] hidden h-[56vh] w-[20vw] min-w-[210px] opacity-45 sm:block">
-        <div className="absolute bottom-0 left-1/2 h-[42%] w-[35%] -translate-x-1/2 rounded-t-full bg-black/80 shadow-[0_0_48px_rgba(255,45,146,.25)]" />
-        <div className="absolute bottom-[36%] left-1/2 h-[17%] w-[22%] -translate-x-1/2 rounded-full bg-black/90" />
-        <div className="absolute bottom-[60%] left-[56%] h-[30%] w-[4px] rotate-[-13deg] rounded-full bg-cyan-200/45 shadow-[0_0_18px_rgba(34,211,238,.8)]" />
-        <div className="absolute bottom-[69%] left-[62%] h-4 w-20 rounded-full bg-white/55 shadow-[0_0_20px_rgba(255,255,255,.65)]" />
-      </div>
-      <div className="absolute bottom-[14%] right-[6%] hidden h-[52vh] w-[26vw] min-w-[260px] opacity-40 lg:block">
-        <div className="absolute bottom-0 h-[46%] w-full rounded-t-[3rem] border border-cyan-300/20 bg-black/70 shadow-[inset_0_0_40px_rgba(34,211,238,.12)]" />
-        <div className="absolute bottom-[34%] left-[7%] h-[18%] w-[38%] rounded-xl border border-white/10 bg-cyan-300/10" />
-        <div className="absolute bottom-[34%] right-[7%] h-[18%] w-[38%] rounded-xl border border-white/10 bg-pink-300/10" />
-        <div className="absolute bottom-[48%] left-[18%] h-[24%] w-[64%] rounded-t-3xl border border-yellow-300/10 bg-black/85" />
-      </div>
-      <div className="absolute inset-x-0 bottom-[13%] flex justify-center gap-3 opacity-35">
-        {Array.from({ length: 34 }, (_, index) => (
-          <span key={index} className="block rounded-t-full bg-black/90" style={{ width: `${10 + (index % 4) * 2}px`, height: `${30 + ((index * 17) % 68)}px` }} />
-        ))}
-      </div>
-    </div>
-  );
-}
+const creatorPlans = [
+  {
+    tier: "Free",
+    focus: "Try the magic",
+    details: "Limited AI generations, mobile idea capture, MP3 exports, and a recording trial.",
+  },
+  {
+    tier: "Creator",
+    focus: "Release real music",
+    details: "Commercial rights, WAV exports, recording access, templates, and expanded AI credits.",
+  },
+  {
+    tier: "Pro",
+    focus: "Serious production",
+    details: "Stem export, priority AI generation, premium audio quality, collaboration, and advanced workflow tools.",
+  },
+];
 
 export default function SimplifiedHomePage() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#030307] text-white">
       <EMSWorldIntro />
 
-      <section className="relative isolate min-h-screen overflow-hidden px-4 py-6 sm:px-6 lg:px-8">
-        <PerformanceBackdrop />
-        <BassWaveform />
-        <div className="absolute inset-0 z-[1] bg-[linear-gradient(90deg,rgba(0,0,0,.94),rgba(0,0,0,.42)_48%,rgba(0,0,0,.88)),radial-gradient(circle_at_50%_52%,transparent_0%,rgba(0,0,0,.24)_48%,rgba(0,0,0,.82)_100%)]" aria-hidden="true" />
-        <div className="absolute left-1/2 top-1/2 z-[1] h-[46rem] w-[46rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/15 shadow-[0_0_120px_rgba(34,211,238,.2),inset_0_0_90px_rgba(255,45,146,.08)]" aria-hidden="true" />
-        <div className="absolute left-1/2 top-1/2 z-[1] h-[28rem] w-[28rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-pink-300/15 shadow-[0_0_90px_rgba(255,45,146,.18)]" aria-hidden="true" />
+      <section className="relative overflow-hidden border-b border-white/10 px-4 py-20 sm:px-6 lg:px-8">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,.18),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,45,146,.16),transparent_30%)]" />
 
-        <div className="relative z-10 mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl flex-col justify-center">
-          <nav className="absolute left-0 right-0 top-0 flex items-center justify-between gap-4 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-white/50">
-            <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-cyan-100">EMS</span>
-            <div className="hidden items-center gap-2 sm:flex">
-              <Link href="/studio/try" className="rounded-full border border-white/10 bg-white/[.04] px-3 py-2 hover:border-cyan-300/35 hover:text-cyan-100">Studio</Link>
-              <Link href="/marketplace" className="rounded-full border border-white/10 bg-white/[.04] px-3 py-2 hover:border-pink-300/35 hover:text-pink-100">Marketplace</Link>
-              <Link href="/explore" className="rounded-full border border-white/10 bg-white/[.04] px-3 py-2 hover:border-yellow-300/35 hover:text-yellow-100">Explore</Link>
-            </div>
-          </nav>
-
-          <div className="grid items-center gap-8 pt-20 lg:grid-cols-[1.05fr_.95fr]">
-            <div className="max-w-3xl">
-              <p className="mb-4 inline-flex rounded-full border border-pink-300/25 bg-pink-300/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.34em] text-pink-100">
-                A world built for music
-              </p>
-              <h1 className="font-display text-5xl uppercase leading-[0.86] tracking-[0.04em] text-white drop-shadow-[0_0_32px_rgba(34,211,238,.28)] sm:text-7xl lg:text-8xl xl:text-9xl">
-                Enter the music space.
-              </h1>
-              <p className="mt-6 max-w-2xl text-base leading-8 text-white/72 sm:text-lg">
-                Step inside a creator universe where artists perform, producers build, engineers mix, fans discover, and every room feels like music is happening right now.
-              </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href="/studio/try" className="group inline-flex min-h-14 items-center justify-center rounded-full border border-cyan-300/55 bg-cyan-300/16 px-8 py-4 text-center font-display text-sm uppercase tracking-[0.24em] text-cyan-100 shadow-[0_0_38px_rgba(34,211,238,.24)] transition hover:scale-[1.02] hover:bg-cyan-300/25">
-                  Enter the Space <span className="ml-2 transition group-hover:translate-x-1">→</span>
-                </Link>
-                <Link href="/marketplace" className="inline-flex min-h-14 items-center justify-center rounded-full border border-pink-300/35 bg-pink-300/10 px-8 py-4 text-center font-display text-sm uppercase tracking-[0.24em] text-pink-100 transition hover:scale-[1.02] hover:bg-pink-300/18">
-                  Hear the Marketplace
-                </Link>
-              </div>
-              <div className="mt-8 flex flex-wrap gap-2" aria-label="Platform trust points">
-                {trustPoints.map((point) => (
-                  <span key={point} className="rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-white/62 backdrop-blur">
-                    {point}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="relative mx-auto aspect-square w-full max-w-[560px]">
-              <div className="ems-home-portal absolute inset-0 rounded-full border border-cyan-300/30 bg-[radial-gradient(circle,rgba(34,211,238,.16),rgba(255,45,146,.08)_42%,transparent_68%)] shadow-[0_0_110px_rgba(34,211,238,.25),inset_0_0_90px_rgba(255,255,255,.05)]" />
-              <div className="absolute inset-[14%] rounded-full border border-pink-300/25 bg-black/55 shadow-[inset_0_0_60px_rgba(255,45,146,.18)] backdrop-blur-sm" />
-              <div className="absolute inset-[26%] grid place-items-center rounded-full border border-yellow-300/20 bg-[radial-gradient(circle,rgba(253,224,71,.2),rgba(0,0,0,.78)_60%)] shadow-[0_0_50px_rgba(253,224,71,.18)]">
-                <div className="text-center">
-                  <p className="text-[10px] font-black uppercase tracking-[0.42em] text-cyan-200/75">Portal</p>
-                  <p className="mt-2 font-display text-6xl font-black uppercase tracking-[0.08em] text-white drop-shadow-[0_0_28px_rgba(255,255,255,.45)]">EMS</p>
-                  <p className="mt-2 text-[10px] font-black uppercase tracking-[0.28em] text-pink-200/75">Live creative world</p>
-                </div>
-              </div>
-              <div className="absolute left-[8%] top-[12%] h-14 w-14 rounded-full border border-cyan-300/25 bg-cyan-300/12 blur-[1px]" />
-              <div className="absolute bottom-[14%] right-[10%] h-20 w-20 rounded-full border border-pink-300/25 bg-pink-300/10 blur-[1px]" />
-            </div>
-          </div>
-
-          <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {worldCards.map((item, index) => (
-              <Link key={item.title} href={item.href} className="ems-home-card group rounded-2xl border border-white/10 bg-black/42 p-5 shadow-[0_0_34px_rgba(0,0,0,.28)] backdrop-blur-xl transition hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-white/[.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300" style={{ animationDelay: `${index * 90}ms` }}>
-                <span className="text-3xl">{item.icon}</span>
-                <h2 className="mt-3 font-display text-2xl uppercase tracking-wide text-white">{item.title}</h2>
-                <p className="mt-3 min-h-20 text-sm leading-6 text-white/62">{item.body}</p>
-                <p className="mt-4 text-sm font-black uppercase tracking-widest text-cyan-200 group-hover:text-cyan-100">Enter {item.title} →</p>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="relative border-t border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,.035),rgba(0,0,0,.9))] px-4 py-14 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
-          <div>
-            <p className="studio-label text-tube-300">Choose your lane</p>
-            <h2 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
-              Every creator enters a different room.
-            </h2>
-            <p className="mt-4 text-sm leading-7 text-white/62">
-              EMS should feel like a living music platform: artist stages, producer rooms, engineering suites, marketplaces, and fan discovery all connected.
+        <div className="relative mx-auto flex max-w-7xl flex-col gap-12 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="inline-flex rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.32em] text-cyan-100">
+              Hip-Hop & R&B Creator Platform
             </p>
+
+            <h1 className="mt-6 font-display text-5xl uppercase leading-[0.9] tracking-[0.04em] text-white sm:text-7xl lg:text-8xl">
+              Build tracks.
+              <br />
+              Export records.
+              <br />
+              Own the moment.
+            </h1>
+
+            <p className="mt-6 max-w-2xl text-base leading-8 text-white/70 sm:text-lg">
+              Epic Music Space is a hybrid AI music workspace built for hip-hop, R&B, and independent creators. Start ideas on your phone, finish records on desktop, export professional stems, and collaborate across your entire creative world.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/studio/try"
+                className="inline-flex min-h-14 items-center justify-center rounded-full border border-cyan-300/55 bg-cyan-300/16 px-8 py-4 text-center font-display text-sm uppercase tracking-[0.24em] text-cyan-100 shadow-[0_0_38px_rgba(34,211,238,.24)] transition hover:scale-[1.02] hover:bg-cyan-300/25"
+              >
+                Open Studio
+              </Link>
+
+              <Link
+                href="/get-the-app"
+                className="inline-flex min-h-14 items-center justify-center rounded-full border border-pink-300/35 bg-pink-300/10 px-8 py-4 text-center font-display text-sm uppercase tracking-[0.24em] text-pink-100 transition hover:scale-[1.02] hover:bg-pink-300/18"
+              >
+                Start on Mobile
+              </Link>
+            </div>
+
+            <div className="mt-8 flex flex-wrap gap-2">
+              {doctrine.map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-white/62"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {lanes.map(([title, body, href]) => (
-              <Link key={title} href={href} className="rounded-xl border border-white/10 bg-black/35 p-5 transition hover:border-tube-300/50 hover:bg-black/55 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">
-                <h3 className="font-display text-xl uppercase tracking-wide text-white">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-white/60">{body}</p>
+
+          <div className="grid w-full max-w-xl gap-4">
+            {worldCards.map((item) => (
+              <Link
+                key={item.title}
+                href={item.href}
+                className="rounded-2xl border border-white/10 bg-black/45 p-6 backdrop-blur-xl transition hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-white/[.06]"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="text-3xl">{item.icon}</span>
+                  <div>
+                    <h2 className="font-display text-2xl uppercase tracking-wide text-white">
+                      {item.title}
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-white/62">
+                      {item.body}
+                    </p>
+                  </div>
+                </div>
               </Link>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 py-14 text-center sm:px-6 lg:px-8">
-        <p className="studio-label text-tube-300">Built like a world</p>
-        <h2 className="mt-3 font-display text-3xl uppercase tracking-wider text-white sm:text-5xl">
-          Open the studio. Make the record. Build the business.
-        </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/62">
-          The front page now leads with performance energy, studio atmosphere, neon identity, and clear creator destinations — not generic software cards.
-        </p>
-        <Link href="/studio/try" className="mt-8 inline-flex min-h-12 items-center justify-center rounded-full border border-cyan-300/55 bg-cyan-300/16 px-8 py-3 text-center font-display text-base uppercase tracking-[0.22em] text-cyan-100 shadow-[0_0_32px_rgba(34,211,238,.22)] transition hover:scale-[1.02] hover:bg-cyan-300/24">
-          Enter the Space
-        </Link>
+      <section className="border-b border-white/10 px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="max-w-3xl">
+            <p className="text-sm font-black uppercase tracking-[0.28em] text-cyan-200/75">
+              Studio v1 Doctrine
+            </p>
+            <h2 className="mt-4 font-display text-4xl uppercase tracking-wide text-white sm:text-5xl">
+              Built for creators who actually finish music.
+            </h2>
+          </div>
+
+          <div className="mt-10 grid gap-4 lg:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+              <h3 className="font-display text-2xl uppercase tracking-wide text-white">
+                Desktop Studio
+              </h3>
+              <p className="mt-3 text-sm leading-7 text-white/65">
+                The full production workflow lives on desktop web: recording, arrangement, timeline editing, AI-assisted generation, exporting, stems, and collaboration.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+              <h3 className="font-display text-2xl uppercase tracking-wide text-white">
+                Mobile Creation
+              </h3>
+              <p className="mt-3 text-sm leading-7 text-white/65">
+                Mobile is optimized for speed — capture ideas, preview beats, review sessions, export drafts, and keep your workflow moving anywhere.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+              <h3 className="font-display text-2xl uppercase tracking-wide text-white">
+                Artist Ownership
+              </h3>
+              <p className="mt-3 text-sm leading-7 text-white/65">
+                Commercial rights are clear and creator-friendly. Export high-quality WAVs, FLACs, MIDI, and professional stems for release-ready workflows.
+              </p>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <style jsx>{`
-        .ems-home-wave {
-          animation: ems-wave-pulse 1.15s ease-in-out infinite alternate;
-          transform-origin: bottom;
-        }
-        .ems-home-portal {
-          animation: ems-portal-spin 8s linear infinite, ems-portal-breathe 2.8s ease-in-out infinite;
-        }
-        .ems-home-card {
-          animation: ems-card-float 4.5s ease-in-out infinite alternate;
-        }
-        @keyframes ems-wave-pulse {
-          from { transform: scaleY(.38); opacity: .26; }
-          to { transform: scaleY(1.04); opacity: .85; }
-        }
-        @keyframes ems-portal-spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        @keyframes ems-portal-breathe {
-          0%, 100% { filter: brightness(1); }
-          50% { filter: brightness(1.35); }
-        }
-        @keyframes ems-card-float {
-          from { transform: translateY(0); }
-          to { transform: translateY(-8px); }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .ems-home-wave,
-          .ems-home-portal,
-          .ems-home-card {
-            animation: none;
-          }
-        }
-      `}</style>
+      <section className="px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-sm font-black uppercase tracking-[0.28em] text-pink-200/75">
+                Creator Packages
+              </p>
+              <h2 className="mt-4 font-display text-4xl uppercase tracking-wide text-white sm:text-5xl">
+                Simple plans built around real music workflows.
+              </h2>
+            </div>
+
+            <Link
+              href="/studio/try"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-cyan-300/55 bg-cyan-300/16 px-6 py-3 text-center font-display text-sm uppercase tracking-[0.22em] text-cyan-100 transition hover:bg-cyan-300/24"
+            >
+              Try the Studio
+            </Link>
+          </div>
+
+          <div className="mt-10 grid gap-5 lg:grid-cols-3">
+            {creatorPlans.map((plan) => (
+              <div
+                key={plan.tier}
+                className="rounded-3xl border border-white/10 bg-black/40 p-8 shadow-[0_0_24px_rgba(0,0,0,.25)]"
+              >
+                <p className="text-sm font-black uppercase tracking-[0.24em] text-cyan-100">
+                  {plan.tier}
+                </p>
+                <h3 className="mt-4 font-display text-3xl uppercase tracking-wide text-white">
+                  {plan.focus}
+                </h3>
+                <p className="mt-4 text-sm leading-7 text-white/65">
+                  {plan.details}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
