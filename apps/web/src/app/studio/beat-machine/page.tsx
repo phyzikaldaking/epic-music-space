@@ -15,10 +15,10 @@ export const metadata: Metadata = {
 };
 
 export default function BeatMachinePage() {
-  return <>
+  return <main className="ems-smart-mpc-skin min-h-screen bg-[#030507] text-white">
     <BeatMachineMidiSmartClient />
     <BeatMachineProducerAssistant />
     <BeatMachineSmartExtractor />
     <BeatMachinePluginHub />
-  </>;
+  </main>;
 }
