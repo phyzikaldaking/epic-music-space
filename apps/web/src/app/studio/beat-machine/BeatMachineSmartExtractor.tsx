@@ -27,14 +27,21 @@ type ExtractedSound = {
   id: string;
   name: string;
   url: string;
-  source: "extracted";
+  source: "extracted" | "upload";
   instrument: string;
-  category: string;
-  durationSec: number;
-  sampleRate: number;
-  startSec: number;
+  category?: string;
+  durationSec?: number;
+  sampleRate?: number;
+  startSec?: number;
   sourceFile?: string;
   createdAt: string;
+  kit?: string;
+};
+
+type RenderedOneShot = {
+  localSound: ExtractedSound;
+  cloudSound?: ExtractedSound;
+  blob: Blob;
 };
 
 const CONNECTORS = [
@@ -206,6 +213,40 @@ function prependStored<T extends { id?: string; url?: string }>(key: string, ite
   window.localStorage.setItem(key, JSON.stringify(deduped.slice(0, limit)));
 }
 
+function safeFileBase(name: string) {
+  return name.toLowerCase().replace(/\.[^.]+$/, "").replace(/[^a-z0-9-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 72) || "extracted-hit";
+}
+
+async function uploadExtractedWav(blob: Blob, hit: ExtractedHit, analysis: ExtractAnalysis): Promise<ExtractedSound | null> {
+  try {
+    const fileName = `${safeFileBase(hit.name)}.wav`;
+    const file = new File([blob], fileName, { type: "audio/wav" });
+    const form = new FormData();
+    form.append("file", file);
+    form.append("kit", "extracted");
+    form.append("instrument", hit.role);
+    form.append("sourceFile", analysis.fileName);
+    form.append("startSec", String(hit.startSec));
+    form.append("durationSec", String(hit.durationSec));
+    const res = await fetch("/api/studio/sounds/upload", { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok || !data?.sound) throw new Error(data?.error || "Cloud upload failed");
+    return {
+      ...(data.sound as ExtractedSound),
+      source: "upload",
+      instrument: hit.role,
+      category: roleToCategory(hit.role),
+      durationSec: hit.durationSec,
+      sampleRate: analysis.sampleRate,
+      startSec: hit.startSec,
+      sourceFile: analysis.fileName,
+      createdAt: data.sound.createdAt ?? new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function BeatMachineSmartExtractor() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [analysis, setAnalysis] = useState<ExtractAnalysis | null>(null);
@@ -213,6 +254,7 @@ export default function BeatMachineSmartExtractor() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("Upload a loop or generated audio and extract usable one-shots from it.");
   const [renderedIds, setRenderedIds] = useState<Record<string, string>>({});
+  const [cloudIds, setCloudIds] = useState<Record<string, string>>({});
   const bestHits = useMemo(() => [...(analysis?.hits ?? [])].sort((a, b) => b.confidence - a.confidence).slice(0, 8), [analysis]);
 
   async function handleFile(file: File) {
@@ -234,20 +276,20 @@ export default function BeatMachineSmartExtractor() {
 
   function preview(hit: ExtractedHit) {
     if (!analysis) return;
-    const audio = new Audio(renderedIds[hit.id] || analysis.url);
-    audio.currentTime = renderedIds[hit.id] ? 0 : hit.startSec;
+    const audio = new Audio(renderedIds[hit.id] || cloudIds[hit.id] || analysis.url);
+    audio.currentTime = renderedIds[hit.id] || cloudIds[hit.id] ? 0 : hit.startSec;
     audio.play().catch(() => undefined);
     window.setTimeout(() => audio.pause(), Math.max(120, hit.durationSec * 1000));
   }
 
-  function makeSound(hit: ExtractedHit): ExtractedSound | null {
+  async function makeSound(hit: ExtractedHit, cloud = true): Promise<RenderedOneShot | null> {
     if (!analysis) return null;
-    const wav = renderHitWav(analysis.buffer, hit);
-    const url = URL.createObjectURL(wav);
-    const sound: ExtractedSound = {
+    const blob = renderHitWav(analysis.buffer, hit);
+    const localUrl = URL.createObjectURL(blob);
+    const localSound: ExtractedSound = {
       id: `extracted-${hit.id}-${Date.now()}`,
       name: `${hit.name}.wav`,
-      url,
+      url: localUrl,
       source: "extracted",
       instrument: hit.role,
       category: roleToCategory(hit.role),
@@ -257,8 +299,10 @@ export default function BeatMachineSmartExtractor() {
       sourceFile: analysis.fileName,
       createdAt: new Date().toISOString(),
     };
-    setRenderedIds((current) => ({ ...current, [hit.id]: url }));
-    return sound;
+    setRenderedIds((current) => ({ ...current, [hit.id]: localUrl }));
+    const cloudSound = cloud ? await uploadExtractedWav(blob, hit, analysis) : null;
+    if (cloudSound?.url) setCloudIds((current) => ({ ...current, [hit.id]: cloudSound.url }));
+    return { localSound, cloudSound: cloudSound ?? undefined, blob };
   }
 
   function saveToLibraries(sound: ExtractedSound) {
@@ -268,43 +312,78 @@ export default function BeatMachineSmartExtractor() {
     window.dispatchEvent(new CustomEvent("ems:smart-mpc-sound-added", { detail: { sound } }));
   }
 
-  function renderAndSave(hit: ExtractedHit) {
-    const sound = makeSound(hit);
-    if (!sound) return;
+  async function renderAndSave(hit: ExtractedHit) {
+    setBusy(true);
+    const rendered = await makeSound(hit, true);
+    setBusy(false);
+    if (!rendered) return;
+    const sound = rendered.cloudSound ?? rendered.localSound;
     saveToLibraries(sound);
-    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `Rendered ${sound.name} as a real WAV one-shot.` } }));
-    setNotice(`Rendered WAV and saved ${sound.name} to My Sounds.`);
+    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `${rendered.cloudSound ? "Cloud-saved" : "Locally rendered"} ${sound.name}.` } }));
+    setNotice(`${rendered.cloudSound ? "Cloud-saved WAV to Supabase" : "Rendered local WAV fallback"} and added ${sound.name} to My Sounds.`);
   }
 
-  function assignToPad(hit: ExtractedHit) {
-    const sound = makeSound(hit);
-    if (!sound) return;
+  async function assignToPad(hit: ExtractedHit) {
+    setBusy(true);
+    const rendered = await makeSound(hit, true);
+    setBusy(false);
+    if (!rendered) return;
+    const sound = rendered.cloudSound ?? rendered.localSound;
     saveToLibraries(sound);
     window.dispatchEvent(new CustomEvent("ems:smart-mpc-assign-selected-pad", { detail: { sound } }));
-    setNotice(`Rendered ${sound.name} and assigned it to the selected MPC pad.`);
+    setNotice(`${rendered.cloudSound ? "Cloud-saved" : "Rendered"} ${sound.name} and assigned it to the selected MPC pad.`);
   }
 
-  function sendToSampler(hit: ExtractedHit) {
-    const sound = makeSound(hit);
-    if (!sound) return;
+  async function sendToSampler(hit: ExtractedHit) {
+    setBusy(true);
+    const rendered = await makeSound(hit, true);
+    setBusy(false);
+    if (!rendered) return;
+    const sound = rendered.cloudSound ?? rendered.localSound;
     saveToLibraries(sound);
     prependStored(SAMPLER_INBOX_KEY, sound, 64);
-    window.dispatchEvent(new CustomEvent("ems:smart-extractor-send-sampler", { detail: { sound } }));
-    setNotice(`Sent ${sound.name} to the sampler inbox.`);
+    window.dispatchEvent(new CustomEvent("ems:smart-extractor-send-sampler", { detail: { sound, autoLoad: true } }));
+    setNotice(`${sound.name} saved and sent to the sampler for auto-load.`);
   }
 
-  function sendToTimeline(hit: ExtractedHit) {
-    const sound = makeSound(hit);
-    if (!sound) return;
+  async function sendToTimeline(hit: ExtractedHit) {
+    setBusy(true);
+    const rendered = await makeSound(hit, true);
+    setBusy(false);
+    if (!rendered) return;
+    const sound = rendered.cloudSound ?? rendered.localSound;
     saveToLibraries(sound);
     prependStored(TIMELINE_INBOX_KEY, sound, 64);
-    window.dispatchEvent(new CustomEvent("ems:studio-place-sound", { detail: { sound } }));
+    window.dispatchEvent(new CustomEvent("ems:studio-place-sound", { detail: { sound, confirm: true, source: "smart-extractor" } }));
     window.dispatchEvent(new CustomEvent("ems:smart-extractor-send-timeline", { detail: { sound } }));
-    setNotice(`Sent ${sound.name} to the studio timeline.`);
+    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `${sound.name} placed on timeline from Smart Extractor.` } }));
+    setNotice(`${sound.name} saved and sent to the studio timeline.`);
+  }
+
+  async function batchExportHits() {
+    if (!analysis) return;
+    setBusy(true);
+    const exported: ExtractedSound[] = [];
+    for (const hit of bestHits) {
+      const rendered = await makeSound(hit, false);
+      if (rendered) {
+        saveToLibraries(rendered.localSound);
+        exported.push(rendered.localSound);
+      }
+    }
+    setBusy(false);
+    const blob = new Blob([JSON.stringify({ type: "ems-extracted-one-shot-kit", sounds: exported, sourceFile: analysis.fileName, exportedAt: new Date().toISOString() }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ems-extracted-one-shot-kit.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    setNotice(`Batch rendered ${exported.length} one-shot WAVs locally and exported the kit map.`);
   }
 
   function exportMap() {
-    const blob = new Blob([JSON.stringify({ type: "ems-smart-extraction-map", analysis: analysis ? { ...analysis, buffer: undefined } : null, connectors: CONNECTORS, exportedAt: new Date().toISOString() }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ type: "ems-smart-extraction-map", analysis: analysis ? { ...analysis, buffer: undefined } : null, connectors: CONNECTORS, cloudSaved: cloudIds, exportedAt: new Date().toISOString() }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -318,11 +397,12 @@ export default function BeatMachineSmartExtractor() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="mr-auto">
           <p className="text-[10px] font-black uppercase tracking-[0.26em] text-green-200/70">Smart Extractor / Loop-to-One-Shots</p>
-          <h2 className="text-sm font-black uppercase tracking-wide text-white sm:text-lg">Upload loop → render WAV one-shots → save to My Sounds → assign pad/sampler/timeline</h2>
+          <h2 className="text-sm font-black uppercase tracking-wide text-white sm:text-lg">Upload loop → render/cloud-save WAV one-shots → My Sounds → pad/sampler/timeline</h2>
         </div>
         <input ref={inputRef} type="file" accept="audio/*" className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void handleFile(file); event.currentTarget.value = ""; }} />
         <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] px-3 py-2 text-[10px] font-black uppercase text-white/55">Hits <input type="range" min={4} max={32} value={maxHits} onChange={(event) => setMaxHits(Number(event.target.value))} className="accent-green-300" /> {maxHits}</label>
-        <button onClick={() => inputRef.current?.click()} className="rounded-xl border border-green-300/35 bg-green-300/10 px-3 py-2 text-[10px] font-black uppercase text-green-100">{busy ? "Extracting" : "Upload Loop"}</button>
+        <button onClick={() => inputRef.current?.click()} className="rounded-xl border border-green-300/35 bg-green-300/10 px-3 py-2 text-[10px] font-black uppercase text-green-100">{busy ? "Working" : "Upload Loop"}</button>
+        <button onClick={() => void batchExportHits()} disabled={!analysis || busy} className="rounded-xl border border-yellow-300/35 bg-yellow-300/10 px-3 py-2 text-[10px] font-black uppercase text-yellow-100 disabled:opacity-40">Batch Kit</button>
         <button onClick={exportMap} className="rounded-xl border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase text-cyan-100">Export Map</button>
       </div>
 
@@ -333,13 +413,13 @@ export default function BeatMachineSmartExtractor() {
           {analysis ? bestHits.map((hit) => <div key={hit.id} className="rounded-xl border border-white/10 bg-white/[.035] p-3">
             <div className="flex items-center justify-between gap-2"><b className="truncate text-xs uppercase text-green-100">{hit.name}</b><span className="rounded-full border border-white/10 px-2 py-1 text-[8px] uppercase text-white/45">{hit.role}</span></div>
             <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] uppercase text-white/45"><span>{hit.startSec}s</span><span>{hit.durationSec}s</span><span>{Math.round(hit.confidence * 100)}%</span></div>
-            {renderedIds[hit.id] ? <div className="mt-2 rounded border border-green-300/20 bg-green-300/10 px-2 py-1 text-[9px] font-black uppercase text-green-100">WAV rendered</div> : null}
+            {cloudIds[hit.id] ? <div className="mt-2 rounded border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[9px] font-black uppercase text-cyan-100">Supabase saved</div> : renderedIds[hit.id] ? <div className="mt-2 rounded border border-green-300/20 bg-green-300/10 px-2 py-1 text-[9px] font-black uppercase text-green-100">WAV rendered</div> : null}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button onClick={() => preview(hit)} className="rounded-lg border border-cyan-300/25 px-2 py-2 text-[10px] uppercase text-cyan-100">Preview</button>
-              <button onClick={() => renderAndSave(hit)} className="rounded-lg border border-green-300/25 px-2 py-2 text-[10px] uppercase text-green-100">Save WAV</button>
-              <button onClick={() => assignToPad(hit)} className="rounded-lg border border-yellow-300/25 px-2 py-2 text-[10px] uppercase text-yellow-100">Assign Pad</button>
-              <button onClick={() => sendToSampler(hit)} className="rounded-lg border border-pink-300/25 px-2 py-2 text-[10px] uppercase text-pink-100">Sampler</button>
-              <button onClick={() => sendToTimeline(hit)} className="col-span-2 rounded-lg border border-purple-300/25 px-2 py-2 text-[10px] uppercase text-purple-100">Timeline</button>
+              <button onClick={() => void renderAndSave(hit)} className="rounded-lg border border-green-300/25 px-2 py-2 text-[10px] uppercase text-green-100">Cloud Save</button>
+              <button onClick={() => void assignToPad(hit)} className="rounded-lg border border-yellow-300/25 px-2 py-2 text-[10px] uppercase text-yellow-100">Assign Pad</button>
+              <button onClick={() => void sendToSampler(hit)} className="rounded-lg border border-pink-300/25 px-2 py-2 text-[10px] uppercase text-pink-100">Sampler</button>
+              <button onClick={() => void sendToTimeline(hit)} className="col-span-2 rounded-lg border border-purple-300/25 px-2 py-2 text-[10px] uppercase text-purple-100">Timeline</button>
             </div>
           </div>) : <p className="rounded-xl border border-white/10 bg-white/[.035] p-3 text-sm text-white/45 md:col-span-2 xl:col-span-4">No loop analyzed yet. This is where extracted one-shot candidates will show up.</p>}
         </main>
