@@ -116,12 +116,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Generate onboarding link
+  // Generate onboarding link. After Stripe returns, creators should continue
+  // to the upload flow, not land back on the generic dashboard.
   try {
     const accountLink = await stripe.accountLinks.create({
       account: connectId,
-      refresh_url: `${APP_URL}/dashboard?connect=refresh`,
-      return_url: `${APP_URL}/dashboard?connect=success`,
+      refresh_url: `${APP_URL}/dashboard/payouts?connect=refresh`,
+      return_url: `${APP_URL}/studio/new?connect=success`,
       type: "account_onboarding",
     });
     return NextResponse.json({ url: accountLink.url });
