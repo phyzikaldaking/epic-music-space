@@ -27,6 +27,13 @@
   --ems-transport-height: 52px;
   --ems-workspace-min-width: min(100vw, 1120px);
   --ems-workspace-min-height: 640px;
+  --ems-cyan: #00f0ff;
+  --ems-magenta: #ff2dcb;
+  --ems-gold: #ffd166;
+  --ems-green: #9cff2e;
+  --ems-red: #ff3b4f;
+  --ems-metal: #10161a;
+  --ems-carbon: #050607;
 }
 
 html,
@@ -314,6 +321,146 @@ body::-webkit-scrollbar-thumb,
 [data-ems-workspace] .text-3xl {
   font-size: 1.35rem !important;
   line-height: 1.75rem !important;
+}
+
+/* EMS futuristic music OS skin: timeline, MPC, sampler, piano roll, sounds, dashboard */
+[data-testid="studio-moving-timeline"] {
+  border-color: rgba(0, 240, 255, 0.28) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.035), transparent 18%),
+    radial-gradient(circle at 20% 0%, rgba(0,240,255,.12), transparent 34%),
+    linear-gradient(180deg, #11171c 0%, #050708 48%, #000 100%) !important;
+  box-shadow: inset 0 0 64px rgba(0,240,255,.07), 0 22px 70px rgba(0,0,0,.52) !important;
+}
+
+[data-testid="studio-moving-timeline"] > div:first-child {
+  height: 42px !important;
+  background: linear-gradient(90deg, #070b0f, #172027 22%, #070b0f 60%, #151b20) !important;
+  border-bottom-color: rgba(0,240,255,.2) !important;
+}
+
+[data-testid="studio-moving-timeline"] button,
+.ems-smart-mpc-skin button {
+  border-radius: 8px !important;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+}
+
+[data-testid="studio-moving-timeline"] .bg-\[\#071015\],
+[data-testid="studio-moving-timeline"] .bg-black\/70,
+[data-testid="studio-moving-timeline"] .bg-white\/\[\.025\] {
+  background-color: rgba(4, 7, 9, 0.82) !important;
+  box-shadow: inset 0 0 18px rgba(0,0,0,.8) !important;
+}
+
+.ems-smart-mpc-skin {
+  background:
+    radial-gradient(circle at 50% -10%, rgba(0,240,255,.14), transparent 30%),
+    radial-gradient(circle at 92% 12%, rgba(255,45,203,.13), transparent 28%),
+    linear-gradient(180deg, #07090b 0%, #030507 48%, #000 100%) !important;
+}
+
+.ems-smart-mpc-skin section > div,
+.ems-smart-mpc-skin aside > div {
+  border-color: rgba(255,255,255,.12) !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.045), transparent 20%),
+    linear-gradient(180deg, rgba(20,26,31,.86), rgba(4,6,8,.9)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), inset 0 -20px 45px rgba(0,0,0,.42), 0 18px 50px rgba(0,0,0,.35) !important;
+}
+
+.ems-smart-mpc-skin section:first-child > div {
+  border-radius: 12px !important;
+  padding: .65rem !important;
+}
+
+.ems-smart-mpc-skin section:first-child h2,
+.ems-smart-mpc-skin section:first-child p:first-child {
+  font-size: 10px !important;
+  line-height: 1.1rem !important;
+}
+
+.ems-smart-mpc-skin .grid.grid-cols-4 button[style*="background"] {
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.14), rgba(0,0,0,.28)) !important;
+  color: white !important;
+  min-height: 88px !important;
+  border-width: 2px !important;
+  box-shadow: inset 0 0 18px rgba(0,0,0,.72), 0 0 18px rgba(0,240,255,.16) !important;
+}
+
+.ems-smart-mpc-skin .grid.grid-cols-4 button[style*="background"]:hover,
+.ems-smart-mpc-skin .grid.grid-cols-4 button[style*="background"]:focus {
+  box-shadow: inset 0 0 18px rgba(0,0,0,.72), 0 0 26px rgba(0,240,255,.34) !important;
+  transform: translateY(-1px) scale(.99);
+}
+
+.ems-smart-mpc-skin input[type="range"] {
+  accent-color: var(--ems-cyan);
+}
+
+.ems-smart-mpc-skin select,
+.ems-smart-mpc-skin input,
+.ems-smart-mpc-skin textarea {
+  border: 1px solid rgba(0,240,255,.18) !important;
+  background: rgba(0,0,0,.72) !important;
+}
+
+.ems-smart-mpc-skin button:not([style*="background"]) {
+  border-color: rgba(0,240,255,.24) !important;
+  background: rgba(0,240,255,.07) !important;
+  color: rgba(210,252,255,.94) !important;
+  box-shadow: inset 0 0 12px rgba(0,0,0,.65), 0 0 14px rgba(0,240,255,.08) !important;
+}
+
+.ems-smart-mpc-skin button:not([style*="background"]):hover {
+  background: rgba(0,240,255,.13) !important;
+  box-shadow: inset 0 0 12px rgba(0,0,0,.65), 0 0 20px rgba(0,240,255,.18) !important;
+}
+
+.ems-smart-mpc-skin .border-pink-300\/20,
+.ems-smart-mpc-skin .border-pink-300\/25,
+.ems-smart-mpc-skin .border-pink-300\/30 {
+  border-color: rgba(255,45,203,.32) !important;
+}
+
+.ems-smart-mpc-skin .border-green-300\/20,
+.ems-smart-mpc-skin .border-green-300\/25,
+.ems-smart-mpc-skin .border-green-300\/30 {
+  border-color: rgba(156,255,46,.28) !important;
+}
+
+.ems-smart-mpc-skin .text-cyan-100,
+.ems-smart-mpc-skin .text-cyan-200\/70 {
+  text-shadow: 0 0 14px rgba(0,240,255,.45);
+}
+
+.ems-smart-mpc-skin .text-pink-100,
+.ems-smart-mpc-skin .text-pink-200\/70 {
+  text-shadow: 0 0 14px rgba(255,45,203,.35);
+}
+
+.ems-smart-mpc-skin .text-yellow-100,
+.ems-smart-mpc-skin .text-yellow-200\/70 {
+  text-shadow: 0 0 14px rgba(255,209,102,.35);
+}
+
+.ems-smart-mpc-skin .max-h-72,
+.ems-smart-mpc-skin .overflow-y-auto,
+.ems-smart-mpc-skin .overflow-auto {
+  scrollbar-color: rgba(0,240,255,.85) rgba(255,255,255,.05);
+}
+
+.ems-smart-mpc-skin main.grid .rounded-xl,
+.ems-smart-mpc-skin aside .rounded-xl {
+  border-radius: 10px !important;
+}
+
+.ems-smart-mpc-skin main.grid .rounded-xl:has(button),
+.ems-smart-mpc-skin aside .rounded-xl:has(button) {
+  background:
+    linear-gradient(135deg, rgba(0,240,255,.06), rgba(255,45,203,.035)),
+    rgba(0,0,0,.48) !important;
 }
 
 @media (max-width: 900px) {
