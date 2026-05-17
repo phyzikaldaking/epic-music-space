@@ -77,6 +77,12 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
     window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: "AI Engineer Auto Mix applied." } }));
   }
 
+  function autoMixTrack(track: StudioTrack, index: number) {
+    updateTrack(track.id, templateForTrack(track, index));
+    setAiStatus(`AI Engineer mixed ${track.name}: gain, pan, and meter target set for its role.`);
+    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `AI mixed ${track.name}.` } }));
+  }
+
   function resetSolosMutes() {
     tracks.forEach((track) => updateTrack(track.id, { muted: false, solo: false }));
     setAiStatus("Cleared mute/solo states across the board.");
@@ -121,6 +127,7 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
               bindMeter={meters.bindMeter}
               onSelect={() => setSelectedTrack(track.id)}
               onUpdate={(patch) => updateTrack(track.id, patch)}
+              onAiMix={() => autoMixTrack(track, index)}
             />
           ))}
         </div>
