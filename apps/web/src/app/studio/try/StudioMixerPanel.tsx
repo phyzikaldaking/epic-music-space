@@ -13,16 +13,6 @@ type Props = {
   updateTrack: (id: string, patch: Partial<StudioTrack>) => void;
 };
 
-const MIX_TEMPLATE = [
-  "Kick/808 centered and loudest foundation",
-  "Snare/clap forward with clean midrange",
-  "Hats/percussion widened but controlled",
-  "Melody/keys carved for vocal pocket",
-  "Vocals kept above beat elements",
-  "FX/risers moved wider and lower",
-  "Master protected with headroom",
-];
-
 function templateForTrack(track: StudioTrack, index: number) {
   const name = `${track.name} ${track.kind}`.toLowerCase();
   if (name.includes("master")) return { volume: 78, pan: 0, meter: 76 };
@@ -41,14 +31,6 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
   const trackIds = useMemo(() => safeTracks.map((track) => track.id), [safeTracks]);
   const meters = useRafMeterBridge(trackIds);
   const [masterPeak, setMasterPeak] = useState(72);
-  const [aiStatus, setAiStatus] = useState("AI Engineer ready. Press Auto Mix to build a starting mix template.");
-  const buses = useMemo(() => [
-    { name: "DRUM BUS", level: safeTracks.filter((track) => ["drum", "bass"].includes(track.kind)).length, color: "#17fff4" },
-    { name: "MUSIC BUS", level: safeTracks.filter((track) => ["melody", "instrument", "midi"].includes(track.kind)).length, color: "#42ff56" },
-    { name: "VOCAL BUS", level: safeTracks.filter((track) => track.kind === "vocal").length, color: "#ff34df" },
-    { name: "FX BUS", level: safeTracks.filter((track) => track.kind === "fx").length, color: "#a855ff" },
-    { name: "MASTER", level: safeTracks.length, color: "#f6d63d" },
-  ], [safeTracks]);
 
   useEffect(() => {
     let frame = 0;
@@ -74,51 +56,35 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
 
   function autoMix() {
     tracks.forEach((track, index) => updateTrack(track.id, templateForTrack(track, index)));
-    setAiStatus("AI Engineer applied a starter balance: drums/bass centered, music widened, vocals forward, master protected.");
-    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: "AI Engineer Auto Mix applied." } }));
+    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: "AI mix applied to full console." } }));
   }
 
   function autoMixTrack(track: StudioTrack, index: number) {
     if (track.id === "empty-mix") return;
     updateTrack(track.id, templateForTrack(track, index));
-    setAiStatus(`AI Engineer mixed ${track.name}: gain, pan, and meter target set for its role.`);
     window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `AI mixed ${track.name}.` } }));
   }
 
   function resetSolosMutes() {
     tracks.forEach((track) => updateTrack(track.id, { muted: false, solo: false }));
-    setAiStatus("Cleared mute/solo states across the board.");
+    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: "Mute and solo cleared." } }));
   }
 
   return (
-    <section data-testid="studio-live-mixer" className={`relative block min-h-[calc(100dvh-190px)] w-full min-w-0 overflow-hidden rounded-xl border border-cyan-300/25 bg-[#05080b] p-2 ${playing ? "shadow-[0_0_48px_rgba(34,211,238,.18)]" : "shadow-[0_0_28px_rgba(255,255,255,.06)]"}`}>
-      <header className="sticky top-0 z-20 mb-2 rounded-xl border border-white/10 bg-black/90 px-3 py-3 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="mr-auto">
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-200/70">AI Engineer Mixer</p>
-            <h2 className="text-2xl font-black uppercase tracking-wider text-white">Pro Tools Style Console</h2>
+    <section data-testid="studio-live-mixer" className="relative block h-[calc(100dvh-142px)] w-full min-w-0 overflow-hidden rounded-lg border border-cyan-300/20 bg-[#030507] p-1 shadow-[inset_0_0_60px_rgba(23,255,244,.06)]">
+      <div className="sticky top-0 z-20 flex min-h-10 items-center gap-2 rounded-md border border-white/10 bg-[#070b0f]/95 px-2 py-1 backdrop-blur">
+        <button onClick={autoMix} className="rounded border border-green-300/35 bg-green-300/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-green-100">AI Mix All</button>
+        <button onClick={resetSolosMutes} className="rounded border border-white/10 bg-white/[.04] px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-white/60">Clear M/S</button>
+        <div className="ml-auto flex items-center gap-2">
+          <span className={`h-2.5 w-2.5 rounded-full ${playing ? "animate-pulse bg-green-300 shadow-[0_0_14px_#86efac]" : "bg-white/20"}`} />
+          <div className="h-6 w-52 overflow-hidden rounded-sm border border-cyan-300/20 bg-black/70 p-0.5">
+            <div className="h-full rounded-[2px] bg-gradient-to-r from-green-300 via-yellow-300 to-pink-400 transition-[width] duration-75" style={{ width: `${masterPeak}%` }} />
           </div>
-          <button onClick={autoMix} className="rounded-xl border border-green-300/35 bg-green-300/10 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-green-100">One Button Auto Mix</button>
-          <button onClick={resetSolosMutes} className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white/60">Clear M/S</button>
-          <span className={`h-3 w-3 rounded-full ${playing ? "animate-pulse bg-green-300 shadow-[0_0_18px_#86efac]" : "bg-white/20"}`} />
-          <div className="h-10 w-44 overflow-hidden rounded-full border border-cyan-300/20 bg-black/60 p-1">
-            <div className="h-full rounded-full bg-gradient-to-r from-green-300 via-yellow-300 to-pink-400 transition-[width] duration-75" style={{ width: `${masterPeak}%` }} />
-          </div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-white/45">Master {Math.round(masterPeak)}%</span>
+          <span className="w-16 text-right text-[9px] font-black uppercase tracking-widest text-white/45">{Math.round(masterPeak)}%</span>
         </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          {buses.map((bus) => <div key={bus.name} className="rounded-lg border border-white/10 bg-white/[.035] p-2">
-            <div className="flex items-center justify-between"><b className="text-[10px] uppercase" style={{ color: bus.color }}>{bus.name}</b><span className="text-[9px] text-white/35">{bus.level} ch</span></div>
-            <div className="mt-2 h-1.5 rounded-full bg-white/10"><div className="h-full rounded-full" style={{ width: `${Math.min(100, bus.level * 18)}%`, background: bus.color }} /></div>
-          </div>)}
-        </div>
-        <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="rounded-lg border border-green-300/15 bg-green-300/[.04] px-3 py-2 text-xs font-bold text-green-100/80">{aiStatus}</div>
-          <div className="rounded-lg border border-yellow-300/15 bg-yellow-300/[.04] px-3 py-2 text-[10px] font-black uppercase leading-4 text-yellow-100/80">{MIX_TEMPLATE.join(" · ")}</div>
-        </div>
-      </header>
-      <div className="ems-scroll h-[calc(100dvh-385px)] min-h-[560px] w-full min-w-0 overflow-auto rounded-xl border border-white/10 bg-black/35 p-2">
-        <div className="flex w-max min-w-full items-stretch gap-2 pb-6">
+      </div>
+      <div className="ems-scroll h-[calc(100%-44px)] w-full min-w-0 overflow-auto rounded-md border border-white/10 bg-[radial-gradient(circle_at_top,#10202a_0%,#030507_42%,#000_100%)] p-1">
+        <div className="flex min-h-full w-max min-w-full items-stretch gap-1 pb-4">
           {safeTracks.map((track, index) => (
             <StudioMixerChannel
               key={track.id}
