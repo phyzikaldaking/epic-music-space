@@ -15,8 +15,8 @@ export const metadata: Metadata = {
 
 export default function BeatMachinePage() {
   return <>
-    <BeatMachinePluginHub />
-    <BeatMachineProducerAssistant />
     <BeatMachineMidiSmartClient />
+    <BeatMachineProducerAssistant />
+    <BeatMachinePluginHub />
   </>;
 }
