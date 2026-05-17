@@ -23,6 +23,20 @@ type ExtractAnalysis = {
   buffer: AudioBuffer;
 };
 
+type ExtractedSound = {
+  id: string;
+  name: string;
+  url: string;
+  source: "extracted";
+  instrument: string;
+  category: string;
+  durationSec: number;
+  sampleRate: number;
+  startSec: number;
+  sourceFile?: string;
+  createdAt: string;
+};
+
 const CONNECTORS = [
   { name: "Splice", status: "ready path", note: "Import/downloaded loops into My Sounds, then extract one-shots from the loop." },
   { name: "Co-Producer", status: "ready path", note: "Accept generated loops/stems as uploads, analyze them, and extract usable one-shots." },
@@ -30,6 +44,12 @@ const CONNECTORS = [
   { name: "Suno-style generated audio", status: "upload path", note: "Upload generated audio, detect unique hits/chops, save them into the EMS sound library." },
   { name: "VST/Desktop bridge", status: "bridge-ready", note: "Native plugin output can be bounced/imported, then extracted into pads and My Sounds." },
 ];
+
+const EXTRACTED_KEY = "ems-smart-extracted-one-shots";
+const MIDI_MY_SOUNDS_KEY = "ems-smart-mpc-my-sounds-v2";
+const LEGACY_MY_SOUNDS_KEY = "ems-smart-mpc-my-sounds-v1";
+const SAMPLER_INBOX_KEY = "ems-smart-extractor-sampler-inbox";
+const TIMELINE_INBOX_KEY = "ems-smart-extractor-timeline-inbox";
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -63,6 +83,14 @@ function inferRole(name: string, startSec: number, peak: number) {
   if (peak > 0.74 && startSec < 1.5) return "impact/kick candidate";
   if (peak > 0.52) return "drum/percussion candidate";
   return "texture/one-shot candidate";
+}
+
+function roleToCategory(role: string) {
+  const lower = role.toLowerCase();
+  if (lower.includes("kick") || lower.includes("snare") || lower.includes("clap") || lower.includes("hat") || lower.includes("perc") || lower.includes("drum")) return "drums";
+  if (lower.includes("808") || lower.includes("bass")) return "808";
+  if (lower.includes("texture") || lower.includes("fx")) return "fx";
+  return "misc";
 }
 
 function detectHits(buffer: AudioBuffer, fileName: string, maxHits: number) {
@@ -119,12 +147,72 @@ async function analyzeLoop(file: File, maxHits: number): Promise<ExtractAnalysis
   return { fileName: file.name, durationSec: buffer.duration, sampleRate: buffer.sampleRate, channels: buffer.numberOfChannels, hitCount: hits.length, hits, url: fileUrl(file), buffer };
 }
 
+function writeString(view: DataView, offset: number, value: string) {
+  for (let i = 0; i < value.length; i += 1) view.setUint8(offset + i, value.charCodeAt(i));
+}
+
+function renderHitWav(buffer: AudioBuffer, hit: ExtractedHit) {
+  const sampleRate = buffer.sampleRate;
+  const channels = buffer.numberOfChannels;
+  const startSample = Math.max(0, Math.floor(hit.startSec * sampleRate));
+  const length = Math.max(1, Math.min(buffer.length - startSample, Math.floor(hit.durationSec * sampleRate)));
+  const fadeSamples = Math.min(Math.floor(sampleRate * 0.006), Math.floor(length / 3));
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const dataSize = length * blockAlign;
+  const wav = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(wav);
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < length; i += 1) {
+    const fadeIn = fadeSamples > 0 ? Math.min(1, i / fadeSamples) : 1;
+    const fadeOut = fadeSamples > 0 ? Math.min(1, (length - i) / fadeSamples) : 1;
+    const gain = Math.min(fadeIn, fadeOut);
+    for (let ch = 0; ch < channels; ch += 1) {
+      const source = buffer.getChannelData(ch)[startSample + i] ?? 0;
+      const value = Math.max(-1, Math.min(1, source * gain));
+      view.setInt16(offset, value < 0 ? value * 0x8000 : value * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Blob([wav], { type: "audio/wav" });
+}
+
+function readStoredArray<T>(key: string): T[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) || "[]");
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function prependStored<T extends { id?: string; url?: string }>(key: string, item: T, limit = 250) {
+  const current = readStoredArray<T>(key);
+  const deduped = [item, ...current].filter((entry, index, list) => list.findIndex((candidate) => (candidate.url || candidate.id) === (entry.url || entry.id)) === index);
+  window.localStorage.setItem(key, JSON.stringify(deduped.slice(0, limit)));
+}
+
 export default function BeatMachineSmartExtractor() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [analysis, setAnalysis] = useState<ExtractAnalysis | null>(null);
   const [maxHits, setMaxHits] = useState(16);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("Upload a loop or generated audio and extract usable one-shots from it.");
+  const [renderedIds, setRenderedIds] = useState<Record<string, string>>({});
   const bestHits = useMemo(() => [...(analysis?.hits ?? [])].sort((a, b) => b.confidence - a.confidence).slice(0, 8), [analysis]);
 
   async function handleFile(file: File) {
@@ -146,19 +234,73 @@ export default function BeatMachineSmartExtractor() {
 
   function preview(hit: ExtractedHit) {
     if (!analysis) return;
-    const audio = new Audio(analysis.url);
-    audio.currentTime = hit.startSec;
+    const audio = new Audio(renderedIds[hit.id] || analysis.url);
+    audio.currentTime = renderedIds[hit.id] ? 0 : hit.startSec;
     audio.play().catch(() => undefined);
     window.setTimeout(() => audio.pause(), Math.max(120, hit.durationSec * 1000));
   }
 
-  function saveHit(hit: ExtractedHit) {
-    const payload = { ...hit, sourceFile: analysis?.fileName, sourceUrl: analysis?.url, savedAt: new Date().toISOString() };
-    const key = "ems-smart-extracted-one-shots";
-    const current = JSON.parse(window.localStorage.getItem(key) || "[]") as unknown[];
-    window.localStorage.setItem(key, JSON.stringify([payload, ...current].slice(0, 200)));
-    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `Saved ${hit.name} to extracted one-shots.` } }));
-    setNotice(`Saved ${hit.name} to the extracted one-shots library.`);
+  function makeSound(hit: ExtractedHit): ExtractedSound | null {
+    if (!analysis) return null;
+    const wav = renderHitWav(analysis.buffer, hit);
+    const url = URL.createObjectURL(wav);
+    const sound: ExtractedSound = {
+      id: `extracted-${hit.id}-${Date.now()}`,
+      name: `${hit.name}.wav`,
+      url,
+      source: "extracted",
+      instrument: hit.role,
+      category: roleToCategory(hit.role),
+      durationSec: hit.durationSec,
+      sampleRate: analysis.sampleRate,
+      startSec: hit.startSec,
+      sourceFile: analysis.fileName,
+      createdAt: new Date().toISOString(),
+    };
+    setRenderedIds((current) => ({ ...current, [hit.id]: url }));
+    return sound;
+  }
+
+  function saveToLibraries(sound: ExtractedSound) {
+    prependStored(EXTRACTED_KEY, sound, 200);
+    prependStored(MIDI_MY_SOUNDS_KEY, sound, 250);
+    prependStored(LEGACY_MY_SOUNDS_KEY, sound, 250);
+    window.dispatchEvent(new CustomEvent("ems:smart-mpc-sound-added", { detail: { sound } }));
+  }
+
+  function renderAndSave(hit: ExtractedHit) {
+    const sound = makeSound(hit);
+    if (!sound) return;
+    saveToLibraries(sound);
+    window.dispatchEvent(new CustomEvent("ems:studio-toast", { detail: { message: `Rendered ${sound.name} as a real WAV one-shot.` } }));
+    setNotice(`Rendered WAV and saved ${sound.name} to My Sounds.`);
+  }
+
+  function assignToPad(hit: ExtractedHit) {
+    const sound = makeSound(hit);
+    if (!sound) return;
+    saveToLibraries(sound);
+    window.dispatchEvent(new CustomEvent("ems:smart-mpc-assign-selected-pad", { detail: { sound } }));
+    setNotice(`Rendered ${sound.name} and assigned it to the selected MPC pad.`);
+  }
+
+  function sendToSampler(hit: ExtractedHit) {
+    const sound = makeSound(hit);
+    if (!sound) return;
+    saveToLibraries(sound);
+    prependStored(SAMPLER_INBOX_KEY, sound, 64);
+    window.dispatchEvent(new CustomEvent("ems:smart-extractor-send-sampler", { detail: { sound } }));
+    setNotice(`Sent ${sound.name} to the sampler inbox.`);
+  }
+
+  function sendToTimeline(hit: ExtractedHit) {
+    const sound = makeSound(hit);
+    if (!sound) return;
+    saveToLibraries(sound);
+    prependStored(TIMELINE_INBOX_KEY, sound, 64);
+    window.dispatchEvent(new CustomEvent("ems:studio-place-sound", { detail: { sound } }));
+    window.dispatchEvent(new CustomEvent("ems:smart-extractor-send-timeline", { detail: { sound } }));
+    setNotice(`Sent ${sound.name} to the studio timeline.`);
   }
 
   function exportMap() {
@@ -176,7 +318,7 @@ export default function BeatMachineSmartExtractor() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="mr-auto">
           <p className="text-[10px] font-black uppercase tracking-[0.26em] text-green-200/70">Smart Extractor / Loop-to-One-Shots</p>
-          <h2 className="text-sm font-black uppercase tracking-wide text-white sm:text-lg">Upload loop → detect hits → save one-shots → feed pads, sampler, and My Sounds</h2>
+          <h2 className="text-sm font-black uppercase tracking-wide text-white sm:text-lg">Upload loop → render WAV one-shots → save to My Sounds → assign pad/sampler/timeline</h2>
         </div>
         <input ref={inputRef} type="file" accept="audio/*" className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void handleFile(file); event.currentTarget.value = ""; }} />
         <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] px-3 py-2 text-[10px] font-black uppercase text-white/55">Hits <input type="range" min={4} max={32} value={maxHits} onChange={(event) => setMaxHits(Number(event.target.value))} className="accent-green-300" /> {maxHits}</label>
@@ -191,7 +333,14 @@ export default function BeatMachineSmartExtractor() {
           {analysis ? bestHits.map((hit) => <div key={hit.id} className="rounded-xl border border-white/10 bg-white/[.035] p-3">
             <div className="flex items-center justify-between gap-2"><b className="truncate text-xs uppercase text-green-100">{hit.name}</b><span className="rounded-full border border-white/10 px-2 py-1 text-[8px] uppercase text-white/45">{hit.role}</span></div>
             <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] uppercase text-white/45"><span>{hit.startSec}s</span><span>{hit.durationSec}s</span><span>{Math.round(hit.confidence * 100)}%</span></div>
-            <div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => preview(hit)} className="rounded-lg border border-cyan-300/25 px-2 py-2 text-[10px] uppercase text-cyan-100">Preview</button><button onClick={() => saveHit(hit)} className="rounded-lg border border-green-300/25 px-2 py-2 text-[10px] uppercase text-green-100">Save Hit</button></div>
+            {renderedIds[hit.id] ? <div className="mt-2 rounded border border-green-300/20 bg-green-300/10 px-2 py-1 text-[9px] font-black uppercase text-green-100">WAV rendered</div> : null}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button onClick={() => preview(hit)} className="rounded-lg border border-cyan-300/25 px-2 py-2 text-[10px] uppercase text-cyan-100">Preview</button>
+              <button onClick={() => renderAndSave(hit)} className="rounded-lg border border-green-300/25 px-2 py-2 text-[10px] uppercase text-green-100">Save WAV</button>
+              <button onClick={() => assignToPad(hit)} className="rounded-lg border border-yellow-300/25 px-2 py-2 text-[10px] uppercase text-yellow-100">Assign Pad</button>
+              <button onClick={() => sendToSampler(hit)} className="rounded-lg border border-pink-300/25 px-2 py-2 text-[10px] uppercase text-pink-100">Sampler</button>
+              <button onClick={() => sendToTimeline(hit)} className="col-span-2 rounded-lg border border-purple-300/25 px-2 py-2 text-[10px] uppercase text-purple-100">Timeline</button>
+            </div>
           </div>) : <p className="rounded-xl border border-white/10 bg-white/[.035] p-3 text-sm text-white/45 md:col-span-2 xl:col-span-4">No loop analyzed yet. This is where extracted one-shot candidates will show up.</p>}
         </main>
         <aside className="rounded-xl border border-white/10 bg-white/[.035] p-3">
