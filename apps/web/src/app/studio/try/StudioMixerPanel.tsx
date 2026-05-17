@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useMemo, useState } from "react";
 import StudioMixerChannel from "./StudioMixerChannel";
+import { EMS_VISUAL_SYSTEM } from "./emsVisualSystem";
 import { useRafMeterBridge } from "./useRafMeterBridge";
 import type { StudioTrack } from "./studioWorkstationTypes";
 
@@ -71,16 +72,17 @@ function StudioMixerPanel({ tracks, selectedTrack, playing = false, setSelectedT
   }
 
   return (
-    <section data-testid="studio-live-mixer" className="relative block h-[calc(100dvh-142px)] w-full min-w-0 overflow-hidden rounded-lg border border-cyan-300/20 bg-[#030507] p-1 shadow-[inset_0_0_60px_rgba(23,255,244,.06)]">
-      <div className="sticky top-0 z-20 flex min-h-10 items-center gap-2 rounded-md border border-white/10 bg-[#070b0f]/95 px-2 py-1 backdrop-blur">
-        <button onClick={autoMix} className="rounded border border-green-300/35 bg-green-300/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-green-100">AI Mix All</button>
-        <button onClick={resetSolosMutes} className="rounded border border-white/10 bg-white/[.04] px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-white/60">Clear M/S</button>
+    <section data-testid="studio-live-mixer" className={`relative block h-[calc(100dvh-142px)] w-full min-w-0 overflow-hidden rounded-lg p-1 ${EMS_VISUAL_SYSTEM.shell.console}`}>
+      <div className={`sticky top-0 z-20 flex min-h-10 items-center gap-2 rounded-md border border-white/10 px-2 py-1 backdrop-blur ${EMS_VISUAL_SYSTEM.shell.rail}`}>
+        <button onClick={autoMix} className={`rounded border px-3 py-1.5 ${EMS_VISUAL_SYSTEM.text.tiny} ${EMS_VISUAL_SYSTEM.button.cyan}`}>AI Mix All</button>
+        <button onClick={resetSolosMutes} className={`rounded border px-3 py-1.5 ${EMS_VISUAL_SYSTEM.text.tiny} ${EMS_VISUAL_SYSTEM.button.idle}`}>Clear M/S</button>
+        <div className="ml-2 hidden h-5 w-24 items-center justify-center rounded-sm border border-cyan-300/20 bg-black/50 font-mono text-[8px] font-black uppercase tracking-[0.22em] text-cyan-100/80 md:flex">EMS</div>
         <div className="ml-auto flex items-center gap-2">
           <span className={`h-2.5 w-2.5 rounded-full ${playing ? "animate-pulse bg-green-300 shadow-[0_0_14px_#86efac]" : "bg-white/20"}`} />
-          <div className="h-6 w-52 overflow-hidden rounded-sm border border-cyan-300/20 bg-black/70 p-0.5">
+          <div className="h-6 w-52 overflow-hidden rounded-sm border border-cyan-300/25 bg-black/75 p-0.5 shadow-[inset_0_0_14px_rgba(0,0,0,.85)]">
             <div className="h-full rounded-[2px] bg-gradient-to-r from-green-300 via-yellow-300 to-pink-400 transition-[width] duration-75" style={{ width: `${masterPeak}%` }} />
           </div>
-          <span className="w-16 text-right text-[9px] font-black uppercase tracking-widest text-white/45">{Math.round(masterPeak)}%</span>
+          <span className="w-16 text-right font-mono text-[9px] font-black uppercase tracking-widest text-white/45">{Math.round(masterPeak)}%</span>
         </div>
       </div>
       <div className="ems-scroll h-[calc(100%-44px)] w-full min-w-0 overflow-auto rounded-md border border-white/10 bg-[radial-gradient(circle_at_top,#10202a_0%,#030507_42%,#000_100%)] p-1">
