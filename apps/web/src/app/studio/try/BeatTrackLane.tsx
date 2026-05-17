@@ -33,6 +33,7 @@ const KIT_STORAGE_KEY = "ems-studio-selected-kit";
 const INSTRUMENT_STORAGE_KEY = "ems-studio-selected-instrument";
 const SOUNDS_STORAGE_KEY = "ems-studio-sounds";
 const PAD_ASSIGNMENTS_STORAGE_KEY = "ems-studio-pad-assignments";
+const BEAT_STEMS_SESSION_KEY = "ems-studio-beat-stems-session";
 const PAD_ASSIGNMENT_ORDER = ["KICK", "SNARE", "CLAP", "HAT", "OPEN", "PERC", "808", "CRASH"];
 
 type PadAssignment = { soundName: string; soundUrl: string; soundId: string };
@@ -84,6 +85,12 @@ function inferPadLabel(sound: StudioSoundAsset) {
   if (name.includes("808") || name.includes("bass")) return "808";
   if (name.includes("crash")) return "CRASH";
   return PAD_ASSIGNMENT_ORDER[0];
+}
+
+function trackKindForPad(label: string): StudioTrackKind {
+  if (label === "808") return "bass";
+  if (["KICK", "SNARE", "CLAP", "HAT", "OPEN", "PERC", "CRASH"].includes(label)) return "drum";
+  return "audio";
 }
 
 function BeatTrackLane({
@@ -196,6 +203,32 @@ function BeatTrackLane({
     }
   }
 
+  function sendBeatStemsToSession() {
+    const stems = PAD_ASSIGNMENT_ORDER.map((label, index) => {
+      const assignment = padAssignments[label];
+      return {
+        id: `beat-stem-${label.toLowerCase()}-${Date.now()}-${index}`,
+        label,
+        name: assignment?.soundName ?? `${label} Stem`,
+        soundUrl: assignment?.soundUrl,
+        soundId: assignment?.soundId,
+        kind: trackKindForPad(label),
+        volume: label === "KICK" ? 84 : label === "808" ? 76 : label === "SNARE" || label === "CLAP" ? 72 : label === "HAT" || label === "OPEN" ? 56 : 62,
+        pan: label === "HAT" ? 14 : label === "OPEN" ? -16 : label === "PERC" ? 20 : 0,
+        mixTemplate: label === "KICK" ? "center punch" : label === "808" ? "mono tuned low end" : label === "SNARE" || label === "CLAP" ? "forward backbeat" : label === "HAT" || label === "OPEN" ? "wide controlled top" : "supporting percussion",
+      };
+    });
+    window.localStorage.setItem(BEAT_STEMS_SESSION_KEY, JSON.stringify({ stems, kit: activeKit, instrument: activeInstrument, createdAt: new Date().toISOString() }));
+    window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { stems, kit: activeKit, instrument: activeInstrument, autoMix: true } }));
+    stems.forEach((stem) => {
+      onAddTrack(stem.kind);
+      if (stem.soundUrl) {
+        window.dispatchEvent(new CustomEvent("ems:studio-place-sound", { detail: { sound: { id: stem.soundId ?? stem.id, name: stem.name, url: stem.soundUrl, source: "upload", instrument: stem.label, category: stem.kind, createdAt: new Date().toISOString() }, confirm: true, source: "beat-stems" } }));
+      }
+    });
+    emit(`Sent ${stems.length} beat stems to the session with an AI mix template.`);
+  }
+
   return (
     <section className="relative h-full min-h-0 overflow-auto rounded-xl border border-green-300/20 bg-black/45 p-2">
       {toast && (
@@ -206,11 +239,16 @@ function BeatTrackLane({
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/55 px-3 py-2">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-green-200/70">Beat workspace</p>
-          <p className="text-[10px] text-white/40">Pads, sound browser, sequencer, and full piano roll access.</p>
+          <p className="text-[10px] text-white/40">Pads, sound browser, sequencer, full piano roll, and beat-to-session stems.</p>
         </div>
-        <Link href="/studio/beat-machine#piano-roll" className="rounded-lg border border-green-300/35 bg-green-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-green-100 hover:bg-green-300/15">
-          🎹 Open Piano Roll
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={sendBeatStemsToSession} className="rounded-lg border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-300/15">
+            Send Beat Stems To Session
+          </button>
+          <Link href="/studio/beat-machine#piano-roll" className="rounded-lg border border-green-300/35 bg-green-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-green-100 hover:bg-green-300/15">
+            🎹 Open Piano Roll
+          </Link>
+        </div>
       </div>
       <BeatTransport
         midi={midi}
