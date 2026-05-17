@@ -35,6 +35,8 @@ export type StudioClip = {
   soundAssetId?: string;
   muted?: boolean;
   selected?: boolean;
+  fadeInSec?: number;
+  fadeOutSec?: number;
   source: "import" | "recording" | "generated" | "placeholder";
 };
 
