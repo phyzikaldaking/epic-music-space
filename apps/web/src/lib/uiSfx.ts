@@ -247,9 +247,9 @@ class UiSfxEngine {
     if (!this.settings.haptics) return;
     if (kind === "hover") return;
     if (typeof navigator === "undefined") return;
-    const vibrate = (navigator as Navigator & { vibrate?: (ms: number) => boolean }).vibrate;
-    if (!vibrate) return;
-    vibrate(kind === "accent" ? 10 : 7);
+    const haptics = navigator as Navigator & { vibrate?: (ms: number) => boolean };
+    if (typeof haptics.vibrate !== "function") return;
+    haptics.vibrate(kind === "accent" ? 10 : 7);
   }
 
   private blip(

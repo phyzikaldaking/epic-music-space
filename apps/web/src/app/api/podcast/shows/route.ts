@@ -14,9 +14,9 @@ const showSchema = z.object({
   category: z.string().max(80).optional().nullable(),
   format: z.enum(PODCAST_FORMATS).default("VIDEO"),
   cadence: z.enum(PODCAST_CADENCES).default("WEEKLY"),
-  coverUrl: z.string().url().optional().nullable(),
-  bannerUrl: z.string().url().optional().nullable(),
-  trailerAudioUrl: z.string().url().optional().nullable(),
+  coverUrl: z.preprocess((value) => (value === "" ? null : value), z.string().url().optional().nullable()),
+  bannerUrl: z.preprocess((value) => (value === "" ? null : value), z.string().url().optional().nullable()),
+  trailerAudioUrl: z.preprocess((value) => (value === "" ? null : value), z.string().url().optional().nullable()),
   slug: z.string().min(3).max(80).optional(),
   isPublished: z.boolean().optional().default(false),
 });

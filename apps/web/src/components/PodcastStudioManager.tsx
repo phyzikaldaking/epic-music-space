@@ -649,12 +649,18 @@ export default function PodcastStudioManager({ initialShows, liveKitOnline = fal
       }),
     });
     setOpBusy(false);
+    const data = (await res.json().catch(() => ({}))) as {
+      room?: { id?: string | null };
+      error?: string;
+    };
     if (!res.ok) {
-      setOpMessage("Could not create session.");
+      setOpMessage(data.error ?? "Could not create session.");
       return;
     }
-    setOpMessage("Session created.");
+    const roomId = data.room?.id;
+    setOpMessage(roomId ? "Session created. Opening live room." : "Session created.");
     await refreshShows();
+    if (roomId) router.push(`/rooms/${roomId}`);
   }
 
   async function addCollaboratorToEpisode() {
@@ -752,7 +758,14 @@ export default function PodcastStudioManager({ initialShows, liveKitOnline = fal
     const res = await fetch("/api/podcast/shows", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(showForm),
+      body: JSON.stringify({
+        ...showForm,
+        tagline: showForm.tagline.trim() || null,
+        category: showForm.category.trim() || null,
+        coverUrl: showForm.coverUrl.trim() || null,
+        bannerUrl: showForm.bannerUrl.trim() || null,
+        trailerAudioUrl: showForm.trailerAudioUrl.trim() || null,
+      }),
     });
     const data = (await res.json().catch(() => ({}))) as { error?: string; id?: string };
     setShowBusy(false);

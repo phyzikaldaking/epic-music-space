@@ -18,10 +18,21 @@ describe("auth middleware", () => {
     expect(res.status).toBe(307);
     expect(location).toBeTruthy();
     expect(new URL(location!).pathname).toBe("/auth/signin");
-    // The middleware preserves the full incoming URL as the callback so
-    // sign-in can redirect back to exactly where the user was headed.
+    // The callback must stay as an internal path. The sign-in page rejects
+    // absolute callback URLs to avoid open redirects, so using the full
+    // incoming URL here would silently collapse the destination to /dashboard.
+    expect(new URL(location!).searchParams.get("callbackUrl")).toBe("/dashboard");
+  });
+
+  it("preserves protected route query strings as safe internal callbacks", () => {
+    const res = middleware(makeRequest("/studio/podcast?tab=sessions"));
+    const location = res.headers.get("location");
+
+    expect(res.status).toBe(307);
+    expect(location).toBeTruthy();
+    expect(new URL(location!).pathname).toBe("/auth/signin");
     expect(new URL(location!).searchParams.get("callbackUrl")).toBe(
-      "https://epicmusicspace.com/dashboard",
+      "/studio/podcast?tab=sessions",
     );
   });
 

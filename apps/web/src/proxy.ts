@@ -69,7 +69,10 @@ export function proxy(req: NextRequest): NextResponse {
   const requiresAuth = REQUIRE_AUTH.some((pattern) => pattern.test(pathname));
   if (requiresAuth && !authed) {
     const signIn = new URL(SIGN_IN_PATH, req.url);
-    signIn.searchParams.set("callbackUrl", req.url);
+    signIn.searchParams.set(
+      "callbackUrl",
+      `${req.nextUrl.pathname}${req.nextUrl.search}`,
+    );
     return NextResponse.redirect(signIn, { status: 307 });
   }
 
