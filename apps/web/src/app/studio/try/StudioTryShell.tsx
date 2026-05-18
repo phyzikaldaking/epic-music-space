@@ -5,10 +5,11 @@ import { useState } from "react";
 import BeatMachineProClient from "../beat-machine/BeatMachineProClient";
 import ElectricStudioWorkflow from "./ElectricStudioWorkflow";
 import StudioCloudUploadPanel from "./StudioCloudUploadPanel";
+import StudioControlFixPanel from "./StudioControlFixPanel";
 import StudioMp3EncoderPanel from "./StudioMp3EncoderPanel";
 import StudioReadinessPanel from "./StudioReadinessPanel";
 
-type Workspace = "daw" | "beat" | "cloud" | "mp3" | "ready";
+type Workspace = "daw" | "controls" | "beat" | "cloud" | "mp3" | "ready";
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -16,6 +17,7 @@ function cn(...classes: Array<string | false | null | undefined>) {
 
 const tabs: Array<{ id: Workspace; label: string; active: string; hover: string }> = [
   { id: "daw", label: "DAW", active: "bg-cyan-300 text-black", hover: "hover:bg-white/10 hover:text-cyan-100" },
+  { id: "controls", label: "Controls", active: "bg-violet-300 text-black", hover: "hover:bg-white/10 hover:text-violet-100" },
   { id: "beat", label: "Beat", active: "bg-pink-300 text-black", hover: "hover:bg-white/10 hover:text-pink-100" },
   { id: "cloud", label: "Cloud", active: "bg-green-300 text-black", hover: "hover:bg-white/10 hover:text-green-100" },
   { id: "mp3", label: "MP3", active: "bg-orange-300 text-black", hover: "hover:bg-white/10 hover:text-orange-100" },
@@ -45,6 +47,8 @@ export default function StudioTryShell() {
 
       {workspace === "daw" ? (
         <ElectricStudioWorkflow />
+      ) : workspace === "controls" ? (
+        <StudioControlFixPanel />
       ) : workspace === "beat" ? (
         <div className="h-dvh overflow-hidden bg-[#080a0f] pt-12">
           <div className="h-[calc(100dvh-3rem)] overflow-auto">
