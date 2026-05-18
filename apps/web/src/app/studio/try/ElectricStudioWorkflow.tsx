@@ -8,6 +8,7 @@ type TrackKind = "audio" | "aux" | "master";
 type Clip = { id: string; name: string; url: string; type: string; size: number; duration: number; peaks: number[]; start: number; trimStart: number; trimEnd: number; gain: number; muted: boolean; locked: boolean; color: string };
 type Track = { id: string; kind: TrackKind; name: string; color: string; armed: boolean; muted: boolean; solo: boolean; volume: number; pan: number; inputGain: number; clips: Clip[] };
 type HistoryItem = { label: string; tracks: Track[] };
+type RenderProgress = { status: string; percent: number };
 
 const colors = ["#65d6ff", "#a78bfa", "#f9d66a", "#42e89d", "#ff7adf", "#ff9f6e"];
 const audioPattern = /\.(wav|wave|mp3|m4a|aac|ogg|oga|webm|flac|aif|aiff|mp4)$/i;
@@ -49,6 +50,97 @@ async function decodeAudio(blob: Blob) {
   }
 }
 
+function audioBufferToWav(buffer: AudioBuffer) {
+  const channels = Math.min(2, buffer.numberOfChannels);
+  const sampleRate = buffer.sampleRate;
+  const frames = buffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const dataSize = frames * blockAlign;
+  const arrayBuffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(arrayBuffer);
+  let offset = 0;
+  const writeString = (value: string) => { for (let i = 0; i < value.length; i += 1) view.setUint8(offset + i, value.charCodeAt(i)); offset += value.length; };
+  writeString("RIFF");
+  view.setUint32(offset, 36 + dataSize, true); offset += 4;
+  writeString("WAVE");
+  writeString("fmt ");
+  view.setUint32(offset, 16, true); offset += 4;
+  view.setUint16(offset, 1, true); offset += 2;
+  view.setUint16(offset, channels, true); offset += 2;
+  view.setUint32(offset, sampleRate, true); offset += 4;
+  view.setUint32(offset, sampleRate * blockAlign, true); offset += 4;
+  view.setUint16(offset, blockAlign, true); offset += 2;
+  view.setUint16(offset, 16, true); offset += 2;
+  writeString("data");
+  view.setUint32(offset, dataSize, true); offset += 4;
+  const channelData = Array.from({ length: channels }, (_, index) => buffer.getChannelData(index));
+  for (let i = 0; i < frames; i += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const sample = Math.max(-1, Math.min(1, channelData[channel][i] ?? 0));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Blob([arrayBuffer], { type: "audio/wav" });
+}
+
+async function renderWavMaster(tracks: Track[], masterVolume: number, sampleRate: number, onProgress: (progress: RenderProgress) => void) {
+  const sourceTracks = tracks.some((track) => track.solo)
+    ? tracks.filter((track) => track.kind === "audio" && track.solo && !track.muted)
+    : tracks.filter((track) => track.kind === "audio" && !track.muted);
+  const clips = sourceTracks.flatMap((track) => track.clips.filter((clip) => !clip.muted && clip.url).map((clip) => ({ track, clip })));
+  if (!clips.length) throw new Error("No playable clips to render.");
+  const endSec = Math.max(1, ...clips.map(({ clip }) => clip.start + visibleDuration(clip))) + 0.25;
+  const renderRate = sampleRate || 48000;
+  const OfflineCtx = window.OfflineAudioContext || (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext }).webkitOfflineAudioContext;
+  const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!OfflineCtx || !AudioCtx) throw new Error("This browser does not support OfflineAudioContext rendering.");
+  onProgress({ status: "Decoding clips", percent: 12 });
+  const decodeCtx = new AudioCtx({ sampleRate: renderRate });
+  const decoded = await Promise.all(clips.map(async ({ track, clip }, index) => {
+    onProgress({ status: `Decoding ${clip.name}`, percent: 12 + Math.round((index / clips.length) * 32) });
+    const data = await fetch(clip.url).then((res) => res.arrayBuffer());
+    const buffer = await decodeCtx.decodeAudioData(data.slice(0));
+    return { track, clip, buffer };
+  }));
+  await decodeCtx.close();
+  onProgress({ status: "Building mix graph", percent: 52 });
+  const offline = new OfflineCtx(2, Math.ceil(endSec * renderRate), renderRate);
+  const master = offline.createGain();
+  master.gain.value = Math.max(0, Math.min(1.25, masterVolume / 100));
+  master.connect(offline.destination);
+  decoded.forEach(({ track, clip, buffer }, index) => {
+    const duration = Math.min(visibleDuration(clip), Math.max(0.05, buffer.duration - clip.trimStart - clip.trimEnd));
+    const source = offline.createBufferSource();
+    const gain = offline.createGain();
+    const panner = typeof offline.createStereoPanner === "function" ? offline.createStereoPanner() : null;
+    source.buffer = buffer;
+    gain.gain.value = Math.max(0, track.volume / 100) * Math.pow(10, clip.gain / 20);
+    if (panner) {
+      panner.pan.value = Math.max(-1, Math.min(1, track.pan / 50));
+      source.connect(gain).connect(panner).connect(master);
+    } else {
+      source.connect(gain).connect(master);
+    }
+    try { source.start(Math.max(0, clip.start), Math.max(0, clip.trimStart), duration); } catch { /* skip unrenderable clip */ }
+    onProgress({ status: `Scheduled ${clip.name}`, percent: 52 + Math.round(((index + 1) / decoded.length) * 20) });
+  });
+  onProgress({ status: "Rendering WAV master", percent: 76 });
+  const mixed = await offline.startRendering();
+  onProgress({ status: "Encoding WAV", percent: 94 });
+  return audioBufferToWav(mixed);
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function ElectricStudioWorkflow() {
   const [mode, setMode] = useState<Mode>("edit");
   const [tool, setTool] = useState<Tool>("smart");
@@ -74,6 +166,8 @@ export default function ElectricStudioWorkflow() {
   const [redoHistory, setRedoHistory] = useState<HistoryItem[]>([]);
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
+  const [renderProgress, setRenderProgress] = useState<RenderProgress>({ status: "Idle", percent: 0 });
+  const [rendering, setRendering] = useState(false);
   const players = useRef<HTMLAudioElement[]>([]);
   const timer = useRef<number | null>(null);
   const playOrigin = useRef(0);
@@ -168,6 +262,7 @@ export default function ElectricStudioWorkflow() {
     setHistory([]);
     setRedoHistory([]);
     setClipboard(null);
+    setRenderProgress({ status: "Idle", percent: 0 });
     setStatus("New session");
   }
 
@@ -454,6 +549,32 @@ export default function ElectricStudioWorkflow() {
     URL.revokeObjectURL(url);
   }
 
+  async function renderWavExport() {
+    if (rendering) return;
+    setRendering(true);
+    setError(null);
+    setRenderProgress({ status: "Starting WAV render", percent: 4 });
+    setStatus("Rendering WAV master");
+    try {
+      const wav = await renderWavMaster(tracks, masterVolume, sampleRate, setRenderProgress);
+      downloadBlob(wav, `${slug(title)}-wav-master.wav`);
+      setRenderProgress({ status: "WAV master downloaded", percent: 100 });
+      setStatus("WAV master rendered");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "WAV render failed.";
+      setError(message);
+      setRenderProgress({ status: message, percent: 0 });
+      setStatus("WAV render failed");
+    } finally {
+      setRendering(false);
+    }
+  }
+
+  async function requestMp3Demo() {
+    setRenderProgress({ status: "MP3 needs an encoder/worker. WAV renderer is active; MP3 queue endpoint exists server-side.", percent: 0 });
+    setStatus("MP3 renderer not installed");
+  }
+
   const button = "bg-[#30343b] px-3 py-2 hover:bg-[#3f4650]";
 
   return <div className="grid h-dvh grid-rows-[34px_44px_1fr_24px] overflow-hidden bg-[#111316] text-[#d8d8d8]">
@@ -493,7 +614,7 @@ export default function ElectricStudioWorkflow() {
     {error && <div className="absolute left-3 right-3 top-20 z-50 border border-yellow-400/50 bg-yellow-950 px-4 py-3 text-sm font-bold text-yellow-100"><button onClick={() => setError(null)} className="mr-3 bg-yellow-300 px-2 py-1 text-black">Dismiss</button>{error}</div>}
     {mode === "edit" && <EditPane tracks={tracks} selectedTrack={selectedTrack} selectedClip={selectedClip} selectedClipId={selectedClipId} setSelectedTrackId={setSelectedTrackId} setSelectedClipId={setSelectedClipId} updateTrack={updateTrack} updateClip={updateClip} armTrack={armTrack} deleteTrack={deleteTrack} deleteClip={deleteClip} splitClip={splitClip} duplicateClip={duplicateClip} renameClip={renameClip} copyClip={copyClip} cutClip={cutClip} pasteClip={pasteClip} nudge={nudge} zoom={zoom} timelineWidth={timelineWidth} playhead={playhead} setPlayhead={setPlayhead} sessionEnd={sessionEnd} startClipGesture={startClipGesture} importFiles={importFiles} inputMeter={inputMeter} inputReady={inputReady} masterVolume={masterVolume} setMasterVolume={setMasterVolume} masterMeter={masterMeter} bpm={bpm} setBpm={setBpm} sampleRate={sampleRate} setSampleRate={setSampleRate} />}
     {mode === "mix" && <MixerPane tracks={tracks} updateTrack={updateTrack} armTrack={armTrack} masterVolume={masterVolume} setMasterVolume={setMasterVolume} masterMeter={masterMeter} inputMeter={inputMeter} />}
-    {mode === "export" && <ExportPane title={title} tracks={tracks} selectedClipRef={selectedClipRef} downloadClip={downloadClip} downloadAll={downloadAll} exportArchive={exportArchive} />}
+    {mode === "export" && <ExportPane title={title} tracks={tracks} selectedClipRef={selectedClipRef} downloadClip={downloadClip} downloadAll={downloadAll} exportArchive={exportArchive} renderWavExport={renderWavExport} requestMp3Demo={requestMp3Demo} rendering={rendering} renderProgress={renderProgress} />}
     {mode === "files" && <FilesPane title={title} tracks={tracks} saveSession={saveSession} restoreSession={restoreSession} exportArchive={exportArchive} />}
     <footer className="flex items-center border-t border-black bg-[#15171b] px-3 text-[10px] uppercase tracking-widest text-white/45"><span>{status}</span><span className="ml-auto">{audioTracks.length} audio tracks · {tracks.flatMap((track) => track.clips).length} clips · {inputReady ? "input live" : "input off"}</span></footer>
   </div>;
@@ -538,11 +659,11 @@ function MixerPane({ tracks, updateTrack, armTrack, masterVolume, setMasterVolum
   return <main className="h-full overflow-auto bg-[#20242b]"><div className="flex min-h-full min-w-max border-l border-black"><div className="grid w-[138px] grid-rows-[40px_72px_1fr_70px] border-r border-black bg-[#24282f] text-center"><div className="border-b border-black bg-[#3a3f47] py-3 text-[10px] font-black uppercase tracking-widest text-[#d8d2bd]">Master</div><div className="border-b border-black p-2"><Meter label="Master" value={masterMeter} /><Meter label="Input" value={inputMeter} /></div><div className="grid place-items-center border-b border-black p-3"><input type="range" min="0" max="100" value={masterVolume} onChange={(e) => setMasterVolume(Number(e.target.value))} className="h-52 accent-[#d8d2bd] [writing-mode:vertical-lr]" /></div><div className="grid place-items-center bg-[#181b20] font-mono text-sm text-[#d8d2bd]">{masterVolume}</div></div>{tracks.map((track, index) => <div key={track.id} className="grid w-[124px] grid-rows-[40px_86px_76px_1fr_58px] border-r border-black bg-[#2d3138] text-center"><div className="border-b border-black bg-[#3a3f47] py-3 text-[10px] font-black uppercase tracking-widest" style={{ color: track.color }}>{track.kind} {index + 1}</div><div className="border-b border-black p-2"><b className="block truncate text-[11px] uppercase text-white/80">{track.name}</b><span className="text-[9px] text-white/35">{track.clips.length} clips</span><button disabled={track.kind !== "audio"} onClick={() => armTrack(track.id)} className={track.armed ? "mt-2 w-full bg-red-500 py-1 text-[9px] font-black uppercase text-black" : "mt-2 w-full bg-[#15171b] py-1 text-[9px] font-black uppercase text-white/45 disabled:opacity-30"}>Rec</button></div><div className="grid grid-cols-2 gap-px border-b border-black p-2 text-[9px] font-black uppercase"><button onClick={() => updateTrack(track.id, { muted: !track.muted })} className={track.muted ? "bg-yellow-300 text-black" : "bg-[#15171b] text-white/45"}>Mute</button><button onClick={() => updateTrack(track.id, { solo: !track.solo })} className={track.solo ? "bg-cyan-300 text-black" : "bg-[#15171b] text-white/45"}>Solo</button><label className="col-span-2 mt-2 text-white/40">Pan<input type="range" min="-50" max="50" value={track.pan} onChange={(e) => updateTrack(track.id, { pan: Number(e.target.value) })} className="w-full accent-cyan-300" /></label></div><div className="grid grid-cols-[22px_1fr] gap-2 border-b border-black p-3"><div className="relative bg-black"><span className="absolute bottom-0 left-0 right-0 bg-green-400" style={{ height: `${Math.min(100, track.volume)}%` }} /></div><input type="range" min="0" max="100" value={track.volume} onChange={(e) => updateTrack(track.id, { volume: Number(e.target.value) })} className="h-full w-12 accent-[#d8d2bd] [writing-mode:vertical-lr]" /></div><div className="grid place-items-center bg-[#181b20] font-mono text-sm text-[#d8d2bd]">{track.volume}</div></div>)}</div></main>;
 }
 
-function ExportPane({ title, tracks, selectedClipRef, downloadClip, downloadAll, exportArchive }: { title: string; tracks: Track[]; selectedClipRef: { track: Track; clip: Clip } | null; downloadClip: (track: Track, clip: Clip) => void; downloadAll: () => void; exportArchive: () => void }) {
+function ExportPane({ title, tracks, selectedClipRef, downloadClip, downloadAll, exportArchive, renderWavExport, requestMp3Demo, rendering, renderProgress }: { title: string; tracks: Track[]; selectedClipRef: { track: Track; clip: Clip } | null; downloadClip: (track: Track, clip: Clip) => void; downloadAll: () => void; exportArchive: () => void; renderWavExport: () => Promise<void>; requestMp3Demo: () => Promise<void>; rendering: boolean; renderProgress: RenderProgress }) {
   const clipCount = tracks.flatMap((track) => track.clips).length;
-  return <main className="grid h-full place-items-center bg-[#20242b] p-6"><div className="text-center"><h2 className="text-3xl font-black uppercase tracking-widest text-cyan-100">Export</h2><p className="mt-3 text-sm text-white/55">{title} · {tracks.length} tracks · {clipCount} clips</p><button disabled={!selectedClipRef} onClick={() => selectedClipRef && downloadClip(selectedClipRef.track, selectedClipRef.clip)} className="mt-5 bg-cyan-300 px-6 py-3 text-xs font-black uppercase text-black disabled:opacity-40">Download Selected Clip</button><button disabled={!clipCount} onClick={downloadAll} className="ml-3 mt-5 border border-white/20 px-6 py-3 text-xs font-black uppercase text-white/70 disabled:opacity-40">Download All Clips</button><button onClick={exportArchive} className="ml-3 mt-5 border border-white/20 px-6 py-3 text-xs font-black uppercase text-white/70">Export Session Archive</button></div></main>;
+  return <main className="grid h-full place-items-center bg-[#20242b] p-6"><div className="max-w-3xl text-center"><h2 className="text-3xl font-black uppercase tracking-widest text-cyan-100">Export</h2><p className="mt-3 text-sm text-white/55">{title} · {tracks.length} tracks · {clipCount} clips</p><div className="mt-5 flex flex-wrap justify-center gap-3"><button disabled={!clipCount || rendering} onClick={() => void renderWavExport()} className="bg-green-400 px-6 py-3 text-xs font-black uppercase text-black disabled:opacity-40">Render WAV Master</button><button disabled={!clipCount || rendering} onClick={() => void requestMp3Demo()} className="border border-yellow-300/40 px-6 py-3 text-xs font-black uppercase text-yellow-100 disabled:opacity-40">MP3 Demo Path</button><button disabled={!selectedClipRef} onClick={() => selectedClipRef && downloadClip(selectedClipRef.track, selectedClipRef.clip)} className="bg-cyan-300 px-6 py-3 text-xs font-black uppercase text-black disabled:opacity-40">Download Selected Clip</button><button disabled={!clipCount} onClick={downloadAll} className="border border-white/20 px-6 py-3 text-xs font-black uppercase text-white/70 disabled:opacity-40">Download All Clips</button><button onClick={exportArchive} className="border border-white/20 px-6 py-3 text-xs font-black uppercase text-white/70">Export Session Archive</button></div><div className="mx-auto mt-6 max-w-xl rounded-2xl border border-white/10 bg-black/35 p-4 text-left"><div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-white/45"><span>{renderProgress.status}</span><span>{renderProgress.percent}%</span></div><div className="mt-2 h-3 bg-black"><div className="h-full bg-green-400" style={{ width: `${Math.max(0, Math.min(100, renderProgress.percent))}%` }} /></div><p className="mt-3 text-xs leading-5 text-white/50">WAV master rendering is real browser-side mixdown using OfflineAudioContext. MP3 still needs an encoder or worker; the app now shows that path honestly instead of fake-exporting MP3.</p></div></div></main>;
 }
 
 function FilesPane({ title, tracks, saveSession, restoreSession, exportArchive }: { title: string; tracks: Track[]; saveSession: () => void; restoreSession: () => void; exportArchive: () => void }) {
-  return <main className="grid h-full grid-cols-3 bg-[#20242b] text-sm"><section className="border-r border-black p-4"><h2 className="text-lg font-black uppercase text-cyan-100">Session</h2><p className="mt-3 text-white/60">{title}</p><p className="mt-2 text-white/45">{tracks.length} tracks · {tracks.flatMap((track) => track.clips).length} clips</p><button onClick={saveSession} className="mt-4 bg-cyan-300 px-4 py-2 text-xs font-black uppercase text-black">Save Local Metadata</button><button onClick={restoreSession} className="ml-2 mt-4 border border-white/20 px-4 py-2 text-xs font-black uppercase text-white/70">Restore</button><button onClick={exportArchive} className="ml-2 mt-4 border border-white/20 px-4 py-2 text-xs font-black uppercase text-white/70">Archive</button></section><section className="border-r border-black p-4"><h2 className="text-lg font-black uppercase text-cyan-100">Track Types</h2><p className="mt-3 text-white/60">Audio records and plays clips. Aux and Master are mix/control surfaces for routing-ready workflow.</p></section><section className="p-4"><h2 className="text-lg font-black uppercase text-cyan-100">Wired Controls</h2><ul className="mt-3 space-y-2 text-white/60"><li>New, save, restore, undo, redo</li><li>Audio, aux, master track creation</li><li>Import, record, play, stop, input meter</li><li>Drag clips horizontally and between audio tracks</li><li>Trim handles, split, duplicate, rename, copy, cut, paste</li><li>Master fader, master meter, clip export, archive export</li></ul></section></main>;
+  return <main className="grid h-full grid-cols-3 bg-[#20242b] text-sm"><section className="border-r border-black p-4"><h2 className="text-lg font-black uppercase text-cyan-100">Session</h2><p className="mt-3 text-white/60">{title}</p><p className="mt-2 text-white/45">{tracks.length} tracks · {tracks.flatMap((track) => track.clips).length} clips</p><button onClick={saveSession} className="mt-4 bg-cyan-300 px-4 py-2 text-xs font-black uppercase text-black">Save Local Metadata</button><button onClick={restoreSession} className="ml-2 mt-4 border border-white/20 px-4 py-2 text-xs font-black uppercase text-white/70">Restore</button><button onClick={exportArchive} className="ml-2 mt-4 border border-white/20 px-4 py-2 text-xs font-black uppercase text-white/70">Archive</button></section><section className="border-r border-black p-4"><h2 className="text-lg font-black uppercase text-cyan-100">Track Types</h2><p className="mt-3 text-white/60">Audio records and plays clips. Aux and Master are mix/control surfaces for routing-ready workflow.</p></section><section className="p-4"><h2 className="text-lg font-black uppercase text-cyan-100">Wired Controls</h2><ul className="mt-3 space-y-2 text-white/60"><li>New, save, restore, undo, redo</li><li>Audio, aux, master track creation</li><li>Import, record, play, stop, input meter</li><li>Drag clips horizontally and between audio tracks</li><li>Trim handles, split, duplicate, rename, copy, cut, paste</li><li>Browser WAV master renderer, master fader, master meter, clip export, archive export</li></ul></section></main>;
 }
