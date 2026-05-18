@@ -11,6 +11,8 @@ const steps = [
   "Opening creative space",
 ];
 
+const studioUrl = "/studio/try?from=enter";
+
 export default function EnterStudioPortal() {
   const router = useRouter();
   const [progress, setProgress] = useState(0);
@@ -25,7 +27,7 @@ export default function EnterStudioPortal() {
       setStep(steps[Math.min(steps.length - 1, Math.floor((next / 100) * steps.length))]);
       if (next >= 100) {
         window.clearInterval(interval);
-        router.replace("/studio/try");
+        router.replace(studioUrl);
       }
     }, 90);
     return () => window.clearInterval(interval);
@@ -59,7 +61,7 @@ export default function EnterStudioPortal() {
         </div>
 
         <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-          <Link href="/studio/try" className="rounded-full border border-cyan-300/50 bg-cyan-300/15 px-7 py-3 text-xs font-black uppercase tracking-[0.24em] text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,.25)] transition hover:scale-[1.02] hover:bg-cyan-300/25">
+          <Link href={studioUrl} className="rounded-full border border-cyan-300/50 bg-cyan-300/15 px-7 py-3 text-xs font-black uppercase tracking-[0.24em] text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,.25)] transition hover:scale-[1.02] hover:bg-cyan-300/25">
             Enter Studio Now
           </Link>
           <Link href="/" className="rounded-full border border-white/15 bg-white/[.04] px-7 py-3 text-xs font-black uppercase tracking-[0.24em] text-white/62 transition hover:bg-white/10 hover:text-white">
