@@ -15,7 +15,12 @@ function buildSkeletonPeaks(length: number) {
 
 function rememberLod(key: string, value: number[][]) {
   lodCache.set(key, value);
-  if (lodCache.size > MAX_CACHE_ENTRIES) lodCache.delete(lodCache.keys().next().value);
+
+  const oldestKey = lodCache.keys().next().value;
+  if (lodCache.size > MAX_CACHE_ENTRIES && typeof oldestKey === "string") {
+    lodCache.delete(oldestKey);
+  }
+
   return value;
 }
 
