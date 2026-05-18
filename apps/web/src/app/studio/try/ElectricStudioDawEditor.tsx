@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type EditMode = "slip" | "grid" | "shuffle" | "spot";
 type TrackKind = "audio" | "aux" | "master";
+type DragMode = "move" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut";
 type Clip = {
   id: string;
   name: string;
@@ -13,11 +14,14 @@ type Clip = {
   start: number;
   trimStart: number;
   trimEnd: number;
+  fadeIn: number;
+  fadeOut: number;
   gain: number;
   muted: boolean;
   locked: boolean;
   color: string;
   peaks: number[];
+  groupId?: string | null;
 };
 type Track = {
   id: string;
@@ -35,11 +39,14 @@ type Track = {
 type DragState = {
   clipId: string;
   trackId: string;
-  mode: "move" | "trimStart" | "trimEnd";
+  mode: DragMode;
   startX: number;
   originalStart: number;
   originalTrimStart: number;
   originalTrimEnd: number;
+  originalFadeIn: number;
+  originalFadeOut: number;
+  originalGroupStarts: Record<string, number>;
 };
 
 const colors = ["#65d6ff", "#a78bfa", "#f9d66a", "#42e89d", "#ff7adf", "#ff9f6e"];
@@ -85,6 +92,10 @@ function makeTrack(kind: TrackKind, index: number, armed = false): Track {
 function snapTime(value: number, editMode: EditMode) {
   if (editMode !== "grid") return Math.max(0, value);
   return Math.max(0, Math.round(value / gridValue) * gridValue);
+}
+
+function gainPercent(gain: number) {
+  return Math.max(10, Math.min(90, 55 - gain * 1.55));
 }
 
 async function decodeFile(file: Blob) {
@@ -160,10 +171,18 @@ export default function ElectricStudioDawEditor() {
   const [status, setStatus] = useState("Ready");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [draggingClipId, setDraggingClipId] = useState<string | null>(null);
+  const [dropTargetTrackId, setDropTargetTrackId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const selectedTrack = tracks.find((track) => track.id === selectedTrackId) ?? tracks.find((track) => track.kind === "audio") ?? tracks[0] ?? null;
-  const selectedClip = tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedClipId) ?? null;
+  const selectedClipRef = useMemo(() => {
+    for (const track of tracks) {
+      const clip = track.clips.find((item) => item.id === selectedClipId);
+      if (clip) return { track, clip };
+    }
+    return null;
+  }, [tracks, selectedClipId]);
+  const selectedClip = selectedClipRef?.clip ?? null;
   const sessionEnd = Math.max(12, ...tracks.flatMap((track) => track.clips.map((clip) => clip.start + visibleDuration(clip))));
   const timelineWidth = Math.max(1400, sessionEnd * zoom + 360);
   const seconds = useMemo(() => Array.from({ length: Math.ceil(sessionEnd) + 1 }, (_, index) => index), [sessionEnd]);
@@ -171,6 +190,11 @@ export default function ElectricStudioDawEditor() {
   function updateTrack(id: string, patch: Partial<Track>) {
     setTracks((current) => current.map((track) => track.id === id ? { ...track, ...patch } : track));
     setStatus("Track updated");
+  }
+
+  function updateClip(id: string, patch: Partial<Clip>) {
+    setTracks((current) => current.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === id ? { ...clip, ...patch } : clip) })));
+    setStatus("Clip updated");
   }
 
   function armTrack(id: string) {
@@ -205,27 +229,37 @@ export default function ElectricStudioDawEditor() {
 
     for (const file of audioFiles) {
       const decoded = await decodeFile(file);
-      const track = makeTrack("audio", tracks.length + 1, tracks.every((item) => !item.armed));
-      const color = track.color;
+      const targetTrack = selectedTrack?.kind === "audio" ? selectedTrack : null;
+      const color = targetTrack?.color ?? colors[tracks.length % colors.length];
       const clip: Clip = {
         id: uid("clip"),
         name: file.name.replace(/\.[a-z0-9]+$/i, ""),
         url: URL.createObjectURL(file),
         type: file.type || "audio/*",
         duration: decoded.duration,
-        start: 0,
+        start: targetTrack ? playhead : 0,
         trimStart: 0,
         trimEnd: 0,
+        fadeIn: 0,
+        fadeOut: 0,
         gain: 0,
         muted: false,
         locked: false,
         color,
         peaks: decoded.peaks,
+        groupId: null,
       };
-      track.name = clip.name || track.name;
-      track.clips = [clip];
-      setTracks((current) => [...current, track]);
-      setSelectedTrackId(track.id);
+      if (targetTrack) {
+        setTracks((current) => current.map((track) => track.id === targetTrack.id ? { ...track, clips: [...track.clips, clip].sort((a, b) => a.start - b.start) } : track));
+        setSelectedTrackId(targetTrack.id);
+      } else {
+        const track = makeTrack("audio", tracks.length + 1, tracks.every((item) => !item.armed));
+        track.name = clip.name || track.name;
+        track.color = color;
+        track.clips = [clip];
+        setTracks((current) => [...current, track]);
+        setSelectedTrackId(track.id);
+      }
       setSelectedClipId(clip.id);
     }
     setStatus("Imported audio");
@@ -245,7 +279,15 @@ export default function ElectricStudioDawEditor() {
     };
   }
 
-  function startClipGesture(event: React.PointerEvent, trackId: string, clip: Clip, mode: DragState["mode"]) {
+  function findClip(id: string) {
+    for (const track of tracks) {
+      const clip = track.clips.find((item) => item.id === id);
+      if (clip) return { track, clip };
+    }
+    return null;
+  }
+
+  function startClipGesture(event: React.PointerEvent, trackId: string, clip: Clip, mode: DragMode) {
     event.preventDefault();
     event.stopPropagation();
     if (clip.locked) {
@@ -256,15 +298,39 @@ export default function ElectricStudioDawEditor() {
     setSelectedTrackId(trackId);
     setSelectedClipId(clip.id);
     setDraggingClipId(clip.id);
-    setDrag({ clipId: clip.id, trackId, mode, startX: event.clientX, originalStart: clip.start, originalTrimStart: clip.trimStart, originalTrimEnd: clip.trimEnd });
+    const originalGroupStarts: Record<string, number> = {};
+    if (clip.groupId && mode === "move") {
+      for (const track of tracks) {
+        for (const item of track.clips) if (item.groupId === clip.groupId) originalGroupStarts[item.id] = item.start;
+      }
+    }
+    setDrag({
+      clipId: clip.id,
+      trackId,
+      mode,
+      startX: event.clientX,
+      originalStart: clip.start,
+      originalTrimStart: clip.trimStart,
+      originalTrimEnd: clip.trimEnd,
+      originalFadeIn: clip.fadeIn,
+      originalFadeOut: clip.fadeOut,
+      originalGroupStarts,
+    });
+    setStatus(`${mode === "move" ? "Moving" : mode === "trimStart" || mode === "trimEnd" ? "Trimming" : "Adjusting fade"} ${clip.name}`);
   }
 
   function moveDrag(event: React.PointerEvent) {
     if (!drag) return;
     const secondsDelta = (event.clientX - drag.startX) / zoom;
+    const target = document.elementsFromPoint(event.clientX, event.clientY).find((element) => element instanceof HTMLElement && element.dataset.trackId) as HTMLElement | undefined;
+    setDropTargetTrackId(target?.dataset.trackId ?? null);
+
     setTracks((current) => current.map((track) => ({
       ...track,
       clips: track.clips.map((clip) => {
+        if (drag.mode === "move" && drag.originalGroupStarts[clip.id] !== undefined) {
+          return { ...clip, start: snapTime(drag.originalGroupStarts[clip.id] + secondsDelta, editMode) };
+        }
         if (clip.id !== drag.clipId) return clip;
         if (drag.mode === "move") return { ...clip, start: snapTime(drag.originalStart + secondsDelta, editMode) };
         if (drag.mode === "trimStart") {
@@ -272,7 +338,9 @@ export default function ElectricStudioDawEditor() {
           const snappedStart = snapTime(drag.originalStart + (trim - drag.originalTrimStart), editMode);
           return { ...clip, trimStart: trim, start: snappedStart };
         }
-        return { ...clip, trimEnd: Math.max(0, Math.min(clip.duration - 0.05, drag.originalTrimEnd - secondsDelta)) };
+        if (drag.mode === "trimEnd") return { ...clip, trimEnd: Math.max(0, Math.min(clip.duration - 0.05, drag.originalTrimEnd - secondsDelta)) };
+        if (drag.mode === "fadeIn") return { ...clip, fadeIn: Math.max(0, Math.min(visibleDuration(clip) - 0.02, drag.originalFadeIn + secondsDelta)) };
+        return { ...clip, fadeOut: Math.max(0, Math.min(visibleDuration(clip) - 0.02, drag.originalFadeOut - secondsDelta)) };
       }),
     })));
   }
@@ -285,11 +353,13 @@ export default function ElectricStudioDawEditor() {
     setTracks((current) => {
       let nextTracks = current;
       if (drag.mode === "move" && targetTrackId && targetTrackId !== drag.trackId) {
-        const movingClip = current.flatMap((track) => track.clips).find((clip) => clip.id === drag.clipId);
-        if (movingClip) {
+        const movingRef = current.flatMap((track) => track.clips).find((clip) => clip.id === drag.clipId);
+        if (movingRef) {
+          const groupIds = movingRef.groupId ? new Set(current.flatMap((track) => track.clips.filter((clip) => clip.groupId === movingRef.groupId).map((clip) => clip.id))) : new Set([drag.clipId]);
+          const movingClips = current.flatMap((track) => track.clips.filter((clip) => groupIds.has(clip.id)));
           nextTracks = current.map((track) => {
-            if (track.id === drag.trackId) return { ...track, clips: track.clips.filter((clip) => clip.id !== drag.clipId) };
-            if (track.id === targetTrackId && track.kind === "audio") return { ...track, clips: [...track.clips, movingClip].sort((a, b) => a.start - b.start) };
+            if (track.id === drag.trackId) return { ...track, clips: track.clips.filter((clip) => !groupIds.has(clip.id)) };
+            if (track.id === targetTrackId && track.kind === "audio") return { ...track, clips: [...track.clips, ...movingClips].sort((a, b) => a.start - b.start) };
             return track;
           });
           setSelectedTrackId(targetTrackId);
@@ -309,8 +379,54 @@ export default function ElectricStudioDawEditor() {
 
     setDrag(null);
     setDraggingClipId(null);
+    setDropTargetTrackId(null);
     setStatus(`${editMode.toUpperCase()} edit complete`);
   }
+
+  function duplicateClip() {
+    if (!selectedClipRef) return;
+    const copy: Clip = { ...selectedClipRef.clip, id: uid("clip"), name: `${selectedClipRef.clip.name} copy`, start: selectedClipRef.clip.start + visibleDuration(selectedClipRef.clip), groupId: selectedClipRef.clip.groupId ?? null };
+    setTracks((current) => current.map((track) => track.id === selectedClipRef.track.id ? { ...track, clips: [...track.clips, copy].sort((a, b) => a.start - b.start) } : track));
+    setSelectedClipId(copy.id);
+    setStatus("Duplicated clip on track");
+  }
+
+  function groupClipsOnTrack() {
+    if (!selectedClipRef) return;
+    const groupId = selectedClipRef.clip.groupId ?? uid("group");
+    setTracks((current) => current.map((track) => track.id === selectedClipRef.track.id ? { ...track, clips: track.clips.map((clip) => ({ ...clip, groupId })) } : track));
+    setStatus("Grouped clips on selected track");
+  }
+
+  function ungroupSelected() {
+    if (!selectedClip?.groupId) return;
+    const groupId = selectedClip.groupId;
+    setTracks((current) => current.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.groupId === groupId ? { ...clip, groupId: null } : clip) })));
+    setStatus("Ungrouped clips");
+  }
+
+  function applyCrossfade() {
+    if (!selectedClipRef) return;
+    const track = selectedClipRef.track;
+    const clip = selectedClipRef.clip;
+    const nextClip = track.clips.filter((item) => item.id !== clip.id && item.start >= clip.start).sort((a, b) => a.start - b.start)[0];
+    if (!nextClip) {
+      setStatus("No following clip to crossfade");
+      return;
+    }
+    const overlap = Math.max(0.08, Math.min(1.5, visibleDuration(clip) * 0.2, visibleDuration(nextClip) * 0.2));
+    setTracks((current) => current.map((item) => item.id === track.id ? {
+      ...item,
+      clips: item.clips.map((candidate) => {
+        if (candidate.id === clip.id) return { ...candidate, fadeOut: overlap };
+        if (candidate.id === nextClip.id) return { ...candidate, start: Math.max(0, clip.start + visibleDuration(clip) - overlap), fadeIn: overlap };
+        return candidate;
+      }).sort((a, b) => a.start - b.start),
+    } : item));
+    setStatus("Crossfade applied between clips");
+  }
+
+  const activeDragLabel = drag ? drag.mode === "move" ? "Move" : drag.mode === "trimStart" ? "Trim start" : drag.mode === "trimEnd" ? "Trim end" : drag.mode === "fadeIn" ? "Fade in" : "Fade out" : null;
 
   return (
     <main className="grid h-full min-h-0 grid-rows-[auto_1fr_auto] overflow-hidden bg-[#101319] text-white">
@@ -322,12 +438,16 @@ export default function ElectricStudioDawEditor() {
           <button onClick={() => createTrack("master")} className="rounded-lg bg-[#d8d2bd] px-3 py-2 text-black">Add Master</button>
           <label className="cursor-pointer rounded-lg bg-[#303743] px-3 py-2 text-cyan-100">Import<input type="file" multiple accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.webm,.flac,.aif,.aiff,.mp4" className="sr-only" onChange={(event) => event.target.files && void importFiles(event.target.files)} /></label>
           <button onClick={() => setPlayhead(0)} className="rounded-lg bg-black/55 px-3 py-2">Return</button>
+          <button onClick={duplicateClip} disabled={!selectedClip} className="rounded-lg bg-black/55 px-3 py-2 text-white/65 disabled:opacity-35">Duplicate</button>
+          <button onClick={applyCrossfade} disabled={!selectedClip} className="rounded-lg bg-pink-300 px-3 py-2 text-black disabled:opacity-35">Crossfade</button>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-widest">
           <span className="text-white/40">Edit Mode</span>
           {(["slip", "grid", "shuffle", "spot"] as EditMode[]).map((mode) => (
             <button key={mode} onClick={() => { setEditMode(mode); setStatus(`${mode.toUpperCase()} mode`); }} className={cn("rounded-full px-3 py-2", editMode === mode ? "bg-yellow-300 text-black" : "bg-black/55 text-white/55 hover:text-white")}>{mode}</button>
           ))}
+          <button onClick={groupClipsOnTrack} disabled={!selectedClip} className="rounded-full bg-violet-300 px-3 py-2 text-black disabled:opacity-35">Group Track Clips</button>
+          <button onClick={ungroupSelected} disabled={!selectedClip?.groupId} className="rounded-full bg-black/55 px-3 py-2 text-white/65 disabled:opacity-35">Ungroup</button>
           <span className="ml-auto text-white/40">Zoom {zoom}px/sec</span>
           <button onClick={() => setZoom((value) => Math.max(20, value / 2))} className="rounded-lg bg-black/55 px-3 py-2 text-white/65">Zoom Out</button>
           <button onClick={() => setZoom((value) => Math.min(2400, value * 2))} className="rounded-lg bg-black/55 px-3 py-2 text-white/65">Zoom In</button>
@@ -338,7 +458,7 @@ export default function ElectricStudioDawEditor() {
         <aside className="min-h-0 overflow-auto border-r border-black bg-[#1b2028] max-md:max-h-[34svh] max-md:border-b max-md:border-r-0">
           <div className="sticky top-0 z-10 border-b border-black bg-[#252b34] px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white/45">Tracks</div>
           {tracks.length === 0 && <p className="p-4 text-sm text-white/45">Add or import an audio track.</p>}
-          {tracks.map((track, index) => (
+          {tracks.map((track) => (
             <article key={track.id} onClick={() => setSelectedTrackId(track.id)} className={cn("border-b border-black bg-[linear-gradient(180deg,#252a33,#1a1f27)] p-3", selectedTrack?.id === track.id && "ring-1 ring-cyan-300/70")}>
               <div className="flex items-center gap-3">
                 <span className="h-12 w-2 rounded-full" style={{ backgroundColor: track.color }} />
@@ -374,19 +494,31 @@ export default function ElectricStudioDawEditor() {
             <div className="overflow-auto">
               <div className="relative" style={{ width: timelineWidth }}>
                 {tracks.map((track) => (
-                  <div key={track.id} data-track-id={track.id} className="relative h-[92px] border-b border-black bg-[#151a22]">
+                  <div key={track.id} data-track-id={track.id} className={cn("relative h-[96px] border-b border-black bg-[#151a22] transition-colors", dropTargetTrackId === track.id && "bg-cyan-300/[0.08] ring-1 ring-inset ring-cyan-300/50")}>
                     <div className="absolute inset-0">{seconds.map((second) => <span key={second} className={cn("absolute bottom-0 top-0 border-r", editMode === "grid" ? "border-cyan-300/25" : "border-black/70")} style={{ left: second * zoom, width: zoom }} />)}</div>
                     {track.armed && <div className="absolute inset-0 bg-red-500/[0.045]" />}
                     {track.muted && <div className="absolute inset-0 z-10 pointer-events-none bg-black/35" />}
                     {track.clips.map((clip) => {
                       const selected = selectedClipId === clip.id;
+                      const isGrouped = Boolean(clip.groupId);
+                      const dragActive = draggingClipId === clip.id || Boolean(clip.groupId && findClip(draggingClipId ?? "")?.clip.groupId === clip.groupId);
+                      const width = Math.max(92, visibleDuration(clip) * zoom);
+                      const fadeInWidth = Math.min(width / 2, clip.fadeIn * zoom);
+                      const fadeOutWidth = Math.min(width / 2, clip.fadeOut * zoom);
                       return (
-                        <div key={clip.id} role="button" tabIndex={0} onPointerDown={(event) => startClipGesture(event, track.id, clip, "move")} onPointerMove={moveDrag} onPointerUp={endDrag} onClick={() => { setSelectedTrackId(track.id); setSelectedClipId(clip.id); }} className={cn("absolute top-[10px] h-[72px] rounded-xl border px-4 text-left shadow-inner transition-[box-shadow,transform]", selected ? "z-20 ring-2 ring-cyan-100 shadow-[0_0_24px_rgba(103,232,249,.42)]" : "z-10", draggingClipId === clip.id && "scale-[1.01] cursor-grabbing", clip.locked && "opacity-60")} style={{ left: clip.start * zoom, width: Math.max(72, visibleDuration(clip) * zoom), borderColor: selected ? "#ffffff" : clip.color, backgroundColor: `${clip.color}2b`, cursor: "grab" }}>
-                          <button aria-label="Trim clip start" onPointerDown={(event) => startClipGesture(event, track.id, clip, "trimStart")} className="absolute bottom-1 left-1 top-1 w-5 cursor-ew-resize rounded-lg border border-white/25 bg-black/70 text-[8px] font-black text-cyan-100 hover:bg-cyan-200 hover:text-black">‹</button>
-                          <button aria-label="Trim clip end" onPointerDown={(event) => startClipGesture(event, track.id, clip, "trimEnd")} className="absolute bottom-1 right-1 top-1 w-5 cursor-ew-resize rounded-lg border border-white/25 bg-black/70 text-[8px] font-black text-cyan-100 hover:bg-cyan-200 hover:text-black">›</button>
-                          <b className="ml-4 mr-4 block truncate text-[11px] uppercase tracking-wide" style={{ color: clip.color }}>{clip.muted ? "MUTED · " : ""}{clip.name}</b>
-                          <div className="ml-4 mr-4"><Wave peaks={clip.peaks} color={clip.color} gain={clip.gain} /></div>
-                          <span className="absolute bottom-1 left-9 text-[9px] uppercase text-white/45">{editMode.toUpperCase()} · {formatTime(clip.start)}</span>
+                        <div key={clip.id} role="button" tabIndex={0} onPointerDown={(event) => startClipGesture(event, track.id, clip, "move")} onPointerMove={moveDrag} onPointerUp={endDrag} onClick={() => { setSelectedTrackId(track.id); setSelectedClipId(clip.id); }} className={cn("absolute top-[10px] h-[76px] touch-none rounded-xl border px-4 text-left shadow-inner transition-[box-shadow,transform,opacity]", selected ? "z-30 ring-2 ring-cyan-100 shadow-[0_0_26px_rgba(103,232,249,.5)]" : "z-10 opacity-86 hover:opacity-100", dragActive && "scale-[1.012] cursor-grabbing shadow-[0_0_28px_rgba(255,255,255,.2)]", clip.locked && "opacity-60", isGrouped && "outline outline-1 outline-violet-300/60")} style={{ left: clip.start * zoom, width, borderColor: selected ? "#ffffff" : clip.color, backgroundColor: `${clip.color}${selected ? "38" : "24"}`, cursor: "grab" }}>
+                          {selected && activeDragLabel && draggingClipId === clip.id && <span className="absolute -top-6 left-2 rounded-full bg-cyan-200 px-2 py-1 text-[9px] font-black uppercase text-black">{activeDragLabel}</span>}
+                          <div className="pointer-events-none absolute bottom-0 left-0 top-0 rounded-l-xl bg-cyan-100/10" style={{ width: fadeInWidth, clipPath: "polygon(0 100%, 100% 0, 100% 100%)" }} />
+                          <div className="pointer-events-none absolute bottom-0 right-0 top-0 rounded-r-xl bg-pink-100/10" style={{ width: fadeOutWidth, clipPath: "polygon(0 0, 100% 100%, 0 100%)" }} />
+                          <div className="pointer-events-none absolute left-8 right-8 border-t border-yellow-200/80" style={{ top: `${gainPercent(clip.gain)}%` }} />
+                          <span className="pointer-events-none absolute right-8 rounded-full bg-yellow-200 px-1.5 py-0.5 text-[8px] font-black text-black" style={{ top: `calc(${gainPercent(clip.gain)}% - 9px)` }}>{clip.gain}dB</span>
+                          <button aria-label="Trim clip start" onPointerDown={(event) => startClipGesture(event, track.id, clip, "trimStart")} className="absolute bottom-1 left-1 top-1 min-w-9 cursor-ew-resize touch-none rounded-lg border border-white/30 bg-black/82 text-[10px] font-black text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,.25)] hover:bg-cyan-200 hover:text-black">TR</button>
+                          <button aria-label="Trim clip end" onPointerDown={(event) => startClipGesture(event, track.id, clip, "trimEnd")} className="absolute bottom-1 right-1 top-1 min-w-9 cursor-ew-resize touch-none rounded-lg border border-white/30 bg-black/82 text-[10px] font-black text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,.25)] hover:bg-cyan-200 hover:text-black">TR</button>
+                          <button aria-label="Fade in" onPointerDown={(event) => startClipGesture(event, track.id, clip, "fadeIn")} className="absolute left-10 top-1 h-6 min-w-8 cursor-ew-resize touch-none rounded-md border border-cyan-200/40 bg-cyan-300/25 text-[8px] font-black text-cyan-50">FI</button>
+                          <button aria-label="Fade out" onPointerDown={(event) => startClipGesture(event, track.id, clip, "fadeOut")} className="absolute right-10 top-1 h-6 min-w-8 cursor-ew-resize touch-none rounded-md border border-pink-200/40 bg-pink-300/25 text-[8px] font-black text-pink-50">FO</button>
+                          <b className="ml-9 mr-9 block truncate text-[11px] uppercase tracking-wide" style={{ color: clip.color }}>{clip.muted ? "MUTED · " : ""}{isGrouped ? "GROUP · " : ""}{clip.name}</b>
+                          <div className="ml-9 mr-9"><Wave peaks={clip.peaks} color={clip.color} gain={clip.gain} /></div>
+                          <span className="absolute bottom-1 left-12 text-[9px] uppercase text-white/45">{editMode.toUpperCase()} · {formatTime(clip.start)} · {formatTime(visibleDuration(clip))}</span>
                         </div>
                       );
                     })}
@@ -402,7 +534,7 @@ export default function ElectricStudioDawEditor() {
         <aside className="min-h-0 overflow-auto border-l border-black bg-[#20242b] p-3 text-xs text-white/60 max-lg:hidden">
           <h2 className="text-[10px] font-black uppercase tracking-widest text-cyan-100">Inspector</h2>
           {selectedTrack ? <div className="mt-3 rounded-xl border border-white/10 bg-black/35 p-3"><b className="block truncate uppercase" style={{ color: selectedTrack.color }}>{selectedTrack.name}</b><label className="mt-3 block uppercase text-white/40">Volume {selectedTrack.volume}<input type="range" min="0" max="100" value={selectedTrack.volume} onChange={(event) => updateTrack(selectedTrack.id, { volume: Number(event.target.value) })} className="w-full accent-cyan-300" /></label><label className="mt-3 block uppercase text-white/40">Pan {selectedTrack.pan}<input type="range" min="-50" max="50" value={selectedTrack.pan} onChange={(event) => updateTrack(selectedTrack.id, { pan: Number(event.target.value) })} className="w-full accent-cyan-300" /></label></div> : <p className="mt-3 text-white/40">No track selected.</p>}
-          {selectedClip && <div className="mt-3 rounded-xl border border-white/10 bg-black/35 p-3"><b className="block truncate uppercase text-white/70">{selectedClip.name}</b><label className="mt-3 block uppercase text-white/40">Clip Gain {selectedClip.gain} dB<input type="range" min="-24" max="24" value={selectedClip.gain} onChange={(event) => setTracks((current) => current.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === selectedClip.id ? { ...clip, gain: Number(event.target.value) } : clip) })))} className="w-full accent-yellow-300" /></label><button onClick={() => setTracks((current) => current.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.id !== selectedClip.id) })))} className="mt-3 w-full rounded-lg bg-red-500 px-3 py-2 text-[10px] font-black uppercase text-black">Delete Clip</button></div>}
+          {selectedClip && <div className="mt-3 rounded-xl border border-white/10 bg-black/35 p-3"><b className="block truncate uppercase text-white/70">{selectedClip.name}</b><label className="mt-3 block uppercase text-white/40">Clip Gain {selectedClip.gain} dB<input type="range" min="-24" max="24" value={selectedClip.gain} onChange={(event) => updateClip(selectedClip.id, { gain: Number(event.target.value) })} className="w-full accent-yellow-300" /></label><label className="mt-3 block uppercase text-white/40">Fade In {selectedClip.fadeIn.toFixed(2)}s<input type="range" min="0" max={visibleDuration(selectedClip)} step="0.01" value={selectedClip.fadeIn} onChange={(event) => updateClip(selectedClip.id, { fadeIn: Number(event.target.value) })} className="w-full accent-cyan-300" /></label><label className="mt-3 block uppercase text-white/40">Fade Out {selectedClip.fadeOut.toFixed(2)}s<input type="range" min="0" max={visibleDuration(selectedClip)} step="0.01" value={selectedClip.fadeOut} onChange={(event) => updateClip(selectedClip.id, { fadeOut: Number(event.target.value) })} className="w-full accent-pink-300" /></label><div className="mt-3 grid grid-cols-2 gap-2"><button onClick={duplicateClip} className="rounded-lg bg-cyan-300 px-3 py-2 text-[10px] font-black uppercase text-black">Duplicate</button><button onClick={applyCrossfade} className="rounded-lg bg-pink-300 px-3 py-2 text-[10px] font-black uppercase text-black">Crossfade</button><button onClick={groupClipsOnTrack} className="rounded-lg bg-violet-300 px-3 py-2 text-[10px] font-black uppercase text-black">Group</button><button onClick={ungroupSelected} disabled={!selectedClip.groupId} className="rounded-lg bg-black/55 px-3 py-2 text-[10px] font-black uppercase text-white/65 disabled:opacity-35">Ungroup</button></div><button onClick={() => setTracks((current) => current.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.id !== selectedClip.id) })))} className="mt-3 w-full rounded-lg bg-red-500 px-3 py-2 text-[10px] font-black uppercase text-black">Delete Clip</button></div>}
         </aside>
       </section>
 
