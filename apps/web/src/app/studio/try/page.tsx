@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import ElectricStudio from "./ElectricStudio";
+import ElectricStudioWorkflow from "./ElectricStudioWorkflow";
 import styles from "./studio-clean.module.css";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +39,7 @@ export default function StudioTryPage() {
       />
       <div className={styles.cleanStudio}>
         <h1 className="sr-only">Try the Epic Music Space Studio</h1>
-        <ElectricStudio />
+        <ElectricStudioWorkflow />
       </div>
     </>
   );
