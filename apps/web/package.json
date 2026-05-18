@@ -46,6 +46,7 @@
     "botid": "^1.5.11",
     "bullmq": "^5.13.2",
     "ioredis": "^5.3.2",
+    "lamejs": "^1.2.1",
     "livekit-client": "^2.18.8",
     "livekit-server-sdk": "^2.15.2",
     "next": "16.2.6",
