@@ -64,6 +64,12 @@ export type StudioApiTrack = {
   blobUrl?: string | null;
   durationSec: number;
   position: number;
+  volume?: number | null;
+  pan?: number | null;
+  muted?: boolean | null;
+  solo?: boolean | null;
+  armed?: boolean | null;
+  inputGain?: number | null;
 };
 
 export type StudioApiProject = {
@@ -74,6 +80,49 @@ export type StudioApiProject = {
   tracks?: StudioApiTrack[];
   patternJson?: unknown;
   thumbnailPeaks?: number[] | null;
+};
+
+export type StudioProductionAudioFile = {
+  id: string;
+  projectId?: string;
+  storageUrl?: string | null;
+  blobUrl?: string | null;
+  url?: string | null;
+  fileName?: string | null;
+  originalName?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  durationSec?: number | null;
+  waveformPeaks?: number[] | string | null;
+  peaksJson?: number[] | string | null;
+};
+
+export type StudioProductionClip = {
+  id: string;
+  projectId?: string;
+  trackId?: string | null;
+  audioFileId?: string | null;
+  name?: string | null;
+  startSec?: number | null;
+  trimStartSec?: number | null;
+  trimEndSec?: number | null;
+  durationSec?: number | null;
+  gainDb?: number | null;
+  muted?: boolean | null;
+  locked?: boolean | null;
+  color?: string | null;
+  waveformPeaks?: number[] | string | null;
+  peaksJson?: number[] | string | null;
+};
+
+export type StudioProductionProjectResponse = {
+  project: StudioApiProject;
+  tracks: StudioApiTrack[];
+  clips: StudioProductionClip[];
+  audioFiles: StudioProductionAudioFile[];
+  collaborators?: unknown[];
+  lock?: unknown;
+  exports?: unknown[];
 };
 
 export type StudioRecentProject = {
