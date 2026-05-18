@@ -2,10 +2,20 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const db = prisma as typeof prisma & {
+  allyConnection?: {
+    upsert: (args: unknown) => Promise<unknown>;
+  };
+};
+
 export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!db.allyConnection) {
+    return NextResponse.json({ error: "Ally relationships are not available until the EMS relationship schema is generated." }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -25,7 +35,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const requestRecord = await prisma.allyConnection.upsert({
+    const requestRecord = await db.allyConnection.upsert({
       where: {
         requesterId_receiverId: {
           requesterId: session.user.id,
