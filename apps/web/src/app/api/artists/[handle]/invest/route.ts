@@ -3,10 +3,21 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { requireArtistByHandle } from "@/lib/emsRelationshipResolvers";
 
+const db = prisma as typeof prisma & {
+  artistInvestor?: {
+    upsert: (args: unknown) => Promise<unknown>;
+    deleteMany: (args: unknown) => Promise<unknown>;
+  };
+};
+
 export async function POST(_: Request, { params }: { params: { handle: string } }) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!db.artistInvestor) {
+    return NextResponse.json({ error: "Investor relationships are not available until the EMS relationship schema is generated." }, { status: 503 });
   }
 
   try {
@@ -16,7 +27,7 @@ export async function POST(_: Request, { params }: { params: { handle: string } 
       return NextResponse.json({ error: "You cannot invest in yourself." }, { status: 400 });
     }
 
-    const relationship = await prisma.artistInvestor.upsert({
+    const relationship = await db.artistInvestor.upsert({
       where: {
         artistId_userId: {
           artistId: artist.id,
@@ -50,10 +61,14 @@ export async function DELETE(_: Request, { params }: { params: { handle: string 
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  if (!db.artistInvestor) {
+    return NextResponse.json({ error: "Investor relationships are not available until the EMS relationship schema is generated." }, { status: 503 });
+  }
+
   try {
     const artist = await requireArtistByHandle(params.handle);
 
-    await prisma.artistInvestor.deleteMany({
+    await db.artistInvestor.deleteMany({
       where: {
         artistId: artist.id,
         userId: session.user.id,
