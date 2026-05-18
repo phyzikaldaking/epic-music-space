@@ -153,6 +153,7 @@ export default function ElectricStudio() {
   const [tool, setTool] = useState<Tool>("smart");
   const [editMode, setEditMode] = useState<EditMode>("grid");
   const [tracks, setTracks] = useState<Track[]>([]);
+  const tracksRef = useRef<Track[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState(() => uid("session"));
@@ -186,6 +187,10 @@ export default function ElectricStudio() {
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const tabId = useRef(uid("tab"));
+
+  useEffect(() => {
+    tracksRef.current = tracks;
+  }, [tracks]);
 
   const selectedTrack = tracks.find((track) => track.id === selectedTrackId) ?? tracks[0] ?? null;
   const selectedClipRef = useMemo(() => {
@@ -257,11 +262,11 @@ export default function ElectricStudio() {
       if (localStorage.getItem(lockKey) === tabId.current) localStorage.removeItem(lockKey);
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offlineNow);
-      tracks.flatMap((track) => track.clips).forEach((clip) => clip.url && URL.revokeObjectURL(clip.url));
+      tracksRef.current.flatMap((track) => track.clips).forEach((clip) => clip.url && URL.revokeObjectURL(clip.url));
       stopTransport();
       recorder.current?.stream.getTracks().forEach((track) => track.stop());
     };
-  }, [stopTransport, tracks]);
+  }, [stopTransport]);
 
   useEffect(() => {
     if (!dirty) return;
