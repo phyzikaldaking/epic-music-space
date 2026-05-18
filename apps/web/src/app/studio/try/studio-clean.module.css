@@ -10,19 +10,6 @@
   background: #06080c;
 }
 
-:global(body:has(.cleanStudio)) {
-  overflow: hidden !important;
-  padding-bottom: 0 !important;
-  background: #06080c !important;
-}
-
-:global(body:has(.cleanStudio) > nav),
-:global(body:has(.cleanStudio) nav[aria-label="Epic Music Space main menu"]),
-:global(body:has(.cleanStudio) nav[aria-label="Epic Music Space mobile navigation"]),
-:global(body:has(.cleanStudio) a[href="#main-content"]) {
-  display: none !important;
-}
-
 .cleanStudio :global(svg polyline),
 .cleanStudio :global(svg),
 .cleanStudio :global(div:has(> svg)::before),
