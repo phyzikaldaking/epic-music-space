@@ -2,10 +2,20 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const db = prisma as typeof prisma & {
+  clientRelationship?: {
+    upsert: (args: unknown) => Promise<unknown>;
+  };
+};
+
 export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!db.clientRelationship) {
+    return NextResponse.json({ error: "Client relationships are not available until the EMS relationship schema is generated." }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -22,7 +32,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const relationship = await prisma.clientRelationship.upsert({
+    const relationship = await db.clientRelationship.upsert({
       where: {
         artistId_userId: {
           artistId,
