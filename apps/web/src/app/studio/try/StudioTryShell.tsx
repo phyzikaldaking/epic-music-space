@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import BeatMachineProClient from "../beat-machine/BeatMachineProClient";
-import ElectricStudioRecordDaw from "./ElectricStudioRecordDaw";
+import ElectricStudioMixerDaw from "./ElectricStudioMixerDaw";
 import StudioCloudUploadPanel from "./StudioCloudUploadPanel";
 import StudioControlFixPanel from "./StudioControlFixPanel";
 import StudioMp3EncoderPanel from "./StudioMp3EncoderPanel";
@@ -48,7 +48,7 @@ export default function StudioTryShell() {
 
       <div className="h-full overflow-hidden pb-16 md:pb-0">
         {workspace === "daw" ? (
-          <ElectricStudioRecordDaw />
+          <ElectricStudioMixerDaw />
         ) : workspace === "controls" ? (
           <StudioControlFixPanel />
         ) : workspace === "beat" ? (
