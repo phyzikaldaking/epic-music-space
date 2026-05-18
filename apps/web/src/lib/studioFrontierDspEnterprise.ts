@@ -30,8 +30,8 @@ export class PersistentWebGpuPipelineRegistry {
     if (!this.device?.createShaderModule || !this.device.createComputePipeline) return null;
     const existing = this.pipelines.get(key);
     if (existing) return existing;
-    const module = this.device.createShaderModule({ code: shaderCode });
-    const pipeline = this.device.createComputePipeline({ layout: "auto", compute: { module, entryPoint: "main" } });
+    const shaderModule = this.device.createShaderModule({ code: shaderCode });
+    const pipeline = this.device.createComputePipeline({ layout: "auto", compute: { module: shaderModule, entryPoint: "main" } });
     this.pipelines.set(key, pipeline);
     return pipeline;
   }

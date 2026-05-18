@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 import { computeMonoCompat, type MonoCompatReport } from "@/lib/monoCompat";
 import { computeLoudnessReport, type LoudnessReport } from "@/lib/loudnessGate";
-import TikTokSyncPanel from "@/components/daw/TikTokSyncPanel";
 
 interface Props {
   limiterOn: boolean;
@@ -45,9 +44,6 @@ interface Props {
    *  duration + (when available) public audio URLs. Remixers download
    *  the JSON, grab stems, and rebuild the session in their own DAW. */
   onExportRemixKit?: () => Promise<Blob>;
-  /** Called when TikTok sync generates beat patterns. Patterns array
-   *  contains drum tracks ready to load into the engine. */
-  onBeatPatternsGenerated?: (patterns: any[], bpm: number) => void;
 }
 
 type Phase = "idle" | "rendering" | "uploading" | "mastering" | "sharing" | "done" | "error";
@@ -67,7 +63,6 @@ export default function MasterPublishBar({
   onAiMaster,
   onSharePreview,
   onExportRemixKit,
-  onBeatPatternsGenerated,
 }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string>("");
@@ -93,7 +88,6 @@ export default function MasterPublishBar({
   const [coverArtPick, setCoverArtPick] = useState<number | null>(null);
   const [coverArtBusy, setCoverArtBusy] = useState(false);
   const [coverArtError, setCoverArtError] = useState<string | null>(null);
-  const [detectedBPM, setDetectedBPM] = useState<number | null>(null);
 
   async function renderAndDownload() {
     if (!canExport) {
@@ -293,16 +287,15 @@ export default function MasterPublishBar({
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-r from-[#0c0c14] via-[#0a0a12] to-[#0c0c14] p-4">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.32em] text-emerald-300/85">
-            Master · Publish
-          </p>
-          <p className="mt-0.5 text-xs text-white/55">
-            Limiter at -3 dB · ultra-quality 24-bit WAV render · hand off to licensing and catalog details.
-          </p>
-        </div>
+    <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-r from-[#0c0c14] via-[#0a0a12] to-[#0c0c14] p-4">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.32em] text-emerald-300/85">
+          Master · Publish
+        </p>
+        <p className="mt-0.5 text-xs text-white/55">
+          Limiter at -3 dB · ultra-quality 24-bit WAV render · hand off to licensing and catalog details.
+        </p>
+      </div>
 
       <div className="flex-1" />
 
@@ -498,16 +491,6 @@ export default function MasterPublishBar({
           }}
         />
       )}
-      </div>
-
-      <TikTokSyncPanel
-        onBeatGenerated={(patterns) => {
-          if (onBeatPatternsGenerated && detectedBPM) {
-            onBeatPatternsGenerated(patterns, detectedBPM);
-          }
-        }}
-        onBPMDetected={(bpm) => setDetectedBPM(bpm)}
-      />
     </section>
   );
 }

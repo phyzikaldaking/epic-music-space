@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 import { lenientLimiter } from "@/lib/rateLimit";
 import { withQueryBudget } from "@/lib/queryBudget";
+import {
+  isLaunchCatalogArtist,
+  isLaunchCatalogTrack,
+} from "@/lib/launchCatalog";
 
 const EDGE_CACHE_LEADERBOARD = "public, s-maxage=60, stale-while-revalidate=120";
 
@@ -67,6 +71,7 @@ export async function GET(req: NextRequest) {
     );
 
     const ranked = artists
+      .filter((a) => !isLaunchCatalogArtist({ username: a.studio?.username, name: a.name }))
       .map((a) => ({
         id: a.id,
         name: a.name,
@@ -105,7 +110,10 @@ export async function GET(req: NextRequest) {
       prisma.song.findMany({
         where: { isActive: true },
         orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
-        take: limit,
+        // Pull a wider window than the page size — we strip launch-catalog
+        // seed tracks below so the final list still fills out at the
+        // requested limit even after removals.
+        take: limit * 2,
         select: {
           id: true,
           title: true,
@@ -124,8 +132,10 @@ export async function GET(req: NextRequest) {
     { warnAfterMs: 250, hardAfterMs: 1000, meta: { route: "leaderboard", type } },
   );
 
-  await cacheSet(cacheKey, songs, CACHE_TTL.leaderboard);
-  return NextResponse.json(songs, {
+  const filteredSongs = songs.filter((s) => !isLaunchCatalogTrack(s)).slice(0, limit);
+
+  await cacheSet(cacheKey, filteredSongs, CACHE_TTL.leaderboard);
+  return NextResponse.json(filteredSongs, {
     headers: leaderboardCacheHeaders(),
   });
 }

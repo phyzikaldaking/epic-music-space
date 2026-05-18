@@ -48,6 +48,8 @@ type Props = {
   /** Open the AI Melodyne note-level pitch editor for this track.
    *  Omitted when the track has no audio. */
   onOpenMelodyne?: () => void;
+  /** Run a fast automatic pitch-correction pass on this track. */
+  onQuickTune?: () => void;
 };
 
 export default function EditWindowTrackLane({
@@ -64,6 +66,7 @@ export default function EditWindowTrackLane({
   onSetColor,
   onSetName,
   onOpenMelodyne,
+  onQuickTune,
 }: Props) {
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -241,18 +244,35 @@ export default function EditWindowTrackLane({
 
       {/* Waveform lane — fills the rest of the row */}
       <div className="relative flex-1 overflow-hidden">
-        {onOpenMelodyne && track.hasAudio && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenMelodyne();
-            }}
-            className="absolute right-2 top-2 z-10 rounded-md border border-cyan-400/40 bg-black/70 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-cyan-200 backdrop-blur transition hover:bg-cyan-500/20"
-            title="Open AI Melodyne — note-level pitch editor"
-          >
-            🎵 Tune
-          </button>
+        {track.hasAudio && (onQuickTune || onOpenMelodyne) && (
+          <div className="absolute right-2 top-2 z-10 flex h-7 overflow-hidden rounded-md border border-cyan-400/40 bg-black/75 text-[10px] font-black uppercase tracking-widest text-cyan-100 shadow-lg shadow-black/40 backdrop-blur">
+            {onQuickTune && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onQuickTune();
+                }}
+                className="grid min-w-12 place-items-center px-2 transition hover:bg-cyan-500/20"
+                title="Run one-click Auto-Tune on this track"
+              >
+                Auto
+              </button>
+            )}
+            {onOpenMelodyne && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenMelodyne();
+                }}
+                className="grid min-w-12 place-items-center border-l border-cyan-400/25 px-2 transition hover:bg-cyan-500/20"
+                title="Open the note-level pitch editor"
+              >
+                Edit
+              </button>
+            )}
+          </div>
         )}
         {peaks.length > 0 ? (
           <WaveformView

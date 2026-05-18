@@ -3,6 +3,10 @@ import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import LiveLeaderboard from "@/components/LiveLeaderboard";
 import AdSlot from "@/components/ads/AdSlot";
+import {
+  isLaunchCatalogArtist,
+  isLaunchCatalogTrack,
+} from "@/lib/launchCatalog";
 
 export const revalidate = 60;
 
@@ -12,9 +16,9 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Leaderboard",
     description: "Top trending songs and artists, ranked by fan votes and streams in real time.",
-    url: "https://www.epicmusicspace.com/leaderboard",
+    url: "https://epicmusicspace.com/leaderboard",
   },
-  alternates: { canonical: "https://www.epicmusicspace.com/leaderboard" },
+  alternates: { canonical: "https://epicmusicspace.com/leaderboard" },
 };
 
 export default async function LeaderboardPage({
@@ -25,11 +29,11 @@ export default async function LeaderboardPage({
   const sp = await searchParams;
   const type = sp.type === "artists" ? "artists" : "songs";
 
-  const songs = type === "songs"
+  const rawSongs = type === "songs"
     ? await prisma.song.findMany({
         where: { isActive: true },
         orderBy: [{ aiScore: "desc" }, { soldLicenses: "desc" }],
-        take: 50,
+        take: 100,
         select: {
           id: true,
           title: true,
@@ -42,6 +46,8 @@ export default async function LeaderboardPage({
         },
       })
     : [];
+
+  const songs = rawSongs.filter((s) => !isLaunchCatalogTrack(s)).slice(0, 50);
 
   const artists =
     type === "artists"
@@ -62,6 +68,7 @@ export default async function LeaderboardPage({
       : [];
 
   const artistRows = artists
+    .filter((a) => !isLaunchCatalogArtist({ username: a.studio?.username, name: a.name }))
     .map((a) => ({
       id: a.id,
       name: a.name ?? "Unknown Artist",

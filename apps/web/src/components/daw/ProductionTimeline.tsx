@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import type { BeatMachineState, LaneEqRecommendation } from "./dawEngine";
+import type { DrumKind } from "./beatMachine";
+import { usePlayer } from "@/contexts/PlayerContext";
+import { getStreamUrl } from "@/lib/audioStream";
 
 function formatRelative(d: string | Date): string {
   const date = typeof d === "string" ? new Date(d) : d;
-  const time = date.getTime();
-  if (!Number.isFinite(time)) return "just now";
-  const seconds = Math.max(0, Math.floor((Date.now() - time) / 1000));
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
   if (seconds < 60) return "just now";
-  if (seconds < 3600) return Math.floor(seconds / 60) + "m";
-  if (seconds < 86400) return Math.floor(seconds / 3600) + "h";
-  if (seconds < 604800) return Math.floor(seconds / 86400) + "d";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d`;
   return date.toLocaleDateString();
 }
 
@@ -22,96 +23,126 @@ export interface ProductionPost {
   authorImage?: string;
   authorRole: "artist" | "producer" | "engineer" | "listener";
   isLiveNow: boolean;
+
+  // Track metadata
   trackId: string;
   trackTitle: string;
   genre: string;
   bpm: number;
   key?: string;
+
+  // Production snapshot
   beatMachineState?: BeatMachineState;
   spectrum: number[];
   masterLufs: number;
   masterTruePeak: number;
-  mixConfidence: number;
+  mixConfidence: number; // 0-1 AI-derived mix health
   activeLaneCount: number;
+
+  // Social engagement unique to music production
   remixCount: number;
   versionCount: number;
   stemDownloadCount: number;
   createdAt: Date;
   liveUntil?: Date;
+
+  // Action data
   recommendedEqSettings?: LaneEqRecommendation[];
   suggestedKit?: string;
 }
 
-type ProductionPostPayload = Omit<ProductionPost, "createdAt" | "liveUntil"> & {
-  createdAt: string | Date;
-  liveUntil?: string | Date;
-};
-
-type ProductionTimelineResponse =
-  | ProductionPostPayload[]
-  | { posts?: ProductionPostPayload[]; nextCursor?: string | null; error?: string };
-
-function normalizePosts(payload: ProductionTimelineResponse): ProductionPost[] {
-  const rows = Array.isArray(payload) ? payload : Array.isArray(payload.posts) ? payload.posts : [];
-  return rows.map((post) => {
-    const { liveUntil, ...rest } = post;
-    return {
-      ...rest,
-      createdAt: new Date(post.createdAt),
-      ...(liveUntil ? { liveUntil: new Date(liveUntil) } : {}),
-    };
-  });
-}
-
 function avgBand(spectrum: number[], start: number, end: number): number {
   if (!spectrum.length) return 0;
-  const band = spectrum.slice(Math.max(0, start), Math.min(spectrum.length, end + 1));
-  if (!band.length) return spectrum[spectrum.length - 1] ?? 0;
+  const band = spectrum.slice(start, end + 1);
   return band.reduce((a, b) => a + b, 0) / band.length;
 }
 
 function getFrequencyZones(spectrum: number[]) {
-  const last = Math.max(0, spectrum.length - 1);
   return {
-    sub: avgBand(spectrum, 0, Math.min(2, last)),
-    lowMid: avgBand(spectrum, 3, Math.min(7, last)),
-    mid: avgBand(spectrum, 8, Math.min(12, last)),
-    highMid: avgBand(spectrum, 13, Math.min(16, last)),
-    air: avgBand(spectrum, 17, last),
+    sub: avgBand(spectrum, 0, 2),
+    lowMid: avgBand(spectrum, 3, 8),
+    mid: avgBand(spectrum, 9, 13),
+    highMid: avgBand(spectrum, 14, 20),
+    air: avgBand(spectrum, 25, 31),
   };
 }
 
 function getMixHealthColor(confidence: number) {
-  if (confidence > 0.75) return "text-emerald-300";
-  if (confidence > 0.55) return "text-cyan-300";
-  if (confidence > 0.35) return "text-amber-300";
-  return "text-white/55";
+  if (confidence > 0.75) return "text-emerald-400";
+  if (confidence > 0.55) return "text-cyan-400";
+  if (confidence > 0.35) return "text-amber-400";
+  return "text-red-400";
 }
 
-function initials(name: string) {
-  const parts = name.trim().split(/s+/).filter(Boolean);
-  return (parts[0]?.[0] ?? "E").toUpperCase() + (parts[1]?.[0] ?? "").toUpperCase();
+function getMixHealthTone(confidence: number) {
+  if (confidence > 0.75) return "border-emerald-400/25 bg-emerald-500/10";
+  if (confidence > 0.55) return "border-cyan-400/25 bg-cyan-500/10";
+  if (confidence > 0.35) return "border-amber-400/25 bg-amber-500/10";
+  return "border-red-400/25 bg-red-500/10";
 }
 
-function roleLabel(role: ProductionPost["authorRole"]) {
-  return role === "producer" ? "Producer" : role === "engineer" ? "Engineer" : role === "artist" ? "Artist" : "Listener";
+// Frequency bar height classes mapped to percentages
+const heightClasses: Record<number, string> = {
+  5: "h-[5%]",
+  10: "h-[10%]",
+  15: "h-[15%]",
+  20: "h-[20%]",
+  25: "h-[25%]",
+  30: "h-[30%]",
+  35: "h-[35%]",
+  40: "h-[40%]",
+  45: "h-[45%]",
+  50: "h-[50%]",
+  55: "h-[55%]",
+  60: "h-[60%]",
+  65: "h-[65%]",
+  70: "h-[70%]",
+  75: "h-[75%]",
+  80: "h-[80%]",
+  85: "h-[85%]",
+  90: "h-[90%]",
+  95: "h-[95%]",
+  100: "h-full",
+};
+
+function getHeightClass(percentage: number): string {
+  const rounded = Math.round(percentage / 5) * 5;
+  return heightClasses[Math.max(5, Math.min(100, rounded))] || "h-[5%]";
 }
 
-function FrequencyVisualization({ spectrum }: { spectrum: number[] }) {
-  const zones = getFrequencyZones(spectrum);
-  const entries = Object.entries(zones);
-  const maxValue = Math.max(1, ...entries.map(([, value]) => value));
+function FrequencyVisualization({
+  zones,
+}: {
+  zones: Record<string, number>;
+}) {
+  const zoneEntries = Object.entries(zones);
+  const maxValue = Math.max(...zoneEntries.map(([, v]) => v));
 
   return (
-    <div className="flex h-12 items-end gap-1" aria-label="Track energy profile">
-      {entries.map(([zone, value]) => (
-        <span
-          key={zone}
-          className="flex-1 rounded-t bg-cyan-300/70"
-          style={{ height: Math.max(12, Math.round((value / maxValue) * 100)) + "%" }}
-          title={zone + ": " + value.toFixed(0)}
-        />
-      ))}
+    <div className="mb-3 rounded-md bg-black/40 p-3">
+      <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/60">
+        Frequency profile
+      </p>
+      <div className="flex items-end justify-between gap-1 h-12">
+        {zoneEntries.map(([zone, value]) => {
+          const percentage = (value / maxValue) * 100;
+          const heightClass = getHeightClass(percentage);
+          return (
+            <div
+              key={zone}
+              className={`flex-1 rounded-t-sm bg-gradient-to-t from-cyan-500 to-cyan-300 opacity-70 ${heightClass}`}
+              title={`${zone}: ${value.toFixed(2)}`}
+            />
+          );
+        })}
+      </div>
+      <div className="mt-2 grid grid-cols-5 gap-1 text-[8px] font-bold uppercase text-white/40">
+        <span>Sub</span>
+        <span>Low</span>
+        <span>Mid</span>
+        <span>High</span>
+        <span>Air</span>
+      </div>
     </div>
   );
 }
@@ -127,120 +158,172 @@ export function ProductionPostCard({
   onApplyEqSettings?: (settings: LaneEqRecommendation[]) => void;
   onPreviewStems?: (trackId: string) => void;
 }) {
-  const mixPercent = Math.round(post.mixConfidence * 100);
-  const bpmLabel = post.bpm > 0 ? post.bpm + " BPM" : "Tempo TBD";
-  const hasEq = Boolean(post.recommendedEqSettings?.length);
+  const zones = getFrequencyZones(post.spectrum);
+  const player = usePlayer();
+  const isCurrent = player.currentSong?.id === post.trackId;
+  const playing = isCurrent && player.isPlaying;
+  const roleEmoji = {
+    artist: "🎤",
+    producer: "🎛️",
+    engineer: "🔧",
+    listener: "👂",
+  };
+
+  function handlePlay() {
+    if (isCurrent) {
+      player.togglePlay();
+      return;
+    }
+    player.playSong({
+      id: post.trackId,
+      title: post.trackTitle,
+      artist: post.authorName,
+      audioUrl: getStreamUrl(post.trackId),
+      coverUrl: null,
+    });
+  }
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-[#111018]/92 p-3 shadow-lg shadow-black/20 sm:p-4">
-      <header className="flex items-start gap-3">
-        {post.authorImage ? (
-          <img
-            alt={post.authorName}
-            src={post.authorImage}
-            className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
-          />
-        ) : (
-          <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full border border-white/10 bg-white/8 text-xs font-black text-white/80">
-            {initials(post.authorName)}
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="truncate text-sm font-bold text-white">{post.authorName}</p>
-            <span className="text-xs text-white/35">{formatRelative(post.createdAt)}</span>
-            {post.isLiveNow && (
-              <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-red-200">
-                Live now
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-white/45">{roleLabel(post.authorRole)} shared marketplace activity</p>
-        </div>
-        <button
-          type="button"
-          className="rounded-full border border-white/10 px-2 py-1 text-xs font-bold text-white/45 hover:bg-white/5"
-          aria-label={"More actions for " + post.trackTitle}
-        >
-          More
-        </button>
-      </header>
-
-      <p className="mt-3 text-sm leading-6 text-white/78">
-        New drop: <span className="font-semibold text-white">{post.trackTitle}</span> is moving through the floor.
-        Listen, react, and decide if it belongs in your next session.
-      </p>
-
-      <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/70">Track</p>
-            <h3 className="mt-1 truncate text-lg font-black text-white">{post.trackTitle}</h3>
-            <p className="mt-1 text-xs text-white/50">
-              {post.genre} · {bpmLabel}{post.key ? " · " + post.key : ""}
-            </p>
-          </div>
-          <div className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-right">
-            <p className={"text-sm font-black " + getMixHealthColor(post.mixConfidence)}>{mixPercent}%</p>
-            <p className="text-[9px] font-bold uppercase tracking-wider text-white/35">Mix</p>
-          </div>
-        </div>
-        <div className="mt-3 rounded-lg bg-white/[0.03] p-2">
-          <FrequencyVisualization spectrum={post.spectrum} />
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-          <div className="rounded-lg bg-white/[0.04] px-2 py-2">
-            <p className="font-black text-white">{post.remixCount}</p>
-            <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/35">Remixes</p>
-          </div>
-          <div className="rounded-lg bg-white/[0.04] px-2 py-2">
-            <p className="font-black text-white">{post.versionCount}</p>
-            <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/35">Versions</p>
-          </div>
-          <div className="rounded-lg bg-white/[0.04] px-2 py-2">
-            <p className="font-black text-white">{post.stemDownloadCount}</p>
-            <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/35">Stems</p>
+    <div className="mb-4 overflow-hidden rounded-lg border border-white/12 bg-white/[0.03] p-4">
+      {/* Header: Author + Live Status */}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {post.authorImage && (
+            <img
+              alt={post.authorName}
+              src={post.authorImage}
+              className="h-8 w-8 rounded-full object-cover"
+            />
+          )}
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-white">
+                {roleEmoji[post.authorRole]} {post.authorName}
+              </p>
+              {post.isLiveNow && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-red-300">
+                  ● Live now
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-white/50">{formatRelative(post.createdAt)}</p>
           </div>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2 border-t border-white/8 pt-3">
-        <button type="button" className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/[0.08]">
-          Like
+      {/* Track Title & Metadata + Play */}
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-white">{post.trackTitle}</p>
+          <div className="mt-1 flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-wider text-white/60">
+            <span>{post.bpm} BPM</span>
+            {post.key && <span>• {post.key}</span>}
+            <span>• {post.genre}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handlePlay}
+          aria-label={playing ? `Pause ${post.trackTitle}` : `Play ${post.trackTitle}`}
+          className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-white shadow-lg transition hover:scale-105 ${
+            playing
+              ? "bg-accent-500 shadow-accent-500/30"
+              : "bg-brand-500 shadow-brand-500/30"
+          }`}
+        >
+          {playing ? (
+            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+            </svg>
+          ) : (
+            <svg className="ml-0.5 h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          )}
         </button>
-        <button type="button" className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/[0.08]">
-          Comment
-        </button>
-        <button type="button" className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/[0.08]">
-          Share
-        </button>
-        {hasEq && (
+      </div>
+
+      {/* Frequency Spectrum Visualization */}
+      <FrequencyVisualization zones={zones} />
+
+      {/* Mix Health Scorecard */}
+      <div
+        className={`mb-3 rounded-lg border p-3 ${getMixHealthTone(post.mixConfidence)}`}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+              Mix health
+            </p>
+            <p className={`mt-1 text-sm font-bold ${getMixHealthColor(post.mixConfidence)}`}>
+              {(post.mixConfidence * 100).toFixed(0)}% confidence
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+              Active lanes
+            </p>
+            <p className="mt-1 text-sm font-bold text-cyan-100">{post.activeLaneCount}/8</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+              Loudness
+            </p>
+            <p className="mt-1 text-sm font-bold text-white">
+              {post.masterLufs.toFixed(1)} LUFS
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Production Stats */}
+      <div className="mb-3 grid grid-cols-3 gap-2">
+        <div className="rounded-md bg-white/5 p-2">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-white/50">
+            Remixes
+          </p>
+          <p className="mt-1 text-lg font-bold text-cyan-100">{post.remixCount}</p>
+        </div>
+        <div className="rounded-md bg-white/5 p-2">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-white/50">
+            Versions
+          </p>
+          <p className="mt-1 text-lg font-bold text-cyan-100">{post.versionCount}</p>
+        </div>
+        <div className="rounded-md bg-white/5 p-2">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-white/50">
+            Stem DLs
+          </p>
+          <p className="mt-1 text-lg font-bold text-cyan-100">{post.stemDownloadCount}</p>
+        </div>
+      </div>
+
+      {/* Quick Action Buttons */}
+      <div className="flex flex-wrap gap-2">
+        {post.recommendedEqSettings && post.recommendedEqSettings.length > 0 && (
           <button
-            type="button"
             onClick={() => onApplyEqSettings?.(post.recommendedEqSettings!)}
-            className="flex-1 rounded-lg border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-500/20"
+            className="flex-1 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-cyan-100 hover:bg-cyan-500/20"
           >
-            Apply EQ
+            Apply EQ ({post.recommendedEqSettings.length})
           </button>
         )}
         {post.suggestedKit && (
           <button
-            type="button"
             onClick={() => onApplyKit?.(post.suggestedKit!)}
-            className="flex-1 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-100 hover:bg-amber-500/20"
+            className="flex-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-100 hover:bg-amber-500/20"
           >
-            Load kit
+            Load kit: {post.suggestedKit}
           </button>
         )}
         <button
-          type="button"
           onClick={() => onPreviewStems?.(post.trackId)}
-          className="flex-1 rounded-lg border border-white/12 bg-white/[0.03] px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/[0.08]"
+          className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white/70 hover:bg-white/10"
         >
-          Preview
+          Preview stems
         </button>
       </div>
-    </article>
+    </div>
   );
 }
 
@@ -255,97 +338,94 @@ export default function ProductionTimeline({
 }) {
   const [posts, setPosts] = useState<ProductionPost[]>([]);
   const [filter, setFilter] = useState<"all" | "live" | "recommended">("all");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Fetch production posts from API
   useEffect(() => {
-    let cancelled = false;
-
     const fetchPosts = async () => {
       try {
-        const res = await fetch("/api/production-timeline?limit=10", { cache: "no-store" });
-        if (!res.ok) throw new Error("Timeline request failed with " + res.status);
-        const payload = (await res.json()) as ProductionTimelineResponse;
-        if (cancelled) return;
-        setPosts(normalizePosts(payload));
-        setError(null);
+        const res = await fetch("/api/production-timeline");
+        if (!res.ok) return;
+        const payload: { posts: ProductionPost[]; nextCursor: string | null } = await res.json();
+        const items = Array.isArray(payload?.posts) ? payload.posts : [];
+        setPosts(
+          items.map((p) => ({
+            ...p,
+            createdAt: new Date(p.createdAt),
+            ...(p.liveUntil && { liveUntil: new Date(p.liveUntil) }),
+          })),
+        );
       } catch (e) {
-        if (!cancelled) {
-          console.error("Failed to fetch production posts:", e);
-          setError("Marketplace activity is temporarily offline.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+        console.error("Failed to fetch production posts:", e);
       }
     };
 
-    void fetchPosts();
-    pollRef.current = setInterval(() => void fetchPosts(), 30000);
+    fetchPosts();
+    pollRef.current = setInterval(fetchPosts, 12000);
     return () => {
-      cancelled = true;
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
-  const recommendedPosts = useMemo(
-    () => posts.filter((p) => p.mixConfidence >= 0.55 || p.remixCount > 0 || p.versionCount > 1),
-    [posts],
-  );
-
   const filteredPosts = useMemo(() => {
-    if (filter === "live") return posts.filter((p) => p.isLiveNow);
-    if (filter === "recommended") return recommendedPosts;
+    if (filter === "live") {
+      return posts.filter((p) => p.isLiveNow);
+    }
+    if (filter === "recommended") {
+      return posts.filter((p) => p.mixConfidence > 0.7 && p.remixCount > 0);
+    }
     return posts;
-  }, [posts, recommendedPosts, filter]);
-
-  const tabs = [
-    { id: "all" as const, label: "All", count: posts.length },
-    { id: "live" as const, label: "Live", count: posts.filter((p) => p.isLiveNow).length },
-    { id: "recommended" as const, label: "For you", count: recommendedPosts.length },
-  ];
+  }, [posts, filter]);
 
   return (
-    <section className="mx-auto mb-5 w-full max-w-2xl">
-      <header className="mb-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100/70">Marketplace activity</p>
-            <h2 className="mt-1 text-lg font-black text-white">Live feed</h2>
-          </div>
-          <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-100">
-            Updated
-          </span>
+    <section className="mb-6 rounded-2xl border border-white/12 bg-white/[0.03] p-4">
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100/75">
+            Production timeline
+          </p>
+          <p className="mt-1 text-sm font-semibold text-white">
+            Real-time beats from your community
+          </p>
         </div>
-        <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-black/25 p-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setFilter(tab.id)}
-              className={"rounded-lg px-2 py-2 text-xs font-bold transition " + (filter === tab.id ? "bg-white text-black" : "text-white/55 hover:bg-white/8 hover:text-white")}
-            >
-              {tab.label} ({tab.count})
-            </button>
-          ))}
-        </div>
+        <span className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-cyan-100">
+          Live feed
+        </span>
       </header>
 
-      {loading ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center text-sm text-white/55">
-          Loading marketplace activity...
-        </div>
-      ) : error ? (
-        <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-5 text-center text-sm text-amber-100">
-          {error}
-        </div>
-      ) : filteredPosts.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center text-sm text-white/55">
-          {filter === "live" ? "No live studios right now. Check back soon." : "No posts yet. Be the first to share your production."}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filteredPosts.map((post) => (
+      {/* Filter Tabs */}
+      <div className="mb-4 flex gap-2 border-b border-white/10">
+        {(["all", "live", "recommended"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors ${
+              filter === f
+                ? "border-b-2 border-cyan-400 text-cyan-100"
+                : "border-b-2 border-transparent text-white/50 hover:text-white/70"
+            }`}
+          >
+            {f === "all"
+              ? `All (${posts.length})`
+              : f === "live"
+                ? `Live (${posts.filter((p) => p.isLiveNow).length})`
+                : `Recommended (${posts.filter((p) => p.mixConfidence > 0.7).length})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Posts Feed */}
+      <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
+        {filteredPosts.length === 0 ? (
+          <div className="rounded-lg border border-white/10 bg-black/25 p-6 text-center">
+            <p className="text-sm text-white/60">
+              {filter === "live"
+                ? "No live studios right now. Check back soon!"
+                : "No posts yet. Be the first to share your production!"}
+            </p>
+          </div>
+        ) : (
+          filteredPosts.map((post) => (
             <ProductionPostCard
               key={post.id}
               post={post}
@@ -353,9 +433,9 @@ export default function ProductionTimeline({
               onApplyEqSettings={onApplyEqSettings}
               onPreviewStems={onPreviewStems}
             />
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
     </section>
   );
 }

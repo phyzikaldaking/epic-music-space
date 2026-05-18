@@ -14,19 +14,14 @@ import MadeForYouRail from "@/components/MadeForYouRail";
 import type { RailCandidate } from "@/lib/personalizedRail";
 import FunnelViewBeacon from "@/components/FunnelViewBeacon";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
+import { isLaunchCatalogTrack } from "@/lib/launchCatalog";
 
 export const revalidate = 30;
 
 export const metadata: Metadata = {
-  title: "Marketplace | Epic Music Space",
+  title: "Marketplace",
   description:
-    "Browse independent artists on Epic Music Space, license tracks, and back the artists before they break.",
-  alternates: { canonical: "/marketplace" },
-  openGraph: {
-    title: "Epic Music Space Marketplace",
-    description: "Discover active tracks, licensing opportunities, and artist momentum in the EMS marketplace.",
-    url: "/marketplace",
-  },
+    "Browse the early catalog of independent artists on Epic Music Space. Buy a license, share in their streaming revenue, and back the artists before they break.",
 };
 
 type PriceLike = string | number | { toString(): string };
@@ -224,16 +219,6 @@ function normalizedText(value: string | null | undefined): string {
   return typeof value === "string" ? value : "";
 }
 
-function publicGenre(value: string | null | undefined): string {
-  const cleaned = normalizedText(value).trim();
-  return cleaned.length > 0 && cleaned.toLowerCase() !== "unknown" ? cleaned : "Uncategorized";
-}
-
-function isPublicCatalogTrack(track: Pick<RawTrack, "title" | "artist" | "genre">): boolean {
-  const text = [track.title, track.artist, track.genre ?? ""].join(" ").toLowerCase();
-  return !text.includes("ledger test") && !text.includes("test artist") && !/\b177789\d+\b/.test(text);
-}
-
 function levenshteinWithinOne(a: string, b: string) {
   if (Math.abs(a.length - b.length) > 1) return false;
   let edits = 0;
@@ -365,7 +350,7 @@ function toMarketplaceSong(track: RawTrack): MarketplaceSong {
     id: track.id,
     title: track.title,
     artist: track.artist,
-    genre: publicGenre(track.genre),
+    genre: track.genre,
     audioUrl: track.audioUrl,
     coverUrl: track.coverUrl,
     bpm: track.bpm,
@@ -451,7 +436,6 @@ export default async function MarketplacePage(props: {
         versusLosses: true,
         createdAt: true,
       },
-      take: 48,
     });
   } catch {
     allSongs = await getResilientFallbackTracks();
@@ -462,7 +446,6 @@ export default async function MarketplacePage(props: {
   }
 
   const rankedSongs = allSongs
-    .filter(isPublicCatalogTrack)
     .map((song) => {
       try {
         return toMarketplaceSong(song);
@@ -471,7 +454,16 @@ export default async function MarketplacePage(props: {
       }
     })
     .filter((song): song is MarketplaceSong => Boolean(song))
-    .sort((a, b) => Number(b.rankScore ?? 0) - Number(a.rankScore ?? 0));
+    // Launch-catalog seed tracks (the PHYZIKAL DA KING demo set) exist
+    // to keep the marketplace populated on a cold DB. Push them below
+    // every real artist upload so onboarded artists land above the
+    // launch demos regardless of seeded aiScore/boostScore values.
+    .sort((a, b) => {
+      const aSeed = isLaunchCatalogTrack(a) ? 1 : 0;
+      const bSeed = isLaunchCatalogTrack(b) ? 1 : 0;
+      if (aSeed !== bSeed) return aSeed - bSeed;
+      return Number(b.rankScore ?? 0) - Number(a.rankScore ?? 0);
+    });
 
   const rawById = new Map(allSongs.map((track) => [track.id, track]));
   const displaySongs = rankedSongs.filter((song) => {
@@ -697,7 +689,7 @@ export default async function MarketplacePage(props: {
           </div>
           <div className="mt-6">
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {displaySongs.slice(0, 3).map((song, index) => (
+              {displaySongs.slice(0, 6).map((song, index) => (
                 <SongCard
                   key={song.id}
                   id={song.id}
@@ -798,7 +790,7 @@ export default async function MarketplacePage(props: {
             <SectionErrorBoundary title="Waveform Compare"><MarketplaceConfidencePanel tracks={displaySongs.map((song) => ({ id: song.id, title: song.title, artist: song.artist, audioUrl: song.audioUrl, aiScore: song.aiScore, licensePrice: Number(song.licensePrice), revenueSharePct: Number(song.revenueSharePct), soldLicenses: song.soldLicenses, totalLicenses: song.totalLicenses }))} /></SectionErrorBoundary>
             <SectionErrorBoundary title="Saved Searches"><MarketplaceRetentionTools tracks={displaySongs.map((song) => ({ id: song.id, title: song.title }))} /></SectionErrorBoundary>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {displaySongs.slice(0, 6).map((song, index) => (
+              {displaySongs.map((song, index) => (
                 <SongCard
                   key={song.id}
                   id={song.id}

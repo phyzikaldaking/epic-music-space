@@ -1,148 +1,116 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getRequestId, jsonWithRequestId } from "@/lib/requestTracing";
+import { strictLimiter } from "@/lib/rateLimit";
+import { readJsonBodyLimited } from "@/lib/apiHardening";
+import { getRequestId, jsonWithRequestId, withRequestId } from "@/lib/requestTracing";
+
+const patchSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  isPublic: z.boolean().optional(),
+  coverArtUrl: z.string().url().nullable().optional(),
+  masterBlobUrl: z.string().url().nullable().optional(),
+  isTemplate: z.boolean().optional(),
+  templateGenre: z.string().max(40).nullable().optional(),
+  // Template price in USD (#28). null = not for sale; 0 = free; >0 paid.
+  // Cap at 999.99 to keep accidental zero-padding out of the marketplace.
+  templatePriceUsd: z.number().min(0).max(999.99).nullable().optional(),
+});
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const requestId = getRequestId(req);
   const session = await auth();
-
   if (!session?.user?.id) {
     return jsonWithRequestId(requestId, { error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    const { id } = await params;
-
-    const project = await prisma.studioProject.findUnique({
-      where: { id },
-      include: { tracks: true },
-    });
-
-    if (!project) {
-      return jsonWithRequestId(requestId, { error: "Project not found" }, { status: 404 });
-    }
-
-    if (project.userId !== session.user.id && !project.isPublic) {
-      return jsonWithRequestId(requestId, { error: "Forbidden" }, { status: 403 });
-    }
-
-    return jsonWithRequestId(
-      requestId,
-      {
-        ...project,
-        tracks: project.tracks.map((t) => ({
-          id: t.id,
-          name: t.name,
-          color: t.color,
-          blobUrl: t.blobUrl,
-          durationSec: t.durationSec,
-        })),
-      },
-      { status: 200 }
-    );
-  } catch (err) {
-    console.error("[studio/projects/[id]]", err);
-    return jsonWithRequestId(
-      requestId,
-      { error: err instanceof Error ? err.message : "Failed to fetch project" },
-      { status: 500 }
-    );
+  const { id } = await params;
+  const project = await prisma.studioProject.findFirst({
+    where: { id, userId: session.user.id },
+    include: { tracks: { orderBy: { position: "asc" } } },
+  });
+  if (!project) {
+    return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
   }
+  return jsonWithRequestId(requestId, { project });
 }
 
-export async function PUT(
+export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const requestId = getRequestId(req);
   const session = await auth();
-
   if (!session?.user?.id) {
     return jsonWithRequestId(requestId, { error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const { id } = await params;
-    const body = (await req.json()) as {
-      name?: string;
-      bpm?: number;
-      patternJson?: any;
-      trackCount?: number;
-    };
-
-    const project = await prisma.studioProject.findUnique({ where: { id } });
-
-    if (!project) {
-      return jsonWithRequestId(requestId, { error: "Project not found" }, { status: 404 });
-    }
-
-    if (project.userId !== session.user.id) {
-      return jsonWithRequestId(requestId, { error: "Forbidden" }, { status: 403 });
-    }
-
-    const updated = await prisma.studioProject.update({
-      where: { id },
-      data: body,
-    });
-
+    await strictLimiter.consume(`studio:projects:patch:${session.user.id}`);
+  } catch {
     return jsonWithRequestId(
       requestId,
-      {
-        id: updated.id,
-        name: updated.name,
-        bpm: updated.bpm,
-        trackCount: updated.trackCount,
-        updatedAt: updated.updatedAt,
-      },
-      { status: 200 }
-    );
-  } catch (err) {
-    console.error("[studio/projects/[id]]", err);
-    return jsonWithRequestId(
-      requestId,
-      { error: err instanceof Error ? err.message : "Failed to update project" },
-      { status: 500 }
+      { error: "Too many writes — slow down." },
+      { status: 429, headers: { "Retry-After": "30" } },
     );
   }
+
+  const bodyResult = await readJsonBodyLimited<unknown>(req, {
+    maxBytes: 32 * 1024,
+    invalidMessage: "Expected JSON body",
+  });
+  if (!bodyResult.ok) return withRequestId(bodyResult.response, requestId);
+
+  const parsed = patchSchema.safeParse(bodyResult.value);
+  if (!parsed.success) {
+    return jsonWithRequestId(
+      requestId,
+      { error: parsed.error.issues[0]?.message ?? "Invalid body" },
+      { status: 400 },
+    );
+  }
+
+  const { id } = await params;
+  // Atomic ownership-scoped update. updateMany with userId in the where
+  // clause means a foreign id never gets touched even if the row is
+  // mutated between the check and the write (TOCTOU). Returns count = 0
+  // when the project doesn't exist or isn't owned — same 404 either way
+  // so we don't leak existence of others' rows.
+  const result = await prisma.studioProject.updateMany({
+    where: { id, userId: session.user.id },
+    data: parsed.data,
+  });
+  if (result.count === 0) {
+    return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
+  }
+  const updated = await prisma.studioProject.findUnique({ where: { id } });
+  return jsonWithRequestId(requestId, { project: updated });
 }
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const requestId = getRequestId(req);
   const session = await auth();
-
   if (!session?.user?.id) {
     return jsonWithRequestId(requestId, { error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    const { id } = await params;
-
-    const project = await prisma.studioProject.findUnique({ where: { id } });
-
-    if (!project) {
-      return jsonWithRequestId(requestId, { error: "Project not found" }, { status: 404 });
-    }
-
-    if (project.userId !== session.user.id) {
-      return jsonWithRequestId(requestId, { error: "Forbidden" }, { status: 403 });
-    }
-
-    await prisma.studioProject.delete({ where: { id } });
-
-    return jsonWithRequestId(requestId, { success: true }, { status: 204 });
-  } catch (err) {
-    console.error("[studio/projects/[id]]", err);
-    return jsonWithRequestId(
-      requestId,
-      { error: err instanceof Error ? err.message : "Failed to delete project" },
-      { status: 500 }
-    );
+  const { id } = await params;
+  // Atomic ownership-scoped delete — same TOCTOU concern as PATCH above.
+  // deleteMany returns count=0 when nothing matched; cascades clear
+  // StudioTrack rows automatically. Vercel Blob cleanup is the separate
+  // cleanup_studio_blobs sweeper.
+  const result = await prisma.studioProject.deleteMany({
+    where: { id, userId: session.user.id },
+  });
+  if (result.count === 0) {
+    return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
   }
+  return jsonWithRequestId(requestId, { ok: true });
 }

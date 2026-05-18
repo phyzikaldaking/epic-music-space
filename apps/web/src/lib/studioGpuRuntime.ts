@@ -69,8 +69,8 @@ export async function createWebGpuFftRuntime(size = 2048): Promise<WebGpuFftRunt
     return { supported: false, planSize: plan.size, stageCount: plan.stageCount, execute: async (samples) => fallbackMagnitude(samples) };
   }
   const shader = gpuFftComputeShader(plan);
-  const module = device.createShaderModule({ code: shader });
-  const pipeline = device.createComputePipeline({ layout: "auto", compute: { module, entryPoint: "main" } });
+  const shaderModule = device.createShaderModule({ code: shader });
+  const pipeline = device.createComputePipeline({ layout: "auto", compute: { module: shaderModule, entryPoint: "main" } });
 
   return {
     supported: true,

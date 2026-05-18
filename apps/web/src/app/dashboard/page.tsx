@@ -18,7 +18,6 @@ import { redirect } from "next/navigation";
 import { formatPrice } from "@ems/utils";
 import { BADGE_META } from "@/lib/badges";
 import { getSiteUrl } from "@/lib/site";
-import { getCachedConnectStatus } from "@/lib/stripeConnect";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -228,14 +227,26 @@ export default async function DashboardPage() {
       )
     : 0;
 
-  // Stripe Connect status (artists only). Cached per-account for 5 min
-  // because the previous uncached call sat on the dashboard's critical
-  // path: ~300-800ms of Stripe RTT blocked HTML streaming for every
-  // artist on every load.
-  const connectStatus =
-    isArtist && user.stripeConnectId
-      ? await getCachedConnectStatus(user.stripeConnectId)
-      : { connected: false, onboardingComplete: false };
+  // Stripe Connect status (artists only)
+  let connectStatus: { connected: boolean; onboardingComplete: boolean } = {
+    connected: false,
+    onboardingComplete: false,
+  };
+  if (isArtist && user.stripeConnectId) {
+    connectStatus = { connected: true, onboardingComplete: false };
+    try {
+      const { stripe } = await import("@/lib/stripe");
+      const account = await stripe.accounts.retrieve(user.stripeConnectId);
+      connectStatus = {
+        connected: true,
+        onboardingComplete:
+          account.charges_enabled && account.payouts_enabled && account.details_submitted,
+      };
+    } catch {
+      // stripe not available in this env — assume connected
+      connectStatus = { connected: true, onboardingComplete: false };
+    }
+  }
 
   const STAT_CARDS = [
     {

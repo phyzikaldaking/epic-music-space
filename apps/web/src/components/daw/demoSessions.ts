@@ -31,32 +31,7 @@ export interface DemoStem {
 /** Manifest of curated demo sessions. The stems array is the slot for
  *  hand-mixed audio assets; until those assets ship, the loader falls
  *  back to the synth-rendered beat machine pattern below. */
-export const DEMO_SESSIONS: DemoSession[] = [
-  {
-    id: "trap-142",
-    label: "Trap demo · 142 BPM",
-    description:
-      "Hand-tuned trap pattern: tight kick, half-time snare, rolling hats, sub-locked 808. Loads real stems when available.",
-    bpm: 142,
-    kit: "trap",
-    pattern: (() => {
-      const p = emptyBeatPattern();
-      setSteps(p, "kick", [0, 6, 8, 14]);
-      setSteps(p, "snare", [4, 12]);
-      setSteps(p, "hat", [0, 2, 4, 6, 8, 10, 11, 12, 13, 14, 15]);
-      setSteps(p, "bass808", [0, 6, 8, 14]);
-      setSteps(p, "perc", [10]);
-      return p;
-    })(),
-    stems: [
-      { name: "Kick", color: "#FF6B35", url: "/samples/demo-sessions/trap-142/kick.wav" },
-      { name: "Snare", color: "#F7931E", url: "/samples/demo-sessions/trap-142/snare.wav" },
-      { name: "Hi-hat", color: "#FDB913", url: "/samples/demo-sessions/trap-142/hat.wav" },
-      { name: "808 bass", color: "#004E89", url: "/samples/demo-sessions/trap-142/808.wav" },
-      { name: "Perc", color: "#A23B72", url: "/samples/demo-sessions/trap-142/perc.wav" },
-    ],
-  },
-];
+export const DEMO_SESSIONS: DemoSession[] = [];
 
 /** Look up a curated demo by id (e.g. when a deep link or A/B test
  *  preset asks for a specific one). Falls back to curatedTrapDemo()

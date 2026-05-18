@@ -63,7 +63,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   let output: Buffer;
   let fileName: string;
-  let contentType = "application/json";
+  const contentType = "application/json";
 
   if (job.preset === "session_archive") {
     output = jsonBlob({ ...base, type: "session_archive", note: "Archive manifest for restoring a studio session plus durable audio URLs." });

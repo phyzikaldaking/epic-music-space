@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { sanitizeCallbackPath } from "@/lib/safeCallback";
@@ -6,13 +5,6 @@ import SignInForm from "./SignInForm";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-export const metadata: Metadata = {
-  title: "Sign In | Epic Music Space",
-  description: "Sign in to Epic Music Space to manage your studio, rooms, playlists, marketplace activity, and account settings.",
-  alternates: { canonical: "/auth/signin" },
-  robots: { index: false, follow: false },
-};
 
 export default async function SignInPage({
   searchParams,

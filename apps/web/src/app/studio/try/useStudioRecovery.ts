@@ -168,7 +168,7 @@ function toast(message: string) {
 }
 
 export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (payload: Partial<StudioSnapshotInput>) => void) {
-  const sessionId = useMemo(getSessionId, []);
+  const sessionId = useMemo(() => getSessionId(), []);
   const [status, setStatus] = useState<RecoveryStatus>("idle");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [recoverable, setRecoverable] = useState<StudioSnapshot | null>(null);

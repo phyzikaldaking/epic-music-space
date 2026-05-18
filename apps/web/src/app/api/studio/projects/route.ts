@@ -1,88 +1,205 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { Prisma } from "@ems/db";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getRequestId, jsonWithRequestId } from "@/lib/requestTracing";
+import { strictLimiter } from "@/lib/rateLimit";
+import { readJsonBodyLimited } from "@/lib/apiHardening";
+import { getRequestId, jsonWithRequestId, withRequestId } from "@/lib/requestTracing";
+
+// Body posted by the client when saving. Tracks carry already-uploaded
+// blob URLs (uploads happen via separate POSTs to Vercel Blob, then the
+// client commits the project metadata pointing at them).
+const trackSchema = z.object({
+  id: z.string().min(1).max(40).optional(),
+  name: z.string().min(1).max(80),
+  color: z.string().min(1).max(16),
+  blobUrl: z.string().url().nullable().optional(),
+  durationSec: z.number().min(0).max(60 * 60),
+  position: z.number().int().min(0).max(64).default(0),
+});
+
+const upsertSchema = z.object({
+  id: z.string().min(1).max(40).optional(),
+  name: z.string().min(1).max(120),
+  bpm: z.number().int().min(20).max(300).default(120),
+  patternJson: z.unknown().optional(),
+  thumbnailPeaks: z.array(z.number().min(0).max(1)).max(120).optional(),
+  tracks: z.array(trackSchema).max(48).default([]),
+});
 
 export async function GET(req: NextRequest) {
   const requestId = getRequestId(req);
   const session = await auth();
-
   if (!session?.user?.id) {
     return jsonWithRequestId(requestId, { error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    const projects = await prisma.studioProject.findMany({
-      where: { userId: session.user.id },
-      orderBy: { updatedAt: "desc" },
-      take: 50,
-      select: {
-        id: true,
-        name: true,
-        bpm: true,
-        trackCount: true,
-        createdAt: true,
-        updatedAt: true,
-        thumbnailPeaks: true,
-      },
-    });
+  // ?templates=1 → return only the user's saved templates (used by the
+  // TemplatePicker "My templates" tab). Default returns regular projects
+  // and excludes templates so the project list stays clean.
+  const url = new URL(req.url);
+  const templatesOnly = url.searchParams.get("templates") === "1";
 
-    return jsonWithRequestId(requestId, { projects }, { status: 200 });
-  } catch (err) {
-    console.error("[studio/projects]", err);
-    return jsonWithRequestId(
-      requestId,
-      { error: err instanceof Error ? err.message : "Failed to fetch projects" },
-      { status: 500 }
-    );
-  }
+  const projects = await prisma.studioProject.findMany({
+    where: {
+      userId: session.user.id,
+      isTemplate: templatesOnly,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      name: true,
+      bpm: true,
+      trackCount: true,
+      thumbnailPeaks: true,
+      isPublic: true,
+      isTemplate: true,
+      templateGenre: true,
+      coverArtUrl: true,
+      masterBlobUrl: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return jsonWithRequestId(requestId, { projects });
 }
 
 export async function POST(req: NextRequest) {
   const requestId = getRequestId(req);
   const session = await auth();
-
   if (!session?.user?.id) {
     return jsonWithRequestId(requestId, { error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const body = (await req.json()) as {
-      name?: string;
-      bpm?: number;
-      patternJson?: any;
-      trackCount?: number;
-    };
-
-    const { name = "Untitled Project", bpm = 120, patternJson, trackCount = 0 } = body;
-
-    const project = await prisma.studioProject.create({
-      data: {
-        userId: session.user.id,
-        name,
-        bpm,
-        patternJson,
-        trackCount,
-      },
-    });
-
+    await strictLimiter.consume(`studio:projects:${session.user.id}`);
+  } catch {
     return jsonWithRequestId(
       requestId,
-      {
-        id: project.id,
-        name: project.name,
-        bpm: project.bpm,
-        trackCount: project.trackCount,
-        createdAt: project.createdAt,
-      },
-      { status: 201 }
-    );
-  } catch (err) {
-    console.error("[studio/projects]", err);
-    return jsonWithRequestId(
-      requestId,
-      { error: err instanceof Error ? err.message : "Failed to create project" },
-      { status: 500 }
+      { error: "Too many writes — slow down." },
+      { status: 429, headers: { "Retry-After": "30" } },
     );
   }
+
+  const bodyResult = await readJsonBodyLimited<unknown>(req, {
+    maxBytes: 1024 * 1024,
+    invalidMessage: "Expected JSON body",
+  });
+  if (!bodyResult.ok) return withRequestId(bodyResult.response, requestId);
+
+  const parsed = upsertSchema.safeParse(bodyResult.value);
+  if (!parsed.success) {
+    return jsonWithRequestId(
+      requestId,
+      { error: parsed.error.issues[0]?.message ?? "Invalid body" },
+      { status: 400 },
+    );
+  }
+
+  const data = parsed.data;
+  const trackCount = data.tracks.length;
+  const userId = session.user!.id!;
+
+  // Prisma's nullable Json columns require explicit Prisma.JsonNull when
+  // the caller wants to write a SQL NULL. Without this, `null` in TS
+  // becomes a type error and `as never` was the previous (silent) hack.
+  // Wrapping once at the boundary keeps the call sites clean (#17).
+  const patternJsonValue =
+    data.patternJson === undefined || data.patternJson === null
+      ? Prisma.JsonNull
+      : (data.patternJson as Prisma.InputJsonValue);
+  const thumbnailPeaksValue =
+    data.thumbnailPeaks === undefined || data.thumbnailPeaks === null
+      ? Prisma.JsonNull
+      : (data.thumbnailPeaks as Prisma.InputJsonValue);
+
+  // If the client supplied an id, verify ownership BEFORE entering the
+  // transaction. Without this, a user posting another user's project id
+  // would silently fall into the create branch (because findFirst with
+  // userId filter returns null) and a brand-new project gets created
+  // with a server-generated id — looks like success but loses their work.
+  // Worse: with naïve upsert semantics elsewhere, it could update someone
+  // else's row. Refuse with 403 so the client can surface the issue.
+  if (data.id) {
+    const owner = await prisma.studioProject.findUnique({
+      where: { id: data.id },
+      select: { userId: true },
+    });
+    if (owner && owner.userId !== userId) {
+      return jsonWithRequestId(
+        requestId,
+        { error: "Forbidden" },
+        { status: 403 },
+      );
+    }
+  }
+
+  // Upsert project + replace tracks atomically. Tracks are owned by the
+  // project row — on save we wipe and re-insert because the client treats
+  // its in-memory engine state as canonical.
+  const project = await prisma.$transaction(async (tx) => {
+    const where = data.id ? { id: data.id } : undefined;
+    const existing = where
+      ? await tx.studioProject.findFirst({
+          where: { ...where, userId },
+        })
+      : null;
+
+    let projectId: string;
+    if (existing) {
+      const updated = await tx.studioProject.update({
+        where: { id: existing.id },
+        data: {
+          name: data.name,
+          bpm: data.bpm,
+          trackCount,
+          patternJson: patternJsonValue,
+          thumbnailPeaks: thumbnailPeaksValue,
+        },
+      });
+      projectId = updated.id;
+      await tx.studioTrack.deleteMany({ where: { projectId } });
+    } else {
+      const created = await tx.studioProject.create({
+        data: {
+          name: data.name,
+          bpm: data.bpm,
+          trackCount,
+          patternJson: patternJsonValue,
+          thumbnailPeaks: thumbnailPeaksValue,
+          user: { connect: { id: userId } },
+        },
+      });
+      projectId = created.id;
+    }
+
+    if (data.tracks.length > 0) {
+      await tx.studioTrack.createMany({
+        data: data.tracks.map((t, i) => ({
+          projectId,
+          name: t.name,
+          color: t.color,
+          blobUrl: t.blobUrl ?? null,
+          durationSec: t.durationSec,
+          position: t.position ?? i,
+        })),
+      });
+    }
+
+    return tx.studioProject.findUnique({
+      where: { id: projectId },
+      include: { tracks: { orderBy: { position: "asc" } } },
+    });
+  });
+
+  return jsonWithRequestId(requestId, { project });
+}
+
+// Defensive: GET/POST only. PUT/DELETE on the collection make no sense
+// (use /[id]/route.ts for those).
+export async function OPTIONS() {
+  return NextResponse.json({}, { status: 204 });
 }
