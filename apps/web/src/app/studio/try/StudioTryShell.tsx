@@ -4,8 +4,9 @@ import { useState } from "react";
 
 import BeatMachineProClient from "../beat-machine/BeatMachineProClient";
 import ElectricStudioWorkflow from "./ElectricStudioWorkflow";
+import StudioReadinessPanel from "./StudioReadinessPanel";
 
-type Workspace = "daw" | "beat";
+type Workspace = "daw" | "beat" | "ready";
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -37,16 +38,28 @@ export default function StudioTryShell() {
         >
           Beat
         </button>
+        <button
+          type="button"
+          onClick={() => setWorkspace("ready")}
+          className={cn(
+            "rounded-full px-4 py-2 transition",
+            workspace === "ready" ? "bg-yellow-300 text-black" : "hover:bg-white/10 hover:text-yellow-100"
+          )}
+        >
+          Ready
+        </button>
       </div>
 
       {workspace === "daw" ? (
         <ElectricStudioWorkflow />
-      ) : (
+      ) : workspace === "beat" ? (
         <div className="h-dvh overflow-hidden bg-[#080a0f] pt-12">
           <div className="h-[calc(100dvh-3rem)] overflow-auto">
             <BeatMachineProClient studioMode />
           </div>
         </div>
+      ) : (
+        <StudioReadinessPanel />
       )}
     </div>
   );
