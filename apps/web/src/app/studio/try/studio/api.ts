@@ -1,5 +1,8 @@
 import type {
   StudioApiProject,
+  StudioProductionAudioFile,
+  StudioProductionClip,
+  StudioProductionProjectResponse,
   StudioRecentProject,
   StudioSavedSession,
   StudioTrack,
@@ -29,6 +32,25 @@ export async function studioFetchJson<T>(
   }
 
   return body as T;
+}
+
+function parsePeakArray(value: unknown): number[] {
+  if (Array.isArray(value)) return value.filter((item): item is number => typeof item === "number");
+  if (typeof value !== "string" || value.trim().length === 0) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is number => typeof item === "number") : [];
+  } catch {
+    return [];
+  }
+}
+
+function audioUrl(audio?: StudioProductionAudioFile) {
+  return audio?.storageUrl ?? audio?.blobUrl ?? audio?.url ?? "";
+}
+
+function audioName(audio?: StudioProductionAudioFile) {
+  return audio?.originalName ?? audio?.fileName ?? "Audio Clip";
 }
 
 export function buildPersistableTracks(tracks: StudioTrack[]) {
@@ -113,6 +135,85 @@ export function studioProjectToSession(
     tracks: [],
     snapshots: [],
   };
+}
+
+export function productionProjectToSession(
+  data: StudioProductionProjectResponse,
+): StudioSavedSession {
+  const fallback = studioProjectToSession(data.project);
+  const savedById = new Map(fallback.tracks.map((track) => [track.id, track]));
+  const audioById = new Map(data.audioFiles.map((audio) => [audio.id, audio]));
+  const clipsByTrack = new Map<string, StudioProductionClip[]>();
+
+  for (const clip of data.clips) {
+    const key = clip.trackId ?? "__missing_track__";
+    const list = clipsByTrack.get(key) ?? [];
+    list.push(clip);
+    clipsByTrack.set(key, list);
+  }
+
+  const tracks: StudioTrack[] = data.tracks.map((track, index) => {
+    const savedTrack = track.id ? savedById.get(track.id) : undefined;
+    const productionClips = track.id ? clipsByTrack.get(track.id) ?? [] : [];
+    const clips = productionClips.map((clip) => {
+      const audio = clip.audioFileId ? audioById.get(clip.audioFileId) : undefined;
+      const url = audioUrl(audio);
+      const peaks = parsePeakArray(
+        clip.waveformPeaks ?? clip.peaksJson ?? audio?.waveformPeaks ?? audio?.peaksJson,
+      );
+      const savedClip = savedTrack?.clips.find((item) => item.id === clip.id);
+
+      return {
+        id: clip.id,
+        name: clip.name ?? savedClip?.name ?? audioName(audio),
+        url,
+        type: audio?.mimeType ?? savedClip?.type ?? "audio/*",
+        size: audio?.sizeBytes ?? savedClip?.size ?? 0,
+        duration: clip.durationSec ?? audio?.durationSec ?? savedClip?.duration ?? 0,
+        peaks: peaks.length ? peaks : savedClip?.peaks ?? [],
+        start: clip.startSec ?? savedClip?.start ?? 0,
+        trimStart: clip.trimStartSec ?? savedClip?.trimStart ?? 0,
+        trimEnd: clip.trimEndSec ?? savedClip?.trimEnd ?? 0,
+        fadeIn: savedClip?.fadeIn ?? 0,
+        fadeOut: savedClip?.fadeOut ?? 0,
+        gain: clip.gainDb ?? savedClip?.gain ?? 0,
+        muted: clip.muted ?? savedClip?.muted ?? false,
+        locked: clip.locked ?? savedClip?.locked ?? false,
+        missing: !url,
+        color: clip.color ?? savedClip?.color ?? track.color,
+      };
+    });
+
+    return {
+      id: track.id ?? savedTrack?.id ?? `track-${index + 1}`,
+      name: track.name ?? savedTrack?.name ?? `Track ${index + 1}`,
+      color: track.color ?? savedTrack?.color ?? "#65d6ff",
+      armed: track.armed ?? savedTrack?.armed ?? index === 0,
+      muted: track.muted ?? savedTrack?.muted ?? false,
+      solo: track.solo ?? savedTrack?.solo ?? false,
+      volume: track.volume ?? savedTrack?.volume ?? 78,
+      pan: track.pan ?? savedTrack?.pan ?? 0,
+      inputGain: track.inputGain ?? savedTrack?.inputGain ?? 60,
+      clips: clips.length ? clips : savedTrack?.clips ?? [],
+    };
+  });
+
+  return {
+    id: data.project.id,
+    title: data.project.name,
+    bpm: data.project.bpm,
+    sampleRate: fallback.sampleRate ?? 48000,
+    updatedAt: data.project.updatedAt,
+    tracks,
+    snapshots: fallback.snapshots ?? [],
+  };
+}
+
+export async function fetchProductionStudioSession(projectId: string) {
+  const data = await studioFetchJson<StudioProductionProjectResponse>(
+    `/api/studio/projects/${projectId}/production`,
+  );
+  return productionProjectToSession(data);
 }
 
 export async function fetchRecentStudioProjects() {
