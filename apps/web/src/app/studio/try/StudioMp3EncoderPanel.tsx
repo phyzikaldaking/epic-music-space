@@ -47,6 +47,12 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function mp3ChunkToArrayBuffer(chunk: Int8Array) {
+  const copy = new Uint8Array(chunk.byteLength);
+  copy.set(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength));
+  return copy.buffer;
+}
+
 async function decodeAudioFile(file: File) {
   const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   if (!AudioCtx) throw new Error("This browser cannot decode audio files.");
@@ -68,14 +74,14 @@ async function encodeMp3(buffer: AudioBuffer, kbps: number, onProgress: (value: 
   const left = buffer.getChannelData(0);
   const right = channels > 1 ? buffer.getChannelData(1) : undefined;
   const blockSize = 1152;
-  const chunks: Uint8Array[] = [];
+  const chunks: ArrayBuffer[] = [];
 
   for (let start = 0; start < buffer.length; start += blockSize) {
     const length = Math.min(blockSize, buffer.length - start);
     const leftChunk = floatTo16Bit(left, start, length);
     const rightChunk = right ? floatTo16Bit(right, start, length) : undefined;
     const encoded = channels > 1 && rightChunk ? encoder.encodeBuffer(leftChunk, rightChunk) : encoder.encodeBuffer(leftChunk);
-    if (encoded.length) chunks.push(new Uint8Array(encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength)));
+    if (encoded.length) chunks.push(mp3ChunkToArrayBuffer(encoded));
     if (start % (blockSize * 80) === 0) {
       onProgress({ status: "encoding", message: "Encoding MP3 frames...", percent: Math.min(95, Math.round((start / buffer.length) * 90) + 5) });
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -83,7 +89,7 @@ async function encodeMp3(buffer: AudioBuffer, kbps: number, onProgress: (value: 
   }
 
   const flushed = encoder.flush();
-  if (flushed.length) chunks.push(new Uint8Array(flushed.buffer.slice(flushed.byteOffset, flushed.byteOffset + flushed.byteLength)));
+  if (flushed.length) chunks.push(mp3ChunkToArrayBuffer(flushed));
   return new Blob(chunks, { type: "audio/mpeg" });
 }
 
