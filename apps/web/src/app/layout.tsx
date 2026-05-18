@@ -2,8 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
 import Providers from "@/components/Providers";
-import EmsMainMenu from "@/components/navigation/EmsMainMenu";
-import EmsMobileBottomNav from "@/components/navigation/EmsMobileBottomNav";
+import AppChrome from "@/components/navigation/AppChrome";
 import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 import "./ems-overrides.css";
@@ -48,9 +47,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[200] focus:rounded-md focus:bg-brand-500 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:outline-none focus:ring-2 focus:ring-accent-400">Skip to main content</a>
         <script suppressHydrationWarning nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredDataJson }} />
         <Providers>
-          <EmsMainMenu />
-          {children}
-          <EmsMobileBottomNav />
+          <AppChrome>{children}</AppChrome>
         </Providers>
       </body>
     </html>
