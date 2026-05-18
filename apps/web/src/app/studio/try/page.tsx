@@ -18,9 +18,29 @@ export const metadata: Metadata = {
 
 export default function StudioTryPage() {
   return (
-    <div className={styles.cleanStudio}>
-      <h1 className="sr-only">Try the Epic Music Space Studio</h1>
-      <ElectricStudio />
-    </div>
+    <>
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            body {
+              overflow: hidden !important;
+              padding-bottom: 0 !important;
+              background: #06080c !important;
+            }
+
+            body > nav,
+            nav[aria-label="Epic Music Space main menu"],
+            nav[aria-label="Epic Music Space mobile navigation"],
+            a[href="#main-content"] {
+              display: none !important;
+            }
+          `,
+        }}
+      />
+      <div className={styles.cleanStudio}>
+        <h1 className="sr-only">Try the Epic Music Space Studio</h1>
+        <ElectricStudio />
+      </div>
+    </>
   );
 }
