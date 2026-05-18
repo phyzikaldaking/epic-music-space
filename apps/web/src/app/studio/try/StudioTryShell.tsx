@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import BeatMachineProClient from "../beat-machine/BeatMachineProClient";
-import ElectricStudioWorkflow from "./ElectricStudioWorkflow";
+import ElectricStudioDawEditor from "./ElectricStudioDawEditor";
 import StudioCloudUploadPanel from "./StudioCloudUploadPanel";
 import StudioControlFixPanel from "./StudioControlFixPanel";
 import StudioMp3EncoderPanel from "./StudioMp3EncoderPanel";
@@ -27,11 +27,6 @@ const tabs: Array<{ id: Workspace; label: string; short: string; active: string;
 export default function StudioTryShell() {
   const [workspace, setWorkspace] = useState<Workspace>("daw");
 
-  useEffect(() => {
-    const isPhone = window.matchMedia("(max-width: 767px)").matches;
-    if (isPhone) setWorkspace("controls");
-  }, []);
-
   return (
     <div className="relative h-[100svh] w-full overflow-hidden bg-[#05070a] text-white md:h-dvh">
       <div className="fixed bottom-2 left-2 right-2 z-[80] flex max-w-[calc(100vw-1rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/82 p-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/65 shadow-[0_10px_30px_rgba(0,0,0,.55)] backdrop-blur md:absolute md:bottom-auto md:left-auto md:right-3 md:top-2 md:max-w-none md:rounded-full md:bg-black/70 md:tracking-[0.14em]">
@@ -53,7 +48,7 @@ export default function StudioTryShell() {
 
       <div className="h-full overflow-hidden pb-16 md:pb-0">
         {workspace === "daw" ? (
-          <ElectricStudioWorkflow />
+          <ElectricStudioDawEditor />
         ) : workspace === "controls" ? (
           <StudioControlFixPanel />
         ) : workspace === "beat" ? (
