@@ -4,13 +4,21 @@ import { useState } from "react";
 
 import BeatMachineProClient from "../beat-machine/BeatMachineProClient";
 import ElectricStudioWorkflow from "./ElectricStudioWorkflow";
+import StudioCloudUploadPanel from "./StudioCloudUploadPanel";
 import StudioReadinessPanel from "./StudioReadinessPanel";
 
-type Workspace = "daw" | "beat" | "ready";
+type Workspace = "daw" | "beat" | "cloud" | "ready";
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
+
+const tabs: Array<{ id: Workspace; label: string; active: string; hover: string }> = [
+  { id: "daw", label: "DAW", active: "bg-cyan-300 text-black", hover: "hover:bg-white/10 hover:text-cyan-100" },
+  { id: "beat", label: "Beat", active: "bg-pink-300 text-black", hover: "hover:bg-white/10 hover:text-pink-100" },
+  { id: "cloud", label: "Cloud", active: "bg-green-300 text-black", hover: "hover:bg-white/10 hover:text-green-100" },
+  { id: "ready", label: "Ready", active: "bg-yellow-300 text-black", hover: "hover:bg-white/10 hover:text-yellow-100" },
+];
 
 export default function StudioTryShell() {
   const [workspace, setWorkspace] = useState<Workspace>("daw");
@@ -18,36 +26,19 @@ export default function StudioTryShell() {
   return (
     <div className="relative h-dvh w-screen overflow-hidden bg-[#05070a] text-white">
       <div className="absolute right-3 top-2 z-[80] flex items-center gap-1 rounded-full border border-white/10 bg-black/70 p-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/65 shadow-[0_10px_30px_rgba(0,0,0,.45)] backdrop-blur">
-        <button
-          type="button"
-          onClick={() => setWorkspace("daw")}
-          className={cn(
-            "rounded-full px-4 py-2 transition",
-            workspace === "daw" ? "bg-cyan-300 text-black" : "hover:bg-white/10 hover:text-cyan-100"
-          )}
-        >
-          DAW
-        </button>
-        <button
-          type="button"
-          onClick={() => setWorkspace("beat")}
-          className={cn(
-            "rounded-full px-4 py-2 transition",
-            workspace === "beat" ? "bg-pink-300 text-black" : "hover:bg-white/10 hover:text-pink-100"
-          )}
-        >
-          Beat
-        </button>
-        <button
-          type="button"
-          onClick={() => setWorkspace("ready")}
-          className={cn(
-            "rounded-full px-4 py-2 transition",
-            workspace === "ready" ? "bg-yellow-300 text-black" : "hover:bg-white/10 hover:text-yellow-100"
-          )}
-        >
-          Ready
-        </button>
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setWorkspace(tab.id)}
+            className={cn(
+              "rounded-full px-4 py-2 transition",
+              workspace === tab.id ? tab.active : tab.hover
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {workspace === "daw" ? (
@@ -58,6 +49,8 @@ export default function StudioTryShell() {
             <BeatMachineProClient studioMode />
           </div>
         </div>
+      ) : workspace === "cloud" ? (
+        <StudioCloudUploadPanel />
       ) : (
         <StudioReadinessPanel />
       )}
