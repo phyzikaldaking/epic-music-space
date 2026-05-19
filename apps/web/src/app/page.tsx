@@ -365,9 +365,9 @@ export default async function HomePage() {
               <Link
                 key={item.title}
                 href={item.href}
-                className="studio-rack-card group block rounded-xl transition hover:-translate-y-0.5"
+                className="home-panel group block px-5 py-5 transition hover:-translate-y-0.5"
               >
-                <p className="studio-rack-slot">
+                <p className="home-kicker">
                   <span className="num">•</span>
                   <span> {item.title}</span>
                 </p>
@@ -421,7 +421,7 @@ export default async function HomePage() {
                 <div
                   key={stat.label}
                   role="listitem"
-                  className="studio-screen p-4"
+                  className="home-screen p-4"
                 >
                   <p className="studio-label relative z-10 text-white/45">
                     {stat.label}
@@ -447,7 +447,7 @@ export default async function HomePage() {
               <a
                 key={p.href}
                 href={p.href}
-                className="rounded-md studio-faceplate-dark px-4 py-2 studio-label text-white/60 transition hover:text-tube-300"
+                className="home-chip px-4 py-2 studio-label text-white/60 transition hover:text-tube-300"
               >
                 {p.label}
               </a>
@@ -566,8 +566,8 @@ export default async function HomePage() {
               p: "Walk into a 3D studio room, drop into another artist's booth, and watch your track climb the leaderboard inside a living city. Three districts (Label Row, Downtown Prime, Indie Blocks) — claim your block now and migrate your studio in on launch day.",
             },
           ].map((m) => (
-            <article key={m.n} className="studio-rack-card">
-              <p className="studio-rack-slot">
+            <article key={m.n} className="home-panel px-5 py-5">
+              <p className="home-kicker">
                 <span className="num">{m.n}</span>
                 <span> / {m.slot}</span>
               </p>
@@ -652,8 +652,8 @@ export default async function HomePage() {
               p: "Host the drop, talk to listeners, pass the mic. Fans become supporters while the music plays.",
             },
           ].map((m) => (
-            <article key={m.n} className="studio-rack-card">
-              <p className="studio-rack-slot">
+            <article key={m.n} className="home-panel px-5 py-5">
+              <p className="home-kicker">
                 <span className="num">{m.n}</span>
                 <span> / {m.slot}</span>
               </p>
@@ -710,8 +710,8 @@ export default async function HomePage() {
               p: "Support through licenses and paid unlocks with transparent receipts and clear rights terms.",
             },
           ].map((m) => (
-            <article key={m.n} className="studio-rack-card">
-              <p className="studio-rack-slot">
+            <article key={m.n} className="home-panel px-5 py-5">
+              <p className="home-kicker">
                 <span className="num">{m.n}</span>
                 <span> / {m.slot}</span>
               </p>
@@ -755,11 +755,7 @@ export default async function HomePage() {
             </Link>
           </div>
 
-          <div className="studio-faceplate relative rounded-xl p-5">
-            <span aria-hidden className="studio-screw absolute left-2 top-2" />
-            <span aria-hidden className="studio-screw absolute right-2 top-2" />
-            <span aria-hidden className="studio-screw absolute left-2 bottom-2" />
-            <span aria-hidden className="studio-screw absolute right-2 bottom-2" />
+          <div className="home-panel px-5 py-5">
             <div className="mb-4 flex items-center gap-2">
               <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
               <h3 className="studio-label-lg text-white/85">Top Tonight</h3>
@@ -772,7 +768,7 @@ export default async function HomePage() {
                 <Link
                   key={song.id}
                   href={`/track/${song.id}`}
-                  className="flex items-center gap-3 rounded-md studio-faceplate-dark px-3 py-2.5 transition hover:translate-x-0.5"
+                  className="home-panel-soft flex items-center gap-3 px-3 py-2.5 transition hover:translate-x-0.5"
                 >
                   <span className="text-readout-amber w-7 text-right text-lg font-bold tabular-nums">
                     0{i + 1}
@@ -785,7 +781,7 @@ export default async function HomePage() {
                       {song.artist}
                     </p>
                   </div>
-                  <div className="studio-screen rounded-md px-2.5 py-1.5">
+                  <div className="home-screen px-2.5 py-1.5">
                     <p className="text-readout-cyan relative z-10 text-sm font-bold tabular-nums">
                       {song.aiScore.toFixed(1)}
                     </p>
@@ -803,20 +799,8 @@ export default async function HomePage() {
       <section className="relative z-[1] mx-auto max-w-6xl px-4 py-16 sm:py-20">
         <div className="grid gap-5 lg:grid-cols-2">
           {/* Artist channel — walnut-trim hero panel */}
-          <div className="studio-faceplate relative flex flex-col rounded-xl p-6 sm:p-8">
-            <div
-              aria-hidden
-              className="studio-walnut absolute left-0 top-0 bottom-0 w-3 rounded-l-xl"
-            />
-            <div
-              aria-hidden
-              className="studio-walnut absolute right-0 top-0 bottom-0 w-3 rounded-r-xl"
-            />
-            <span aria-hidden className="studio-screw absolute left-5 top-3" />
-            <span aria-hidden className="studio-screw absolute right-5 top-3" />
-            <span aria-hidden className="studio-screw absolute left-5 bottom-3" />
-            <span aria-hidden className="studio-screw absolute right-5 bottom-3" />
-            <div className="ml-3 mr-3 flex flex-1 flex-col">
+          <div className="home-panel flex flex-col p-6 sm:p-8">
+            <div className="flex flex-1 flex-col">
               <div className="mb-3 flex items-center gap-2">
                 <span aria-hidden className="led-on-rec h-2 w-2 animate-pulse rounded-full" />
                 <p className="studio-label text-rec-400">For Artists · Channel A</p>
@@ -832,7 +816,7 @@ export default async function HomePage() {
                 Every fan connection leads to revenue, and you keep 100%.
               </p>
               <div className="mt-5 grid grid-cols-2 gap-3">
-                <div className="studio-screen rounded-md p-3">
+                <div className="home-screen p-3">
                   <p className="studio-label relative z-10 text-white/45">
                     To You
                   </p>
@@ -840,7 +824,7 @@ export default async function HomePage() {
                     100%*
                   </p>
                 </div>
-                <div className="studio-screen rounded-md p-3">
+                <div className="home-screen p-3">
                   <p className="studio-label relative z-10 text-white/45">
                     Engagement
                   </p>
@@ -870,11 +854,7 @@ export default async function HomePage() {
           </div>
 
           {/* Listener channel — secondary brushed panel */}
-          <div className="studio-faceplate relative flex flex-col rounded-xl p-6 sm:p-8">
-            <span aria-hidden className="studio-screw absolute left-2 top-2" />
-            <span aria-hidden className="studio-screw absolute right-2 top-2" />
-            <span aria-hidden className="studio-screw absolute left-2 bottom-2" />
-            <span aria-hidden className="studio-screw absolute right-2 bottom-2" />
+          <div className="home-panel flex flex-col p-6 sm:p-8">
             <div className="mb-3 flex items-center gap-2">
               <span aria-hidden className="led-on-green h-2 w-2 rounded-full" />
               <p className="studio-label text-white/70">
@@ -894,7 +874,7 @@ export default async function HomePage() {
             </p>
             <div className="mt-5 grid grid-cols-2 gap-3">
               {displayStats.slice(0, 2).map((stat) => (
-                <div key={stat.label} className="studio-screen rounded-md p-3">
+                <div key={stat.label} className="home-screen p-3">
                   <p className="studio-label relative z-10 text-white/45">
                     {stat.label}
                   </p>
@@ -906,7 +886,7 @@ export default async function HomePage() {
             </div>
             <Link
               href="/marketplace"
-              className="mt-auto inline-flex items-center justify-center gap-2 rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
+              className="home-chip mt-auto inline-flex items-center justify-center gap-2 px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
             >
               Browse the catalog →
             </Link>
@@ -934,10 +914,7 @@ export default async function HomePage() {
             { n: "Fan", l: "Votes move charts" },
             { n: "Instant", l: "Discovery → support" },
           ].map((p) => (
-            <div
-              key={p.l}
-              className="studio-faceplate-dark flex items-center gap-3 rounded-md px-4 py-3"
-            >
+            <div key={p.l} className="home-panel-soft flex items-center gap-3 px-4 py-3">
               <span aria-hidden className="led-on-amber h-2 w-2 rounded-full" />
               <span className="text-readout-amber font-bold uppercase tracking-wide">
                 {p.n}
@@ -948,8 +925,8 @@ export default async function HomePage() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <article className="studio-rack-card">
-            <p className="studio-rack-slot">
+          <article className="home-panel px-5 py-5">
+            <p className="home-kicker">
               <span className="num">FX-01</span>
               <span> / Versus Battles · Flagship</span>
             </p>
@@ -971,8 +948,8 @@ export default async function HomePage() {
             </Link>
           </article>
 
-          <article className="studio-rack-card">
-            <p className="studio-rack-slot">
+          <article className="home-panel px-5 py-5">
+            <p className="home-kicker">
               <span className="num">FX-02</span>
               <span> / Live Listening Sessions</span>
             </p>
@@ -993,8 +970,8 @@ export default async function HomePage() {
             </Link>
           </article>
 
-          <article className="studio-rack-card">
-            <p className="studio-rack-slot">
+          <article className="home-panel px-5 py-5">
+            <p className="home-kicker">
               <span className="num">FX-03</span>
               <span> / Real-Time Drops</span>
             </p>
@@ -1014,8 +991,8 @@ export default async function HomePage() {
             </Link>
           </article>
 
-          <article className="studio-rack-card">
-            <p className="studio-rack-slot">
+          <article className="home-panel px-5 py-5">
+            <p className="home-kicker">
               <span className="num">FX-04</span>
               <span> / EMS Score & Studio Brand</span>
             </p>
@@ -1042,21 +1019,8 @@ export default async function HomePage() {
           THE VAULT  ·  legacy catalog, walnut-trim feature panel
           ============================================================ */}
       <section className="relative z-[1] mx-auto max-w-6xl px-4 py-16 sm:py-20">
-        <div className="studio-faceplate relative rounded-xl p-6 sm:p-10">
-          <div
-            aria-hidden
-            className="studio-walnut absolute left-0 top-0 bottom-0 w-3 rounded-l-xl"
-          />
-          <div
-            aria-hidden
-            className="studio-walnut absolute right-0 top-0 bottom-0 w-3 rounded-r-xl"
-          />
-          <span aria-hidden className="studio-screw absolute left-5 top-3" />
-          <span aria-hidden className="studio-screw absolute right-5 top-3" />
-          <span aria-hidden className="studio-screw absolute left-5 bottom-3" />
-          <span aria-hidden className="studio-screw absolute right-5 bottom-3" />
-
-          <div className="ml-3 mr-3 grid items-center gap-10 lg:grid-cols-[1.4fr_1fr]">
+        <div className="home-panel p-6 sm:p-10">
+          <div className="grid items-center gap-10 lg:grid-cols-[1.4fr_1fr]">
             <div>
               <p className="studio-label text-tube-300">
                 ◉ The Vault · Legacy Catalogs
@@ -1083,7 +1047,7 @@ export default async function HomePage() {
                 ].map((p) => (
                   <span
                     key={p}
-                    className="rounded-md studio-faceplate-dark px-3 py-1.5 studio-label text-white/65"
+                    className="home-chip px-3 py-1.5 studio-label text-white/65"
                   >
                     {p}
                   </span>
@@ -1110,7 +1074,7 @@ export default async function HomePage() {
                 (year, i) => (
                   <div
                     key={`${year}-${i}`}
-                    className="studio-screen flex aspect-square items-center justify-center rounded-md"
+                  className="home-screen flex aspect-square items-center justify-center"
                     aria-hidden="true"
                   >
                     <span className="text-readout-amber relative z-10 text-xl font-bold tabular-nums">
@@ -1154,17 +1118,12 @@ export default async function HomePage() {
           {sampleSongs.map((song) => (
             <article
               key={song.id}
-              className="studio-faceplate relative flex flex-col gap-3 rounded-xl p-4"
+              className="home-panel flex flex-col gap-3 p-4"
             >
-              <span aria-hidden className="studio-screw absolute left-2 top-2" />
-              <span aria-hidden className="studio-screw absolute right-2 top-2" />
-              <span aria-hidden className="studio-screw absolute left-2 bottom-2" />
-              <span aria-hidden className="studio-screw absolute right-2 bottom-2" />
-
               <Link
                 href={`/track/${song.id}`}
                 aria-label={`Open ${song.title}`}
-                className="relative block aspect-square overflow-hidden rounded-md studio-faceplate-dark"
+                className="home-panel-soft relative block aspect-square overflow-hidden"
               >
                 {song.coverUrl && (
                   <Image
@@ -1195,7 +1154,7 @@ export default async function HomePage() {
               </Link>
 
               <div className="flex items-center justify-between">
-                <span className="rounded-md studio-faceplate-dark px-2 py-1 studio-label text-white/65">
+                <span className="home-chip px-2 py-1 studio-label text-white/65">
                   {song.genre ?? "Electronic"}
                 </span>
                 {song.bpm && (
@@ -1216,7 +1175,7 @@ export default async function HomePage() {
               <p className="-mt-2 text-sm text-white/55">{song.artist}</p>
 
               <div className="mt-auto flex items-center justify-between">
-                <div className="studio-screen rounded-md px-3 py-1.5">
+                <div className="home-screen px-3 py-1.5">
                   <span className="text-readout-amber relative z-10 text-sm font-bold tabular-nums">
                     {formatPrice(song.licensePrice)}
                   </span>
@@ -1240,7 +1199,7 @@ export default async function HomePage() {
         <div className="mt-8 flex justify-center">
           <Link
             href="/marketplace"
-            className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
+            className="home-chip inline-flex items-center gap-2 px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
           >
             See every track →
           </Link>
@@ -1251,21 +1210,8 @@ export default async function HomePage() {
           MASTER FADER  ·  closing CTA with engage button
           ============================================================ */}
       <section className="relative z-[1] mx-auto max-w-4xl px-4 py-16 sm:py-24">
-        <div className="studio-faceplate relative rounded-xl p-8 text-center sm:p-12">
-          <div
-            aria-hidden
-            className="studio-walnut absolute left-0 top-0 bottom-0 w-3 rounded-l-xl"
-          />
-          <div
-            aria-hidden
-            className="studio-walnut absolute right-0 top-0 bottom-0 w-3 rounded-r-xl"
-          />
-          <span aria-hidden className="studio-screw absolute left-5 top-3" />
-          <span aria-hidden className="studio-screw absolute right-5 top-3" />
-          <span aria-hidden className="studio-screw absolute left-5 bottom-3" />
-          <span aria-hidden className="studio-screw absolute right-5 bottom-3" />
-
-          <div className="ml-3 mr-3">
+        <div className="home-panel p-8 text-center sm:p-12">
+          <div>
             <div className="mb-3 inline-flex items-center gap-2">
               <span aria-hidden className="led-on-rec h-2 w-2 animate-pulse rounded-full" />
               <p className="studio-label text-rec-400">Master Fader · Your Move</p>
@@ -1282,7 +1228,7 @@ export default async function HomePage() {
                 (p) => (
                   <span
                     key={p}
-                    className="rounded-md studio-faceplate-dark px-3 py-1.5 studio-label text-white/65"
+                    className="home-chip px-3 py-1.5 studio-label text-white/65"
                   >
                     {p}
                   </span>
@@ -1298,7 +1244,7 @@ export default async function HomePage() {
               placement="closing"
               containerClassName="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center"
               artistClassName="studio-engage-btn rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
-              listenerClassName="rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
+              listenerClassName="home-chip px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
             />
             <p className="mt-6 studio-label text-white/45">
               Trusted payments · Transparent fees · Creator-first ownership

@@ -31,9 +31,9 @@ export default function HomeAudiencePaths() {
         <Link
           key={path.role}
           href={path.href}
-          className="studio-rack-card group block rounded-xl transition hover:-translate-y-0.5"
+          className="home-panel group block px-5 py-5 transition hover:-translate-y-0.5"
         >
-          <p className="studio-rack-slot">
+          <p className="home-kicker">
             <span className="num">{path.role}</span>
           </p>
           <h2 className="font-display text-2xl uppercase tracking-wide text-white">
@@ -44,7 +44,7 @@ export default function HomeAudiencePaths() {
             {path.steps.map((step) => (
               <span
                 key={step}
-                className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 studio-label text-white/50"
+                className="home-chip px-2.5 py-1 studio-label text-white/50"
               >
                 {step}
               </span>
