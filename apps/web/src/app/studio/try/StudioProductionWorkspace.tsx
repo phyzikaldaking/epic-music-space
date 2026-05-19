@@ -916,59 +916,59 @@ export default function StudioProductionWorkspace() {
       </header>
 
       <section className="grid min-h-0 grid-cols-[252px_minmax(0,1fr)_272px] max-[1320px]:grid-cols-[228px_minmax(0,1fr)] max-[1320px]:[&>*:last-child]:col-span-2 max-lg:grid-cols-1 max-lg:[&>*:last-child]:col-span-1">
-        <aside className="min-h-0 overflow-auto border-r border-white/6 bg-[#080b10]">
+        <aside className="min-h-0 overflow-auto border-r border-white/6 bg-[linear-gradient(180deg,#090c11,#07090d)]">
           <div className="space-y-0">
             <RailSection label="Transport" meta={statusLabel}>
               <div className="grid gap-3">
-                <div className="border border-white/7 bg-black/16 p-3">
+                <div className="border-y border-white/6 bg-black/12 p-3">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() =>
                         updateTimeline({ selectionStart: 0, selectionEnd: 4 })
                       }
-                      className="grid h-10 w-10 place-items-center bg-white/[0.05] text-white/72 hover:bg-white/[0.1]"
+                      className="grid h-10 w-10 place-items-center border border-white/8 bg-transparent text-white/72 hover:bg-white/[0.06]"
                     >
                       ⏮
                     </button>
                     <button
                       type="button"
                       onClick={() => moveSelected(-1)}
-                      className="grid h-10 w-10 place-items-center bg-white/[0.05] text-white/72 hover:bg-white/[0.1]"
+                      className="grid h-10 w-10 place-items-center border border-white/8 bg-transparent text-white/72 hover:bg-white/[0.06]"
                     >
                       ⏪
                     </button>
                     <button
                       type="button"
                       onClick={() => pushHistory("Playback toggled")}
-                      className="grid h-12 w-12 place-items-center bg-cyan-300 text-lg text-black shadow-[0_10px_30px_rgba(103,232,249,0.25)]"
+                      className="grid h-12 w-12 place-items-center border border-cyan-300/60 bg-cyan-300 text-lg text-black shadow-[0_10px_30px_rgba(103,232,249,0.18)]"
                     >
                       ▶
                     </button>
                     <button
                       type="button"
                       onClick={() => pushHistory("Stop pressed")}
-                      className="grid h-10 w-10 place-items-center bg-white/[0.05] text-white/72 hover:bg-white/[0.1]"
+                      className="grid h-10 w-10 place-items-center border border-white/8 bg-transparent text-white/72 hover:bg-white/[0.06]"
                     >
                       ⏹
                     </button>
                     <button
                       type="button"
                       onClick={() => moveSelected(1)}
-                      className="grid h-10 w-10 place-items-center bg-white/[0.05] text-white/72 hover:bg-white/[0.1]"
+                      className="grid h-10 w-10 place-items-center border border-white/8 bg-transparent text-white/72 hover:bg-white/[0.06]"
                     >
                       ⏩
                     </button>
                     <button
                       type="button"
                       onClick={() => pushHistory("Record toggled")}
-                      className="grid h-12 w-12 place-items-center bg-red-500/18 text-red-200 hover:bg-red-500/28"
+                      className="grid h-12 w-12 place-items-center border border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/18"
                     >
                       ⏺
                     </button>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-2 text-[11px] max-sm:grid-cols-1">
-                    <label className="border border-white/7 bg-white/[0.03] px-3 py-2 text-white/48">
+                    <label className="border-l border-white/10 bg-white/[0.02] px-3 py-2 text-white/48">
                       <span className="block text-[10px] uppercase tracking-[0.22em] text-white/34">
                         BPM
                       </span>
@@ -991,7 +991,7 @@ export default function StudioProductionWorkspace() {
                         className="mt-2 w-full bg-transparent text-lg font-semibold text-white outline-none"
                       />
                     </label>
-                    <div className="border border-white/7 bg-white/[0.03] px-3 py-2">
+                    <div className="border-l border-white/10 bg-white/[0.02] px-3 py-2">
                       <span className="block text-[10px] uppercase tracking-[0.22em] text-white/34">
                         Primary Ruler
                       </span>
@@ -1024,17 +1024,14 @@ export default function StudioProductionWorkspace() {
                   <div
                     key={track.id}
                     className={cn(
-                      "border px-3 py-3 transition",
+                      "border-y border-white/6 px-3 py-3 transition",
                       selectedTrackId === track.id
-                        ? "border-cyan-300/32 bg-cyan-300/10"
-                        : "border-white/7 bg-black/18 hover:bg-white/[0.04]",
+                        ? "bg-cyan-300/8"
+                        : "bg-black/10 hover:bg-white/[0.03]",
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <span
-                        className="h-8 w-1.5 rounded-full"
-                        style={{ backgroundColor: track.color }}
-                      />
+                      <span className="h-8 w-[3px]" style={{ backgroundColor: track.color }} />
                       <div className="min-w-0 flex-1">
                         <input
                           value={track.name}
@@ -1101,7 +1098,7 @@ export default function StudioProductionWorkspace() {
           </div>
         </aside>
 
-        <section className="min-h-0 overflow-hidden bg-[linear-gradient(180deg,rgba(15,19,26,0.96),rgba(8,11,16,0.98))]">
+        <section className="min-h-0 overflow-hidden bg-[linear-gradient(180deg,rgba(15,19,26,0.98),rgba(6,8,12,0.99))]">
           {state.workspace === "beat" ? (
             <div className="h-full overflow-auto p-3">
               <BeatMachineProClient studioMode />
@@ -1130,10 +1127,10 @@ export default function StudioProductionWorkspace() {
                       type="button"
                       onClick={() => updateTimeline({ mode })}
                       className={cn(
-                        "rounded-full px-3 py-1.5 text-[10px] uppercase tracking-[0.22em]",
+                        "border-l px-3 py-1.5 text-[10px] uppercase tracking-[0.22em]",
                         state.timeline.mode === mode
-                          ? "bg-white text-black"
-                          : "bg-white/[0.05] text-white/54 hover:bg-white/[0.1]",
+                          ? "border-cyan-300/60 bg-white text-black"
+                          : "border-white/10 bg-transparent text-white/54 hover:bg-white/[0.06]",
                       )}
                     >
                       {mode}
@@ -1143,8 +1140,8 @@ export default function StudioProductionWorkspace() {
               </div>
 
               <div className="border-b border-white/6 px-5 py-3">
-                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
-                  <div className="border border-white/7 bg-black/14 px-4 py-3">
+                <div className="grid gap-0 border-y border-white/6 xl:grid-cols-[minmax(0,1fr)_320px]">
+                  <div className="bg-black/10 px-4 py-3">
                     <div className="mb-3 flex items-center gap-2">
                       <span className="text-[10px] uppercase tracking-[0.24em] text-white/34">
                         Selection
@@ -1166,7 +1163,7 @@ export default function StudioProductionWorkspace() {
                       </span>
                     </div>
                     <div className="grid gap-2 md:grid-cols-4">
-                      <label className="bg-white/[0.04] px-3 py-2 text-[11px] text-white/48">
+                      <label className="border-l border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] text-white/48">
                         Snap
                         <select
                           value={state.timeline.snapEnabled ? "on" : "off"}
@@ -1181,7 +1178,7 @@ export default function StudioProductionWorkspace() {
                           <option value="off">Off</option>
                         </select>
                       </label>
-                      <label className="bg-white/[0.04] px-3 py-2 text-[11px] text-white/48">
+                      <label className="border-l border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] text-white/48">
                         Grid
                         <select
                           value={state.timeline.gridSubdivision}
@@ -1201,7 +1198,7 @@ export default function StudioProductionWorkspace() {
                           <option>samples</option>
                         </select>
                       </label>
-                      <label className="bg-white/[0.04] px-3 py-2 text-[11px] text-white/48">
+                      <label className="border-l border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] text-white/48">
                         Nudge
                         <input
                           type="number"
@@ -1219,14 +1216,14 @@ export default function StudioProductionWorkspace() {
                         <button
                           type="button"
                           onClick={() => moveSelected(-1)}
-                          className="bg-white/[0.05] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/68 hover:bg-white/[0.1]"
+                          className="border-l border-white/10 bg-transparent px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/68 hover:bg-white/[0.08]"
                         >
                           Nudge -
                         </button>
                         <button
                           type="button"
                           onClick={() => moveSelected(1)}
-                          className="bg-white/[0.05] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/68 hover:bg-white/[0.1]"
+                          className="border-l border-white/10 bg-transparent px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/68 hover:bg-white/[0.08]"
                         >
                           Nudge +
                         </button>
@@ -1234,7 +1231,7 @@ export default function StudioProductionWorkspace() {
                     </div>
                   </div>
 
-                  <div className="border border-white/7 bg-black/14 px-4 py-3">
+                  <div className="border-l border-white/6 bg-black/10 px-4 py-3">
                     <div className="mb-3 flex items-center gap-2">
                       <span className="text-[10px] uppercase tracking-[0.24em] text-white/34">
                         Command Deck
@@ -1246,7 +1243,7 @@ export default function StudioProductionWorkspace() {
                             commandMenuOpen: !state.timeline.commandMenuOpen,
                           })
                         }
-                        className="ml-auto bg-violet-300 px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-black"
+                          className="ml-auto border border-violet-300/40 bg-violet-300 px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-black"
                       >
                         {state.timeline.commandMenuOpen ? "Hide" : "Show"}
                       </button>
@@ -1261,7 +1258,7 @@ export default function StudioProductionWorkspace() {
                             })
                           }
                           placeholder="Search edit commands"
-                          className="w-full border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-white outline-none placeholder:text-white/24"
+                          className="w-full border-b border-white/10 bg-transparent px-0 py-2 text-sm text-white outline-none placeholder:text-white/24"
                         />
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {commandMatches.map((command) => (
@@ -1269,7 +1266,7 @@ export default function StudioProductionWorkspace() {
                               key={command.id}
                               type="button"
                               onClick={() => runCommand(command.id)}
-                              className="bg-white/[0.055] px-3 py-2 text-left text-[11px] font-semibold text-white/74 transition hover:bg-violet-300 hover:text-black"
+                              className="border-l border-white/10 bg-transparent px-3 py-2 text-left text-[11px] font-semibold text-white/74 transition hover:bg-violet-300 hover:text-black"
                             >
                               {command.label}
                             </button>
@@ -1327,12 +1324,12 @@ export default function StudioProductionWorkspace() {
           )}
         </section>
 
-        <aside className="min-h-0 overflow-auto border-l border-white/6 bg-[#080b10]">
+        <aside className="min-h-0 overflow-auto border-l border-white/6 bg-[linear-gradient(180deg,#090c11,#07090d)]">
           <div className="space-y-0">
             <RailSection label="Inspector" meta={state.activePanel}>
               <div className="grid gap-2 text-[11px]">
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-black/22 px-3 py-3">
+                  <div className="border-l border-white/10 bg-black/10 px-3 py-3">
                     <p className="text-[10px] uppercase tracking-[0.22em] text-white/28">
                       Selection Start
                     </p>
@@ -1347,7 +1344,7 @@ export default function StudioProductionWorkspace() {
                       className="mt-2 w-full bg-transparent text-lg font-semibold text-white outline-none"
                     />
                   </div>
-                  <div className="bg-black/22 px-3 py-3">
+                  <div className="border-l border-white/10 bg-black/10 px-3 py-3">
                     <p className="text-[10px] uppercase tracking-[0.22em] text-white/28">
                       Selection End
                     </p>
@@ -1380,7 +1377,7 @@ export default function StudioProductionWorkspace() {
                   </button>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                  <div className="bg-black/22 px-3 py-3">
+                  <div className="border-l border-white/10 bg-black/10 px-3 py-3">
                     <p className="text-[10px] uppercase tracking-[0.22em] text-white/28">
                       Selected Clips
                     </p>
@@ -1388,7 +1385,7 @@ export default function StudioProductionWorkspace() {
                       {selectedClips.length}
                     </p>
                   </div>
-                  <div className="bg-black/22 px-3 py-3">
+                  <div className="border-l border-white/10 bg-black/10 px-3 py-3">
                     <p className="text-[10px] uppercase tracking-[0.22em] text-white/28">
                       Undo Stack
                     </p>
@@ -1411,7 +1408,7 @@ export default function StudioProductionWorkspace() {
                   {selectedClips.map((clip) => (
                     <div
                       key={clip.id}
-                      className="border border-white/7 bg-black/18 px-3 py-3"
+                      className="border-l border-white/10 bg-black/10 px-3 py-3"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -1487,7 +1484,7 @@ export default function StudioProductionWorkspace() {
                       state.exports.map((job) => (
                         <article
                           key={job.id}
-                          className="border border-white/7 bg-black/18 px-3 py-3"
+                          className="border-l border-white/10 bg-black/10 px-3 py-3"
                         >
                           <div className="flex items-center gap-2">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
@@ -1522,7 +1519,7 @@ export default function StudioProductionWorkspace() {
                       value={inviteEmail}
                       onChange={(event) => setInviteEmail(event.target.value)}
                       placeholder="collaborator@email.com"
-                      className="border border-white/8 bg-black/24 px-3 py-2 text-sm text-white outline-none placeholder:text-white/26"
+                      className="border-b border-white/10 bg-transparent px-0 py-2 text-sm text-white outline-none placeholder:text-white/26"
                     />
                     <div className="grid grid-cols-[1fr_auto] gap-2">
                       <select
@@ -1530,7 +1527,7 @@ export default function StudioProductionWorkspace() {
                         onChange={(event) =>
                           setInviteRole(event.target.value as StudioRole)
                         }
-                        className="border border-white/8 bg-black/24 px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-white outline-none"
+                        className="border-l border-white/10 bg-transparent px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-white outline-none"
                       >
                         {roles.map((role) => (
                           <option key={role}>{role}</option>
@@ -1549,7 +1546,7 @@ export default function StudioProductionWorkspace() {
                     {state.collaborators.map((collab) => (
                       <article
                         key={collab.id}
-                        className="border border-white/7 bg-black/18 px-3 py-3"
+                        className="border-l border-white/10 bg-black/10 px-3 py-3"
                       >
                         <p className="truncate text-sm font-semibold text-white">
                           {collab.email}
@@ -1566,7 +1563,7 @@ export default function StudioProductionWorkspace() {
                                 event.target.value as StudioRole,
                               )
                             }
-                            className="bg-white/[0.06] px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white outline-none"
+                              className="border-l border-white/10 bg-transparent px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-white outline-none"
                           >
                             {roles.map((role) => (
                               <option key={role}>{role}</option>
@@ -1584,7 +1581,7 @@ export default function StudioProductionWorkspace() {
                   {tests.map((test) => (
                     <label
                       key={test}
-                      className="flex items-start gap-3 border border-white/7 bg-black/18 px-3 py-3 text-xs text-white/56"
+                      className="flex items-start gap-3 border-l border-white/10 bg-black/10 px-3 py-3 text-xs text-white/56"
                     >
                       <input
                         type="checkbox"
@@ -1605,14 +1602,14 @@ export default function StudioProductionWorkspace() {
                   <button
                     type="button"
                     onClick={undoEdit}
-                    className="bg-white/[0.06] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/68 hover:bg-white/[0.1]"
+                    className="border-l border-white/10 bg-transparent px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/68 hover:bg-white/[0.08]"
                   >
                     Undo
                   </button>
                   <button
                     type="button"
                     onClick={redoEdit}
-                    className="bg-white/[0.06] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/68 hover:bg-white/[0.1]"
+                    className="border-l border-white/10 bg-transparent px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/68 hover:bg-white/[0.08]"
                   >
                     Redo
                   </button>
@@ -1637,14 +1634,14 @@ export default function StudioProductionWorkspace() {
         </aside>
       </section>
 
-      <footer className="border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,11,16,0.92),rgba(5,7,10,0.98))] px-4 py-3">
+      <footer className="border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,11,16,0.92),rgba(5,7,10,0.99))] px-4 py-3">
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="overflow-x-auto border border-white/7 bg-black/14 px-4 py-4">
+          <div className="overflow-x-auto border-y border-white/6 bg-black/10 px-4 py-4">
             <div className="flex min-w-[720px] items-end gap-3">
               {state.tracks.map((track) => (
                 <article
                   key={track.id}
-                  className="grid min-w-[88px] flex-1 gap-3 border-r border-white/8 bg-white/[0.02] px-3 py-3 text-center last:border-r-0"
+                  className="grid min-w-[88px] flex-1 gap-3 border-r border-white/8 px-3 py-3 text-center last:border-r-0"
                 >
                   <div
                     className="mx-auto h-1.5 w-12 rounded-full"
@@ -1685,7 +1682,7 @@ export default function StudioProductionWorkspace() {
               ))}
             </div>
           </div>
-          <div className="border border-white/7 bg-black/14 px-4 py-4">
+          <div className="border-y border-white/6 bg-black/10 px-4 py-4">
             <div className="flex items-center gap-2">
               <h2 className="text-[10px] uppercase tracking-[0.28em] text-white/42">
                 Edit History
@@ -1704,7 +1701,7 @@ export default function StudioProductionWorkspace() {
                 state.timeline.undo.map((entry) => (
                   <div
                     key={entry.id}
-                    className="border border-white/7 bg-white/[0.02] px-3 py-3"
+                    className="border-l border-white/10 bg-transparent px-3 py-3"
                   >
                     <p className="text-sm text-white/72">{entry.label}</p>
                     <p className="mt-1 text-[11px] text-white/32">
