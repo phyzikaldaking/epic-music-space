@@ -301,15 +301,15 @@ export default async function HomePage() {
           {/* Top status bar — like the front-panel labels on a multi-channel
               recorder. Tells the visitor at a glance what this thing is. */}
           <div className="mb-8 flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-3 py-1.5">
+            <span className="home-chip inline-flex items-center gap-2 px-3 py-1.5">
               <span aria-hidden className="led-on-rec h-1.5 w-1.5 rounded-full animate-pulse" />
               <span className="studio-label text-rec-400">On Air</span>
             </span>
-            <span className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-3 py-1.5">
+            <span className="home-chip inline-flex items-center gap-2 px-3 py-1.5">
               <span aria-hidden className="led-on-amber h-1.5 w-1.5 rounded-full" />
               <span className="studio-label text-tube-300">Live Sessions</span>
             </span>
-            <span className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-3 py-1.5">
+            <span className="home-chip inline-flex items-center gap-2 px-3 py-1.5">
               <span aria-hidden className="led-on-green h-1.5 w-1.5 rounded-full" />
               <span className="studio-label text-white/70">Console Online</span>
             </span>
@@ -336,7 +336,7 @@ export default async function HomePage() {
             placement="hero"
             containerClassName="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center"
             artistClassName="studio-engage-btn rounded-md px-6 py-3 font-display text-base uppercase tracking-[0.18em]"
-            listenerClassName="rounded-md studio-faceplate-dark px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
+            listenerClassName="home-chip px-6 py-3 font-display text-base uppercase tracking-[0.18em] text-white/85 hover:text-white"
           />
           <HomeFirstVisitStudioTour />
           <HomeMarketplaceActivityTicker
@@ -1063,7 +1063,7 @@ export default async function HomePage() {
                 <Link
                   href="/vault/new"
                   prefetch={false}
-                  className="inline-flex items-center gap-2 rounded-md studio-faceplate-dark px-5 py-2.5 font-display text-sm uppercase tracking-[0.18em] text-white/85 hover:text-white"
+                  className="home-chip inline-flex items-center gap-2 px-5 py-2.5 font-display text-sm uppercase tracking-[0.18em] text-white/85 hover:text-white"
                 >
                   Add your vault tracks
                 </Link>
