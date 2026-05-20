@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
 import Providers from "@/components/Providers";
 import FeedbackBotMount from "@/components/FeedbackBotMount";
+import EMSWorldIntro from "@/components/EMSWorldIntro";
 import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -164,6 +165,7 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: structuredDataJson }}
         />
         <Providers>
+          <EMSWorldIntro />
           {children}
           <FeedbackBotMount />
         </Providers>
