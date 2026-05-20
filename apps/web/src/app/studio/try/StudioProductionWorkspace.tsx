@@ -180,9 +180,13 @@ function MeterCard({
       <p className="text-[10px] uppercase tracking-[0.22em] text-white/36">
         {label}
       </p>
-      <div className="mt-2 flex items-end justify-between gap-3">
-        <span className="text-lg font-semibold text-white">{value}</span>
-        <span className="text-[11px] text-white/38">{detail}</span>
+      <div className="mt-2 border border-white/8 bg-black/28 px-2 py-2">
+        <div className="flex items-end justify-between gap-3">
+          <span className="font-mono text-lg font-semibold tracking-[0.08em] text-[#c8f5ff]">
+            {value}
+          </span>
+          <span className="text-[11px] text-white/38">{detail}</span>
+        </div>
       </div>
       <div className="mt-3 h-px overflow-hidden bg-white/8">
         <div
@@ -216,14 +220,14 @@ function TrackLane({
   onSelectClip: (id: string) => void;
 }) {
   return (
-    <div className="grid min-h-[92px] grid-cols-[220px_minmax(0,1fr)] border-b border-white/6 last:border-b-0 max-md:grid-cols-1">
-      <div className="border-r border-white/6 bg-[#090c11] px-4 py-3 max-md:border-b max-md:border-r-0">
+    <div className="grid min-h-[96px] grid-cols-[220px_minmax(0,1fr)] border-b border-white/6 last:border-b-0 max-md:grid-cols-1">
+      <div className="border-r border-white/6 bg-[#0a0d12] px-4 py-3 max-md:border-b max-md:border-r-0">
         <div className="flex items-start gap-3">
           <span
-            className="mt-1 h-10 w-1.5 rounded-full"
+            className="mt-1 h-10 w-[3px]"
             style={{
               backgroundColor: track.color,
-              boxShadow: `0 0 18px ${track.color}`,
+              boxShadow: `0 0 12px ${track.color}`,
             }}
           />
           <div className="min-w-0 flex-1">
@@ -231,7 +235,7 @@ function TrackLane({
               <p className="truncate text-sm font-semibold text-white">
                 {track.name}
               </p>
-              <span className="px-2 py-0.5 text-[9px] uppercase tracking-[0.22em] text-white/30">
+              <span className="border border-white/8 px-2 py-0.5 text-[9px] uppercase tracking-[0.22em] text-white/30">
                 {track.kind}
               </span>
             </div>
@@ -239,7 +243,7 @@ function TrackLane({
             <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-[0.22em] text-white/48">
               <span
                 className={cn(
-                  "px-2 py-1",
+                  "border border-white/10 px-2 py-1",
                   track.muted ? "bg-amber-300 text-black" : "bg-white/[0.055]",
                 )}
               >
@@ -247,7 +251,7 @@ function TrackLane({
               </span>
               <span
                 className={cn(
-                  "px-2 py-1",
+                  "border border-white/10 px-2 py-1",
                   track.solo ? "bg-cyan-300 text-black" : "bg-white/[0.055]",
                 )}
               >
@@ -255,7 +259,7 @@ function TrackLane({
               </span>
               <span
                 className={cn(
-                  "px-2 py-1",
+                  "border border-white/10 px-2 py-1",
                   track.armed ? "bg-red-400 text-black" : "bg-white/[0.055]",
                 )}
               >
@@ -271,7 +275,7 @@ function TrackLane({
         <div className="absolute inset-y-0 left-[50%] w-px bg-white/8" />
         <div className="relative h-full px-3 py-3">
           {clips.length === 0 ? (
-            <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/18 text-xs uppercase tracking-[0.22em] text-white/28">
+            <div className="flex h-full items-center justify-center border border-dashed border-white/10 bg-black/18 text-xs uppercase tracking-[0.22em] text-white/28">
               Track ready for takes
             </div>
           ) : (
@@ -284,7 +288,7 @@ function TrackLane({
                     type="button"
                     onClick={() => onSelectClip(clip.id)}
                     className={cn(
-                      "absolute top-3 rounded-[18px] border px-4 py-3 text-left transition",
+                      "absolute top-3 border px-4 py-3 text-left transition",
                       selected
                         ? "border-cyan-300/60 bg-cyan-300/14 shadow-[0_0_30px_rgba(103,232,249,0.18)]"
                         : "border-white/8 bg-black/42 hover:border-white/16 hover:bg-white/[0.06]",
@@ -789,7 +793,7 @@ export default function StudioProductionWorkspace() {
         <div className="flex flex-wrap items-center gap-3 px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="rounded-full border border-cyan-300/18 bg-cyan-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.32em] text-cyan-100">
+              <span className="border border-cyan-300/18 bg-cyan-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.32em] text-cyan-100">
                 Studio
               </span>
               <span className="text-[10px] uppercase tracking-[0.28em] text-white/28">
@@ -813,44 +817,44 @@ export default function StudioProductionWorkspace() {
               type="button"
               onClick={() => setWorkspace("production")}
               className={cn(
-                "rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em]",
+                "border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em]",
                 state.workspace === "production"
-                  ? "bg-white text-black"
-                  : "bg-white/[0.06] text-white/68 hover:bg-white/[0.1]",
+                  ? "border-white/30 bg-white text-black"
+                  : "border-white/8 bg-white/[0.06] text-white/68 hover:bg-white/[0.1]",
               )}
             >
-              Arrange
+              Edit
             </button>
             <button
               type="button"
               onClick={() => setWorkspace("beat")}
               className={cn(
-                "rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em]",
+                "border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em]",
                 state.workspace === "beat"
-                  ? "bg-cyan-300 text-black"
-                  : "bg-white/[0.06] text-white/68 hover:bg-white/[0.1]",
+                  ? "border-cyan-100/40 bg-cyan-300 text-black"
+                  : "border-white/8 bg-white/[0.06] text-white/68 hover:bg-white/[0.1]",
               )}
             >
-              Beat Lab
+              Beat Grid
             </button>
             <button
               type="button"
               onClick={createClip}
-              className="rounded-full bg-cyan-300 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-black hover:bg-cyan-200"
+              className="border border-cyan-100/40 bg-cyan-300 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-black hover:bg-cyan-200"
             >
               Add Clip
             </button>
             <button
               type="button"
               onClick={createCloudProject}
-              className="rounded-full bg-white/[0.08] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-white/74 hover:bg-white/[0.12]"
+              className="border border-white/10 bg-white/[0.08] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-white/74 hover:bg-white/[0.12]"
             >
               Save Cloud
             </button>
             <button
               type="button"
               onClick={() => queueExport("MP3 Demo")}
-              className="rounded-full bg-amber-300 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-black hover:bg-amber-200"
+              className="border border-amber-100/40 bg-amber-300 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-black hover:bg-amber-200"
             >
               Export
             </button>
@@ -869,7 +873,7 @@ export default function StudioProductionWorkspace() {
                     onClick={() => setPanel(panel.id)}
                     title={panel.hint}
                     className={cn(
-                      "rounded-full border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] transition",
+                      "border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] transition",
                       active
                         ? "border-cyan-300/40 bg-cyan-300/14 text-cyan-100"
                         : "border-white/8 bg-white/[0.035] text-white/56 hover:bg-white/[0.07] hover:text-white/82",
@@ -927,45 +931,68 @@ export default function StudioProductionWorkspace() {
                       onClick={() =>
                         updateTimeline({ selectionStart: 0, selectionEnd: 4 })
                       }
-                      className="grid h-10 w-10 place-items-center border border-white/8 bg-transparent text-white/72 hover:bg-white/[0.06]"
+                      className="grid h-10 w-12 place-items-center border border-white/8 bg-transparent text-[10px] font-black tracking-[0.16em] text-white/72 hover:bg-white/[0.06]"
                     >
-                      ⏮
+                      RTZ
                     </button>
                     <button
                       type="button"
                       onClick={() => moveSelected(-1)}
-                      className="grid h-10 w-10 place-items-center border border-white/8 bg-transparent text-white/72 hover:bg-white/[0.06]"
+                      className="grid h-10 w-12 place-items-center border border-white/8 bg-transparent text-[10px] font-black tracking-[0.16em] text-white/72 hover:bg-white/[0.06]"
                     >
-                      ⏪
+                      REW
                     </button>
                     <button
                       type="button"
                       onClick={() => pushHistory("Playback toggled")}
-                      className="grid h-12 w-12 place-items-center border border-cyan-300/60 bg-cyan-300 text-lg text-black shadow-[0_10px_30px_rgba(103,232,249,0.18)]"
+                      className="grid h-12 w-16 place-items-center border border-cyan-300/60 bg-cyan-300 text-[10px] font-black tracking-[0.16em] text-black shadow-[0_10px_30px_rgba(103,232,249,0.18)]"
                     >
-                      ▶
+                      PLAY
                     </button>
                     <button
                       type="button"
                       onClick={() => pushHistory("Stop pressed")}
-                      className="grid h-10 w-10 place-items-center border border-white/8 bg-transparent text-white/72 hover:bg-white/[0.06]"
+                      className="grid h-10 w-14 place-items-center border border-white/8 bg-transparent text-[10px] font-black tracking-[0.16em] text-white/72 hover:bg-white/[0.06]"
                     >
-                      ⏹
+                      STOP
                     </button>
                     <button
                       type="button"
                       onClick={() => moveSelected(1)}
-                      className="grid h-10 w-10 place-items-center border border-white/8 bg-transparent text-white/72 hover:bg-white/[0.06]"
+                      className="grid h-10 w-10 place-items-center border border-white/8 bg-transparent text-[10px] font-black tracking-[0.16em] text-white/72 hover:bg-white/[0.06]"
                     >
-                      ⏩
+                      FF
                     </button>
                     <button
                       type="button"
                       onClick={() => pushHistory("Record toggled")}
-                      className="grid h-12 w-12 place-items-center border border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/18"
+                      className="grid h-12 w-14 place-items-center border border-red-400/30 bg-red-500/10 text-[10px] font-black tracking-[0.16em] text-red-200 hover:bg-red-500/18"
                     >
-                      ⏺
+                      REC
                     </button>
+                  </div>
+                  <div className="mt-4 grid grid-cols-[1fr_auto] gap-2 border-t border-white/8 pt-3">
+                    <div className="border border-white/8 bg-black/30 px-3 py-2">
+                      <span className="block text-[10px] uppercase tracking-[0.22em] text-white/34">
+                        Main Counter
+                      </span>
+                      <span className="mt-2 block font-mono text-[24px] tracking-[0.18em] text-[#c8f5ff]">
+                        {formatTime(
+                          state.timeline.selectionStart,
+                          state.timeline.ruler,
+                          state.session.bpm,
+                          state.session.sampleRate,
+                        )}
+                      </span>
+                    </div>
+                    <div className="grid gap-2">
+                      <div className="border border-white/8 bg-black/28 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/44">
+                        Pre Roll 2 Bars
+                      </div>
+                      <div className="border border-white/8 bg-black/28 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/44">
+                        Loop Off
+                      </div>
+                    </div>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-2 text-[11px] max-sm:grid-cols-1">
                     <label className="border-l border-white/10 bg-white/[0.02] px-3 py-2 text-white/48">
@@ -1100,8 +1127,21 @@ export default function StudioProductionWorkspace() {
 
         <section className="min-h-0 overflow-hidden bg-[linear-gradient(180deg,rgba(15,19,26,0.98),rgba(6,8,12,0.99))]">
           {state.workspace === "beat" ? (
+            <div className="grid h-full min-h-0 grid-rows-[auto_1fr] overflow-hidden">
+              <div className="border-b border-white/6 px-5 py-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusPill tone="amber">Rhythm Programmer</StatusPill>
+                  <span className="text-sm font-semibold text-white">
+                    Beat Grid / Sampler / Piano Roll / Print Stems
+                  </span>
+                  <span className="ml-auto border border-white/8 bg-black/30 px-3 py-2 font-mono text-sm tracking-[0.18em] text-[#c8f5ff]">
+                    {state.session.bpm} BPM
+                  </span>
+                </div>
+              </div>
             <div className="h-full overflow-auto p-3">
-              <BeatMachineProClient studioMode />
+                <BeatMachineProClient studioMode />
+              </div>
             </div>
           ) : (
             <div className="grid h-full min-h-0 grid-rows-[auto_auto_1fr]">
