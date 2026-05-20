@@ -1,11 +1,12 @@
 :root {
   color-scheme: dark;
-  --bg: #0a0a0f;
-  --panel: #131321;
-  --panel-border: #29294d;
+  --bg: #05050b;
+  --panel: rgba(17, 19, 36, 0.8);
+  --panel-border: rgba(142, 132, 255, 0.35);
   --text: #f4f4ff;
   --muted: #b7b8d9;
-  --accent: #7f7bff;
+  --accent: #8f7dff;
+  --accent-2: #4de2e7;
 }
 
 * {
@@ -15,34 +16,64 @@
 body {
   margin: 0;
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  background: radial-gradient(circle at top, #1c1c31, var(--bg) 60%);
+  background: radial-gradient(circle at top, #20175a, #0b0b17 45%, var(--bg));
   color: var(--text);
   min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.aurora {
+  position: fixed;
+  inset: -20vmax;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(129, 102, 255, 0.3), transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(77, 226, 231, 0.2), transparent 50%),
+    radial-gradient(circle at 50% 80%, rgba(255, 88, 166, 0.15), transparent 40%);
+  filter: blur(30px) saturate(110%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .layout {
-  max-width: 720px;
+  position: relative;
+  z-index: 1;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 48px 20px;
+  padding: 64px 20px;
+}
+
+.hero {
+  margin-bottom: 26px;
 }
 
 .eyebrow {
   margin: 0;
-  font-size: 0.85rem;
-  letter-spacing: 0.08em;
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--accent-2);
 }
 
 h1 {
-  margin: 6px 0 24px;
+  margin: 8px 0 10px;
+  font-size: clamp(2rem, 5vw, 2.9rem);
+  line-height: 1.06;
+}
+
+.hero-copy {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--muted);
 }
 
 .panel {
-  background: color-mix(in srgb, var(--panel), #000 6%);
+  background: var(--panel);
   border: 1px solid var(--panel-border);
-  border-radius: 16px;
-  padding: 20px;
+  border-radius: 20px;
+  padding: 24px;
+  backdrop-filter: blur(7px);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
 }
 
 .panel-head {
@@ -52,26 +83,67 @@ h1 {
   gap: 12px;
 }
 
+h2 {
+  margin: 0;
+}
+
 button {
-  border: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px;
-  padding: 10px 14px;
+  padding: 10px 16px;
   font-weight: 600;
   color: #fff;
-  background: linear-gradient(90deg, #5f5cff, var(--accent));
+  background: linear-gradient(90deg, #6258ff, var(--accent));
   cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(103, 88, 255, 0.35);
 }
 
 .status-copy {
   color: var(--muted);
 }
 
+.status-meters {
+  display: grid;
+  gap: 12px;
+}
+
+.meter {
+  display: grid;
+  gap: 6px;
+}
+
+.meter span {
+  font-size: 0.9rem;
+  color: #d8dbff;
+}
+
+.track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  width: var(--fill);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+}
+
 .widget {
   margin-top: 16px;
   padding: 14px;
   border-radius: 12px;
-  border: 1px solid #393974;
-  background: #16162a;
+  border: 1px solid rgba(120, 125, 255, 0.45);
+  background: rgba(18, 19, 38, 0.85);
 }
 
 .widget h3 {
@@ -81,6 +153,8 @@ button {
 .widget ul {
   margin: 0;
   padding-left: 18px;
+  display: grid;
+  gap: 8px;
 }
 
 ::view-transition-group(*),
