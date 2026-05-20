@@ -1,7 +1,7 @@
 "use client";
 
-import StudioProductionWorkspace from "./StudioProductionWorkspace";
+import StudioWorkstationRecoveryClient from "./StudioWorkstationRecoveryClient";
 
 export default function StudioTryShell() {
-  return <StudioProductionWorkspace />;
+  return <StudioWorkstationRecoveryClient />;
 }
