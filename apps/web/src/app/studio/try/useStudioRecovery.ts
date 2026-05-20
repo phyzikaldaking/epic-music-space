@@ -31,10 +31,10 @@ type StudioSnapshot = {
 
 type RecoveryStatus = "idle" | "checking" | "saved" | "recoverable" | "restored" | "error";
 
-const SESSION_ID_KEY = "ems-studio-session-id";
-const LOCAL_SNAPSHOT_KEY = "ems-studio-local-recovery-snapshot";
-const LOCAL_SNAPSHOT_INDEX_KEY = "ems-studio-local-recovery-index";
-const AUTOSAVE_ENABLED_KEY = "ems-studio-autosave-enabled";
+const SESSION_ID_KEY = "ems-studio-session-id-v2";
+const LOCAL_SNAPSHOT_KEY = "ems-studio-local-recovery-snapshot-v2";
+const LOCAL_SNAPSHOT_INDEX_KEY = "ems-studio-local-recovery-index-v2";
+const AUTOSAVE_ENABLED_KEY = "ems-studio-autosave-enabled-v2";
 const PLACED_CLIPS_STORAGE_KEY = "ems-studio-placed-sound-clips";
 const SOUNDS_STORAGE_KEY = "ems-studio-sounds";
 const PAD_ASSIGNMENTS_STORAGE_KEY = "ems-studio-pad-assignments";
