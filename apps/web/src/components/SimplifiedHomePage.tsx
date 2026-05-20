@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import EMSWorldIntro from "@/components/EMSWorldIntro";
+import EMSScene3D from "@/components/EMSScene3D";
 
 const worldCards = [
   { title: "Studio", body: "Record, arrange, mix, and save sessions in your own creative room.", href: "/studio/try", icon: "🎙️" },
@@ -70,10 +70,12 @@ function PerformanceBackdrop() {
 }
 
 export default function SimplifiedHomePage() {
+  function playIntro() {
+    window.dispatchEvent(new Event("ems:open-world-intro"));
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#030307] text-white">
-      <EMSWorldIntro />
-
       <section className="relative isolate min-h-screen overflow-hidden px-4 py-6 sm:px-6 lg:px-8">
         <PerformanceBackdrop />
         <BassWaveform />
@@ -106,6 +108,13 @@ export default function SimplifiedHomePage() {
                 <Link href="/studio/try" className="group inline-flex min-h-14 items-center justify-center rounded-full border border-cyan-300/55 bg-cyan-300/16 px-8 py-4 text-center font-display text-sm uppercase tracking-[0.24em] text-cyan-100 shadow-[0_0_38px_rgba(34,211,238,.24)] transition hover:scale-[1.02] hover:bg-cyan-300/25">
                   Enter the Space <span className="ml-2 transition group-hover:translate-x-1">→</span>
                 </Link>
+                <button
+                  type="button"
+                  onClick={playIntro}
+                  className="inline-flex min-h-14 items-center justify-center rounded-full border border-yellow-200/35 bg-yellow-200/10 px-8 py-4 text-center font-display text-sm uppercase tracking-[0.24em] text-yellow-100 transition hover:scale-[1.02] hover:bg-yellow-200/18"
+                >
+                  3D intro + sound
+                </button>
                 <Link href="/marketplace" className="inline-flex min-h-14 items-center justify-center rounded-full border border-pink-300/35 bg-pink-300/10 px-8 py-4 text-center font-display text-sm uppercase tracking-[0.24em] text-pink-100 transition hover:scale-[1.02] hover:bg-pink-300/18">
                   Hear the Marketplace
                 </Link>
@@ -121,14 +130,19 @@ export default function SimplifiedHomePage() {
 
             <div className="relative mx-auto aspect-square w-full max-w-[560px]">
               <div className="ems-home-portal absolute inset-0 rounded-full border border-cyan-300/30 bg-[radial-gradient(circle,rgba(34,211,238,.16),rgba(255,45,146,.08)_42%,transparent_68%)] shadow-[0_0_110px_rgba(34,211,238,.25),inset_0_0_90px_rgba(255,255,255,.05)]" />
-              <div className="absolute inset-[14%] rounded-full border border-pink-300/25 bg-black/55 shadow-[inset_0_0_60px_rgba(255,45,146,.18)] backdrop-blur-sm" />
-              <div className="absolute inset-[26%] grid place-items-center rounded-full border border-yellow-300/20 bg-[radial-gradient(circle,rgba(253,224,71,.2),rgba(0,0,0,.78)_60%)] shadow-[0_0_50px_rgba(253,224,71,.18)]">
+              <EMSScene3D variant="home" className="absolute inset-[-10%] rounded-full opacity-90" />
+              <button
+                type="button"
+                onClick={playIntro}
+                className="absolute inset-[26%] grid place-items-center rounded-full border border-yellow-300/25 bg-black/50 text-white shadow-[0_0_50px_rgba(253,224,71,.18),inset_0_0_52px_rgba(255,255,255,.05)] backdrop-blur-sm transition hover:scale-[1.02] hover:border-yellow-200/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-yellow-200"
+                aria-label="Play Epic Music Space 3D intro with sound"
+              >
                 <div className="text-center">
                   <p className="text-[10px] font-black uppercase tracking-[0.42em] text-cyan-200/75">Portal</p>
                   <p className="mt-2 font-display text-6xl font-black uppercase tracking-[0.08em] text-white drop-shadow-[0_0_28px_rgba(255,255,255,.45)]">EMS</p>
-                  <p className="mt-2 text-[10px] font-black uppercase tracking-[0.28em] text-pink-200/75">Live creative world</p>
+                  <p className="mt-2 text-[10px] font-black uppercase tracking-[0.28em] text-pink-200/75">Press for sound</p>
                 </div>
-              </div>
+              </button>
               <div className="absolute left-[8%] top-[12%] h-14 w-14 rounded-full border border-cyan-300/25 bg-cyan-300/12 blur-[1px]" />
               <div className="absolute bottom-[14%] right-[10%] h-20 w-20 rounded-full border border-pink-300/25 bg-pink-300/10 blur-[1px]" />
             </div>
