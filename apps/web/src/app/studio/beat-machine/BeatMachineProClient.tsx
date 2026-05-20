@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type View = "machine" | "sampler" | "piano" | "sounds" | "mixer" | "arrange" | "export";
 type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[] };
@@ -56,11 +56,11 @@ export default function BeatMachineProClient({ initialView = "machine", studioMo
   swingRef.current = swing;
   bpmRef.current = bpm;
   const activePad = pads.find((pad) => pad.id === selected) ?? pads[0];
-  const soloed = pads.some((pad) => pad.solo);
 
   function log(message: string) { setMessages((items) => [message, ...items].slice(0, 8)); }
   function context() { audio.current ??= new AudioContext(); return audio.current; }
   function trigger(pad: Pad, velocity = 1) {
+    const soloed = padsRef.current.some((item) => item.solo);
     if (pad.muted || (soloed && !pad.solo)) return;
     const ctx = context();
     const now = ctx.currentTime;
@@ -110,6 +110,16 @@ export default function BeatMachineProClient({ initialView = "machine", studioMo
   function sendToStudio() { window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { stems: pads.map((pad) => ({ label: pad.label, name: pad.id, kind: pad.id === "bass" ? "bass" : pad.id === "vox" ? "vocal" : pad.id === "fx" ? "fx" : "drum", volume: pad.volume, pan: pad.pan })), autoMix: true } })); log("Sent beat stems to Studio mixer."); }
   function assignSound(sound: string) { updatePad(selected, { label: sound.split("_")[0] }); log(`Assigned ${sound} to ${activePad.label}.`); }
   const patternText = useMemo(() => pads.map((pad) => `${pad.label}: ${pad.steps.map((on) => on ? "x" : ".").join("")}`).join("\n"), [pads]);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) window.clearTimeout(timer.current);
+      timer.current = null;
+      if (audio.current && audio.current.state !== "closed") {
+        void audio.current.close();
+      }
+    };
+  }, []);
 
   return <div className="min-h-screen overflow-auto bg-[#090b0e] text-white [background-image:radial-gradient(circle_at_top,rgba(120,214,255,.08),transparent_34%),linear-gradient(90deg,rgba(255,255,255,.03)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,.02)_1px,transparent_1px)] [background-size:auto,88px_100%,100%_88px]"><div className="mx-auto flex min-h-screen max-w-[1720px] flex-col gap-3 p-3"><header className="shrink-0 border border-white/10 bg-[#111418]/97 px-4 py-3"><div className="flex flex-wrap items-center gap-3"><button onClick={() => setView("machine")} className="min-w-[240px] border border-white/12 bg-black/30 px-4 py-2 text-left"><span className="text-[10px] font-black uppercase tracking-[0.18em] text-white/42">Rhythm Programmer</span><span className="mt-1 block text-xl font-black tracking-[0.12em] text-cyan-200">{studioMode ? "Beat Machine / Studio Grid" : "Beat Machine / Sampler"}</span></button><nav className="flex flex-wrap gap-2">{(["machine", "sampler", "piano", "sounds", "mixer", "arrange", "export"] as View[]).map((item) => <button key={item} onClick={() => setView(item)} className={cn("border px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em]", view === item ? "border-cyan-300 bg-cyan-300 text-black" : "border-white/12 bg-white/[0.04] text-white/62")}>{item}</button>)}</nav><div className="ml-auto flex items-center gap-2"><Button onClick={play} active={playing}>{playing ? "Stop" : "Play"}</Button><Button onClick={randomize}>Generate</Button><Button onClick={sendToStudio} active>Print To Studio</Button><label className="border border-white/10 bg-black/28 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-white/50">BPM <input className="ml-2 w-16 bg-transparent px-2 py-1 font-mono text-cyan-200 outline-none" value={bpm} type="number" onChange={(e) => setBpm(Number(e.target.value) || 120)} /></label><label className="border border-white/10 bg-black/28 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-white/50">Bars <select className="ml-2 bg-transparent px-2 py-1 font-mono text-cyan-200 outline-none" value={bars} onChange={(e) => setBars(Number(e.target.value) as 1 | 2)}><option value={1}>1</option><option value={2}>2</option></select></label><label className="border border-white/10 bg-black/28 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-white/50">Swing <input className="ml-2 w-20 accent-cyan-300" value={swing} type="range" min={0} max={80} onChange={(e) => setSwing(Number(e.target.value))} /><span className="ml-2 font-mono text-cyan-200">{swing}%</span></label></div></div></header><main className="min-h-0 flex flex-1 overflow-visible">{view === "machine" && <Machine pads={pads} selected={selected} step={step} setSelected={setSelected} trigger={trigger} toggleStep={toggleStep} activePad={activePad} updatePad={updatePad} randomize={randomize} clearPattern={clearPattern} applyPreset={applyPreset} />}{view === "sampler" && <Sampler log={log} assign={() => assignSound("VOCAL_CHOP_01")} />}{view === "piano" && <Piano />}{view === "sounds" && <Sounds assignSound={assignSound} selected={activePad.label} />}{view === "mixer" && <Mixer pads={pads} updatePad={updatePad} applyPreset={applyPreset} />}{view === "arrange" && <Arrange pads={pads} step={step} toggleStep={toggleStep} />}{view === "export" && <Export patternText={patternText} exportSession={exportSession} sendToStudio={sendToStudio} messages={messages} />}</main></div></div>;
 }
