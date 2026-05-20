@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 
+import EMSScene3D from "@/components/EMSScene3D";
 import BeatMachineProClient from "../beat-machine/BeatMachineProClient";
 import {
   initialStudioState,
@@ -788,8 +789,11 @@ export default function StudioProductionWorkspace() {
   const clipCountLabel = `${state.clips.length.toString().padStart(2, "0")} clips`;
 
   return (
-    <main data-ems-workspace className="grid min-h-screen grid-rows-[auto_1fr_auto] overflow-hidden bg-[#05070a] text-white">
-      <header className="border-b border-white/8 bg-[linear-gradient(180deg,rgba(19,23,30,0.98),rgba(8,11,16,0.98))] backdrop-blur-xl">
+    <main data-ems-workspace className="relative isolate grid min-h-screen grid-rows-[auto_1fr_auto] overflow-hidden bg-transparent text-white">
+      <EMSScene3D variant="studio" className="pointer-events-none fixed inset-0 z-0 opacity-70" />
+      <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_18%_18%,rgba(94,234,212,0.18),transparent_28%),radial-gradient(circle_at_82%_16%,rgba(251,113,133,0.16),transparent_30%),linear-gradient(180deg,rgba(2,3,6,0.18),rgba(2,3,6,0.72)_68%,rgba(2,3,6,0.92))]" aria-hidden="true" />
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-0 h-48 bg-[repeating-linear-gradient(90deg,rgba(94,234,212,0.13)_0_1px,transparent_1px_86px)] opacity-35 [mask-image:linear-gradient(180deg,black,transparent)]" aria-hidden="true" />
+      <header className="relative z-10 border-b border-cyan-200/10 bg-[linear-gradient(180deg,rgba(9,13,19,0.88),rgba(5,8,13,0.76))] shadow-[0_20px_80px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
         <div className="flex flex-wrap items-center gap-3 px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">

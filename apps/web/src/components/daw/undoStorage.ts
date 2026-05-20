@@ -24,9 +24,10 @@
 import type { ProjectFile } from "./dawEngine";
 
 const DB_NAME = "ems-daw";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_PROJECTS = "projects";
 const STORE_UNDO = "undoSnapshots";
+const STORE_REDO = "redoSnapshots";
 const MAX_SNAPSHOTS_PER_PROJECT = 30;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -47,6 +48,11 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_UNDO)) {
         const store = db.createObjectStore(STORE_UNDO, { keyPath: "id", autoIncrement: true });
+        store.createIndex("projectId", "projectId");
+        store.createIndex("projectId_seq", ["projectId", "seq"]);
+      }
+      if (!db.objectStoreNames.contains(STORE_REDO)) {
+        const store = db.createObjectStore(STORE_REDO, { keyPath: "id", autoIncrement: true });
         store.createIndex("projectId", "projectId");
         store.createIndex("projectId_seq", ["projectId", "seq"]);
       }
@@ -83,6 +89,26 @@ function txAsync<T>(
   );
 }
 
+function txStoresAsync<T>(
+  mode: IDBTransactionMode,
+  fn: (stores: { undo: IDBObjectStore; redo: IDBObjectStore }) => Promise<T>,
+): Promise<T> {
+  return openDb().then(
+    (db) =>
+      new Promise<T>((resolve, reject) => {
+        const transaction = db.transaction([STORE_UNDO, STORE_REDO], mode);
+        const stores = {
+          undo: transaction.objectStore(STORE_UNDO),
+          redo: transaction.objectStore(STORE_REDO),
+        };
+        Promise.resolve(fn(stores))
+          .then(resolve)
+          .catch(reject);
+        transaction.onerror = () => reject(transaction.error ?? new Error("IDB tx failed"));
+      }),
+  );
+}
+
 function reqPromise<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
@@ -97,14 +123,14 @@ export async function pushUndoSnapshot(
   file: ProjectFile,
   label: string,
 ): Promise<void> {
-  await txAsync("readwrite", async (store) => {
+  await txStoresAsync("readwrite", async ({ undo, redo }) => {
     // Get current stack to compute next seq + evict.
-    const idx = store.index("projectId");
+    const idx = undo.index("projectId");
     const all = (await reqPromise(idx.getAll(projectId))) as UndoRecord[];
     all.sort((a, b) => a.seq - b.seq);
     const nextSeq = (all[all.length - 1]?.seq ?? -1) + 1;
     await reqPromise(
-      store.add({
+      undo.add({
         projectId,
         seq: nextSeq,
         capturedAt: new Date().toISOString(),
@@ -117,9 +143,14 @@ export async function pushUndoSnapshot(
       for (let i = 0; i < overage; i++) {
         const victim = all[i];
         if (victim?.id !== undefined) {
-          await reqPromise(store.delete(victim.id));
+          await reqPromise(undo.delete(victim.id));
         }
       }
+    }
+    const redoIdx = redo.index("projectId");
+    const redoRecords = (await reqPromise(redoIdx.getAll(projectId))) as UndoRecord[];
+    for (const record of redoRecords) {
+      if (record.id !== undefined) await reqPromise(redo.delete(record.id));
     }
   });
 }
@@ -154,8 +185,8 @@ export async function listUndoSnapshots(projectId: string): Promise<UndoSnapshot
 export async function popUndoSnapshot(
   projectId: string,
 ): Promise<{ file: ProjectFile; label: string } | null> {
-  return txAsync("readwrite", async (store) => {
-    const idx = store.index("projectId");
+  return txStoresAsync("readwrite", async ({ undo, redo }) => {
+    const idx = undo.index("projectId");
     const all = (await reqPromise(idx.getAll(projectId))) as UndoRecord[];
     all.sort((a, b) => a.seq - b.seq);
     if (all.length < 2) {
@@ -165,11 +196,45 @@ export async function popUndoSnapshot(
     }
     const current = all[all.length - 1];
     if (current?.id !== undefined) {
-      await reqPromise(store.delete(current.id));
+      await reqPromise(undo.delete(current.id));
+      await reqPromise(redo.add({
+        projectId,
+        seq: Date.now(),
+        capturedAt: new Date().toISOString(),
+        label: current.label,
+        file: current.file,
+      }));
     }
     const previous = all[all.length - 2];
     if (!previous) return null;
     return { file: previous.file, label: previous.label };
+  });
+}
+
+/** Restore the latest redo snapshot and push it back onto the undo stack. */
+export async function popRedoSnapshot(
+  projectId: string,
+): Promise<{ file: ProjectFile; label: string } | null> {
+  return txStoresAsync("readwrite", async ({ undo, redo }) => {
+    const redoIdx = redo.index("projectId");
+    const redoRecords = (await reqPromise(redoIdx.getAll(projectId))) as UndoRecord[];
+    redoRecords.sort((a, b) => a.seq - b.seq);
+    const next = redoRecords[redoRecords.length - 1];
+    if (!next) return null;
+    if (next.id !== undefined) await reqPromise(redo.delete(next.id));
+
+    const undoIdx = undo.index("projectId");
+    const undoRecords = (await reqPromise(undoIdx.getAll(projectId))) as UndoRecord[];
+    undoRecords.sort((a, b) => a.seq - b.seq);
+    const seq = (undoRecords[undoRecords.length - 1]?.seq ?? -1) + 1;
+    await reqPromise(undo.add({
+      projectId,
+      seq,
+      capturedAt: new Date().toISOString(),
+      label: next.label,
+      file: next.file,
+    }));
+    return { file: next.file, label: next.label };
   });
 }
 
@@ -181,8 +246,8 @@ export async function restoreUndoSnapshotById(
   projectId: string,
   id: number,
 ): Promise<{ file: ProjectFile; label: string } | null> {
-  return txAsync("readwrite", async (store) => {
-    const idx = store.index("projectId");
+  return txStoresAsync("readwrite", async ({ undo, redo }) => {
+    const idx = undo.index("projectId");
     const all = (await reqPromise(idx.getAll(projectId))) as UndoRecord[];
     all.sort((a, b) => a.seq - b.seq);
     const targetIdx = all.findIndex((r) => r.id === id);
@@ -194,7 +259,14 @@ export async function restoreUndoSnapshotById(
     for (let i = targetIdx + 1; i < all.length; i++) {
       const v = all[i];
       if (v?.id !== undefined) {
-        await reqPromise(store.delete(v.id));
+        await reqPromise(undo.delete(v.id));
+        await reqPromise(redo.add({
+          projectId,
+          seq: Date.now() + i,
+          capturedAt: new Date().toISOString(),
+          label: v.label,
+          file: v.file,
+        }));
       }
     }
     return { file: target.file, label: target.label };
@@ -204,11 +276,12 @@ export async function restoreUndoSnapshotById(
 /** Drop every snapshot for a project. Used when starting a new session
  *  or explicitly clearing history. */
 export async function clearUndoStack(projectId: string): Promise<void> {
-  await txAsync("readwrite", async (store) => {
-    const idx = store.index("projectId");
-    const all = (await reqPromise(idx.getAll(projectId))) as UndoRecord[];
-    for (const r of all) {
+  await txStoresAsync("readwrite", async ({ undo, redo }) => {
+    const undoRecords = (await reqPromise(undo.index("projectId").getAll(projectId))) as UndoRecord[];
+    const redoRecords = (await reqPromise(redo.index("projectId").getAll(projectId))) as UndoRecord[];
+    for (const r of [...undoRecords, ...redoRecords]) {
       if (r.id !== undefined) {
+        const store = undoRecords.includes(r) ? undo : redo;
         await reqPromise(store.delete(r.id));
       }
     }

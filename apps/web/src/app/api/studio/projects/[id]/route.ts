@@ -18,6 +18,10 @@ const patchSchema = z.object({
   templatePriceUsd: z.number().min(0).max(999.99).nullable().optional(),
 });
 
+function jsonSafe<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value, (_key, item) => (typeof item === "bigint" ? Number(item) : item))) as T;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -31,12 +35,24 @@ export async function GET(
   const { id } = await params;
   const project = await prisma.studioProject.findFirst({
     where: { id, userId: session.user.id },
-    include: { tracks: { orderBy: { position: "asc" } } },
+    include: {
+      tracks: { orderBy: { position: "asc" } },
+      clips: { orderBy: { startSec: "asc" } },
+      audioFiles: { orderBy: { createdAt: "desc" }, include: { waveformPeaks: true } },
+    },
   });
   if (!project) {
     return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
   }
-  return jsonWithRequestId(requestId, { project });
+  return jsonWithRequestId(
+    requestId,
+    jsonSafe({
+      project,
+      tracks: project.tracks,
+      clips: project.clips,
+      audioFiles: project.audioFiles,
+    }),
+  );
 }
 
 export async function PATCH(
@@ -88,7 +104,7 @@ export async function PATCH(
     return jsonWithRequestId(requestId, { error: "Not found" }, { status: 404 });
   }
   const updated = await prisma.studioProject.findUnique({ where: { id } });
-  return jsonWithRequestId(requestId, { project: updated });
+  return jsonWithRequestId(requestId, jsonSafe({ project: updated }));
 }
 
 export async function DELETE(

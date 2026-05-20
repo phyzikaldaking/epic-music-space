@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import EMSScene3D from "@/components/EMSScene3D";
+
 const INTRO_SEEN_KEY = "ems-world-intro-seen-v1";
+const OPEN_INTRO_EVENT = "ems:open-world-intro";
 
 function canAutoShow() {
   if (typeof window === "undefined") return false;
@@ -19,9 +22,28 @@ export default function EMSWorldIntro() {
     setVisible(canAutoShow());
   }, []);
 
-  function closeIntro() {
+  useEffect(() => {
+    function open() {
+      setArmed(false);
+      setVisible(true);
+    }
+
+    window.addEventListener(OPEN_INTRO_EVENT, open);
+    return () => window.removeEventListener(OPEN_INTRO_EVENT, open);
+  }, []);
+
+  function closeIntro(stopAudio = true) {
     window.sessionStorage.setItem(INTRO_SEEN_KEY, "true");
+    if (stopAudio && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     setVisible(false);
+  }
+
+  function openIntro() {
+    setArmed(false);
+    setVisible(true);
   }
 
   async function enterWorld() {
@@ -33,14 +55,25 @@ export default function EMSWorldIntro() {
     } catch {
       // Browsers can deny sound. The visual intro still works.
     }
-    window.setTimeout(closeIntro, 2650);
+    window.setTimeout(() => closeIntro(false), 3050);
   }
 
-  if (!visible) return null;
+  if (!visible) {
+    return (
+      <button
+        type="button"
+        onClick={openIntro}
+        className="fixed bottom-5 right-5 z-[80] rounded-full border border-cyan-300/35 bg-black/72 px-4 py-3 text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100 shadow-[0_0_32px_rgba(34,211,238,.24)] backdrop-blur-xl transition hover:scale-[1.03] hover:border-cyan-200 hover:bg-cyan-300/14 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200"
+      >
+        3D intro + sound
+      </button>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[9999] grid place-items-center overflow-hidden bg-black text-white" role="dialog" aria-label="Epic Music Space intro">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(34,211,238,.24),transparent_28%),radial-gradient(circle_at_18%_20%,rgba(255,45,146,.22),transparent_24%),radial-gradient(circle_at_78%_70%,rgba(253,224,71,.16),transparent_30%)]" />
+      <EMSScene3D variant="intro" active={visible} className="absolute inset-0 opacity-95" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(34,211,238,.18),transparent_28%),radial-gradient(circle_at_18%_20%,rgba(255,45,146,.18),transparent_24%),radial-gradient(circle_at_78%_70%,rgba(253,224,71,.12),transparent_30%),linear-gradient(180deg,rgba(0,0,0,.18),rgba(0,0,0,.78))]" />
       <div className="ems-intro-stars absolute inset-0 opacity-70" />
       <div className="ems-intro-grid absolute bottom-[-12%] left-1/2 h-[62vh] w-[150vw] -translate-x-1/2 rotate-x-[64deg] bg-[linear-gradient(rgba(34,211,238,.23)_1px,transparent_1px),linear-gradient(90deg,rgba(255,45,146,.22)_1px,transparent_1px)] bg-[size:72px_72px]" />
 
@@ -74,11 +107,11 @@ export default function EMSWorldIntro() {
               onClick={enterWorld}
               className="rounded-full border border-cyan-300/50 bg-cyan-300/15 px-7 py-3 text-xs font-black uppercase tracking-[0.24em] text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,.25)] transition hover:scale-[1.02] hover:bg-cyan-300/25"
             >
-              Enter the world
+              Enter with sound
             </button>
             <button
               type="button"
-              onClick={closeIntro}
+              onClick={() => closeIntro()}
               className="rounded-full border border-white/15 bg-white/[.04] px-7 py-3 text-xs font-black uppercase tracking-[0.24em] text-white/62 transition hover:bg-white/10 hover:text-white"
             >
               Skip

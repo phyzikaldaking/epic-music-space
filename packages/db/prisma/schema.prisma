@@ -111,6 +111,7 @@ model User {
   payouts      Payout[]
   studio           Studio?
   studioProjects   StudioProject[]
+  studioAudioUploads StudioAudioFile[] @relation("StudioAudioUploads")
   drumKitPacks     DrumKitPack[]    @relation("DrumKitPacks")
   podcastShows     PodcastShow[]    @relation("PodcastShowOwner")
   podcastEpisodes  PodcastEpisode[] @relation("PodcastEpisodeCreator")
@@ -679,6 +680,8 @@ model StudioProject {
   // can publish a template without marketing it on their feed.
   templatePriceUsd Decimal?    @db.Decimal(10, 2)
   tracks         StudioTrack[]
+  clips          StudioClip[]
+  audioFiles     StudioAudioFile[]
   versions       StudioProjectVersion[] @relation("ProjectVersions")
   // Back-relation for the live room currently broadcasting this
   // project. Null when the project isn't being collab'd live.
@@ -695,7 +698,13 @@ model StudioTrack {
   projectId   String
   project     StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name        String        @db.VarChar(80)
+  kind        String        @default("audio") @db.VarChar(40)
   color       String        @db.VarChar(16)
+  gainDb      Float         @default(0)
+  pan         Float         @default(0)
+  muted       Boolean       @default(false)
+  solo        Boolean       @default(false)
+  armed       Boolean       @default(false)
   // Public Vercel Blob URL for this track's audio. Null while a track is
   // empty (no recording yet). Removed via the Blob delete API on project
   // delete (Prisma cascade only handles the row, not the blob).
@@ -703,9 +712,76 @@ model StudioTrack {
   durationSec Float         @default(0)
   // Stable ordering — engine adds tracks in a deterministic sequence.
   position    Int           @default(0)
+  clips       StudioClip[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   @@index([projectId, position])
+}
+
+model StudioAudioFile {
+  id             String               @id @default(cuid())
+  projectId      String
+  project        StudioProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedById   String?
+  uploadedBy     User?                @relation("StudioAudioUploads", fields: [uploadedById], references: [id], onDelete: SetNull)
+  storageBucket  String               @default("audio")
+  storagePath    String
+  publicUrl      String?
+  fileName       String               @db.VarChar(220)
+  mimeType       String?              @db.VarChar(120)
+  sizeBytes      BigInt               @default(0)
+  durationSec    Float                @default(0)
+  checksum       String?
+  peaksJson      Json?
+  clips          StudioClip[]
+  waveformPeaks StudioWaveformPeak[]
+  createdAt      DateTime             @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([checksum])
+}
+
+model StudioClip {
+  id           String           @id @default(cuid())
+  projectId    String
+  project      StudioProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  trackId      String?
+  track        StudioTrack?     @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  name         String           @db.VarChar(160)
+  audioFileId  String?
+  audioFile    StudioAudioFile? @relation(fields: [audioFileId], references: [id], onDelete: SetNull)
+  startSec     Float            @default(0)
+  durationSec  Float            @default(0)
+  trimStartSec Float            @default(0)
+  trimEndSec   Float            @default(0)
+  gainDb       Float            @default(0)
+  muted        Boolean          @default(false)
+  locked       Boolean          @default(false)
+  color        String?          @db.VarChar(16)
+  peaksJson    Json?
+  metadata     Json             @default("{}")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([projectId, trackId, startSec])
+  @@index([audioFileId])
+}
+
+model StudioWaveformPeak {
+  id             String          @id @default(cuid())
+  audioFileId    String
+  audioFile      StudioAudioFile @relation(fields: [audioFileId], references: [id], onDelete: Cascade)
+  resolution     String          @default("overview") @db.VarChar(32)
+  channel        Int             @default(0)
+  samplesPerPeak Int             @default(0)
+  durationSec    Float           @default(0)
+  sampleRate     Int?
+  peaks          Json
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([audioFileId, resolution, channel])
+  @@index([audioFileId])
 }
 
 // Snapshot of a project at a point in time. Saved-on-autosave (last 10

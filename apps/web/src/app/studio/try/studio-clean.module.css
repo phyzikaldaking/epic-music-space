@@ -6,8 +6,10 @@
   overflow-x: auto;
   overflow-y: visible;
   background:
-    radial-gradient(circle at top, rgba(82, 197, 255, 0.14), transparent 34%),
-    linear-gradient(180deg, #07090d 0%, #040507 48%, #020304 100%);
+    radial-gradient(circle at 14% 10%, rgba(94, 234, 212, 0.2), transparent 32%),
+    radial-gradient(circle at 84% 12%, rgba(251, 113, 133, 0.18), transparent 34%),
+    radial-gradient(circle at 50% 84%, rgba(251, 191, 36, 0.1), transparent 36%),
+    linear-gradient(180deg, #05070a 0%, #03050a 48%, #010205 100%);
 }
 
 .cleanStudio::before {
@@ -16,11 +18,12 @@
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
-  background-size: 96px 96px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.35), transparent 82%);
-  opacity: 0.26;
+    linear-gradient(90deg, rgba(94, 234, 212, 0.06) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(251, 113, 133, 0.04) 1px, transparent 1px),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.08), transparent 48%);
+  background-size: 88px 88px, 88px 88px, 100% 100%;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 86%);
+  opacity: 0.48;
 }
 
 .cleanStudio :global([data-ems-workspace]) {

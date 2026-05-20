@@ -1362,7 +1362,23 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           setDirty(false);
           suppressNextDirtyRef.current = true;
           if (session?.user?.id) {
-            void syncProjectToServer(projectId, projectName, file, null);
+            const synced = await syncProjectToServer(projectId, projectName, file, null);
+            if (synced.ok) {
+              await fetch(`/api/studio/projects/${encodeURIComponent(projectId)}/autosave`, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name: projectName,
+                  bpm: Math.round(file.transport.bpm),
+                  trackCount: file.tracks.length,
+                  patternJson: {
+                    transport: file.transport,
+                    beat: (file as unknown as { beat?: unknown }).beat ?? null,
+                  },
+                }),
+              }).catch(() => undefined);
+            }
           }
         } catch (err) {
           console.warn("[DawWorkspace] auto-save failed", err);
@@ -2470,7 +2486,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       setProjectId(id);
       setFocusedId(snap.tracks[0]?.id ?? null);
       pushAuditEvent("load", `Loaded project ${id.slice(0, 8)}`);
-      setNotice({ tone: "success", message: "Project loaded." });
+      setNotice({ tone: "success", message: "Project restored successfully." });
+      window.dispatchEvent(new CustomEvent("ems:studio-project-restored", { detail: { projectId: id } }));
       // Hydrating pushes a fresh snapshot which would otherwise mark
       // the just-loaded project as dirty. Suppress one tick.
       setDirty(false);
@@ -2530,6 +2547,25 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       const versionId = `${id}__v_${Date.now()}`;
       await saveProject(versionId, `${name} [v${new Date().toLocaleTimeString()}]`, file);
       if (!projectId) setProjectId(id);
+      if (session?.user?.id) {
+        const synced = await syncProjectToServer(id, name, file, null);
+        if (synced.ok) {
+          await fetch(`/api/studio/projects/${encodeURIComponent(id)}/autosave`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name,
+              bpm: Math.round(file.transport.bpm),
+              trackCount: file.tracks.length,
+              patternJson: {
+                transport: file.transport,
+                beat: (file as unknown as { beat?: unknown }).beat ?? null,
+              },
+            }),
+          }).catch(() => undefined);
+        }
+      }
       setLastAutosaveAt(Date.now());
       setAutosaveError(false);
       pushAuditEvent("autosave", `Autosaved "${name}"`);
@@ -2541,7 +2577,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
     } finally {
       setIsAutosaving(false);
     }
-  }, [autosaveOn, projectId, projectName, pushAuditEvent]);
+  }, [autosaveOn, projectId, projectName, pushAuditEvent, session?.user?.id]);
 
   useEffect(() => {
     if (!autosaveOn) return;
