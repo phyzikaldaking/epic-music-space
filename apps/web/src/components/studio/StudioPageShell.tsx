@@ -6,7 +6,7 @@ export default function StudioPageShell({ children, className = "" }: { children
       id="main-content"
       data-studio-content
       data-ems-workspace
-      className={`relative min-h-screen min-w-[1440px] overflow-visible overscroll-auto bg-[#05070a] pb-24 text-white ${className}`}
+      className={`relative min-h-screen min-w-[1440px] overflow-x-auto overflow-y-visible overscroll-auto bg-[#05070a] pb-24 text-white ${className}`}
     >
       <div
         aria-hidden="true"

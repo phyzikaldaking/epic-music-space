@@ -256,18 +256,21 @@ function BeatTrackLane({
   }
 
   return (
-    <section className="relative h-full min-h-0 overflow-auto rounded-xl border border-green-300/20 bg-black/45 p-2">
+    <section className="relative h-full min-h-0 overflow-auto rounded-[20px] border border-green-300/20 bg-[linear-gradient(180deg,rgba(6,10,13,.96),rgba(2,4,6,.98))] p-2 shadow-[0_0_50px_rgba(0,0,0,.38)]">
       {toast && (
         <div className="pointer-events-none absolute right-3 top-3 z-50 max-w-[320px] rounded-xl border border-cyan-300/35 bg-black/90 px-3 py-2 text-xs font-bold text-cyan-100 shadow-[0_0_24px_rgba(0,245,255,.18)]">
           {toast}
         </div>
       )}
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/55 px-3 py-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-white/10 bg-[linear-gradient(180deg,rgba(17,22,28,.96),rgba(8,10,13,.95))] px-3 py-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-green-200/70">Beat workspace</p>
-          <p className="text-[10px] text-white/40">Pads, sound browser, sequencer, full piano roll, solo/mute, per-track AI mix, and beat-to-session stems.</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-green-200/70">Channel rack / playlist</p>
+          <p className="text-[10px] text-white/40">FL-style browser, playable pad deck, pattern lanes, live channel strip metering, and print-to-session stems.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-lg border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/55">
+            Pattern A1 · 4 Bars · Kit {activeKit}
+          </div>
           <button onClick={sendBeatStemsToSession} className="rounded-lg border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-300/15">
             Send Beat Stems To Session
           </button>
@@ -289,17 +292,54 @@ function BeatTrackLane({
         onAssignSoundToTrack={handleAssignSoundToTrack}
         notify={emit}
       />
-      <div className="grid min-h-[420px] min-w-0 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[210px_minmax(0,1fr)]">
-        <div className="min-h-0 overflow-y-auto pr-1">
-          <BeatPadGrid pads={visiblePads} activePad={activePad} onFirePad={handleFirePad} />
+      <div className="grid min-h-[660px] min-w-[1340px] grid-cols-[240px_minmax(760px,1fr)_300px] gap-2 overflow-visible">
+        <div className="flex min-h-0 flex-col gap-2">
+          <div className="rounded-[18px] border border-white/10 bg-black/35 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/45">Trigger deck</p>
+            <p className="mt-1 text-[10px] text-white/35">Kick off patterns, swap samples, and keep the rack under your fingers.</p>
+          </div>
+          <div className="min-h-0 overflow-y-auto pr-1">
+            <BeatPadGrid pads={visiblePads} activePad={activePad} onFirePad={handleFirePad} />
+          </div>
         </div>
-        <div className="min-h-0 min-w-0 overflow-auto rounded-xl border border-white/10 bg-black/20 p-2">
-          <VirtualTrackList tracks={tracks} rowHeight={144} height={560}>
+        <div className="min-h-0 min-w-0 overflow-auto rounded-[18px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,14,18,.96),rgba(4,6,9,.98))] p-2">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-white/10 bg-black/35 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-white/45">
+            <span>Playlist lanes</span>
+            <span>{tracks.length} channels armed for pattern work</span>
+          </div>
+          <VirtualTrackList tracks={tracks} rowHeight={164} height={620}>
             {(track, row) => (
               <BeatSequencerRow key={track.id} track={track} index={row} selected={selectedTrack === track.id} onSelect={() => onSelectTrack(track.id)} onUpdate={(patch) => updateTrack(track, patch)} onAiMix={() => aiMixTrack(track, row)} />
             )}
           </VirtualTrackList>
         </div>
+        <aside className="flex min-h-0 flex-col gap-2">
+          <div className="rounded-[18px] border border-white/10 bg-black/35 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-yellow-200/70">Channel memory</p>
+            <div className="mt-3 space-y-2">
+              {visiblePads.map((pad, index) => (
+                <div key={pad.label} className="rounded-[12px] border border-white/10 bg-white/[0.03] p-2">
+                  <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em]">
+                    <span style={{ color: pad.color }}>{pad.label}</span>
+                    <span className="text-white/35">CH {index + 1}</span>
+                  </div>
+                  <p className="mt-1 truncate text-[10px] text-white/45">{pad.soundName ?? "Factory voice ready"}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-[18px] border border-white/10 bg-black/35 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-200/70">Mix moves</p>
+            <div className="mt-3 space-y-2">
+              {tracks.slice(0, 6).map((track, index) => (
+                <button key={track.id} onClick={() => aiMixTrack(track, index)} className="flex w-full items-center justify-between rounded-[12px] border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-[10px] uppercase tracking-[0.16em] text-white/60">
+                  <span className="truncate" style={{ color: track.color }}>{track.name}</span>
+                  <span className="text-cyan-100">AI Mix</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </aside>
       </div>
     </section>
   );

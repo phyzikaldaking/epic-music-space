@@ -1,11 +1,10 @@
 .cleanStudio {
-  position: fixed;
-  inset: 0;
+  position: relative;
   z-index: 9999;
   min-height: 100dvh;
-  height: 100dvh;
-  width: 100vw;
-  overflow: hidden;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
   background:
     radial-gradient(circle at top, rgba(82, 197, 255, 0.14), transparent 34%),
     linear-gradient(180deg, #07090d 0%, #040507 48%, #020304 100%);
@@ -13,7 +12,7 @@
 
 .cleanStudio::before {
   content: "";
-  position: absolute;
+  position: fixed;
   inset: 0;
   pointer-events: none;
   background:
@@ -27,9 +26,10 @@
 .cleanStudio :global([data-ems-workspace]) {
   isolation: isolate;
   min-height: 100dvh;
-  width: 100%;
-  overflow-x: clip !important;
-  overflow-y: auto !important;
+  width: max-content;
+  min-width: 100%;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
 }
 
 .cleanStudio :global([data-ems-workspace] button),
