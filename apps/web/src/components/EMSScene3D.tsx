@@ -66,13 +66,14 @@ export default function EMSScene3D({ variant = "home", className = "", active = 
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
+    const mountEl: HTMLDivElement = mount;
 
     const palette = palettes[variant];
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
     renderer.setClearColor(0x000000, 0);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
-    mount.appendChild(renderer.domElement);
+    mountEl.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(palette.fog, variant === "studio" ? 0.035 : 0.028);
@@ -194,7 +195,7 @@ export default function EMSScene3D({ variant = "home", className = "", active = 
     root.add(grid);
 
     function resize() {
-      const rect = mount.getBoundingClientRect();
+      const rect = mountEl.getBoundingClientRect();
       const width = Math.max(1, rect.width);
       const height = Math.max(1, rect.height);
       renderer.setSize(width, height, false);
