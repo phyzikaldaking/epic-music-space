@@ -4,14 +4,12 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { useStudioContext } from "@/lib/studioContextStore";
 
 /**
- * Free Sample Library — curated CC0 / public-domain loops shipped
- * with the DAW. Zero royalty obligation, zero subscription, zero
- * gatekeeper. Sits next to the Loop Browser so producers can choose
- * between "free + unattributed" (this) and "EMS marketplace stems +
- * 2% to source artist" (Loop Browser).
+ * Sample Library — Supabase audio-assets first, local starter pack
+ * fallback. Sits next to the Loop Browser so producers can choose
+ * between EMS-owned sample assets and marketplace stems.
  *
- * Files live in /public/samples/ and are streamed via the same
- * <audio>/AudioBuffer pipeline as user-uploaded audio.
+ * Files stream through the same <audio>/AudioBuffer pipeline as
+ * user-uploaded audio.
  */
 
 interface Sample {
@@ -20,39 +18,48 @@ interface Sample {
   bpm: number;
   key?: string;
   category: "drums" | "bass" | "melody" | "fx" | "vocals";
-  /** Path under /public — must be CC0 or otherwise unencumbered. */
+  /** Supabase public URL or local fallback path. */
   url: string;
+  source: "supabase" | "fallback";
 }
 
-// Curated starter pack. Treat this as an editable manifest — keep all
-// entries actually CC0 / Creative Commons Zero so no rights surprises.
-// Replace the placeholders with real audio when uploading the pack.
-const SAMPLES: Sample[] = [
-  { id: "kick-808-c1", name: "808 Kick · C1", bpm: 0, key: "C", category: "drums", url: "/samples/drums/808-kick-c1.wav" },
-  { id: "snare-trap", name: "Trap Snare", bpm: 0, category: "drums", url: "/samples/drums/trap-snare.wav" },
-  { id: "snare-clap", name: "Wet Clap", bpm: 0, category: "drums", url: "/samples/drums/wet-clap.wav" },
-  { id: "hat-closed", name: "Closed Hat", bpm: 0, category: "drums", url: "/samples/drums/closed-hat.wav" },
-  { id: "hat-open", name: "Open Hat", bpm: 0, category: "drums", url: "/samples/drums/open-hat.wav" },
-  { id: "perc-shaker", name: "Shaker Loop", bpm: 90, category: "drums", url: "/samples/drums/shaker-90.wav" },
-  { id: "drum-loop-90", name: "Lo-fi Drum Loop · 90 BPM", bpm: 90, category: "drums", url: "/samples/loops/drums-lofi-90.wav" },
-  { id: "drum-loop-140", name: "Trap Drum Loop · 140 BPM", bpm: 140, category: "drums", url: "/samples/loops/drums-trap-140.wav" },
+interface RemoteSound {
+  id?: string;
+  name?: string;
+  url?: string;
+  category?: string;
+  bpm?: number;
+  key?: string;
+}
 
-  { id: "bass-808-am", name: "808 Bass · A minor", bpm: 140, key: "Am", category: "bass", url: "/samples/bass/808-am.wav" },
-  { id: "bass-sub", name: "Sub Bass · F", bpm: 90, key: "F", category: "bass", url: "/samples/bass/sub-f.wav" },
-  { id: "bass-acid", name: "Acid Bass Loop · 120", bpm: 120, key: "Em", category: "bass", url: "/samples/bass/acid-em-120.wav" },
+// Local fallback only. The live library is loaded from the Supabase
+// audio-assets bucket through /api/studio/sounds/library.
+const FALLBACK_SAMPLES: Sample[] = [
+  { id: "kick-808-c1", name: "808 Kick · C1", bpm: 0, key: "C", category: "drums", url: "/samples/drums/808-kick-c1.wav", source: "fallback" },
+  { id: "snare-trap", name: "Trap Snare", bpm: 0, category: "drums", url: "/samples/drums/trap-snare.wav", source: "fallback" },
+  { id: "snare-clap", name: "Wet Clap", bpm: 0, category: "drums", url: "/samples/drums/wet-clap.wav", source: "fallback" },
+  { id: "hat-closed", name: "Closed Hat", bpm: 0, category: "drums", url: "/samples/drums/closed-hat.wav", source: "fallback" },
+  { id: "hat-open", name: "Open Hat", bpm: 0, category: "drums", url: "/samples/drums/open-hat.wav", source: "fallback" },
+  { id: "perc-shaker", name: "Shaker Loop", bpm: 90, category: "drums", url: "/samples/drums/shaker-90.wav", source: "fallback" },
+  { id: "drum-loop-90", name: "Lo-fi Drum Loop · 90 BPM", bpm: 90, category: "drums", url: "/samples/loops/drums-lofi-90.wav", source: "fallback" },
+  { id: "drum-loop-140", name: "Trap Drum Loop · 140 BPM", bpm: 140, category: "drums", url: "/samples/loops/drums-trap-140.wav", source: "fallback" },
 
-  { id: "melody-piano", name: "Piano Melody · A minor", bpm: 90, key: "Am", category: "melody", url: "/samples/melody/piano-am-90.wav" },
-  { id: "melody-rhodes", name: "Rhodes Chord Loop", bpm: 80, key: "Cm", category: "melody", url: "/samples/melody/rhodes-cm-80.wav" },
-  { id: "melody-pluck", name: "Plucked Synth Loop", bpm: 130, key: "Gm", category: "melody", url: "/samples/melody/pluck-gm-130.wav" },
-  { id: "melody-pad", name: "Ambient Pad · D", bpm: 0, key: "D", category: "melody", url: "/samples/melody/pad-d.wav" },
+  { id: "bass-808-am", name: "808 Bass · A minor", bpm: 140, key: "Am", category: "bass", url: "/samples/bass/808-am.wav", source: "fallback" },
+  { id: "bass-sub", name: "Sub Bass · F", bpm: 90, key: "F", category: "bass", url: "/samples/bass/sub-f.wav", source: "fallback" },
+  { id: "bass-acid", name: "Acid Bass Loop · 120", bpm: 120, key: "Em", category: "bass", url: "/samples/bass/acid-em-120.wav", source: "fallback" },
 
-  { id: "fx-riser", name: "Build-up Riser", bpm: 0, category: "fx", url: "/samples/fx/riser.wav" },
-  { id: "fx-impact", name: "Cinematic Impact", bpm: 0, category: "fx", url: "/samples/fx/impact.wav" },
-  { id: "fx-reverse", name: "Reverse Cymbal", bpm: 0, category: "fx", url: "/samples/fx/reverse-cymbal.wav" },
-  { id: "fx-vinyl", name: "Vinyl Crackle", bpm: 0, category: "fx", url: "/samples/fx/vinyl-crackle.wav" },
+  { id: "melody-piano", name: "Piano Melody · A minor", bpm: 90, key: "Am", category: "melody", url: "/samples/melody/piano-am-90.wav", source: "fallback" },
+  { id: "melody-rhodes", name: "Rhodes Chord Loop", bpm: 80, key: "Cm", category: "melody", url: "/samples/melody/rhodes-cm-80.wav", source: "fallback" },
+  { id: "melody-pluck", name: "Plucked Synth Loop", bpm: 130, key: "Gm", category: "melody", url: "/samples/melody/pluck-gm-130.wav", source: "fallback" },
+  { id: "melody-pad", name: "Ambient Pad · D", bpm: 0, key: "D", category: "melody", url: "/samples/melody/pad-d.wav", source: "fallback" },
 
-  { id: "vox-aah", name: "Female Vocal · 'Aah'", bpm: 0, key: "C", category: "vocals", url: "/samples/vocals/aah-c.wav" },
-  { id: "vox-yeah", name: "'Yeah' Adlib", bpm: 0, category: "vocals", url: "/samples/vocals/yeah.wav" },
+  { id: "fx-riser", name: "Build-up Riser", bpm: 0, category: "fx", url: "/samples/fx/riser.wav", source: "fallback" },
+  { id: "fx-impact", name: "Cinematic Impact", bpm: 0, category: "fx", url: "/samples/fx/impact.wav", source: "fallback" },
+  { id: "fx-reverse", name: "Reverse Cymbal", bpm: 0, category: "fx", url: "/samples/fx/reverse-cymbal.wav", source: "fallback" },
+  { id: "fx-vinyl", name: "Vinyl Crackle", bpm: 0, category: "fx", url: "/samples/fx/vinyl-crackle.wav", source: "fallback" },
+
+  { id: "vox-aah", name: "Female Vocal · 'Aah'", bpm: 0, key: "C", category: "vocals", url: "/samples/vocals/aah-c.wav", source: "fallback" },
+  { id: "vox-yeah", name: "'Yeah' Adlib", bpm: 0, category: "vocals", url: "/samples/vocals/yeah.wav", source: "fallback" },
 ];
 
 const CATEGORIES: Array<{ key: Sample["category"] | "all"; label: string; emoji: string }> = [
@@ -74,14 +81,16 @@ const BPM_MATCH_TOLERANCE = 0.05;
 
 export default function SampleLibraryPanel({ onLoadSample }: Props) {
   const [filter, setFilter] = useState<Sample["category"] | "all">("all");
+  const [samples, setSamples] = useState<Sample[]>(FALLBACK_SAMPLES);
+  const [libraryBackend, setLibraryBackend] = useState<"loading" | "supabase" | "fallback">("loading");
   const [recentLoad, setRecentLoad] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const studioContext = useStudioContext();
   const projectBpm = studioContext.bpm;
   const projectKey = studioContext.projectKey;
   const visible = useMemo(
-    () => (filter === "all" ? SAMPLES : SAMPLES.filter((s) => s.category === filter)),
-    [filter],
+    () => (filter === "all" ? samples : samples.filter((s) => s.category === filter)),
+    [filter, samples],
   );
 
   // Hover-preview pipeline. We keep a single AudioContext + a per-URL
@@ -92,6 +101,33 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
   const bufferCacheRef = useRef<Map<string, AudioBuffer | "missing">>(new Map());
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const debounceRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadSupabaseSamples() {
+      try {
+        const response = await fetch("/api/studio/sounds/library?limit=1000", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Sample library request failed: ${response.status}`);
+        const payload = (await response.json()) as { sounds?: RemoteSound[] };
+        const remoteSamples = (payload.sounds ?? []).map(remoteSoundToSample).filter(Boolean) as Sample[];
+        if (remoteSamples.length === 0) throw new Error("Supabase audio-assets bucket is empty.");
+        setSamples(remoteSamples);
+        setLibraryBackend("supabase");
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.warn("EMS sample library using local fallback samples", error);
+        setSamples(FALLBACK_SAMPLES);
+        setLibraryBackend("fallback");
+      }
+    }
+
+    void loadSupabaseSamples();
+
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -192,10 +228,14 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
       <div className="flex items-baseline justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200/85">
-            Sample Library · Free
+            Sample Library · {libraryBackend === "supabase" ? "Audio Assets" : "Free"}
           </p>
           <p className="mt-0.5 text-[11px] text-white/45">
-            CC0 starter pack. Use freely. Zero royalty owed.
+            {libraryBackend === "loading"
+              ? "Loading Supabase audio assets..."
+              : libraryBackend === "supabase"
+                ? `${samples.length} Supabase audio-assets ready to preview and load.`
+                : "Local starter pack fallback. Supabase audio assets unavailable."}
           </p>
         </div>
       </div>
@@ -329,4 +369,26 @@ function sameKeyRoot(a: string, b: string): boolean {
   const ra = rootPitchClass(a);
   const rb = rootPitchClass(b);
   return ra !== "" && ra === rb;
+}
+
+function remoteCategoryToSampleCategory(category?: string): Sample["category"] {
+  if (category === "808") return "bass";
+  if (category === "drums") return "drums";
+  if (category === "fx") return "fx";
+  if (category === "misc") return "melody";
+  if (category?.toLowerCase().includes("vocal")) return "vocals";
+  return "melody";
+}
+
+function remoteSoundToSample(sound: RemoteSound): Sample | null {
+  if (!sound.url) return null;
+  return {
+    id: sound.id ?? sound.url,
+    name: sound.name?.trim() || "Supabase Audio Asset",
+    bpm: typeof sound.bpm === "number" ? sound.bpm : 0,
+    key: sound.key,
+    category: remoteCategoryToSampleCategory(sound.category),
+    url: sound.url,
+    source: "supabase",
+  };
 }
