@@ -1,12 +1,29 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type View = "machine" | "sampler" | "piano" | "sounds" | "mixer" | "arrange" | "export";
-type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[] };
+type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; soundId?: string; soundUrl?: string };
 type Preset = { name: string; color: string; volumes: Record<string, number>; pans: Record<string, number> };
+type StepCount = 8 | 16 | 32 | 64;
 
-const makeSteps = (on: number[]) => Array.from({ length: 16 }, (_, i) => on.includes(i + 1));
+type BeatExport = {
+  bpm: number;
+  stepsPerPattern: number;
+  bars: number;
+  resolution: string;
+  pads: Array<Pick<Pad, "id" | "label" | "volume" | "pan" | "muted" | "solo" | "steps" | "soundId" | "soundUrl"> & { kind: string }>;
+};
+
+const STEP_OPTIONS: StepCount[] = [8, 16, 32, 64];
+const DEFAULT_STEPS: StepCount = 16;
+const makeSteps = (on: number[], length = DEFAULT_STEPS) => Array.from({ length }, (_, i) => on.includes(i + 1));
+const resizeSteps = (steps: boolean[], length: number) => Array.from({ length }, (_, i) => steps[i] ?? false);
+const isTypingTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false;
+  return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable;
+};
+const padKind = (id: string) => id === "bass" ? "bass" : id === "vox" ? "vocal" : id === "fx" ? "fx" : "drum";
 const initialPads: Pad[] = [
   { id: "kick", label: "KICK", key: "1", color: "#20f7ff", freq: 54, volume: 88, pan: 0, muted: false, solo: false, steps: makeSteps([1, 5, 9, 13]) },
   { id: "snare", label: "SNARE", key: "2", color: "#ff31df", freq: 180, volume: 74, pan: 0, muted: false, solo: false, steps: makeSteps([5, 13]) },
@@ -41,68 +58,128 @@ export default function BeatMachineProClient({ initialView = "machine", studioMo
   const [selected, setSelected] = useState("kick");
   const [playing, setPlaying] = useState(false);
   const [step, setStep] = useState(0);
+  const [stepsPerPattern, setStepsPerPattern] = useState<StepCount>(DEFAULT_STEPS);
   const [bpm, setBpm] = useState(140);
-  const [messages, setMessages] = useState<string[]>(["Beat machine ready."]);
+  const [messages, setMessages] = useState<string[]>(["Beat machine ready. Press Space to play."]);
   const timer = useRef<number | null>(null);
   const audio = useRef<AudioContext | null>(null);
+  const padsRef = useRef(pads);
+  const playingRef = useRef(playing);
+  const bpmRef = useRef(bpm);
+  const stepsRef = useRef(stepsPerPattern);
   const activePad = pads.find((pad) => pad.id === selected) ?? pads[0];
   const soloed = pads.some((pad) => pad.solo);
+  const bars = Math.max(1, Math.round(stepsPerPattern / 16));
+
+  useEffect(() => { padsRef.current = pads; }, [pads]);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+  useEffect(() => { stepsRef.current = stepsPerPattern; }, [stepsPerPattern]);
+  useEffect(() => () => { if (timer.current) window.clearInterval(timer.current); }, []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || isTypingTarget(event.target)) return;
+      if (event.code === "Space") {
+        event.preventDefault();
+        play();
+        return;
+      }
+      const key = event.key.toUpperCase();
+      const pad = padsRef.current.find((item) => item.key.toUpperCase() === key);
+      if (!pad) return;
+      event.preventDefault();
+      setSelected(pad.id);
+      trigger(pad, 1);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   function log(message: string) { setMessages((items) => [message, ...items].slice(0, 8)); }
   function context() { audio.current ??= new AudioContext(); return audio.current; }
   function trigger(pad: Pad, velocity = 1) {
-    if (pad.muted || (soloed && !pad.solo)) return;
+    const currentPads = padsRef.current;
+    const isSoloed = currentPads.some((item) => item.solo);
+    const livePad = currentPads.find((item) => item.id === pad.id) ?? pad;
+    if (livePad.muted || (isSoloed && !livePad.solo)) return;
     const ctx = context();
+    void ctx.resume();
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     const pan = ctx.createStereoPanner();
-    osc.frequency.value = pad.freq;
-    osc.type = pad.id === "hat" || pad.id === "fx" ? "square" : pad.id === "bass" || pad.id === "kick" ? "sine" : "triangle";
-    pan.pan.value = Math.max(-1, Math.min(1, pad.pan / 50));
+    osc.frequency.value = livePad.freq;
+    osc.type = livePad.id === "hat" || livePad.id === "fx" ? "square" : livePad.id === "bass" || livePad.id === "kick" ? "sine" : "triangle";
+    pan.pan.value = Math.max(-1, Math.min(1, livePad.pan / 50));
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.001, (pad.volume / 100) * velocity * 0.28), now + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + (pad.id === "bass" ? 0.55 : pad.id === "hat" ? 0.08 : 0.22));
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.001, (livePad.volume / 100) * velocity * 0.28), now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + (livePad.id === "bass" ? 0.55 : livePad.id === "hat" ? 0.08 : 0.22));
     osc.connect(gain).connect(pan).connect(ctx.destination);
     osc.start(now); osc.stop(now + 0.7);
-    log(`Triggered ${pad.label}`);
+    log(`Triggered ${livePad.label}`);
   }
   function updatePad(id: string, patch: Partial<Pad>) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, ...patch } : pad)); }
   function toggleStep(id: string, index: number) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, steps: pad.steps.map((on, i) => i === index ? !on : on) } : pad)); }
-  function stop() { if (timer.current) window.clearInterval(timer.current); timer.current = null; setPlaying(false); setStep(0); }
-  function play() {
-    if (playing) { stop(); return; }
-    void context().resume();
-    const interval = Math.max(40, (60 / bpm / 4) * 1000);
-    let cursor = 0;
+  function stop() { if (timer.current) window.clearInterval(timer.current); timer.current = null; setPlaying(false); setStep(0); playingRef.current = false; }
+  function schedulePlayback() {
+    if (timer.current) window.clearInterval(timer.current);
+    const interval = Math.max(40, (60 / bpmRef.current / 4) * 1000);
+    let cursor = step % stepsRef.current;
     timer.current = window.setInterval(() => {
+      const length = stepsRef.current;
+      const livePads = padsRef.current;
       setStep(cursor);
-      pads.forEach((pad) => { if (pad.steps[cursor]) trigger(pad, 0.88); });
-      cursor = (cursor + 1) % 16;
+      livePads.forEach((pad) => { if (pad.steps[cursor]) trigger(pad, 0.88); });
+      cursor = (cursor + 1) % length;
     }, interval);
+  }
+  function play() {
+    if (playingRef.current) { stop(); return; }
+    void context().resume();
+    playingRef.current = true;
     setPlaying(true);
+    schedulePlayback();
     log("Pattern playback started.");
+  }
+  useEffect(() => {
+    if (!playingRef.current) return;
+    schedulePlayback();
+  }, [bpm, stepsPerPattern]);
+  function setPatternLength(length: StepCount) {
+    setStepsPerPattern(length);
+    setPads((current) => current.map((pad) => ({ ...pad, steps: resizeSteps(pad.steps, length) })));
+    setStep((current) => current % length);
+    log(`Grid changed to ${length} steps (${Math.max(1, Math.round(length / 16))} bar${length === 16 ? "" : "s"}).`);
   }
   function applyPreset(preset: Preset) { setPads((current) => current.map((pad) => ({ ...pad, volume: preset.volumes[pad.id] ?? pad.volume, pan: preset.pans[pad.id] ?? pad.pan }))); log(`Applied AI preset: ${preset.name}`); }
   function randomize() { setPads((current) => current.map((pad) => ({ ...pad, steps: pad.steps.map((_, i) => i === 0 || Math.random() > (pad.id === "hat" ? 0.45 : 0.76)) }))); log("Generated a new pattern."); }
   function clearPattern() { setPads((current) => current.map((pad) => ({ ...pad, steps: pad.steps.map(() => false) }))); log("Pattern cleared."); }
-  function exportSession(kind: "json" | "midi" | "stems") {
-    const payload = JSON.stringify({ bpm, pads: pads.map(({ id, label, volume, pan, muted, solo, steps }) => ({ id, label, volume, pan, muted, solo, steps })) }, null, 2);
-    download(kind === "json" ? "ems-beat-session.json" : kind === "midi" ? "ems-beat-pattern.mid.txt" : "ems-beat-stems-manifest.json", "application/json", payload);
-    log(`Exported ${kind.toUpperCase()}.`);
+  function buildExport(): BeatExport {
+    return {
+      bpm,
+      stepsPerPattern,
+      bars,
+      resolution: "1/16 step grid",
+      pads: pads.map(({ id, label, volume, pan, muted, solo, steps, soundId, soundUrl }) => ({ id, label, volume, pan, muted, solo, steps, soundId, soundUrl, kind: padKind(id) })),
+    };
   }
-  function sendToStudio() { window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { stems: pads.map((pad) => ({ label: pad.label, name: pad.id, kind: pad.id === "bass" ? "bass" : pad.id === "vox" ? "vocal" : pad.id === "fx" ? "fx" : "drum", volume: pad.volume, pan: pad.pan })), autoMix: true } })); log("Sent beat stems to Studio mixer."); }
-  function assignSound(sound: string) { updatePad(selected, { label: sound.split("_")[0] }); log(`Assigned ${sound} to ${activePad.label}.`); }
+  function exportSession(kind: "json" | "midi" | "stems") {
+    const payload = JSON.stringify(buildExport(), null, 2);
+    download(kind === "json" ? "ems-beat-session.json" : kind === "midi" ? "ems-beat-pattern.mid.txt" : "ems-beat-stems-manifest.json", "application/json", payload);
+    log(`Exported ${kind.toUpperCase()} with ${stepsPerPattern}-step metadata.`);
+  }
+  function sendToStudio() { window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { ...buildExport(), stems: buildExport().pads, autoMix: true } })); log("Sent beat stems to Studio mixer with live grid metadata."); }
+  function assignSound(sound: string) { updatePad(selected, { label: sound.split("_")[0], soundId: sound }); log(`Assigned ${sound} to ${activePad.label}.`); }
   const patternText = useMemo(() => pads.map((pad) => `${pad.label}: ${pad.steps.map((on) => on ? "x" : ".").join("")}`).join("\n"), [pads]);
 
-  return <div className="min-h-screen overflow-auto bg-[#090b0e] text-white [background-image:radial-gradient(circle_at_top,rgba(120,214,255,.08),transparent_34%),linear-gradient(90deg,rgba(255,255,255,.03)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,.02)_1px,transparent_1px)] [background-size:auto,88px_100%,100%_88px]"><div className="mx-auto flex min-h-screen max-w-[1720px] flex-col gap-3 p-3"><header className="shrink-0 border border-white/10 bg-[#111418]/97 px-4 py-3"><div className="flex flex-wrap items-center gap-3"><button onClick={() => setView("machine")} className="min-w-[240px] border border-white/12 bg-black/30 px-4 py-2 text-left"><span className="text-[10px] font-black uppercase tracking-[0.18em] text-white/42">Rhythm Programmer</span><span className="mt-1 block text-xl font-black tracking-[0.12em] text-cyan-200">{studioMode ? "Beat Machine / Studio Grid" : "Beat Machine / Sampler"}</span></button><nav className="flex flex-wrap gap-2">{(["machine", "sampler", "piano", "sounds", "mixer", "arrange", "export"] as View[]).map((item) => <button key={item} onClick={() => setView(item)} className={cn("border px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em]", view === item ? "border-cyan-300 bg-cyan-300 text-black" : "border-white/12 bg-white/[0.04] text-white/62")}>{item}</button>)}</nav><div className="ml-auto flex items-center gap-2"><Button onClick={play} active={playing}>{playing ? "Stop" : "Play"}</Button><Button onClick={randomize}>Generate</Button><Button onClick={sendToStudio} active>Print To Studio</Button><label className="border border-white/10 bg-black/28 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-white/50">BPM <input className="ml-2 w-16 bg-transparent px-2 py-1 font-mono text-cyan-200 outline-none" value={bpm} type="number" onChange={(e) => setBpm(Number(e.target.value) || 120)} /></label></div></div></header><main className="min-h-0 flex flex-1 overflow-visible">{view === "machine" && <Machine pads={pads} selected={selected} step={step} setSelected={setSelected} trigger={trigger} toggleStep={toggleStep} activePad={activePad} updatePad={updatePad} randomize={randomize} clearPattern={clearPattern} applyPreset={applyPreset} />}{view === "sampler" && <Sampler log={log} assign={() => assignSound("VOCAL_CHOP_01")} />}{view === "piano" && <Piano />}{view === "sounds" && <Sounds assignSound={assignSound} selected={activePad.label} />}{view === "mixer" && <Mixer pads={pads} updatePad={updatePad} applyPreset={applyPreset} />}{view === "arrange" && <Arrange pads={pads} step={step} toggleStep={toggleStep} />}{view === "export" && <Export patternText={patternText} exportSession={exportSession} sendToStudio={sendToStudio} messages={messages} />}</main></div></div>;
+  return <div className="min-h-screen overflow-auto bg-[#090b0e] text-white [background-image:radial-gradient(circle_at_top,rgba(120,214,255,.08),transparent_34%),linear-gradient(90deg,rgba(255,255,255,.03)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,.02)_1px,transparent_1px)] [background-size:auto,88px_100%,100%_88px]"><div className="mx-auto flex min-h-screen max-w-[1720px] flex-col gap-3 p-3"><header className="shrink-0 border border-white/10 bg-[#111418]/97 px-4 py-3"><div className="flex flex-wrap items-center gap-3"><button onClick={() => setView("machine")} className="min-w-[240px] border border-white/12 bg-black/30 px-4 py-2 text-left"><span className="text-[10px] font-black uppercase tracking-[0.18em] text-white/42">Rhythm Programmer</span><span className="mt-1 block text-xl font-black tracking-[0.12em] text-cyan-200">{studioMode ? "Beat Machine / Studio Grid" : "Beat Machine / Sampler"}</span></button><nav className="flex flex-wrap gap-2">{(["machine", "sampler", "piano", "sounds", "mixer", "arrange", "export"] as View[]).map((item) => <button key={item} onClick={() => setView(item)} className={cn("border px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em]", view === item ? "border-cyan-300 bg-cyan-300 text-black" : "border-white/12 bg-white/[0.04] text-white/62")}>{item}</button>)}</nav><div className="ml-auto flex items-center gap-2"><Button onClick={play} active={playing}>{playing ? "Stop" : "Play"}</Button><Button onClick={randomize}>Generate</Button><Button onClick={sendToStudio} active>Print To Studio</Button><label className="border border-white/10 bg-black/28 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-white/50">BPM <input className="ml-2 w-16 bg-transparent px-2 py-1 font-mono text-cyan-200 outline-none" value={bpm} type="number" onChange={(e) => setBpm(Number(e.target.value) || 120)} /></label></div></div><div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3 text-[10px] font-black uppercase tracking-[0.12em] text-white/45"><span>Grid</span>{STEP_OPTIONS.map((length) => <Button key={length} onClick={() => setPatternLength(length)} active={stepsPerPattern === length}>{length} steps</Button>)}<span className="ml-2 text-cyan-200">{bars} bar{bars === 1 ? "" : "s"} / Space = Play</span></div></header><main className="min-h-0 flex flex-1 overflow-visible">{view === "machine" && <Machine pads={pads} selected={selected} step={step} stepsPerPattern={stepsPerPattern} setSelected={setSelected} trigger={trigger} toggleStep={toggleStep} activePad={activePad} updatePad={updatePad} randomize={randomize} clearPattern={clearPattern} applyPreset={applyPreset} />}{view === "sampler" && <Sampler log={log} assign={() => assignSound("VOCAL_CHOP_01")} />}{view === "piano" && <Piano />}{view === "sounds" && <Sounds assignSound={assignSound} selected={activePad.label} />}{view === "mixer" && <Mixer pads={pads} updatePad={updatePad} applyPreset={applyPreset} />}{view === "arrange" && <Arrange pads={pads} step={step} stepsPerPattern={stepsPerPattern} toggleStep={toggleStep} />}{view === "export" && <Export patternText={patternText} exportSession={exportSession} sendToStudio={sendToStudio} messages={messages} />}</main></div></div>;
 }
 
-function Machine({ pads, selected, step, setSelected, trigger, toggleStep, activePad, updatePad, randomize, clearPattern, applyPreset }: { pads: Pad[]; selected: string; step: number; setSelected: (id: string) => void; trigger: (pad: Pad) => void; toggleStep: (id: string, step: number) => void; activePad: Pad; updatePad: (id: string, patch: Partial<Pad>) => void; randomize: () => void; clearPattern: () => void; applyPreset: (preset: Preset) => void }) { return <div className="grid min-h-0 flex-1 gap-3 overflow-hidden xl:grid-cols-[440px_220px_1fr]"><Panel className="overflow-auto p-3"><Title>Pad Bank A</Title><div className="mt-3 grid grid-cols-4 gap-3">{pads.map((pad) => <button key={pad.id} onClick={() => { setSelected(pad.id); trigger(pad); }} className="relative aspect-square border bg-gradient-to-b from-[#2c2d2f] to-[#101112] p-3" style={{ borderColor: selected === pad.id ? pad.color : "rgba(255,255,255,.16)", boxShadow: selected === pad.id ? `0 0 16px ${pad.color}55` : "inset 0 1px 0 rgba(255,255,255,.08)" }}><span className="grid h-full place-items-center text-[13px] font-black tracking-[0.08em]">{pad.label}</span><span className="absolute bottom-2 right-2 font-mono text-[10px] text-white/40">{pad.key}</span></button>)}</div></Panel><Panel className="overflow-auto p-3"><Title>Selected Pad</Title><div className="mt-4 space-y-4"><b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>{["volume", "pan", "freq"].map((field) => <label key={field} className="block text-[10px] font-black uppercase text-white/55">{field}<input className="mt-2 w-full accent-cyan-300" type="range" min={field === "pan" ? -50 : field === "freq" ? 30 : 0} max={field === "pan" ? 50 : field === "freq" ? 8000 : 100} value={activePad[field as "volume" | "pan" | "freq"]} onChange={(e) => updatePad(activePad.id, { [field]: Number(e.target.value) } as Partial<Pad>)} /></label>)}<div className="flex gap-2"><Button onClick={() => updatePad(activePad.id, { muted: !activePad.muted })} active={activePad.muted}>Mute</Button><Button onClick={() => updatePad(activePad.id, { solo: !activePad.solo })} active={activePad.solo}>Solo</Button></div><Button onClick={() => trigger(activePad)} active>Test Pad</Button></div></Panel><div className="grid min-h-0 gap-3 overflow-hidden"><Panel className="overflow-auto p-3"><Title right={<div className="flex gap-2"><Button onClick={randomize}>Generate</Button><Button onClick={clearPattern}>Clear</Button></div>}>Step Sequencer</Title><div className="mt-3 min-w-[760px] space-y-1.5">{pads.map((pad) => <div key={pad.id} className="grid items-center gap-2" style={{ gridTemplateColumns: "72px repeat(16,minmax(0,1fr))" }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-2 text-left font-mono text-[10px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.map((on, i) => <button key={i} onClick={() => toggleStep(pad.id, i)} className={cn("h-7 border", step === i && "ring-2 ring-white/60")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 10px ${pad.color}80` : undefined }} />)}</div>)}</div></Panel><Panel className="overflow-auto p-3"><Title>AI Preset Mixer</Title><div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{presets.map((preset) => <button key={preset.name} onClick={() => applyPreset(preset)} className="border border-white/10 bg-black/25 p-3 text-left"><span className="mb-2 block h-1.5" style={{ backgroundColor: preset.color }} /><b className="text-[12px] uppercase">{preset.name}</b><p className="mt-2 text-[10px] uppercase text-white/45">Applies real volume and pan values.</p></button>)}</div></Panel></div></div>; }
+function Machine({ pads, selected, step, stepsPerPattern, setSelected, trigger, toggleStep, activePad, updatePad, randomize, clearPattern, applyPreset }: { pads: Pad[]; selected: string; step: number; stepsPerPattern: number; setSelected: (id: string) => void; trigger: (pad: Pad) => void; toggleStep: (id: string, step: number) => void; activePad: Pad; updatePad: (id: string, patch: Partial<Pad>) => void; randomize: () => void; clearPattern: () => void; applyPreset: (preset: Preset) => void }) { return <div className="grid min-h-0 flex-1 gap-3 overflow-hidden xl:grid-cols-[440px_220px_1fr]"><Panel className="overflow-auto p-3"><Title>Pad Bank A</Title><div className="mt-3 grid grid-cols-4 gap-3">{pads.map((pad) => <button key={pad.id} onClick={() => { setSelected(pad.id); trigger(pad); }} className="relative aspect-square border bg-gradient-to-b from-[#2c2d2f] to-[#101112] p-3" style={{ borderColor: selected === pad.id ? pad.color : "rgba(255,255,255,.16)", boxShadow: selected === pad.id ? `0 0 16px ${pad.color}55` : "inset 0 1px 0 rgba(255,255,255,.08)" }}><span className="grid h-full place-items-center text-[13px] font-black tracking-[0.08em]">{pad.label}</span><span className="absolute bottom-2 right-2 font-mono text-[10px] text-white/40">{pad.key}</span></button>)}</div></Panel><Panel className="overflow-auto p-3"><Title>Selected Pad</Title><div className="mt-4 space-y-4"><b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>{["volume", "pan", "freq"].map((field) => <label key={field} className="block text-[10px] font-black uppercase text-white/55">{field}<input className="mt-2 w-full accent-cyan-300" type="range" min={field === "pan" ? -50 : field === "freq" ? 30 : 0} max={field === "pan" ? 50 : field === "freq" ? 8000 : 100} value={activePad[field as "volume" | "pan" | "freq"]} onChange={(e) => updatePad(activePad.id, { [field]: Number(e.target.value) } as Partial<Pad>)} /></label>)}<div className="flex gap-2"><Button onClick={() => updatePad(activePad.id, { muted: !activePad.muted })} active={activePad.muted}>Mute</Button><Button onClick={() => updatePad(activePad.id, { solo: !activePad.solo })} active={activePad.solo}>Solo</Button></div><Button onClick={() => trigger(activePad)} active>Test Pad</Button></div></Panel><div className="grid min-h-0 gap-3 overflow-hidden"><Panel className="overflow-auto p-3"><Title right={<div className="flex gap-2"><Button onClick={randomize}>Generate</Button><Button onClick={clearPattern}>Clear</Button></div>}>Step Sequencer</Title><div className="mt-3 min-w-[760px] space-y-1.5">{pads.map((pad) => <div key={pad.id} className="grid items-center gap-2" style={{ gridTemplateColumns: `72px repeat(${stepsPerPattern},minmax(22px,1fr))` }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-2 text-left font-mono text-[10px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.map((on, i) => <button key={i} onClick={() => toggleStep(pad.id, i)} className={cn("h-7 border", step === i && "ring-2 ring-white/60")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 10px ${pad.color}80` : undefined }} />)}</div>)}</div></Panel><Panel className="overflow-auto p-3"><Title>AI Preset Mixer</Title><div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{presets.map((preset) => <button key={preset.name} onClick={() => applyPreset(preset)} className="border border-white/10 bg-black/25 p-3 text-left"><span className="mb-2 block h-1.5" style={{ backgroundColor: preset.color }} /><b className="text-[12px] uppercase">{preset.name}</b><p className="mt-2 text-[10px] uppercase text-white/45">Applies real volume and pan values.</p></button>)}</div></Panel></div></div>; }
 function Sampler({ log, assign }: { log: (m: string) => void; assign: () => void }) { return <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-3 overflow-hidden"><Panel className="p-4"><Wave /><div className="mt-4 flex flex-wrap gap-3"><Button onClick={() => log("Auto chop created six transient markers.")} active>Auto Chop</Button><Button onClick={() => log("Extracted six one-shots into the preview rack.")}>Extract One-Shots</Button><Button onClick={assign}>Assign To Pad</Button><Button onClick={() => log("Saved sample to My Sounds.")}>Save To My Sounds</Button></div></Panel><div className="grid gap-3 lg:grid-cols-3">{["One-Shots", "AI Suggestions", "Keyboard Info"].map((title) => <Panel key={title} className="overflow-auto p-4"><Title>{title}</Title><div className="mt-4 space-y-3">{[1,2,3,4].map((i) => <button key={i} onClick={() => log(`${title} item ${i} selected.`)} className="w-full rounded-xl border border-cyan-300/35 bg-black/30 p-3 text-left text-sm">{title} {i}<Wave compact /></button>)}</div></Panel>)}</div></div>; }
 function Wave({ compact = false }: { compact?: boolean }) { return <div className={cn("relative overflow-hidden rounded-xl border border-cyan-300/20 bg-black/60", compact ? "mt-2 h-12" : "h-56")}><div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.055)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.045)_1px,transparent_1px)] bg-[size:100%_32px,48px_100%]" /><svg viewBox="0 0 128 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">{wave.map((peak, i) => <rect key={i} x={i} y={50 - peak * 42} width="0.6" height={Math.max(1, peak * 84)} fill={i < 88 ? "#20f7ff" : "#ff31df"} opacity=".86" />)}</svg><div className="absolute left-[45%] top-0 h-full w-px bg-cyan-300 shadow-[0_0_18px_#20f7ff]" /></div>; }
 function Piano() { return <Panel className="min-h-0 flex-1 overflow-hidden p-4"><div className="mb-3 flex flex-wrap gap-2"><Button active>Quantize</Button><Button active>Snap</Button><Button>Duplicate</Button><Button>Delete</Button><Button>Humanize</Button><span className="ml-auto text-[10px] uppercase text-cyan-200">Scale: C Minor</span></div><div className="grid h-[calc(100dvh-190px)] min-h-[540px] grid-cols-[90px_1fr] overflow-hidden rounded-2xl border border-white/12 bg-black/35"><div className="grid" style={{ gridTemplateRows: `repeat(${notes.length},1fr)` }}>{notes.map((n) => <div key={n} className="border-b border-black/70 bg-white pr-2 text-right font-mono text-[10px] text-black">{n}</div>)}</div><div className="relative overflow-auto bg-[#101314] bg-[linear-gradient(rgba(255,255,255,.065)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.06)_1px,transparent_1px)] bg-[size:100%_32px,48px_100%]">{Array.from({ length: 18 }, (_, i) => <span key={i} className="absolute h-6 rounded-sm bg-cyan-300 px-2 text-[9px] font-black text-black" style={{ left: `${(i * 7) % 78}%`, top: `${(i % notes.length) * 32 + 9}px`, width: `${8 + (i % 3) * 4}%` }}>{notes[i % notes.length].replace(/[0-9]/g, "")}</span>)}<div className="absolute bottom-0 left-0 right-0 h-24 border-t border-white/12 bg-black/55 p-3"><div className="mb-2 text-[10px] uppercase text-white/55">Velocity</div><div className="flex h-12 items-end gap-1">{Array.from({ length: 48 }, (_, i) => <span key={i} className="w-2 rounded-t bg-cyan-300" style={{ height: `${10 + ((i * 7) % 38)}px` }} />)}</div></div></div></div></Panel>; }
 function Sounds({ assignSound, selected }: { assignSound: (s: string) => void; selected: string }) { const [q, setQ] = useState(""); const filtered = sounds.filter((s) => s.toLowerCase().includes(q.toLowerCase())); return <Panel className="min-h-0 flex-1 overflow-hidden p-4"><div className="mb-4 flex gap-3"><h2 className="text-3xl font-black uppercase text-cyan-200">My Sounds</h2><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search sounds..." className="min-w-[260px] flex-1 rounded-full border border-cyan-300/50 bg-black/45 px-5 text-sm outline-none" /><span className="text-xs uppercase text-white/50">Assigning to {selected}</span></div><div className="grid max-h-[calc(100dvh-180px)] grid-cols-1 gap-4 overflow-auto sm:grid-cols-2 xl:grid-cols-3">{filtered.map((sound) => <button key={sound} onClick={() => assignSound(sound)} className="rounded-2xl border border-white/12 bg-[#191c1e] p-4 text-left"><Wave compact /><b className="mt-3 block text-[12px] uppercase">{sound}</b><p className="mt-2 text-[10px] uppercase text-white/45">Click to assign to selected pad.</p></button>)}</div></Panel>; }
 function Mixer({ pads, updatePad, applyPreset }: { pads: Pad[]; updatePad: (id: string, patch: Partial<Pad>) => void; applyPreset: (preset: Preset) => void }) { return <div className="grid min-h-0 flex-1 gap-3 overflow-hidden xl:grid-cols-[1fr_340px]"><Panel className="overflow-auto p-4"><Title>Beat Machine Mixer</Title><div className="mt-4 grid min-w-[900px] grid-cols-8 gap-3">{pads.map((pad) => <div key={pad.id} className="rounded-2xl border border-white/10 bg-black/28 p-3"><b className="block text-center text-[11px] uppercase">{pad.label}</b><div className="mt-4 flex h-64 items-end justify-center gap-2"><div className="relative h-full w-3 rounded bg-white/10"><span className="absolute bottom-0 left-0 right-0 rounded" style={{ height: `${pad.volume}%`, backgroundColor: pad.color }} /></div><input className="h-64 w-12 accent-cyan-300 [writing-mode:vertical-lr]" type="range" min="0" max="100" value={pad.volume} onChange={(e) => updatePad(pad.id, { volume: Number(e.target.value) })} /></div><input className="mt-3 w-full accent-pink-300" type="range" min="-50" max="50" value={pad.pan} onChange={(e) => updatePad(pad.id, { pan: Number(e.target.value) })} /><div className="mt-2 flex gap-1"><Button onClick={() => updatePad(pad.id, { muted: !pad.muted })} active={pad.muted}>M</Button><Button onClick={() => updatePad(pad.id, { solo: !pad.solo })} active={pad.solo}>S</Button></div></div>)}</div></Panel><Panel className="overflow-auto p-4"><Title>AI Mix Presets</Title><div className="mt-4 space-y-3">{presets.map((preset) => <button key={preset.name} onClick={() => applyPreset(preset)} className="w-full rounded-xl border border-white/10 bg-black/25 p-3 text-left"><b style={{ color: preset.color }}>{preset.name}</b><p className="text-xs text-white/45">Real fader and pan changes.</p></button>)}</div></Panel></div>; }
-function Arrange({ pads, step, toggleStep }: { pads: Pad[]; step: number; toggleStep: (id: string, step: number) => void }) { return <Panel className="min-h-0 flex-1 overflow-hidden p-4"><Title>Arrangement / Pattern Timeline</Title><div className="mt-4 grid h-[calc(100dvh-190px)] min-h-[520px] grid-cols-[120px_1fr] overflow-auto rounded-2xl border border-white/10 bg-black/30"><div>{pads.map((pad) => <div key={pad.id} className="flex h-16 items-center border-b border-white/8 px-3 text-[11px] uppercase">{pad.label}</div>)}</div><div className="relative min-w-[980px] bg-[linear-gradient(90deg,rgba(255,255,255,.075)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.05)_1px,transparent_1px)] bg-[size:64px_100%,100%_64px]">{pads.map((pad, row) => pad.steps.map((on, i) => <button key={`${pad.id}-${i}`} onClick={() => toggleStep(pad.id, i)} className="absolute h-10 rounded-lg border border-white/10" style={{ left: `${i * 6}%`, top: row * 64 + 12, width: "5%", backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", boxShadow: step === i ? "0 0 0 2px white" : undefined }} />))}</div></div></Panel>; }
+function Arrange({ pads, step, stepsPerPattern, toggleStep }: { pads: Pad[]; step: number; stepsPerPattern: number; toggleStep: (id: string, step: number) => void }) { return <Panel className="min-h-0 flex-1 overflow-hidden p-4"><Title>Arrangement / Pattern Timeline</Title><div className="mt-4 grid h-[calc(100dvh-190px)] min-h-[520px] grid-cols-[120px_1fr] overflow-auto rounded-2xl border border-white/10 bg-black/30"><div>{pads.map((pad) => <div key={pad.id} className="flex h-16 items-center border-b border-white/8 px-3 text-[11px] uppercase">{pad.label}</div>)}</div><div className="relative min-w-[980px] bg-[linear-gradient(90deg,rgba(255,255,255,.075)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.05)_1px,transparent_1px)] bg-[size:64px_100%,100%_64px]">{pads.map((pad, row) => pad.steps.map((on, i) => <button key={`${pad.id}-${i}`} onClick={() => toggleStep(pad.id, i)} className="absolute h-10 rounded-lg border border-white/10" style={{ left: `${(i / stepsPerPattern) * 100}%`, top: row * 64 + 12, width: `${Math.max(2.5, 92 / stepsPerPattern)}%`, backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", boxShadow: step === i ? "0 0 0 2px white" : undefined }} />))}</div></div></Panel>; }
 function Export({ patternText, exportSession, sendToStudio, messages }: { patternText: string; exportSession: (k: "json" | "midi" | "stems") => void; sendToStudio: () => void; messages: string[] }) { return <div className="grid min-h-0 flex-1 gap-3 overflow-auto lg:grid-cols-3"><Panel className="p-4"><Title>Export Beat</Title><div className="mt-4 space-y-3"><Button onClick={() => exportSession("json")} active>Export Session JSON</Button><Button onClick={() => exportSession("midi")}>Export MIDI Map</Button><Button onClick={() => exportSession("stems")}>Export Stems Manifest</Button><Button onClick={sendToStudio} active>Send To Studio Timeline</Button></div></Panel><Panel className="p-4"><Title>Pattern Data</Title><pre className="mt-4 overflow-auto rounded-xl bg-black/60 p-3 text-xs text-cyan-100">{patternText}</pre></Panel><Panel className="p-4"><Title>Action Log</Title><div className="mt-4 space-y-2 text-xs text-white/60">{messages.map((m, i) => <p key={i}>{m}</p>)}</div></Panel></div>; }
