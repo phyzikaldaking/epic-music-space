@@ -111,7 +111,7 @@ function cleanDisplayName(path: string) {
 }
 
 async function listAudioObjects(
-  supabase: ReturnType<typeof createClient>,
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   prefix = "",
   maxResults = 1000,
 ): Promise<Array<StorageObject & { path: string }>> {
