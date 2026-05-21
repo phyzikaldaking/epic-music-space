@@ -86,7 +86,13 @@ export function validateStripeEnvironment(env: EnvSource = process.env): StripeV
   }
 
   if (!webhookSecret) {
-    addIssue("error", "missing_webhook_secret", "STRIPE_WEBHOOK_SECRET is required.");
+    addIssue(
+      isProductionLike ? "error" : "warning",
+      "missing_webhook_secret",
+      isProductionLike
+        ? "STRIPE_WEBHOOK_SECRET is required."
+        : "STRIPE_WEBHOOK_SECRET is not configured; webhook fulfillment is disabled outside production.",
+    );
   } else if (!webhookSecret.startsWith("whsec_")) {
     addIssue(
       "error",
