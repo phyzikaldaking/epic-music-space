@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StudioSoundCategory } from "@/app/studio/try/studioWorkstationTypes";
 
 export const runtime = "nodejs";
@@ -7,6 +8,8 @@ export const dynamic = "force-dynamic";
 
 const AUDIO_BUCKET = "audio-assets";
 const AUDIO_EXTENSIONS = new Set(["aif", "aiff", "flac", "m4a", "mp3", "ogg", "wav", "webm"]);
+
+type StorageSupabaseClient = SupabaseClient<any, any, any>;
 
 interface StorageObject {
   id?: string | null;
@@ -19,7 +22,7 @@ interface StorageObject {
   } | null;
 }
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(): StorageSupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
@@ -111,7 +114,7 @@ function cleanDisplayName(path: string) {
 }
 
 async function listAudioObjects(
-  supabase: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  supabase: StorageSupabaseClient,
   prefix = "",
   maxResults = 1000,
 ): Promise<Array<StorageObject & { path: string }>> {
