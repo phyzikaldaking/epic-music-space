@@ -568,6 +568,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   // focusMode still wires through for backward compat.
   const [mainMode, setMainMode] = useState<"edit" | "mix" | "beat" | "publish">("edit");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [workspaceFocus, setWorkspaceFocus] = useState(true);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [browserHealth, setBrowserHealth] = useState<BrowserHealth | null>(null);
   /** Project save/load — id is generated lazily on first save. */
@@ -1265,7 +1266,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   const showArrangeTools = focusMode === "all" || focusMode === "arrange";
   const showMixTools = focusMode === "all" || focusMode === "mix";
   const showPublishTools = focusMode === "all" || focusMode === "publish";
-  const hideLegacyForCompactMix = proMode && mainMode === "mix";
+  const hideLegacyForCompactMix = proMode && workspaceFocus;
   const focusedTrack = useMemo(
     () => tracks.find((t) => t.id === focusedId) ?? tracks[0] ?? null,
     [tracks, focusedId],
@@ -3754,6 +3755,15 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         the edit window above covers 90% of the recording workflow.
         Toggle off in the drawer to fall back to the old stacked
         layout. */}
+    <div className="mx-auto mb-2 flex w-full max-w-6xl justify-end px-4">
+      <button
+        type="button"
+        onClick={() => setWorkspaceFocus((v) => !v)}
+        className="rounded-full border border-cyan-300/35 bg-black/60 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100"
+      >
+        {workspaceFocus ? "Show utility panels" : "Hide utility panels"}
+      </button>
+    </div>
     <div data-studio-content className={`${hideLegacyForCompactMix ? "hidden" : ""} relative mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8`}>
       <div
         aria-hidden

@@ -11,7 +11,8 @@
     "db:studio": "prisma studio",
     "db:seed": "ts-node prisma/seed.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "pretest": "prisma generate || echo \"[warn] prisma generate failed; using checked-in generated client\""
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
