@@ -1,13 +1,28 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StudioSoundCategory } from "@/app/studio/try/studioWorkstationTypes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const AUDIO_BUCKET = "audio-assets";
+const AUDIO_EXTENSIONS = new Set(["aif", "aiff", "flac", "m4a", "mp3", "ogg", "wav", "webm"]);
 
-function getSupabaseAdmin() {
+type StorageSupabaseClient = SupabaseClient<any, any, any>;
+
+interface StorageObject {
+  id?: string | null;
+  name: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  metadata?: {
+    mimetype?: string;
+    size?: number;
+  } | null;
+}
+
+function getSupabaseAdmin(): StorageSupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
@@ -77,37 +92,96 @@ function publicSortRank(category: StudioSoundCategory) {
   return ranks[category] ?? 99;
 }
 
+function joinStoragePath(prefix: string, name: string) {
+  return prefix ? `${prefix}/${name}` : name;
+}
+
+function isAudioObject(item: StorageObject) {
+  const mimeType = item.metadata?.mimetype?.toLowerCase() ?? "";
+  if (mimeType.startsWith("audio/")) return true;
+
+  const extension = item.name.split(".").pop()?.toLowerCase();
+  return extension ? AUDIO_EXTENSIONS.has(extension) : false;
+}
+
+function cleanDisplayName(path: string) {
+  const leafName = path.split("/").pop() ?? path;
+  return leafName
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function listAudioObjects(
+  supabase: StorageSupabaseClient,
+  prefix = "",
+  maxResults = 1000,
+): Promise<Array<StorageObject & { path: string }>> {
+  const results: Array<StorageObject & { path: string }> = [];
+  const folders: string[] = [prefix];
+
+  while (folders.length > 0 && results.length < maxResults) {
+    const currentPrefix = folders.shift() ?? "";
+    const { data, error } = await supabase.storage.from(AUDIO_BUCKET).list(currentPrefix, {
+      limit: 1000,
+      offset: 0,
+      sortBy: { column: "created_at", order: "desc" },
+    });
+
+    if (error) throw error;
+
+    for (const item of (data ?? []) as StorageObject[]) {
+      if (!item.name) continue;
+      const path = joinStoragePath(currentPrefix, item.name);
+      const isFolder = !item.id && !item.metadata?.mimetype && !item.name.includes(".");
+
+      if (isFolder) {
+        folders.push(path);
+        continue;
+      }
+
+      if (isAudioObject(item)) {
+        results.push({ ...item, path });
+        if (results.length >= maxResults) break;
+      }
+    }
+  }
+
+  return results;
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const categoryFilter = url.searchParams.get("category");
-  const limit = Math.min(250, Math.max(1, Number(url.searchParams.get("limit") ?? 120)));
+  const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit") ?? 500)));
   const supabase = getSupabaseAdmin();
   if (!supabase) return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: "Supabase storage is not configured." }, { status: 503 });
 
-  const { data, error } = await supabase.storage.from(AUDIO_BUCKET).list("", {
-    limit: 1000,
-    offset: 0,
-    sortBy: { column: "created_at", order: "desc" },
-  });
-
-  if (error) return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: error.message }, { status: 500 });
+  let data: Array<StorageObject & { path: string }>;
+  try {
+    data = await listAudioObjects(supabase, "", limit);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Supabase storage list failed.";
+    return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: message }, { status: 500 });
+  }
 
   const sounds = (data ?? [])
-    .filter((item) => item.name && !item.name.endsWith("/"))
     .map((item) => {
-      const category = categoryForName(item.name);
-      const { data: publicUrl } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(item.name);
+      const category = categoryForName(item.path);
+      const { data: publicUrl } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(item.path);
       return {
-        id: `factory-${item.id ?? item.name}`,
-        name: item.name,
+        id: `factory-${item.id ?? item.path}`,
+        name: cleanDisplayName(item.path),
+        path: item.path,
         url: publicUrl.publicUrl,
         source: "factory" as const,
         category,
-        instrument: instrumentForCategory(category, item.name),
-        bpm: parseBpm(item.name),
-        key: parseKey(item.name),
+        instrument: instrumentForCategory(category, item.path),
+        bpm: parseBpm(item.path),
+        key: parseKey(item.path),
         size: typeof item.metadata?.size === "number" ? item.metadata.size : undefined,
-        createdAt: item.created_at ?? new Date().toISOString(),
+        createdAt: item.created_at ?? item.updated_at ?? new Date().toISOString(),
       };
     })
     .filter((sound) => !categoryFilter || sound.category === categoryFilter)

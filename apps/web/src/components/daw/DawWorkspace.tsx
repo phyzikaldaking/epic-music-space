@@ -3602,18 +3602,151 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
             </section>
           )}
 
-          {mainMode === "beat" && (
-            <section
-              className="rounded-md border border-white/10 bg-black/40 p-3"
-              aria-label="Beat machine"
-            >
-              <div className="text-[10px] font-black uppercase tracking-[0.32em] text-amber-300">
-                Beat machine
-              </div>
-              <p className="mt-1 text-[11px] text-white/55">
-                Scroll down for the full grid (kit, swing, fills, stutter).
-                Switching to Edit returns you to the track lanes.
-              </p>
+          {mainMode === "beat" && beat && (
+            <section aria-label="Beat machine workspace">
+              <BeatMachineGrid
+                pattern={beat.pattern}
+                enabled={beat.enabled}
+                activeStep={beat.activeStep}
+                activeBank={beat.activeBank}
+                kit={beat.kit}
+                stepOptions={beat.stepOptions}
+                layerKitB={beat.layerKitB}
+                laneVariantNames={beat.laneVariantNames}
+                swing={beat.swing}
+                humanizeMs={beat.humanizeMs}
+                fillsEnabled={beat.fillsEnabled}
+                fillPreset={beat.fillPreset}
+                stutter={beat.stutter}
+                laneSampleNames={beat.laneSampleNames}
+                laneFrequencyProfiles={beat.laneFrequencyProfiles}
+                laneRecommendations={laneTopRecommendations}
+                recentlyAppliedLanes={recentlyAppliedLanes}
+                onApplyLaneRecommendation={applyLaneEqRecommendation}
+                onToggleStep={(lane, step) => {
+                  const cur = beat.pattern[lane][step];
+                  engineRef.current?.setBeatStep(lane, step, !cur);
+                  touchDirty();
+                  window.dispatchEvent(
+                    new CustomEvent("studio:share-step", {
+                      detail: { lane, step, on: !cur },
+                    }),
+                  );
+                }}
+                onSetStepOptions={(lane, step, opts) => {
+                  engineRef.current?.setStepOptions(lane, step, opts);
+                  touchDirty();
+                }}
+                onSetLaneLayerKit={(lane, layerKit) => {
+                  engineRef.current?.setBeatLayerKit(lane, layerKit);
+                  touchDirty();
+                }}
+                laneSemis={beat.laneSemis ?? {}}
+                onSetLaneSemis={(lane, semis) => {
+                  engineRef.current?.setBeatLaneSemis(lane, semis);
+                  touchDirty();
+                }}
+                laneReversed={beat.laneReversed ?? {}}
+                onSetLaneReversed={(lane, reversed) => {
+                  engineRef.current?.setBeatLaneReversed(lane, reversed);
+                  touchDirty();
+                }}
+                laneResonator={beat.laneResonator ?? {}}
+                onSetLaneResonator={(lane, amount) => {
+                  engineRef.current?.setBeatLaneResonator(lane, amount);
+                  touchDirty();
+                }}
+                laneNames={beat.laneNames ?? {}}
+                onSetLaneName={(lane, name) => {
+                  engineRef.current?.setBeatLaneName(lane, name);
+                  touchDirty();
+                }}
+                onSetSwing={(v) => {
+                  engineRef.current?.setBeatSwing(v);
+                  touchDirty();
+                }}
+                onSetHumanize={(v) => {
+                  engineRef.current?.setBeatHumanize(v);
+                  touchDirty();
+                }}
+                onSetFillsEnabled={(v) => {
+                  engineRef.current?.setBeatFillsEnabled(v);
+                  touchDirty();
+                }}
+                onSetFillPreset={(p) => {
+                  engineRef.current?.setBeatFillPreset(p);
+                  touchDirty();
+                }}
+                onSetStutter={(d) => engineRef.current?.setBeatStutter(d)}
+                onAddLaneVariant={async (lane, file) => {
+                  const ok = await engineRef.current?.addBeatLaneVariant(lane, file);
+                  if (ok) {
+                    pushAuditEvent("beat", `Added round-robin variant ${file.name} to ${lane}`);
+                    setNotice({
+                      tone: "success",
+                      message: `${lane.toUpperCase()} now cycles a new round-robin variant.`,
+                    });
+                  } else {
+                    setNotice({
+                      tone: "error",
+                      message: `Couldn't add variant. Max 3 per lane; needs a primary sample first.`,
+                    });
+                  }
+                }}
+                onClearLaneVariants={(lane) => {
+                  engineRef.current?.clearBeatLaneVariants(lane);
+                  touchDirty();
+                }}
+                onToggleEnabled={() => engineRef.current?.setBeatEnabled(!beat.enabled)}
+                onClear={() => engineRef.current?.setBeatPattern(emptyBeatPattern())}
+                onSuggestPattern={() => {
+                  const engine = engineRef.current;
+                  if (!engine) return;
+                  const bpm = transport?.bpm ?? 120;
+                  const fresh = suggestPattern(beat.kit, bpm);
+                  engine.setBeatPattern(fresh);
+                  pushAuditEvent("beat", `Suggested fresh ${beat.kit} pattern @ ${Math.round(bpm)} BPM`);
+                  setNotice({ tone: "success", message: `New ${beat.kit} pattern. Click again for a different one.` });
+                }}
+                onRenderToTrack={renderBeatToTrack}
+                onSelectBank={(bank) => engineRef.current?.setActivePatternBank(bank)}
+                onCopyPatternToBank={(target) => {
+                  engineRef.current?.copyActivePatternToBank(target);
+                  touchDirty();
+                  setNotice({
+                    tone: "success",
+                    message: `Pattern copied to bank ${target}.`,
+                  });
+                }}
+                onSelectKit={(kit) => engineRef.current?.setBeatKit(kit)}
+                onBrowseKitPacks={() => setKitMarketplaceOpen(true)}
+                onAssignLaneSample={assignBeatLaneSample}
+                onClearLaneSample={clearBeatLaneSample}
+                onFillLane={(lane, on) => {
+                  applyBeatLaneSteps(lane, Array(STEPS).fill(on));
+                }}
+                onRandomizeLane={(lane, density) => {
+                  applyBeatLaneSteps(
+                    lane,
+                    Array.from({ length: STEPS }, (_, index) => {
+                      if (index % 4 === 0) return Math.random() < Math.max(density, 0.55);
+                      return Math.random() < density;
+                    }),
+                  );
+                }}
+                onShiftLane={(lane, direction) => {
+                  const current = beat.pattern[lane];
+                  const offset = direction === "left" ? -1 : 1;
+                  const shifted = Array.from({ length: STEPS }, (_, index) => {
+                    const source = (index - offset + STEPS) % STEPS;
+                    return Boolean(current[source]);
+                  });
+                  applyBeatLaneSteps(lane, shifted);
+                }}
+                previewRecommendation={previewRecommendation}
+                onTogglePreviewRecommendation={togglePreviewRecommendation}
+                rendering={renderingBeat}
+              />
             </section>
           )}
 
@@ -3697,7 +3830,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                 Publish
               </div>
               <p className="mt-1 text-[11px] text-white/55">
-                Master metering + the publish bar live below.
+                Master metering, release checks, and export actions stay in the
+                legacy panel set. Turn off Pro mode in the drawer when you need
+                the full publishing stack.
               </p>
             </section>
           )}
@@ -3706,11 +3841,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         <StudioSideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
           <div className="space-y-4 text-xs text-white/80">
             <p className="rounded-md border border-white/10 bg-white/[0.03] p-2 text-[11px]">
-              Everything that used to clutter the workspace lives here now —
-              audio settings, recording controls, tempo map, sample chopper,
-              mix tools, master metering. Scroll the page beneath this
-              drawer to find each panel; this drawer is a quick-access
-              index.
+              Pro mode keeps the workspace locked to one focused surface:
+              Edit, Mix, Beat, or Publish. Turn Pro mode off here only when
+              you need the older stacked utility panels.
             </p>
             {[
               { section: "audio-settings", label: "⚙ Audio engine settings" },
@@ -3721,9 +3854,9 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
                 key={item.section}
                 type="button"
                 onClick={() => {
+                  setProMode(false);
                   setDrawerOpen(false);
-                  // Scroll the legacy panel into view. Each panel
-                  // already carries data-studio-section.
+                  // Scroll the legacy panel into view after it remounts.
                   window.setTimeout(() => {
                     const el = document.querySelector(`[data-studio-section="${item.section}"]`);
                     el?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3749,11 +3882,8 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </StudioSideDrawer>
       </div>
     )}
-    {/* Legacy panels live below the Pro Tools view. The user can
-        scroll for the full surface (mix tools, beat grid, master);
-        the edit window above covers 90% of the recording workflow.
-        Toggle off in the drawer to fall back to the old stacked
-        layout. */}
+    {/* Legacy stacked panels render here only when Pro mode is disabled;
+        modals and global notices still share this content root. */}
     <div data-studio-content className={`${hideLegacyForCompactMix ? "hidden" : ""} relative mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8`}>
       <div
         aria-hidden
@@ -3764,7 +3894,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         <div className="absolute bottom-20 left-1/4 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl" />
       </div>
 
-      {!mobileDawBannerDismissed && (
+      {!proMode && !mobileDawBannerDismissed && (
         <MobileDawBanner
           onDismiss={() => {
             safeLocalStorageSet("ems-studio-mobile-banner-dismissed-v1", "1");
@@ -4709,7 +4839,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
 
       {/* Production utilities panel — reverse, vocal stack, stem
           export, reference loader, stutter. Targets the focused track. */}
-      {engineRef.current && (
+      {!proMode && engineRef.current && (
         <div className="mb-6">
           <StudioToolsPanel
             engine={engineRef.current}
@@ -4726,7 +4856,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       {/* Tempo map editor + sample-chopper opener. Tempo map is the
           "BPM ramp" tool; the sample chopper is one-tap to drop a
           breakbeat as N sliced tracks. */}
-      {engineRef.current && transport && (
+      {!proMode && engineRef.current && transport && (
         <div className="mb-6 grid gap-2 lg:grid-cols-2">
           <TempoMapEditor
             engine={engineRef.current}
@@ -4754,7 +4884,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </div>
       )}
 
-      {!showSplash && (
+      {!proMode && !showSplash && (
         <div className="mb-5 grid gap-2 sm:grid-cols-5">
           <StatusPill
             label="Armed Tracks"
@@ -4791,7 +4921,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </div>
       )}
 
-      {!showSplash && transport && showMixTools && (
+      {!proMode && !showSplash && transport && showMixTools && (
         <div className="mb-5 grid gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-3 lg:grid-cols-[auto_1fr_auto]">
           <label className="flex items-center gap-2 text-xs font-semibold text-white/70">
             Solo mode
@@ -4879,7 +5009,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </div>
       )}
 
-      {!showSplash && transport && showMixTools && (
+      {!proMode && !showSplash && transport && showMixTools && (
         <AflBusPanel
           mode={transport.soloMode}
           level={transport.aflBusLevel}
@@ -4892,7 +5022,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           Coach / Record Readiness Wizard / Loudness Assistant — which are
           all advisory helpers, not primary controls — render below the
           tracks so they don't push the actual workspace off-screen. */}
-      {showRecordTools && <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+      {!proMode && showRecordTools && <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
         {showSplash && (
           <div className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-8 text-center">
             <p className="text-sm font-semibold text-white/80">
@@ -5118,7 +5248,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           render below the tracks. They suggest sound presets, walk you
           through a healthy record session, and meter master loudness —
           all secondary to the actual track surface above. */}
-      {!showSplash && (
+      {!proMode && !showSplash && (
         <StudioSoundCoach
           transport={transport ?? null}
           onPreset={applySoundPreset}
@@ -5132,7 +5262,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         />
       )}
 
-      {!showSplash && showRecordWizard && (
+      {!proMode && !showSplash && showRecordWizard && (
         <RecordReadinessWizard
           browserHealth={browserHealth}
           transport={transport ?? null}
@@ -5148,7 +5278,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         />
       )}
 
-      {!showSplash && (
+      {!proMode && !showSplash && (
         <MasterLoudnessAssistant
           masterLufs={transport?.masterLufs ?? -60}
           masterTruePeak={transport?.masterTruePeak ?? 0}
@@ -5158,7 +5288,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         />
       )}
 
-      {!showSplash && transport && (
+      {!proMode && !showSplash && transport && (
         <MixIntelligencePanel
           spectrum={transport.masterSpectrum}
           masterLufs={transport.masterLufs}
@@ -5182,10 +5312,10 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         />
       )}
 
-      {!showSplash && snapshot && showMixTools && <AuxReturnPanel aux={snapshot.aux} />}
+      {!proMode && !showSplash && snapshot && showMixTools && <AuxReturnPanel aux={snapshot.aux} />}
 
       {/* ── Beat Machine ───────────────────────────────────────────────────── */}
-      {!showSplash && beat && showArrangeTools && (
+      {!proMode && !showSplash && beat && showArrangeTools && (
         <div className="relative mb-6" data-tour="beat-grid" data-collab-surface="grid">
           <CollaboratorCursors surface="grid" collaborators={collaborators} />
           <BeatMachineGrid
@@ -5359,7 +5489,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       )}
 
       {/* ── Sample Library + Stem Loop Browser side-by-side on desktop ─── */}
-      {!showSplash && (showArrangeTools || showRecordTools) && (
+      {!proMode && !showSplash && (showArrangeTools || showRecordTools) && (
         <div className="mb-6 grid gap-3 lg:grid-cols-2">
           {heavyUiReady ? (
             <>
@@ -5429,7 +5559,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </div>
       )}
 
-      {!showSplash && (showArrangeTools || showRecordTools) && (
+      {!proMode && !showSplash && (showArrangeTools || showRecordTools) && (
         <div className="mb-6 space-y-3">
           <ProducerKitUploader onImportFiles={importSoundKitFiles} />
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/30 p-2">
@@ -5483,7 +5613,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       )}
 
       {/* ── Gear Rack ──────────────────────────────────────────────────────── */}
-      {!showSplash && focusedTrack && showMixTools && (
+      {!proMode && !showSplash && focusedTrack && showMixTools && (
         <div className="mb-6">
           <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/35">
             Applies to focused track:{" "}
@@ -5496,7 +5626,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       )}
 
       {/* ── MIDI Synth ─────────────────────────────────────────────────────── */}
-      {!showSplash && snapshot && showArrangeTools && heavyUiReady && (
+      {!proMode && !showSplash && snapshot && showArrangeTools && heavyUiReady && (
         <div className="mb-6 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
             <div>
@@ -5572,7 +5702,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       )}
 
       {/* ── Master mastering panel — EQ + spectrum + LUFS ───────────────── */}
-      {!showSplash && transport && showPublishTools && heavyUiReady && (
+      {!proMode && !showSplash && transport && showPublishTools && heavyUiReady && (
         <div className="mb-6" data-tour="master-panel">
           <MasterPanel
             spectrum={transport.masterSpectrum}
@@ -5635,7 +5765,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
       )}
 
       {/* ── Master + Publish ───────────────────────────────────────────────── */}
-      {!showSplash && transport && showPublishTools && (
+      {!proMode && !showSplash && transport && showPublishTools && (
         <MasterPublishBar
           limiterOn={transport.masterLimiterOn}
           canExport={canExport}
@@ -5795,7 +5925,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
           project name, track / take counts, session minutes, and the
           "Tracked at EMS Studio" watermark. Producers post it to
           Stories / Twitter to flex the work. */}
-      {!showSplash && showPublishTools && transport && (
+      {!proMode && !showSplash && showPublishTools && transport && (
         <div className="mb-6 max-w-md">
           <SessionReceiptCard
             projectName={projectName}
@@ -5812,7 +5942,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         </div>
       )}
 
-      {!showSplash && showPublishTools && heavyUiReady && (
+      {!proMode && !showSplash && showPublishTools && heavyUiReady && (
         <CollaborationPresencePanel
           selfId={clientPresenceId}
           sessionId={projectId}
@@ -5841,7 +5971,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
         />
       )}
 
-      {!showSplash && showPublishTools && heavyUiReady && !isGuest && (
+      {!proMode && !showSplash && showPublishTools && heavyUiReady && !isGuest && (
         <StudioMonetizationPanel
           onAudit={pushAuditEvent}
           onNotice={setNotice}
