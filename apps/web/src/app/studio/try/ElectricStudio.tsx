@@ -14,6 +14,7 @@ import type {
 } from "./studio/types";
 import {
   buildPersistableTracks,
+  fetchProductionStudioSession,
   fetchRecentStudioProjects,
   restorePersistedTracks,
   studioFetchJson,
@@ -262,8 +263,13 @@ export default function ElectricStudio() {
     if (dirty && !window.confirm("Open another session and discard unsaved changes?")) return;
     try {
       setBusy(true);
-      const data = await studioFetchJson<{ project: Parameters<typeof studioProjectToSession>[0] }>(`/api/studio/projects/${id}`);
-      const saved = studioProjectToSession(data.project);
+      let saved: StudioSavedSession;
+      try {
+        saved = await fetchProductionStudioSession(id);
+      } catch {
+        const data = await studioFetchJson<{ project: Parameters<typeof studioProjectToSession>[0] }>(`/api/studio/projects/${id}`);
+        saved = studioProjectToSession(data.project);
+      }
       stopTransport(true);
       setSessionId(saved.id);
       setTitle(saved.title);
@@ -302,13 +308,50 @@ export default function ElectricStudio() {
     commit(`Revert snapshot: ${item.label}`, () => cloneTracks(item.tracks));
   }
 
+  async function ensureCloudProject() {
+    if (offline) throw new Error("Offline: cloud audio upload is unavailable.");
+    setSaveStatus("Preparing cloud project...");
+    const saved = buildSession(sessionId, title);
+    const data = await studioFetchJson<{ project: { id: string; name: string } }>("/api/studio/projects", {
+      method: "POST",
+      body: JSON.stringify(toStudioProjectPayload(saved, false)),
+    });
+    setSessionId(data.project.id);
+    setTitle(data.project.name);
+    await refreshRecent();
+    return data.project.id;
+  }
+
+  async function uploadStudioAudio(blob: Blob, fileName: string, type: string, decoded: Awaited<ReturnType<typeof decodeStudioAudio>>, targetTrackId?: string, start = 0, color = colors[tracks.length % colors.length]) {
+    const projectId = await ensureCloudProject();
+    const file = blob instanceof File ? blob : new File([blob], fileName, { type: type || blob.type || "audio/webm" });
+    const form = new FormData();
+    form.append("file", file, fileName);
+    form.append("durationSec", String(decoded.duration));
+    form.append("createClip", "true");
+    form.append("startSec", String(start));
+    form.append("color", color);
+    form.append("peaksJson", JSON.stringify(decoded.peaks));
+    if (targetTrackId) form.append("trackId", targetTrackId);
+
+    const res = await fetch(`/api/studio/projects/${projectId}/audio/upload`, { method: "POST", body: form });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || typeof body.url !== "string" || !body.url) {
+      throw new Error(typeof body.error === "string" ? body.error : "Cloud audio upload failed.");
+    }
+    return { projectId, url: body.url as string, clipId: typeof body.clip?.id === "string" ? body.clip.id as string : uid("clip") };
+  }
+
   async function createClipFromBlob(blob: Blob, fileName: string, type: string, targetTrackId?: string, start = 0) {
     const decoded = await decodeStudioAudio(blob);
     const color = colors[tracks.length % colors.length];
+    setSampleRate(decoded.sampleRate);
+    setSaveStatus("Uploading audio to cloud...");
+    const uploaded = await uploadStudioAudio(blob, fileName, type, decoded, targetTrackId, start, color);
     const clip: StudioClip = {
-      id: uid("clip"),
+      id: uploaded.clipId,
       name: fileName,
-      url: URL.createObjectURL(blob),
+      url: uploaded.url,
       type: type || "audio/*",
       size: blob.size,
       duration: decoded.duration,
@@ -322,12 +365,13 @@ export default function ElectricStudio() {
       muted: false,
       locked: false,
       color,
+      missing: false,
     };
-    setSampleRate(decoded.sampleRate);
     if (targetTrackId) {
-      commit("Record/import clip", (draft) => draft.map((track) => track.id === targetTrackId ? { ...track, clips: [...track.clips, clip].sort((a, b) => a.start - b.start) } : track));
+      commit("Cloud audio clip added", (draft) => draft.map((track) => track.id === targetTrackId ? { ...track, clips: [...track.clips, clip].sort((a, b) => a.start - b.start) } : track));
       setSelectedTrackId(targetTrackId);
       setSelectedClipId(clip.id);
+      await saveSession(title, false, true);
       return;
     }
     const track: StudioTrack = {
@@ -342,9 +386,10 @@ export default function ElectricStudio() {
       inputGain: 60,
       clips: [clip],
     };
-    commit("Import audio track", (draft) => [...draft, track]);
+    commit("Cloud audio track imported", (draft) => [...draft, track]);
     setSelectedTrackId(track.id);
     setSelectedClipId(clip.id);
+    await saveSession(title, false, true);
   }
 
   async function importFiles(files: FileList | File[]) {
@@ -354,8 +399,10 @@ export default function ElectricStudio() {
     setError(null);
     try {
       for (const file of audioFiles) await createClipFromBlob(file, file.name, file.type || "audio/*");
+      setSaveStatus("Imported audio saved to cloud");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Audio could not be decoded. Try WAV or MP3.");
+      setError(err instanceof Error ? err.message : "Audio could not be decoded or uploaded. Try WAV or MP3.");
+      setSaveStatus("Import failed");
     } finally {
       setBusy(false);
     }
@@ -365,9 +412,12 @@ export default function ElectricStudio() {
     setBusy(true);
     try {
       const decoded = await decodeStudioAudio(file);
-      const url = URL.createObjectURL(file);
-      commit("Relink missing audio", (draft) => draft.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, name: file.name, url, type: file.type || "audio/*", size: file.size, duration: decoded.duration, peaks: decoded.peaks, missing: false } : clip) })));
+      const currentClip = tracks.flatMap((track) => track.clips).find((clip) => clip.id === clipId);
+      const currentTrack = tracks.find((track) => track.clips.some((clip) => clip.id === clipId));
+      const uploaded = await uploadStudioAudio(file, file.name, file.type || "audio/*", decoded, currentTrack?.id, currentClip?.start ?? 0, currentClip?.color ?? "#65d6ff");
+      commit("Relink cloud audio", (draft) => draft.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, name: file.name, url: uploaded.url, type: file.type || "audio/*", size: file.size, duration: decoded.duration, peaks: decoded.peaks, missing: false } : clip) })));
       setSampleRate(decoded.sampleRate);
+      await saveSession(title, false, true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not relink this file.");
     } finally {
@@ -391,7 +441,16 @@ export default function ElectricStudio() {
         const blob = new Blob(chunks.current, { type: rec.mimeType || "audio/webm" });
         if (!blob.size) return;
         const target = armedTrack?.id;
-        await createClipFromBlob(blob, `Take ${new Date().toLocaleTimeString()}.webm`, rec.mimeType || "audio/webm", target, playhead);
+        setBusy(true);
+        try {
+          await createClipFromBlob(blob, `Take ${new Date().toLocaleTimeString()}.webm`, rec.mimeType || "audio/webm", target, playhead);
+          setSaveStatus("Recording saved to cloud");
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Recording could not be uploaded.");
+          setSaveStatus("Recording upload failed");
+        } finally {
+          setBusy(false);
+        }
       };
       recorder.current = rec;
       rec.start();
@@ -532,7 +591,7 @@ export default function ElectricStudio() {
   }
 
   function exportArchive() {
-    const archive = { ...buildSession(), exportedAt: new Date().toISOString(), note: "Project metadata is cloud-backed through /api/studio/projects. Relink any temporary blob-only audio before archiving." };
+    const archive = { ...buildSession(), exportedAt: new Date().toISOString(), note: "Project metadata and imported audio are cloud-backed. Use project restore to reload durable audio sources." };
     const blob = new Blob([JSON.stringify(archive, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
