@@ -93,16 +93,19 @@ function BeatTransport({
     setLibraryStatus("loading");
     try {
       const res = await fetch("/api/studio/sounds/library?limit=200", { cache: "no-store" });
-      if (!res.ok) throw new Error("Library fetch failed");
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Live library fetch failed");
+      if (data?.backend !== "supabase") throw new Error("Live Supabase backend is not available");
       const loaded = Array.isArray(data?.sounds) ? data.sounds as StudioSoundAsset[] : [];
       setFactorySounds(loaded);
       setFactoryCounts(data?.categories && typeof data.categories === "object" ? data.categories : {});
       setLibraryStatus("ready");
-      notify(`Loaded ${loaded.length} Supabase sounds.`);
-    } catch {
+      notify(`Loaded ${loaded.length} live Supabase sounds.`);
+    } catch (error) {
+      setFactorySounds([]);
+      setFactoryCounts({});
       setLibraryStatus("error");
-      notify("Could not load Supabase sound suite.");
+      notify(error instanceof Error ? error.message : "Live Supabase sound suite is unavailable.");
     }
   }
 
@@ -141,28 +144,16 @@ function BeatTransport({
         form.append("instrument", selectedInstrument);
 
         const res = await fetch("/api/studio/sounds/upload", { method: "POST", body: form });
-        if (res.ok) {
-          const data = await res.json();
-          onSoundUploaded(data.sound as StudioSoundAsset);
-          notify(`Uploaded ${file.name}`);
-        } else {
-          const fallbackUrl = URL.createObjectURL(file);
-          onSoundUploaded({
-            id: `local-${Date.now()}-${file.name}`,
-            name: file.name,
-            url: fallbackUrl,
-            source: "upload",
-            kit: selectedKit,
-            instrument: selectedInstrument,
-            category: "misc",
-            createdAt: new Date().toISOString(),
-          });
-          notify(`Loaded ${file.name} locally. Cloud upload is unavailable.`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.sound) {
+          throw new Error(data?.error ?? `Upload failed for ${file.name}.`);
         }
+        onSoundUploaded(data.sound as StudioSoundAsset);
+        notify(`Uploaded ${file.name} to live storage.`);
       }
       await loadFactorySounds();
-    } catch {
-      notify("Sound upload failed. The studio kept running safely.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Sound upload failed. No local demo copy was loaded.");
     } finally {
       setUploading(false);
     }
@@ -181,7 +172,7 @@ function BeatTransport({
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-green-200/70">Producer sound suite</p>
           <p className="mt-0.5 text-[10px] text-white/35">
-            {libraryStatus === "loading" ? "Loading Supabase audio-assets..." : libraryStatus === "ready" ? `${factorySounds.length} factory sounds · ${sounds.length} user sounds` : libraryStatus === "error" ? "Supabase suite unavailable · local sounds active" : "Sound suite ready"}
+            {libraryStatus === "loading" ? "Loading live Supabase audio-assets..." : libraryStatus === "ready" ? `${factorySounds.length} live sounds · ${sounds.length} user uploads` : libraryStatus === "error" ? "Live Supabase suite unavailable · no demo sounds loaded" : "Sound suite ready"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -229,7 +220,7 @@ function BeatTransport({
           <span className="truncate text-[10px] font-bold text-cyan-100">{selectedInstrument} · {SOUND_KITS.find((kit) => kit.value === selectedKit)?.label ?? selectedKit}</span>
         </div>
         <div className="mt-2 flex gap-2">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search 808, violin, piano, snare..." className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101820] px-3 py-2 text-xs text-white outline-none placeholder:text-white/25 focus:border-cyan-300/50" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search live sounds: 808, violin, piano, snare..." className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101820] px-3 py-2 text-xs text-white outline-none placeholder:text-white/25 focus:border-cyan-300/50" />
           <select value={category} onChange={(event) => setCategory(event.target.value as "all" | StudioSoundCategory)} className="rounded-lg border border-white/10 bg-[#101820] px-2 py-2 text-xs font-bold text-white outline-none focus:border-cyan-300/50">
             {CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}{item.value !== "all" && factoryCounts[item.value] ? ` (${factoryCounts[item.value]})` : ""}</option>)}
           </select>
@@ -254,7 +245,7 @@ function BeatTransport({
             ))}
           </div>
         ) : (
-          <p className="mt-2 text-[10px] text-white/35">No sounds match this filter yet. Upload more WAV/MP3 files or refresh the suite.</p>
+          <p className="mt-2 text-[10px] text-white/35">No live sounds available for this filter. Upload to Supabase or refresh the live suite.</p>
         )}
       </div>
     </div>
