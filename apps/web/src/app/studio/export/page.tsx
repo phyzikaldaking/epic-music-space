@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function StudioExportPage() {
   return (
     <div className={styles.cleanStudio}>
-      <ElectricStudio initialMode="export" />
+      <ElectricStudio />
     </div>
   );
 }
