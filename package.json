@@ -10,7 +10,7 @@
     "test": "npm --workspace apps/web run test && npm --workspace apps/api run test && npm --workspace packages/db run test && npm --workspace packages/utils run test",
     "preflight": "bash scripts/preflight.sh",
     "secrets:check": "bash scripts/ops/check-tracked-secrets.sh",
-    "smoke": "node scripts/smoke.mjs",
+    "smoke": "node scripts/ops/smoke-test.mjs",
     "prepare": "if [ -d .git ]; then git config core.hooksPath .husky; fi",
     "test:web": "npm --workspace apps/web run test",
     "test:api": "npm --workspace apps/api run test",
@@ -21,7 +21,7 @@
     "build:ems": "npm run build",
     "build:credit-care": "npm --workspace apps/credit-care run build",
     "build:turbo": "turbo run build",
-    "build:web": "npm run clean:web && npx prisma generate --schema packages/db/prisma/schema.prisma && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && npm --workspace apps/web run build",
+    "build:web": "npm run clean:web && PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma generate --schema packages/db/prisma/schema.prisma && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && npm --workspace apps/web run build",
     "clean:web": "rm -rf apps/web/.next",
     "dev": "turbo run dev",
     "dev:ems": "turbo run dev --filter=@ems/*",
@@ -43,7 +43,6 @@
     "reliability:smoke": "node scripts/ops/smoke.mjs",
     "reliability:auth-smoke": "node scripts/ops/auth-smoke.mjs",
     "reliability:mobile": "node scripts/ops/mobile-reliability.mjs",
-    "smoke": "node scripts/ops/smoke-test.mjs",
     "reliability:synthetics": "node scripts/ops/synthetics.mjs",
     "perf:budget": "node scripts/ops/perf-budget.mjs",
     "loadtest:core": "k6 run scripts/loadtest/core.k6.js",
@@ -61,7 +60,7 @@
     "supabase:link": "node scripts/ops/supabase-link.mjs",
     "supabase:storage": "node scripts/ops/setup-storage.mjs",
     "demo:upload": "node scripts/ops/upload-demo-tracks.mjs",
-    "vercel:build": "npm run clean:web && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma migrate deploy --schema packages/db/prisma/schema.prisma && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma generate --schema packages/db/prisma/schema.prisma && mkdir -p apps/web/packages/db/generated/client && find packages/db/generated/client -name '*.node' -exec cp {} apps/web/packages/db/generated/client/ \\; && npm --workspace apps/web run build"
+    "vercel:build": "npm run clean:web && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma migrate deploy --schema packages/db/prisma/schema.prisma && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma generate --schema packages/db/prisma/schema.prisma && mkdir -p apps/web/packages/db/generated/client && find packages/db/generated/client -name '*.node' -exec cp {} apps/web/packages/db/generated/client/ \\; && npm --workspace apps/web run build"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

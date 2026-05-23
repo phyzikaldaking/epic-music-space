@@ -5,14 +5,14 @@
   "main": "./generated/client/index.js",
   "types": "./generated/client/index.d.ts",
   "scripts": {
-    "db:generate": "prisma generate",
+    "db:generate": "PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "ts-node prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pretest": "prisma generate || echo \"[warn] prisma generate failed; using checked-in generated client\""
+    "pretest": "npm run db:generate"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
