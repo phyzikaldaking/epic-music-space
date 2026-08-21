@@ -28,8 +28,11 @@ function hasUrl(value: string) {
 }
 
 export function validateCriticalEnvironment(env: EnvSource = process.env): CriticalEnvReport {
-  const envName = readEnv(env, "VERCEL_ENV") || readEnv(env, "NODE_ENV") || "unknown";
-  const isProductionLike = readEnv(env, "VERCEL_ENV") === "production";
+  const vercelEnvironment = readEnv(env, "VERCEL_ENV").toLowerCase();
+  const railwayEnvironment = readEnv(env, "RAILWAY_ENVIRONMENT_NAME").toLowerCase();
+  const envName = vercelEnvironment || railwayEnvironment || readEnv(env, "NODE_ENV") || "unknown";
+  const isProductionLike =
+    vercelEnvironment === "production" || railwayEnvironment === "production";
   const issues: CriticalEnvIssue[] = [];
 
   const addIssue = (severity: CriticalEnvSeverity, code: string, message: string) => {

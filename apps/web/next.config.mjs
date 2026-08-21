@@ -51,6 +51,7 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  ...(process.env.RAILWAY_STANDALONE === "true" ? { output: "standalone" } : {}),
   compress: true,
   outputFileTracingRoot: path.resolve(__dirname, "../.."),
   outputFileTracingIncludes: {

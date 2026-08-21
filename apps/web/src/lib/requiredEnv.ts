@@ -177,6 +177,7 @@ export function assertRequiredEnvOnBoot(): void {
   // Set REQUIRED_ENV_STRICT=1 to force strict behavior outside production.
   const isStrictMode =
     process.env.VERCEL_ENV === "production" ||
+    process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "production" ||
     process.env.REQUIRED_ENV_STRICT === "1";
 
   // Single-line summary first — easy to grep in logs.
