@@ -40,6 +40,18 @@ if (phase === "build") {
     command =
       "npx prisma generate --schema packages/db/prisma/schema.prisma";
   } else {
+    const requiredDatabaseVariables = ["DATABASE_URL", "DIRECT_URL"];
+    const missingDatabaseVariables = requiredDatabaseVariables.filter(
+      (name) => !(process.env[name] ?? "").trim(),
+    );
+
+    if (missingDatabaseVariables.length > 0) {
+      console.error(
+        `[railway] Web build stopped before dependency compilation: missing ${missingDatabaseVariables.join(", ")}. Configure the existing production database URLs on the Railway web service before redeploying.`,
+      );
+      process.exit(1);
+    }
+
     env.RAILWAY_STANDALONE = "true";
     command =
       "npx prisma generate --schema packages/db/prisma/schema.prisma && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && npm --workspace apps/web run build && mkdir -p apps/web/.next/standalone/apps/web/.next && cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static && cp -R apps/web/public apps/web/.next/standalone/apps/web/public";
