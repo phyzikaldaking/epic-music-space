@@ -10,13 +10,13 @@
  */
 
 import { Worker } from "bullmq";
-import { getRedis } from "../lib/redis";
+import { getBullMqRedis } from "../lib/redis";
 import { prisma } from "../lib/prisma";
 import { QUEUE_NAMES } from "../lib/queueNames";
 import type { NotificationJobData } from "../lib/queues";
 import type { Prisma } from "@ems/db";
 
-const connection = getRedis();
+const connection = getBullMqRedis();
 
 if (!connection) {
   console.error(
