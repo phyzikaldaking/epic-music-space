@@ -33,6 +33,23 @@ describe("validateCriticalEnvironment", () => {
     );
   });
 
+  it("treats the Railway production environment as production-like", () => {
+    const report = validateCriticalEnvironment({
+      RAILWAY_ENVIRONMENT_NAME: "production",
+      DATABASE_URL: "",
+      DIRECT_URL: "",
+    });
+
+    expect(report.isProductionLike).toBe(true);
+    expect(report.envName).toBe("production");
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "missing_database_url", severity: "error" }),
+        expect.objectContaining({ code: "missing_redis_url", severity: "error" }),
+      ]),
+    );
+  });
+
   it("warns when Redis is absent and LiveKit is partially configured", () => {
     const report = validateCriticalEnvironment({
       NODE_ENV: "development",
