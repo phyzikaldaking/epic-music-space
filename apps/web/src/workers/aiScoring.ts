@@ -12,14 +12,14 @@
  */
 
 import { Worker } from "bullmq";
-import { getRedis } from "../lib/redis";
+import { getBullMqRedis } from "../lib/redis";
 import { prisma } from "../lib/prisma";
 import { analyseSong } from "../lib/ai";
 import { calculateAiScore, scoreToDistrict } from "../lib/scoring";
 import { QUEUE_NAMES } from "../lib/queueNames";
 import type { AiScoringJobData } from "../lib/queues";
 
-const connection = getRedis();
+const connection = getBullMqRedis();
 
 if (!connection) {
   console.error(
