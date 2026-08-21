@@ -1,6 +1,6 @@
 import { Worker } from "bullmq";
 import { PostHog } from "posthog-node";
-import { getRedis } from "../lib/redis";
+import { getBullMqRedis } from "../lib/redis";
 import { QUEUE_NAMES } from "../lib/queueNames";
 import type { AnalyticsJobData } from "../lib/queues";
 
@@ -9,7 +9,7 @@ function hasValidPostHogApiKey() {
   return Boolean(apiKey && apiKey.startsWith("phc_"));
 }
 
-const connection = getRedis();
+const connection = getBullMqRedis();
 
 if (!connection) {
   console.error("[analytics-worker] REDIS_URL is not set — worker cannot start");

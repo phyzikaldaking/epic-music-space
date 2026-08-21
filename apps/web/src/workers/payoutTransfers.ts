@@ -10,7 +10,7 @@
  */
 
 import { Worker } from "bullmq";
-import { getRedis } from "../lib/redis";
+import { getBullMqRedis } from "../lib/redis";
 import { prisma } from "../lib/prisma";
 import { stripe } from "../lib/stripe";
 import { sendPayPalPayout } from "../lib/paypal";
@@ -19,7 +19,7 @@ import type { PayoutTransferJobData } from "../lib/queues";
 import { enqueueNotification, payoutDeadLetterQueue } from "../lib/queues";
 import { page } from "../lib/pager";
 
-const connection = getRedis();
+const connection = getBullMqRedis();
 
 if (!connection) {
   console.error(

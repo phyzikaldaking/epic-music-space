@@ -2,6 +2,8 @@ import type Redis from "ioredis";
 
 let redis: Redis | null = null;
 let redisUrl: string | null = null;
+let bullMqRedis: Redis | null = null;
+let bullMqRedisUrl: string | null = null;
 
 function hasUsableRedisUrl(value: string): boolean {
   try {
@@ -18,16 +20,21 @@ function hasUsableRedisUrl(value: string): boolean {
   }
 }
 
+function readRedisUrl(): string | null {
+  // Hosting env entries are sometimes pasted with wrapping quotes. Strip
+  // them so a valid `redis://` or `rediss://` URL is not rejected.
+  const raw = process.env.REDIS_URL ?? "";
+  const url = raw.trim().replace(/^['"]|['"]$/g, "");
+  return url && hasUsableRedisUrl(url) ? url : null;
+}
+
 /**
  * Returns a shared ioredis client, or null when REDIS_URL is not configured.
  * All callers must handle the null case; Redis features degrade gracefully.
  */
 export function getRedis(): Redis | null {
-  // Vercel/CI env entries are sometimes pasted with wrapping quotes. Strip
-  // them so a valid `redis://` URL doesn't get rejected.
-  const raw = process.env.REDIS_URL ?? "";
-  const url = raw.trim().replace(/^['"]|['"]$/g, "");
-  if (!url || !hasUsableRedisUrl(url)) return null;
+  const url = readRedisUrl();
+  if (!url) return null;
 
   if (!redis || redisUrl !== url) {
     redisUrl = url;
@@ -56,6 +63,39 @@ export function getRedis(): Redis | null {
   }
 
   return redis;
+}
+
+/**
+ * Returns a dedicated connection for BullMQ workers.
+ *
+ * BullMQ requires maxRetriesPerRequest=null for long-lived consumers. The
+ * normal web/cache client deliberately keeps finite retries so HTTP requests
+ * fail fast during a Redis outage.
+ */
+export function getBullMqRedis(): Redis | null {
+  const url = readRedisUrl();
+  if (!url) return null;
+
+  if (!bullMqRedis || bullMqRedisUrl !== url) {
+    bullMqRedisUrl = url;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const RedisCtor = (require("ioredis") as typeof import("ioredis")).default;
+    bullMqRedis = new RedisCtor(url, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: true,
+      lazyConnect: true,
+    });
+
+    bullMqRedis.on("error", (err: Error) => {
+      console.error("[redis.worker] Connection error:", err.message);
+    });
+
+    bullMqRedis.on("connect", () => {
+      console.info("[redis.worker] Connected");
+    });
+  }
+
+  return bullMqRedis;
 }
 
 // ---------------------------------------------------------
