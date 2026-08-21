@@ -10,13 +10,7 @@ name: Post-deploy smoke
 # failed within a minute of that deploy going Ready.
 
 on:
-  deployment_status:
   workflow_dispatch:
-    inputs:
-      base_url:
-        description: "Override target URL (default: production)"
-        required: false
-        default: "https://epicmusicspace.com"
 
 jobs:
   smoke:

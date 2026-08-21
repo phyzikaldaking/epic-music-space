@@ -1,12 +1,7 @@
 name: Deploy Workers to Render
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/web/src/workers/**'
-      - 'apps/web/src/lib/**'
-      - 'render.yaml'
+  workflow_dispatch:
 
 jobs:
   deploy:
