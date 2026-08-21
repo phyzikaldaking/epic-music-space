@@ -20,7 +20,7 @@
  * never lost. The worker just makes that path concurrent + retried.
  */
 import { Worker } from "bullmq";
-import { getRedis } from "../src/lib/redis";
+import { getBullMqRedis } from "../src/lib/redis";
 import { QUEUE_NAMES } from "../src/lib/queueNames";
 import { prisma } from "../src/lib/prisma";
 import type { Prisma } from "@ems/db";
@@ -69,7 +69,7 @@ async function processJob(data: NotificationJob) {
 }
 
 async function main() {
-  const connection = getRedis();
+  const connection = getBullMqRedis();
   if (!connection) {
     console.error("[notifications-worker] Redis not configured — exiting");
     process.exit(1);
