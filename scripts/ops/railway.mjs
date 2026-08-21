@@ -2,11 +2,8 @@ import { spawn } from "node:child_process";
 
 const phase = process.argv[2];
 const serviceName = (process.env.RAILWAY_SERVICE_NAME ?? "").trim().toLowerCase();
-const projectSlug = (process.env.RAILWAY_PROJECT_NAME ?? "")
-  .trim()
-  .toLowerCase()
-  .replace(/[^a-z0-9]+/g, "-")
-  .replace(/^-|-$/g, "");
+const allowedProjectId = "d1680973-9823-4b01-a279-c9668fd3fdd3";
+const projectId = (process.env.RAILWAY_PROJECT_ID ?? "").trim();
 
 const workers = {
   "ems-notifications-worker": {
@@ -21,7 +18,7 @@ const workers = {
 };
 
 const worker = workers[serviceName];
-const isUnusedProject = projectSlug && projectSlug !== "perceptive-reverence";
+const isUnusedProject = projectId && projectId !== allowedProjectId;
 
 if (!["build", "predeploy", "start"].includes(phase)) {
   console.error("[railway] Expected phase: build, predeploy, or start");
@@ -30,7 +27,7 @@ if (!["build", "predeploy", "start"].includes(phase)) {
 
 if (isUnusedProject) {
   console.log(
-    `[railway] Project ${process.env.RAILWAY_PROJECT_NAME} is disabled by repository policy; only Perceptive Reverence may run.`,
+    `[railway] Project ${process.env.RAILWAY_PROJECT_NAME ?? projectId} is disabled by repository policy; only Railway project ${allowedProjectId} may run.`,
   );
   process.exit(0);
 }
