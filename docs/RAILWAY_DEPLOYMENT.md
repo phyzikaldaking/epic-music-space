@@ -1,18 +1,19 @@
 # Railway deployment
 
-This repository deploys only the main Next.js web application to Railway. The API workspace, notification worker, payout worker, and the jobs listed in `vercel.json` are intentionally not started by this service.
+Railway lifecycle commands are dispatched by `RAILWAY_SERVICE_NAME`. The main Next.js application and the `ems-notifications-worker` and `ems-analytics-worker` services are supported in Perceptive Reverence. The API workspace, payout worker, AI-scoring worker, and the jobs listed in `vercel.json` are not enabled for the initial cutover.
 
 ## Service configuration
 
 Railway reads `railway.json` from the repository root.
 
 - Build: `npm run railway:build`
-- Pre-deploy migration: `npm run db:deploy`
+- Pre-deploy: `npm run railway:predeploy` (database migration for the web service; no-op for workers)
 - Start: `npm run railway:start`
-- Readiness check: `/api/health/ready`
-- Deploy triggers: web app, shared database/util packages, lockfile, or Railway config changes only
+- Web start: standalone Next.js server
+- Worker starts: notification or analytics BullMQ consumer selected by service name
+- Deploy triggers: web app, shared database/util packages, lifecycle dispatcher, lockfile, or Railway config changes only
 
-Do not add a Railway cron schedule or a second worker/API service during the initial cutover.
+Repository policy allows runtime services only in Perceptive Reverence. Services still connected from Earnest Celebration exit immediately and should be disconnected in Railway to stop duplicate builds and notifications. Do not add a Railway cron schedule, API service, payout worker, or AI-scoring worker during the initial cutover.
 
 ## Required variables
 
