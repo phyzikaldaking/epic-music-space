@@ -11,7 +11,15 @@ name: Mobile Sync
 # or Fastlane, extend this workflow.
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      # Only run when web or mobile config changes.
+      - "apps/web/**"
+      - "apps/mobile/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
 
 permissions:
   contents: read
