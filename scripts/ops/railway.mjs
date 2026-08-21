@@ -34,27 +34,28 @@ if (isUnusedProject) {
 
 let command;
 const env = { ...process.env };
+const databaseUrl = (
+  process.env.DATABASE_URL ??
+  process.env.DIRECT_URL ??
+  ""
+).trim();
+
+if (!worker && databaseUrl) {
+  env.DATABASE_URL = databaseUrl;
+  env.DIRECT_URL = (process.env.DIRECT_URL ?? "").trim() || databaseUrl;
+}
 
 if (phase === "build") {
   if (worker) {
     command =
       "npx prisma generate --schema packages/db/prisma/schema.prisma";
   } else {
-    const databaseUrl = (
-      process.env.DATABASE_URL ??
-      process.env.DIRECT_URL ??
-      ""
-    ).trim();
-
     if (!databaseUrl) {
       console.error(
         "[railway] Web build stopped before dependency compilation: configure DATABASE_URL (or DIRECT_URL) on the Railway web service before redeploying.",
       );
       process.exit(1);
     }
-
-    env.DATABASE_URL = databaseUrl;
-    env.DIRECT_URL = (process.env.DIRECT_URL ?? "").trim() || databaseUrl;
 
     env.RAILWAY_STANDALONE = "true";
     command =
