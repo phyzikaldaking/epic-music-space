@@ -1,5 +1,5 @@
 import { PrismaClient } from "@ems/db";
-import { resolvePrismaDatasourceUrl } from "@/lib/prismaDatasourceUrl";
+import { resolvePrismaDatasourceUrl } from "./prismaDatasourceUrl";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
