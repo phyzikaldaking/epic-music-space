@@ -4,63 +4,54 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import SignOutButton from "@/components/SignOutButton";
 
+const focusRing =
+  "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a96e]";
+
 export default function NavbarAuth() {
   const { data: session, status } = useSession();
 
   if (status === "loading") {
-    return <div className="h-9 w-24" aria-hidden="true" />;
+    return <div className="hidden h-9 w-24 sm:block" aria-hidden="true" />;
   }
 
   if (!session) {
     return (
-      <>
+      <div className="hidden items-center gap-4 sm:flex">
         <Link
           href="/auth/signin"
-          className="hidden rounded-md studio-faceplate-dark px-4 py-1.5 font-display text-sm uppercase tracking-[0.14em] text-white/80 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 sm:inline-flex"
+          className={`text-[11px] font-semibold uppercase tracking-[0.16em] text-[#d1cbc0]/65 transition hover:text-[#f2ede3] ${focusRing}`}
         >
           Sign in
         </Link>
         <Link
           href="/auth/signup"
-          className="studio-engage-btn hidden rounded-md px-4 py-1.5 font-display text-sm uppercase tracking-[0.14em] focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 sm:inline-flex"
+          className={`inline-flex min-h-10 items-center bg-[#c9a96e] px-5 text-[11px] font-bold uppercase tracking-[0.16em] text-[#080808] transition hover:bg-[#e0c48d] ${focusRing}`}
         >
-          Get started
+          Join
         </Link>
-      </>
+      </div>
     );
   }
 
-  const initial = (session.user?.name ?? session.user?.email ?? "?")[0]?.toUpperCase();
+  const initial = (session.user?.name ??
+    session.user?.email ??
+    "?")[0]?.toUpperCase();
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="hidden items-center gap-3 sm:flex">
       <Link
         href="/studio"
-        className="hidden rounded-md studio-faceplate-dark px-3 py-1.5 font-display text-sm uppercase tracking-[0.14em] text-white/80 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 sm:inline-flex"
+        className={`inline-flex min-h-10 items-center border border-[#c9a96e]/60 px-4 text-[11px] font-bold uppercase tracking-[0.16em] text-[#c9a96e] transition hover:bg-[#c9a96e] hover:text-[#080808] ${focusRing}`}
       >
         Studio
       </Link>
-      <div className="hidden md:flex items-center gap-2.5">
-        <div className="studio-tube-bezel flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-tube-300">
-          {initial}
-        </div>
-        <span className="text-sm text-white/65">
-          {session.user?.name ?? session.user?.email}
-        </span>
-      </div>
       <Link
         href="/profile/edit"
-        className="hidden rounded-md studio-faceplate-dark px-3 py-1.5 font-display text-sm uppercase tracking-[0.14em] text-white/75 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 sm:inline-flex"
+        aria-label="Edit profile"
+        title={session.user?.name ?? session.user?.email ?? "Profile"}
+        className={`flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-xs font-bold text-[#f2ede3] transition hover:border-[#c9a96e] hover:text-[#c9a96e] ${focusRing}`}
       >
-        Profile
-      </Link>
-      <Link
-        href="/settings/notifications"
-        aria-label="Notification settings"
-        title="Notifications"
-        className="hidden rounded-md studio-faceplate-dark px-2 py-1.5 text-sm text-white/65 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-tube-400/50 sm:inline-flex"
-      >
-        ⚙
+        {initial}
       </Link>
       <SignOutButton />
     </div>
