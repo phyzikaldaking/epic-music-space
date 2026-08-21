@@ -6,6 +6,8 @@
   },
   "deploy": {
     "preDeployCommand": "npm run db:deploy",
-    "startCommand": "npm run railway:start"
+    "startCommand": "npm run railway:start",
+    "healthcheckPath": "/api/health/ready",
+    "healthcheckTimeout": 300
   }
 }
