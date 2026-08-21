@@ -70,7 +70,16 @@ export default function EMSScene3D({ variant = "home", className = "", active = 
 
     const palette = palettes[variant];
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
+    } catch (error) {
+      // WebGL can be unavailable in hardened browsers, remote sessions, and
+      // older devices. The surrounding intro already provides a CSS fallback,
+      // so do not let this optional enhancement crash the entire application.
+      console.warn("[EMSScene3D] WebGL unavailable; using static fallback.", error);
+      return;
+    }
     renderer.setClearColor(0x000000, 0);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
     mountEl.appendChild(renderer.domElement);
