@@ -34,11 +34,9 @@ if (isUnusedProject) {
 
 let command;
 const env = { ...process.env };
-const databaseUrl = (
-  process.env.DATABASE_URL ??
-  process.env.DIRECT_URL ??
-  ""
-).trim();
+const databaseUrl =
+  (process.env.DATABASE_URL ?? "").trim() ||
+  (process.env.DIRECT_URL ?? "").trim();
 
 if (!worker && databaseUrl) {
   env.DATABASE_URL = databaseUrl;
