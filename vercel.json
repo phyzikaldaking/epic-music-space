@@ -92,5 +92,8 @@
       "path": "/api/cron/community-engage",
       "schedule": "30 10 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": false
+  }
 }
