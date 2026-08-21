@@ -7,15 +7,14 @@
       "apps/web/**",
       "packages/db/**",
       "packages/utils/**",
+      "scripts/ops/railway.mjs",
       "package.json",
       "package-lock.json",
       "railway.json"
     ]
   },
   "deploy": {
-    "preDeployCommand": "npm run db:deploy",
-    "startCommand": "npm run railway:start",
-    "healthcheckPath": "/api/health/ready",
-    "healthcheckTimeout": 300
+    "preDeployCommand": "npm run railway:predeploy",
+    "startCommand": "npm run railway:start"
   }
 }
