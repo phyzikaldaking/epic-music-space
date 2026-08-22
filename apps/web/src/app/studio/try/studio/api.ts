@@ -24,11 +24,11 @@ export async function studioFetchJson<T>(
   const body = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(
+    throw Object.assign(new Error(
       typeof body.error === "string"
         ? body.error
         : "Studio cloud request failed.",
-    );
+    ), { status: res.status });
   }
 
   return body as T;
@@ -235,9 +235,13 @@ export async function fetchProductionStudioSession(projectId: string) {
 }
 
 export async function fetchRecentStudioProjects() {
-  const data = await studioFetchJson<{
-    projects: StudioApiProject[];
-  }>("/api/studio/projects");
+  let data: { projects: StudioApiProject[] };
+  try {
+    data = await studioFetchJson<{ projects: StudioApiProject[] }>("/api/studio/projects");
+  } catch (error) {
+    if (error instanceof Error && "status" in error && error.status === 401) return [];
+    throw error;
+  }
 
   return data.projects.map(
     (project): StudioRecentProject => ({
