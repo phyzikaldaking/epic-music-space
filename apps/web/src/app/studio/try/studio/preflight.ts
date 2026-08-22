@@ -20,6 +20,25 @@ export function nextPreflightState(state: PreflightState, action: "start" | "ret
 export type PreflightPermission = "unknown" | "prompt" | "granted" | "denied";
 export type PreflightChecklistStatus = "pending" | "pass" | "warn" | "fail";
 
+export type RecordingCapability = {
+  recording: boolean;
+  deviceEnumeration: boolean;
+  outputSelection: boolean;
+};
+
+export function detectRecordingCapabilities(value: {
+  getUserMedia?: unknown;
+  enumerateDevices?: unknown;
+  setSinkId?: unknown;
+  mediaRecorder?: unknown;
+}): RecordingCapability {
+  return {
+    recording: typeof value.getUserMedia === "function" && typeof value.mediaRecorder === "function",
+    deviceEnumeration: typeof value.enumerateDevices === "function",
+    outputSelection: typeof value.setSinkId === "function",
+  };
+}
+
 export function getPreflightChecklist(value: { supported: boolean; permission: PreflightPermission; signal: InputSignalStatus }) {
   return [
     { id: "browser" as const, label: "Browser audio", status: value.supported ? "pass" as const : "fail" as const },

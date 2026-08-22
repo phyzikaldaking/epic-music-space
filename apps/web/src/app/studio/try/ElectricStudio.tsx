@@ -25,6 +25,8 @@ import {
   toStudioProjectPayload,
 } from "./studio/api";
 import { clipFileExtension, decodeStudioAudio, isTemporaryObjectUrl } from "./studio/audio";
+import { splitClipAtFrame, trimClipFrames } from "./studio/editing";
+import { secondsToFrames } from "./studio/sampleTimeline";
 import { calculateSessionEnd, snapToGrid, visibleClipDuration } from "./studio/timeline";
 import { EditWorkspace } from "./studio/components/EditWorkspace";
 import { ExportWorkspace } from "./studio/components/ExportWorkspace";
@@ -33,6 +35,10 @@ import { MixerWorkspace } from "./studio/components/MixerWorkspace";
 import { StudioChrome } from "./studio/components/StudioChrome";
 import { FirstSessionGuide } from "./studio/components/FirstSessionGuide";
 import { RecordingPreflight } from "./studio/components/RecordingPreflight";
+import type { RecordingDeviceSelection, RecordingLatencyProfile } from "./studio/recording";
+import { activateTakeInLane, appendTakeToLane, calculateRecordingAlignment, createRecordingTake } from "./studio/recording";
+import { buildRecordingConstraints } from "./studio/recordingDevices";
+import { countInDurationSeconds, metronomeEventTimes } from "./studio/recordingTransport";
 import { RecoveryComparison } from "./studio/components/RecoveryComparison";
 import { getStudioAlert } from "./studio/presentation";
 import { createTemplateSession, getFirstSessionStep, hydrateWorkspaceState } from "./studio/workspace";
@@ -74,6 +80,9 @@ export default function ElectricStudio() {
   const [guideDismissed, setGuideDismissed] = useState(false);
   const [preflightOpen, setPreflightOpen] = useState(false);
   const [preflightComplete, setPreflightComplete] = useState(false);
+  const [recordingDevice, setRecordingDevice] = useState<RecordingDeviceSelection>({ inputDeviceId: "default", channelCount: 1 });
+  const [recordingLatency, setRecordingLatency] = useState<RecordingLatencyProfile>({ inputMs: 0, outputMs: 0, baseMs: 0, measuredAt: new Date(0).toISOString() });
+  const [countInBars, setCountInBars] = useState<1 | 2 | 4>(1);
   const [saveState, setSaveState] = useState<StudioSaveState>("local-draft");
   const [savedAt, setSavedAt] = useState<string>();
   const [recoveryChoice, setRecoveryChoice] = useState<{ local: StudioSavedSession; cloud: StudioSavedSession } | null>(null);
@@ -93,6 +102,7 @@ export default function ElectricStudio() {
   const [selectionStart, setSelectionStart] = useState(0);
   const [selectionEnd, setSelectionEnd] = useState(4);
   const [loop, setLoop] = useState(false);
+  const [punchEnabled, setPunchEnabled] = useState(false);
   const [nudge, setNudge] = useState(0.1);
   const [grid, setGrid] = useState(0.25);
   const [playing, setPlaying] = useState(false);
@@ -111,6 +121,7 @@ export default function ElectricStudio() {
   const [error, setError] = useState<string | null>(null);
   const players = useRef<HTMLAudioElement[]>([]);
   const timer = useRef<number | null>(null);
+  const recordStopTimer = useRef<number | null>(null);
   const playOrigin = useRef(0);
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -129,7 +140,7 @@ export default function ElectricStudio() {
     return null;
   }, [tracks, selectedClipId]);
   const selectedClip = selectedClipRef?.clip ?? selectedTrack?.clips[0] ?? null;
-  const armedTrack = tracks.find((track) => track.armed) ?? selectedTrack;
+  const armedTracks = tracks.filter((track) => track.armed);
   const sessionEnd = calculateSessionEnd(tracks);
   const missingClips = tracks.flatMap((track) => track.clips.filter((clip) => clip.missing || !clip.url));
 
@@ -160,7 +171,10 @@ export default function ElectricStudio() {
     experienceMode: experience,
     task,
     templateId,
-  }), [bpm, experience, sampleRate, sessionId, snapshots, task, templateId, title, tracks]);
+    recordingDevice,
+    recordingLatency,
+    countInBars,
+  }), [bpm, countInBars, experience, recordingDevice, recordingLatency, sampleRate, sessionId, snapshots, task, templateId, title, tracks]);
 
   const refreshRecent = useCallback(async () => {
     setRecent(await fetchRecentStudioProjects());
@@ -237,15 +251,20 @@ export default function ElectricStudio() {
       window.removeEventListener("offline", offlineNow);
       tracksRef.current.flatMap((track) => track.clips).forEach((clip) => clip.url && isTemporaryObjectUrl(clip.url) && URL.revokeObjectURL(clip.url));
       stopTransport();
+      if (recordStopTimer.current) window.clearTimeout(recordStopTimer.current);
       recorder.current?.stream.getTracks().forEach((track) => track.stop());
     };
   }, [refreshRecent, stopTransport]);
 
   useEffect(() => {
     if (!dirty) return;
-    const id = window.setTimeout(autosave, 1200);
+    const local = buildSession();
+    saveLocalRecovery(local.id, createRecoveryEnvelope(local));
+    setSaveState(offline ? "offline-local" : "local-draft");
+    setSaveStatus(getSaveStatusText(offline ? "offline-local" : "local-draft", new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })));
+    const id = window.setTimeout(autosave, 15_000);
     return () => window.clearTimeout(id);
-  }, [autosave, dirty, tracks, title, bpm, sampleRate, snapshots]);
+  }, [autosave, buildSession, dirty, offline, tracks, title, bpm, sampleRate, snapshots]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -253,7 +272,7 @@ export default function ElectricStudio() {
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
       if (event.code === "Space") {
         event.preventDefault();
-        playing ? stopTransport() : playTransport();
+        if (playing) stopTransport(); else playTransport();
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
@@ -261,7 +280,7 @@ export default function ElectricStudio() {
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
-        event.shiftKey ? redo() : undo();
+        if (event.shiftKey) redo(); else undo();
       }
       if (event.key.toLowerCase() === "b") splitAtPlayhead();
       if (event.key === "Delete" || event.key === "Backspace") deleteSelectedClip();
@@ -315,6 +334,9 @@ export default function ElectricStudio() {
       setExperience(workspace.experienceMode);
       setTask(workspace.task);
       setTemplateId(workspace.templateId);
+      if (saved.recordingDevice) setRecordingDevice(saved.recordingDevice);
+      if (saved.recordingLatency) setRecordingLatency(saved.recordingLatency);
+      setCountInBars(saved.countInBars ?? 1);
       setSelectedTrackId(saved.tracks[0]?.id ?? null);
       setSelectedClipId(saved.tracks[0]?.clips[0]?.id ?? null);
       setDirty(localDraft);
@@ -426,13 +448,14 @@ export default function ElectricStudio() {
       locked: false,
       color,
       missing: false,
+      sourceId: uploaded.clipId,
     };
     if (targetTrackId) {
       commit("Cloud audio clip added", (draft) => draft.map((track) => track.id === targetTrackId ? { ...track, clips: [...track.clips, clip].sort((a, b) => a.start - b.start) } : track));
       setSelectedTrackId(targetTrackId);
       setSelectedClipId(clip.id);
       await saveSession(title, false, true);
-      return;
+      return clip;
     }
     const track: StudioTrack = {
       id: uid("track"),
@@ -450,6 +473,7 @@ export default function ElectricStudio() {
     setSelectedTrackId(track.id);
     setSelectedClipId(clip.id);
     await saveSession(title, false, true);
+    return clip;
   }
 
   async function importFiles(files: FileList | File[]) {
@@ -491,19 +515,38 @@ export default function ElectricStudio() {
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia(buildRecordingConstraints(recordingDevice));
       const rec = new MediaRecorder(stream);
       chunks.current = [];
       rec.ondataavailable = (event) => event.data.size && chunks.current.push(event.data);
       rec.onstop = async () => {
         setRecording(false);
+        if (recordStopTimer.current) window.clearTimeout(recordStopTimer.current);
+        recordStopTimer.current = null;
+        if (punchEnabled) stopTransport();
         stream.getTracks().forEach((track) => track.stop());
         const blob = new Blob(chunks.current, { type: rec.mimeType || "audio/webm" });
         if (!blob.size) return;
-        const target = armedTrack?.id;
+        const targets = armedTracks.length ? armedTracks : selectedTrack ? [selectedTrack] : [];
         setBusy(true);
         try {
-          await createClipFromBlob(blob, `Take ${new Date().toLocaleTimeString()}.webm`, rec.mimeType || "audio/webm", target, playhead);
+          const alignedStart = Math.max(0, (punchEnabled ? selectionStart : playhead) - calculateRecordingAlignment(recordingLatency));
+          if (!targets.length) {
+            await createClipFromBlob(blob, `Take ${new Date().toLocaleTimeString()}.webm`, rec.mimeType || "audio/webm", undefined, alignedStart);
+          }
+          for (const target of targets) {
+            const clip = await createClipFromBlob(blob, `${target.name} Take ${new Date().toLocaleTimeString()}.webm`, rec.mimeType || "audio/webm", target.id, alignedStart);
+            if (!clip) continue;
+            commit("Add recording take", (draft) => draft.map((track) => {
+              if (track.id !== target.id) return track;
+              const laneId = `lane:${track.id}`;
+              const lane = track.takeLanes?.find((item) => item.id === laneId);
+              const take = createRecordingTake({ trackId: track.id, laneId, pass: (lane?.takes.length ?? 0) + 1, sourceId: clip.sourceId ?? clip.id, durationSec: clip.duration, startedAtSec: alignedStart });
+              const nextLane = appendTakeToLane(lane, take);
+              const takeSourceIds = new Set(nextLane.takes.map((item) => item.sourceId));
+              return { ...track, clips: track.clips.map((item) => takeSourceIds.has(item.sourceId ?? item.id) ? { ...item, muted: (item.sourceId ?? item.id) !== take.sourceId } : item), takeLanes: [...(track.takeLanes ?? []).filter((item) => item.id !== laneId), nextLane] };
+            }));
+          }
           setSaveStatus("Recording saved to cloud");
         } catch (err) {
           setError(err instanceof Error ? err.message : "Recording could not be uploaded.");
@@ -513,8 +556,29 @@ export default function ElectricStudio() {
         }
       };
       recorder.current = rec;
+      const countInDuration = countInDurationSeconds({ bpm, bars: countInBars, beatsPerBar: 4 });
+      const clickContext = new AudioContext();
+      for (const event of metronomeEventTimes({ startAtSec: clickContext.currentTime + .05, bpm, bars: countInBars, beatsPerBar: 4, subdivision: "1/4", accentDownbeat: true })) {
+        const oscillator = clickContext.createOscillator();
+        const gain = clickContext.createGain();
+        oscillator.frequency.value = event.accent ? 1_320 : 880;
+        gain.gain.setValueAtTime(.0001, event.atSec);
+        gain.gain.exponentialRampToValueAtTime(event.accent ? .2 : .12, event.atSec + .002);
+        gain.gain.exponentialRampToValueAtTime(.0001, event.atSec + .05);
+        oscillator.connect(gain).connect(clickContext.destination);
+        oscillator.start(event.atSec);
+        oscillator.stop(event.atSec + .06);
+      }
+      setSaveStatus(`Count-in · ${countInBars} bar${countInBars === 1 ? "" : "s"}`);
+      await new Promise((resolve) => window.setTimeout(resolve, countInDuration * 1_000));
+      await clickContext.close();
       rec.start();
       setRecording(true);
+      if (punchEnabled) {
+        setPlayhead(selectionStart);
+        playTransport(selectionStart);
+        recordStopTimer.current = window.setTimeout(() => rec.stop(), Math.max(.01, selectionEnd - selectionStart) * 1_000);
+      }
       markDirty("Start recording");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Microphone recording failed.");
@@ -553,18 +617,19 @@ export default function ElectricStudio() {
     markDirty(`Started ${value} template`);
   }
 
-  function playTransport() {
+  function playTransport(requestedStart?: number | unknown) {
+    const from = typeof requestedStart === "number" ? requestedStart : playhead;
     if (playing) return;
     const soloed = tracks.filter((track) => track.solo);
     const sourceTracks = soloed.length ? soloed : tracks;
-    const clips = sourceTracks.flatMap((track) => track.muted ? [] : track.clips.filter((clip) => !clip.muted && !clip.missing && clip.url && playhead < clip.start + visibleClipDuration(clip)).map((clip) => ({ track, clip })));
+    const clips = sourceTracks.flatMap((track) => track.muted ? [] : track.clips.filter((clip) => !clip.muted && !clip.missing && clip.url && from < clip.start + visibleClipDuration(clip)).map((clip) => ({ track, clip })));
     if (!clips.length) return setError("No playable audio. Import or relink audio first.");
-    playOrigin.current = performance.now() / 1000 - playhead;
+    playOrigin.current = performance.now() / 1000 - from;
     players.current = clips.map(({ track, clip }) => {
       const audio = new Audio(clip.url);
       audio.volume = Math.min(1, Math.max(0, (track.volume / 100) * Math.pow(10, clip.gain / 20)));
-      audio.currentTime = Math.max(0, clip.trimStart + playhead - clip.start);
-      const wait = Math.max(0, clip.start - playhead) * 1000;
+      audio.currentTime = Math.max(0, clip.trimStart + from - clip.start);
+      const wait = Math.max(0, clip.start - from) * 1000;
       window.setTimeout(() => void audio.play().catch((err) => setError(err instanceof Error ? err.message : "Playback failed.")), wait);
       return audio;
     });
@@ -591,8 +656,20 @@ export default function ElectricStudio() {
   }
 
   function arm(id: string) {
-    commit("Arm track", (draft) => draft.map((track) => ({ ...track, armed: track.id === id })));
+    commit("Toggle record arm", (draft) => draft.map((track) => track.id === id ? { ...track, armed: !track.armed } : track));
     setSelectedTrackId(id);
+  }
+
+  function activateTake(trackId: string, laneId: string, takeId: string) {
+    commit("Activate recording take", (draft) => draft.map((track) => {
+      if (track.id !== trackId) return track;
+      const lane = track.takeLanes?.find((item) => item.id === laneId);
+      if (!lane) return track;
+      const nextLane = activateTakeInLane(lane, takeId);
+      const activeSourceId = nextLane.takes.find((take) => take.id === takeId)?.sourceId;
+      const takeSourceIds = new Set(nextLane.takes.map((take) => take.sourceId));
+      return { ...track, clips: track.clips.map((clip) => takeSourceIds.has(clip.sourceId ?? clip.id) ? { ...clip, muted: (clip.sourceId ?? clip.id) !== activeSourceId } : clip), takeLanes: track.takeLanes?.map((item) => item.id === laneId ? nextLane : item) };
+    }));
   }
 
   function undo() {
@@ -625,10 +702,11 @@ export default function ElectricStudio() {
   function splitAtPlayhead() {
     if (!selectedClipRef || selectedClipRef.clip.locked) return;
     const { track, clip } = selectedClipRef;
-    const local = playhead - clip.start;
-    if (local <= 0.02 || local >= visibleClipDuration(clip) - 0.02) return;
-    const left: StudioClip = { ...clip, id: uid("clip"), name: `${clip.name} A`, trimEnd: clip.trimEnd + visibleClipDuration(clip) - local };
-    const right: StudioClip = { ...clip, id: uid("clip"), name: `${clip.name} B`, start: clip.start + local, trimStart: clip.trimStart + local };
+    let split;
+    try {
+      split = splitClipAtFrame(clip, secondsToFrames(playhead, sampleRate), sampleRate, { leftId: uid("clip"), rightId: uid("clip") });
+    } catch { return; }
+    const [left, right] = split.after;
     commit("Separate clip", (draft) => draft.map((item) => item.id === track.id ? { ...item, clips: item.clips.flatMap((candidate) => candidate.id === clip.id ? [left, right] : [candidate]) } : item));
     setSelectedClipId(right.id);
   }
@@ -666,20 +744,25 @@ export default function ElectricStudio() {
     setSelectedClipId(pasted.id);
   }
 
-  function moveClipToTrack(trackId: string) {
-    if (!selectedClipRef || selectedClipRef.track.id === trackId) return;
-    const clip = selectedClipRef.clip;
+  function moveClipToTrack(trackId: string, start?: number, clipId = selectedClipRef?.clip.id, sourceTrackId = selectedClipRef?.track.id) {
+    const sourceTrack = tracks.find((track) => track.id === sourceTrackId);
+    const clip = sourceTrack?.clips.find((item) => item.id === clipId);
+    if (!clip || clip.locked || (sourceTrackId === trackId && start === undefined)) return;
+    const moved = start === undefined ? clip : { ...clip, start: snap(start) };
     commit("Move clip to track", (draft) => draft.map((track) => {
-      if (track.id === selectedClipRef.track.id) return { ...track, clips: track.clips.filter((item) => item.id !== clip.id) };
-      if (track.id === trackId) return { ...track, clips: [...track.clips, clip].sort((a, b) => a.start - b.start) };
+      if (track.id === sourceTrackId && track.id !== trackId) return { ...track, clips: track.clips.filter((item) => item.id !== clip.id) };
+      if (track.id === trackId) return { ...track, clips: [...track.clips.filter((item) => item.id !== clip.id), moved].sort((a, b) => a.start - b.start) };
       return track;
-    }).filter((track) => track.clips.length));
+    }));
+    setSelectedTrackId(trackId);
+    setSelectedClipId(clip.id);
   }
 
   function trimEdge(edge: "left" | "right", amount: number) {
     if (!selectedClip) return;
-    if (edge === "left") updateClip(selectedClip.id, { trimStart: Math.max(0, Math.min(selectedClip.duration - 0.05, selectedClip.trimStart + amount)), start: Math.max(0, selectedClip.start + amount) }, "Trim left edge");
-    else updateClip(selectedClip.id, { trimEnd: Math.max(0, Math.min(selectedClip.duration - 0.05, selectedClip.trimEnd + amount)) }, "Trim right edge");
+    const deltaFrames = Math.round(amount * sampleRate);
+    const command = trimClipFrames(selectedClip, edge === "left" ? { leftDeltaFrames: deltaFrames } : { rightDeltaFrames: deltaFrames }, sampleRate);
+    updateClip(selectedClip.id, command.after, edge === "left" ? "Trim left edge" : "Trim right edge");
   }
 
   function exportArchive() {
@@ -717,11 +800,15 @@ export default function ElectricStudio() {
       />
     )}
     {alert && <div className={`studio-alert studio-alert--${alert.tone}`} role="status"><span>!</span><p>{alert.message}</p><button onClick={() => setError(null)} aria-label="Dismiss alert">×</button></div>}
-    <main className="studio-workspace">{mode === "beat" && <div className="studio-beat-stage"><BeatMachineProClient studioMode /></div>}{mode === "edit" && <EditWorkspace tracks={tracks} selectedTrack={selectedTrack} selectedClip={selectedClip} selectedClipId={selectedClipId} setSelectedTrackId={setSelectedTrackId} setSelectedClipId={setSelectedClipId} importFiles={importFiles} relinkClip={relinkClip} updateTrack={updateTrack} updateClip={updateClip} arm={arm} tool={tool} zoom={zoom} playhead={playhead} setPlayhead={setPlayhead} sessionEnd={sessionEnd} selectionStart={selectionStart} selectionEnd={selectionEnd} setSelectionStart={setSelectionStart} setSelectionEnd={setSelectionEnd} loop={loop} setLoop={setLoop} splitAtPlayhead={splitAtPlayhead} duplicateClip={duplicateClip} deleteSelectedClip={deleteSelectedClip} renameClip={renameClip} copyClip={() => copyClip(false)} cutClip={() => copyClip(true)} pasteClip={pasteClip} nudgeLeft={() => nudgeSelected(-1)} nudgeRight={() => nudgeSelected(1)} trimLeft={(amount) => trimEdge("left", amount)} trimRight={(amount) => trimEdge("right", amount)} moveClipToTrack={moveClipToTrack} editLog={editLog} onRecord={requestRecord} onBeat={() => setMode("beat")} experience={experience} onTemplate={applyTemplate} />}{mode === "mix" && <MixerWorkspace tracks={tracks} selected={selectedTrack} update={updateTrack} arm={arm} />}{mode === "export" && <ExportWorkspace tracks={tracks} selected={selectedTrack} downloadClip={downloadClip} exportArchive={exportArchive} projectId={sessionId} title={title} updatedAt={projectUpdatedAt} saved={!dirty && saveState === "cloud-saved"} />}{mode === "files" && <FilesWorkspace recent={recent} openSession={(id) => void openSession(id)} snapshots={snapshots} revertSnapshot={revertSnapshot} snapshot={snapshot} sessionId={sessionId} title={title} bpm={bpm} sampleRate={sampleRate} missingClips={missingClips} offline={offline} lockWarning={lockWarning} />}</main>
+    <main className="studio-workspace">{mode === "beat" && <div className="studio-beat-stage"><BeatMachineProClient studioMode /></div>}{mode === "edit" && <EditWorkspace tracks={tracks} selectedTrack={selectedTrack} selectedClip={selectedClip} selectedClipId={selectedClipId} setSelectedTrackId={setSelectedTrackId} setSelectedClipId={setSelectedClipId} importFiles={importFiles} relinkClip={relinkClip} updateTrack={updateTrack} updateClip={updateClip} arm={arm} activateTake={activateTake} tool={tool} editMode={editMode} grid={grid} zoom={zoom} playhead={playhead} setPlayhead={setPlayhead} sessionEnd={sessionEnd} selectionStart={selectionStart} selectionEnd={selectionEnd} setSelectionStart={setSelectionStart} setSelectionEnd={setSelectionEnd} loop={loop} setLoop={setLoop} punchEnabled={punchEnabled} setPunchEnabled={setPunchEnabled} splitAtPlayhead={splitAtPlayhead} duplicateClip={duplicateClip} deleteSelectedClip={deleteSelectedClip} renameClip={renameClip} copyClip={() => copyClip(false)} cutClip={() => copyClip(true)} pasteClip={pasteClip} nudgeLeft={() => nudgeSelected(-1)} nudgeRight={() => nudgeSelected(1)} trimLeft={(amount) => trimEdge("left", amount)} trimRight={(amount) => trimEdge("right", amount)} moveClipToTrack={moveClipToTrack} editLog={editLog} onRecord={requestRecord} onBeat={() => setMode("beat")} experience={experience} onTemplate={applyTemplate} />}{mode === "mix" && <MixerWorkspace tracks={tracks} selected={selectedTrack} update={updateTrack} arm={arm} />}{mode === "export" && <ExportWorkspace tracks={tracks} selected={selectedTrack} downloadClip={downloadClip} exportArchive={exportArchive} projectId={sessionId} title={title} updatedAt={projectUpdatedAt} saved={!dirty && saveState === "cloud-saved"} />}{mode === "files" && <FilesWorkspace recent={recent} openSession={(id) => void openSession(id)} snapshots={snapshots} revertSnapshot={revertSnapshot} snapshot={snapshot} sessionId={sessionId} title={title} bpm={bpm} sampleRate={sampleRate} missingClips={missingClips} offline={offline} lockWarning={lockWarning} />}</main>
     {preflightOpen && (
       <RecordingPreflight
+        initialDevice={recordingDevice}
         onClose={() => setPreflightOpen(false)}
-        onReady={() => {
+        onReady={(result) => {
+          setRecordingDevice(result.device);
+          setRecordingLatency(result.latency);
+          setCountInBars(result.countInBars);
           setPreflightComplete(true);
           setPreflightOpen(false);
           void toggleRecord();

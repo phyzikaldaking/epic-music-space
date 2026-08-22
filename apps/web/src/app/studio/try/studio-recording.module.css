@@ -1,0 +1,74 @@
+.recordingUpgrade :global(.studio-track__takes) {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  overflow-x: auto;
+}
+
+.recordingUpgrade :global(.studio-track__takes button) {
+  min-width: 24px;
+  border: 1px solid #ffffff1f;
+  border-radius: 4px;
+  background: #080a10;
+  color: #8d94a7;
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.recordingUpgrade :global(.studio-track__takes button.is-active) {
+  border-color: #65d6ff;
+  background: #65d6ff22;
+  color: #8fe8ff;
+}
+
+.recordingUpgrade :global(.preflight-device-grid) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.recordingUpgrade :global(.preflight-device-grid label),
+.recordingUpgrade :global(.preflight-monitoring label) {
+  display: grid;
+  gap: 5px;
+  color: #aeb5c8;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.recordingUpgrade :global(.preflight-device-grid select) {
+  min-height: 36px;
+  border: 1px solid #ffffff1f;
+  border-radius: 7px;
+  background: #090b12;
+  padding: 0 9px;
+  color: white;
+}
+
+.recordingUpgrade :global(.preflight-monitoring) {
+  display: grid;
+  gap: 9px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #ffffff14;
+  border-radius: 9px;
+  background: #080a10;
+}
+
+.recordingUpgrade :global(.preflight-monitoring label) {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.recordingUpgrade :global(.preflight-monitoring small) {
+  color: #65d6ff;
+  font-family: ui-monospace, monospace;
+}
+
+@media (max-width: 680px) {
+  .recordingUpgrade :global(.preflight-device-grid) {
+    grid-template-columns: 1fr;
+  }
+}

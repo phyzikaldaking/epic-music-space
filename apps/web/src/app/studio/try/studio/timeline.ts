@@ -1,4 +1,18 @@
 import type { StudioClip, StudioTrack } from "./types";
+import { secondsToFrames } from "./sampleTimeline";
+
+type TimelineClip = Pick<StudioClip, "duration" | "start" | "trimStart" | "trimEnd" | "startFrame" | "durationFrames" | "trimStartFrame" | "trimEndFrame">;
+
+export function clipStartFrames(clip: TimelineClip, sampleRate: number) {
+  return clip.startFrame ?? secondsToFrames(clip.start, sampleRate);
+}
+
+export function visibleClipFrames(clip: TimelineClip, sampleRate: number) {
+  const duration = clip.durationFrames ?? secondsToFrames(clip.duration, sampleRate);
+  const trimStart = clip.trimStartFrame ?? secondsToFrames(clip.trimStart, sampleRate);
+  const trimEnd = clip.trimEndFrame ?? secondsToFrames(clip.trimEnd, sampleRate);
+  return Math.max(1, duration - trimStart - trimEnd);
+}
 
 export function visibleClipDuration(clip: StudioClip) {
   return Math.max(0.05, clip.duration - clip.trimStart - clip.trimEnd);

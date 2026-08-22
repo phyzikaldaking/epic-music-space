@@ -8,6 +8,56 @@ export type StudioWaveformPeaks = {
   normalizedAt: string;
 };
 
+export type WaveformPeakBucket = { min: number; max: number };
+export type WaveformEnvelope = { version: 1; samplesPerBucket: number; channels: WaveformPeakBucket[][] };
+export type WaveformCacheDescriptor = { sourceId: string; sampleRate: number; channelCount: number; samplesPerBucket: number; startFrame: number; endFrame: number };
+
+function boundedSample(value: number) {
+  return Number(Math.max(-1, Math.min(1, Number.isFinite(value) ? value : 0)).toFixed(4));
+}
+
+export function buildWaveformEnvelope(channels: ArrayLike<number>[], samplesPerBucket: number): WaveformEnvelope {
+  const bucketSize = Math.max(1, Math.round(samplesPerBucket));
+  return {
+    version: 1,
+    samplesPerBucket: bucketSize,
+    channels: channels.map((samples) => {
+      const buckets: WaveformPeakBucket[] = [];
+      for (let start = 0; start < samples.length; start += bucketSize) {
+        let min = 1;
+        let max = -1;
+        const end = Math.min(samples.length, start + bucketSize);
+        for (let index = start; index < end; index += 1) {
+          const value = boundedSample(samples[index] ?? 0);
+          min = Math.min(min, value);
+          max = Math.max(max, value);
+        }
+        buckets.push({ min: boundedSample(min), max: boundedSample(max) });
+      }
+      return buckets;
+    }),
+  };
+}
+
+export function reduceWaveformEnvelope(envelope: WaveformEnvelope, targetBuckets: number): WaveformEnvelope {
+  const target = Math.max(1, Math.round(targetBuckets));
+  const longest = Math.max(0, ...envelope.channels.map((channel) => channel.length));
+  if (longest <= target) return envelope;
+  const groupSize = Math.ceil(longest / target);
+  return {
+    version: 1,
+    samplesPerBucket: envelope.samplesPerBucket * groupSize,
+    channels: envelope.channels.map((channel) => Array.from({ length: Math.ceil(channel.length / groupSize) }, (_, group) => {
+      const slice = channel.slice(group * groupSize, (group + 1) * groupSize);
+      return { min: Math.min(...slice.map((bucket) => bucket.min)), max: Math.max(...slice.map((bucket) => bucket.max)) };
+    })),
+  };
+}
+
+export function waveformEnvelopeCacheKey(descriptor: WaveformCacheDescriptor) {
+  return [descriptor.sourceId, descriptor.sampleRate, descriptor.channelCount, descriptor.samplesPerBucket, descriptor.startFrame, descriptor.endFrame].join(":");
+}
+
 export function normalizePeakArray(peaks: number[]) {
   const max = Math.max(0.0001, ...peaks.map((peak) => Math.abs(peak)));
   return peaks.map((peak) => Number(Math.min(1, Math.abs(peak) / max).toFixed(4)));
@@ -54,8 +104,8 @@ export async function decodeStudioAudio(blob: Blob) {
     const buffer = await ctx.decodeAudioData((await blob.arrayBuffer()).slice(0));
     const count = 1400;
     const block = Math.max(1, Math.floor(buffer.length / count));
-    const channelPeaks = Array.from({ length: buffer.numberOfChannels }, (_, channelIndex) => {
-      const data = buffer.getChannelData(channelIndex);
+    const channelData = Array.from({ length: buffer.numberOfChannels }, (_, channelIndex) => buffer.getChannelData(channelIndex));
+    const channelPeaks = channelData.map((data) => {
       return Array.from({ length: count }, (_, i) => {
         let max = 0;
         const start = i * block;
@@ -65,7 +115,8 @@ export async function decodeStudioAudio(blob: Blob) {
       });
     });
     const waveform = normalizeWaveformPeaks(channelPeaks, count);
-    return { duration: buffer.duration, peaks: waveform.mono, waveform, sampleRate: buffer.sampleRate };
+    const envelope = buildWaveformEnvelope(channelData, block);
+    return { duration: buffer.duration, peaks: waveform.mono, waveform, envelope, sampleRate: buffer.sampleRate };
   } finally {
     await ctx.close();
   }
