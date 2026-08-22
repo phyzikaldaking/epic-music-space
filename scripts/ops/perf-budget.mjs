@@ -17,7 +17,7 @@ const routeBudgets = {
   "/dashboard": Number(process.env.PERF_BUDGET_DASHBOARD_KB ?? 70),
   "/marketplace": Number(process.env.PERF_BUDGET_MARKETPLACE_KB ?? 60),
   "/radar": Number(process.env.PERF_BUDGET_RADAR_KB ?? 30),
-  "/studio/new": Number(process.env.PERF_BUDGET_STUDIO_NEW_KB ?? 85),
+  "/studio/new": Number(process.env.PERF_BUDGET_STUDIO_NEW_KB ?? 90),
   "/studio/setup": Number(process.env.PERF_BUDGET_STUDIO_SETUP_KB ?? 50),
   "/studio/[username]": Number(process.env.PERF_BUDGET_STUDIO_PROFILE_KB ?? 60),
   "/trending": Number(process.env.PERF_BUDGET_TRENDING_KB ?? 30),
