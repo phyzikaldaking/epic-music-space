@@ -58,10 +58,23 @@ export function buildPersistableTracks(tracks: StudioTrack[]) {
     ...track,
     clips: track.clips.map((clip) => ({
       ...clip,
+      sourceId: clip.sourceId ?? clip.id,
       url: clip.url.startsWith("blob:") ? "" : clip.url,
       missing: !clip.url || clip.url.startsWith("blob:"),
     })),
   }));
+}
+
+export function serializeStudioSession(saved: StudioSavedSession): StudioSavedSession {
+  return {
+    ...saved,
+    schemaVersion: 4,
+    tracks: buildPersistableTracks(saved.tracks),
+    snapshots: saved.snapshots.map((snapshot) => ({
+      ...snapshot,
+      tracks: buildPersistableTracks(snapshot.tracks),
+    })),
+  };
 }
 
 export function restorePersistedTracks(tracks: StudioTrack[]) {
@@ -79,7 +92,8 @@ export function toStudioProjectPayload(
   saved: StudioSavedSession,
   forceNew: boolean,
 ) {
-  const tracks = saved.tracks.map((track, position) => ({
+  const serialized = serializeStudioSession(saved);
+  const tracks = serialized.tracks.map((track, position) => ({
     id: track.id,
     name: track.name,
     color: track.color,
@@ -100,7 +114,7 @@ export function toStudioProjectPayload(
     id: forceNew ? undefined : saved.id,
     name: saved.title,
     bpm: Math.round(saved.bpm),
-    patternJson: saved,
+    patternJson: serialized,
     thumbnailPeaks: saved.tracks
       .flatMap((track) => track.clips[0]?.peaks ?? [])
       .slice(0, 120),
@@ -164,6 +178,7 @@ export function productionProjectToSession(
       const savedClip = savedTrack?.clips.find((item) => item.id === clip.id);
 
       return {
+        ...savedClip,
         id: clip.id,
         name: clip.name ?? savedClip?.name ?? audioName(audio),
         url,
@@ -181,10 +196,12 @@ export function productionProjectToSession(
         locked: clip.locked ?? savedClip?.locked ?? false,
         missing: !url,
         color: clip.color ?? savedClip?.color ?? track.color,
+        sourceId: clip.audioFileId ?? savedClip?.sourceId ?? clip.id,
       };
     });
 
     return {
+      ...savedTrack,
       id: track.id ?? savedTrack?.id ?? `track-${index + 1}`,
       name: track.name ?? savedTrack?.name ?? `Track ${index + 1}`,
       color: track.color ?? savedTrack?.color ?? "#65d6ff",
@@ -199,6 +216,7 @@ export function productionProjectToSession(
   });
 
   return {
+    ...fallback,
     id: data.project.id,
     title: data.project.name,
     bpm: data.project.bpm,

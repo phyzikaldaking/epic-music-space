@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import ElectricStudio from "./try/ElectricStudio";
 import styles from "./try/studio-clean.module.css";
 import mixStyles from "./try/studio-mix.module.css";
+import recordingStyles from "./try/studio-recording.module.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 
 export default function StudioIndexPage() {
   return (
-    <div className={`${styles.cleanStudio} ${mixStyles.mixUpgrade}`}>
+    <div className={`${styles.cleanStudio} ${mixStyles.mixUpgrade} ${recordingStyles.recordingUpgrade}`}>
       <h1 className="sr-only">Epic Music Space Studio Editor</h1>
       <ElectricStudio />
     </div>

@@ -1,5 +1,12 @@
 export type StudioSaveState = "local-draft" | "saving-cloud" | "cloud-saved" | "offline-local" | "save-failed" | "conflict";
 
+export type RecoverySaveEvent = {
+  source: "local" | "cloud";
+  projectId: string;
+  fingerprint: string;
+  savedAt: string;
+};
+
 export type StudioRecoveryEnvelope<T> = {
   schemaVersion: 3;
   projectId: string;

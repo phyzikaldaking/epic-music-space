@@ -14,6 +14,10 @@ export type StudioClip = {
   duration: number;
   peaks: number[];
   start: number;
+  startFrame?: number;
+  durationFrames?: number;
+  trimStartFrame?: number;
+  trimEndFrame?: number;
   trimStart: number;
   trimEnd: number;
   fadeIn: number;
@@ -24,7 +28,19 @@ export type StudioClip = {
   missing?: boolean;
   color?: string;
   playbackRate?: number;
+  timeStretch?: {
+    ratio: number;
+    preservesPitch: true;
+    algorithm: "phase-vocoder" | "granular";
+    quality: "preview" | "high";
+  };
   pitchSemitones?: number;
+  pitchCents?: number;
+  pitchShift?: {
+    totalCents: number;
+    algorithm: "elastique" | "realtime";
+    preserveFormants: boolean;
+  };
   reversed?: boolean;
   sourceId?: string;
   renderedFromId?: string;
@@ -47,6 +63,8 @@ export type StudioTrack = {
   sends?: Array<{ busId: string; level: number }>;
   outputBusId?: string;
   groupId?: string;
+  takeLanes?: import("./recording").TakeLane[];
+  compMap?: import("./recording").CompMap;
 };
 
 export type StudioSnapshot = {
@@ -68,6 +86,11 @@ export type StudioSavedSession = {
   experienceMode?: StudioExperienceMode;
   task?: StudioTask;
   templateId?: StudioTemplateId;
+  recordingDevice?: import("./recording").RecordingDeviceSelection;
+  recordingLatency?: import("./recording").RecordingLatencyProfile;
+  countInBars?: 1 | 2 | 4;
+  markers?: import("./arrangement").TimelineMarker[];
+  sections?: import("./arrangement").SongSection[];
 };
 
 export type StudioHistoryEntry = {
