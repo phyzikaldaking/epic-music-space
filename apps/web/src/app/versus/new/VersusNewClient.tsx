@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { parseStudioHandoff } from "@/app/studio/try/studio/finish";
 
 interface MySong {
   id: string;
@@ -32,6 +33,12 @@ export default function VersusNewClient({ mySongs, suggestions }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [studioHandoff, setStudioHandoff] = useState<ReturnType<typeof parseStudioHandoff>>(null);
+
+  useEffect(() => {
+    const handoff = parseStudioHandoff(sessionStorage.getItem("ems.studio.handoff.v1") ?? "");
+    if (handoff?.destination === "battle") queueMicrotask(() => setStudioHandoff(handoff));
+  }, []);
 
   async function send() {
     if (!songId || !username.trim() || busy) return;
@@ -79,6 +86,7 @@ export default function VersusNewClient({ mySongs, suggestions }: Props) {
 
   return (
     <div className="space-y-6">
+      {studioHandoff && <div className="rounded-2xl border border-violet-400/35 bg-violet-500/10 p-5" role="status"><p className="text-xs font-black uppercase tracking-widest text-violet-200">Studio version received</p><h2 className="mt-2 text-lg font-bold">{studioHandoff.title}</h2><p className="mt-1 text-xs text-white/60">Locked excerpt {studioHandoff.excerpt?.start ?? 0}s–{studioHandoff.excerpt?.end ?? 60}s · {String(studioHandoff.format).toUpperCase()}. Select its published track below, choose an opponent, and review before sending.</p></div>}
       <div className="glass rounded-2xl p-5 space-y-4">
         <label className="block">
           <span className="mb-1 block text-xs font-bold uppercase tracking-widest text-white/45">

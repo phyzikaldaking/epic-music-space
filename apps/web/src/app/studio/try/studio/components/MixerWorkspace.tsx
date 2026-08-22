@@ -1,6 +1,8 @@
 "use client";
 
 import type { StudioTrack } from "../types";
+import { EffectsBrowser } from "./EffectsBrowser";
+import { MixAssistant } from "./MixAssistant";
 
 export function MixerWorkspace({
   tracks,
@@ -16,7 +18,7 @@ export function MixerWorkspace({
   return (
     <div className="platinum-mixer">
       <div className="platinum-mixer__header"><div><span>PLATINUM CONSOLE</span><h2>Mix Room</h2></div><p>{tracks.length} CHANNELS · 48-BIT MIX ENGINE</p></div>
-      <div className="platinum-mixer__channels">
+      <div className="platinum-mixer__body"><div className="platinum-mixer__channels">
         {tracks.map((track) => {
           const clipping = track.volume + track.inputGain >= 154;
           const active = selected?.id === track.id;
@@ -106,7 +108,13 @@ export function MixerWorkspace({
             </div>
           );
         })}
-      </div>
+      </div><aside className="platinum-mixer__rack">
+        {selected ? <>
+          <div className="routing-panel"><div className="mix-panel__heading"><span>ROUTING</span><b>Cycle safe</b></div><label>Output<select value={selected.outputBusId ?? "master"} onChange={(event) => update(selected.id, { outputBusId:event.target.value }, "Route output")}><option value="master">Master</option><option value="music-bus">Music Bus</option><option value="vocal-bus">Vocal Bus</option></select></label><div className="insert-chain">{selected.inserts?.length ? selected.inserts.map((insert) => <button key={insert.id} onClick={() => update(selected.id, { inserts:selected.inserts?.map((item) => item.id === insert.id ? { ...item, bypassed:!item.bypassed } : item) }, "Bypass effect")} className={insert.bypassed ? "is-bypassed" : ""}>{insert.effectId.replaceAll("-", " ")} <small>{insert.bypassed ? "Bypassed" : "Active"}</small></button>) : <p>No inserts yet.</p>}</div></div>
+          <EffectsBrowser onAdd={(effectId) => update(selected.id, { inserts:[...(selected.inserts ?? []), { id:`insert-${Date.now()}`, effectId, bypassed:false }] }, `Add ${effectId}`)} />
+          <MixAssistant clipping={selected.volume + selected.inputGain >= 154} onApply={(volume) => update(selected.id, { volume }, "Apply reversible mix suggestion")} />
+        </> : <p className="platinum-empty">Select a channel to open routing, effects, and assistance.</p>}
+      </aside></div>
     </div>
   );
 }

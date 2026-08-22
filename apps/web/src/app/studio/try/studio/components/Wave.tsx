@@ -90,7 +90,7 @@ export const Wave = memo(function Wave({
         offscreen.current.width = canvas.width;
         offscreen.current.height = canvas.height;
 
-        const offscreenCtx = offscreen.current.getContext("2d");
+        const offscreenCtx = offscreen.current.getContext("2d") as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null;
         const ctx = canvas.getContext("2d");
         if (!offscreenCtx || !ctx) return;
 

@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import type { StudioClip, StudioTool, StudioTrack } from "../types";
+import type { StudioClip, StudioExperienceMode, StudioTemplateId, StudioTool, StudioTrack } from "../types";
 import { formatTimelineTime, visibleClipDuration } from "../timeline";
 import { Wave } from "./Wave";
 import { Inspector } from "./Inspector";
 import { RegionPanel } from "./RegionPanel";
-import { StudioEmptyState } from "./StudioEmptyState";
+import { StudioStart } from "./StudioStart";
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -50,6 +50,8 @@ export function EditWorkspace({
   editLog,
   onRecord,
   onBeat,
+  experience,
+  onTemplate,
 }: {
   tracks: StudioTrack[];
   selectedTrack: StudioTrack | null;
@@ -88,6 +90,8 @@ export function EditWorkspace({
   editLog: string[];
   onRecord: () => void;
   onBeat: () => void;
+  experience: StudioExperienceMode;
+  onTemplate: (id: StudioTemplateId) => void;
 }) {
   const seconds = useMemo(() => Array.from({ length: Math.ceil(sessionEnd) + 1 }, (_, i) => i), [sessionEnd]);
   const timelineWidth = Math.max(1600, sessionEnd * zoom + 480);
@@ -203,7 +207,7 @@ export function EditWorkspace({
         </div>
 
         {tracks.length === 0 ? (
-          <StudioEmptyState importFiles={(files) => void importFiles(files)} onRecord={onRecord} onBeat={onBeat} />
+          <StudioStart experience={experience} onTemplate={onTemplate} onImport={(files) => void importFiles(files)} onRecord={onRecord} onBeat={onBeat} />
         ) : (
           <div className="studio-timeline__scroll">
             <div className="relative" style={{ width: timelineWidth }}>
