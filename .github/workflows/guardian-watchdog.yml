@@ -34,6 +34,7 @@ jobs:
         run: npm run build
 
       - name: Route Smoke Test
+        if: github.event_name != 'pull_request'
         run: node scripts/guardian/route-smoke.mjs
 
       - name: Performance Budget
