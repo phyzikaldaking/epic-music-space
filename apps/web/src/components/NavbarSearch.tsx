@@ -15,14 +15,19 @@ export default function NavbarSearch() {
   }
 
   return (
-    <form onSubmit={handleSubmit} role="search" aria-label="Site search" className="hidden lg:block relative">
+    <form
+      onSubmit={handleSubmit}
+      role="search"
+      aria-label="Site search"
+      className="relative hidden xl:block"
+    >
       <span className="sr-only">Search Epic Music Space</span>
       <input
         type="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search…"
-        className="w-44 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm placeholder-white/30 focus:w-60 focus:border-brand-500/40 focus:outline-none transition-all"
+        className="w-36 border-b border-white/15 bg-transparent px-1 py-2 text-xs text-[#f2ede3] placeholder:text-white/30 focus:w-48 focus:border-[#c9a96e] focus:outline-none transition-all"
         aria-label="Search"
       />
     </form>

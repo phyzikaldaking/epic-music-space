@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StudioSoundCategory } from "@/app/studio/try/studioWorkstationTypes";
 
 export const runtime = "nodejs";
@@ -9,7 +8,7 @@ export const dynamic = "force-dynamic";
 const AUDIO_BUCKET = "audio-assets";
 const AUDIO_EXTENSIONS = new Set(["aif", "aiff", "flac", "m4a", "mp3", "ogg", "wav", "webm"]);
 
-type StorageSupabaseClient = SupabaseClient<any, any, any>;
+type StorageSupabaseClient = ReturnType<typeof createClient>;
 
 interface StorageObject {
   id?: string | null;

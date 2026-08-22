@@ -3,7 +3,6 @@ import { headers } from "next/headers";
 import { Bebas_Neue, Orbitron, Audiowide } from "next/font/google";
 import Providers from "@/components/Providers";
 import FeedbackBotMount from "@/components/FeedbackBotMount";
-import EMSWorldIntro from "@/components/EMSWorldIntro";
 import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -62,8 +61,8 @@ export const viewport: Viewport = {
   // Player bar + mobile bottom-nav already do.
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
-    { media: "(prefers-color-scheme: light)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: dark)", color: "#080808" },
+    { media: "(prefers-color-scheme: light)", color: "#080808" },
   ],
 };
 
@@ -151,10 +150,13 @@ export default async function RootLayout({
       lang="en"
       className={`${bebasNeue.variable} ${orbitron.variable} ${audiowide.variable}`}
     >
-      <body className="studio-room min-h-screen text-white antialiased" suppressHydrationWarning>
+      <body
+        className="min-h-screen bg-[#080808] text-[#f2ede3] antialiased"
+        suppressHydrationWarning
+      >
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[200] focus:rounded-md focus:bg-brand-500 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:outline-none focus:ring-2 focus:ring-accent-400"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[200] focus:bg-[#c9a96e] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[#080808] focus:outline-none focus:ring-2 focus:ring-white"
         >
           Skip to main content
         </a>
@@ -165,7 +167,6 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: structuredDataJson }}
         />
         <Providers>
-          <EMSWorldIntro />
           {children}
           <FeedbackBotMount />
         </Providers>

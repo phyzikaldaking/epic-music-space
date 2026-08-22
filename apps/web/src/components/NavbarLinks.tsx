@@ -16,40 +16,44 @@ interface Props {
   adminLink: NavLink;
 }
 
-export default function NavbarLinks({ publicLinks, authedLinks, adminLink }: Props) {
+export default function NavbarLinks({
+  publicLinks,
+  authedLinks,
+  adminLink,
+}: Props) {
   const { data: session } = useSession();
   const pathname = usePathname();
   const links = session
-    ? [
-        ...authedLinks,
-        ...(session.user?.role === "ADMIN" ? [adminLink] : []),
-      ]
+    ? [...authedLinks, ...(session.user?.role === "ADMIN" ? [adminLink] : [])]
     : publicLinks;
 
   return (
-    <div className="hidden items-center gap-1 text-sm font-medium md:flex">
-      {links.map((link) => (
+    <div className="hidden items-center gap-6 text-[11px] font-semibold uppercase tracking-[0.16em] md:flex lg:gap-8">
+      {links.map((link) =>
         (() => {
           const active =
-            pathname === link.href
-            || (link.href !== "/" && pathname.startsWith(`${link.href}/`))
-            || (link.activePrefixes?.some((prefix) => pathname.startsWith(prefix)) ?? false);
+            pathname === link.href ||
+            (link.href !== "/" && pathname.startsWith(`${link.href}/`)) ||
+            (link.activePrefixes?.some((prefix) =>
+              pathname.startsWith(prefix),
+            ) ??
+              false);
           return (
-        <Link
-          key={link.href}
-          href={link.href}
-          data-ui-sfx="page"
-          className={`rounded-lg px-3 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${
-            active
-              ? "bg-white/10 text-white"
-              : "text-white/60 hover:bg-white/6 hover:text-white"
-          }`}
-        >
-          {link.label}
-        </Link>
+            <Link
+              key={link.href}
+              href={link.href}
+              data-ui-sfx="page"
+              className={`border-b py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a96e] ${
+                active
+                  ? "border-[#c9a96e] text-[#c9a96e]"
+                  : "border-transparent text-[#d1cbc0]/60 hover:text-[#f2ede3]"
+              }`}
+            >
+              {link.label}
+            </Link>
           );
-        })()
-      ))}
+        })(),
+      )}
     </div>
   );
 }

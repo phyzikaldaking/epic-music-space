@@ -4,7 +4,13 @@ import process from "node:process";
 
 const repoRoot = process.cwd();
 const webRoot = path.join(repoRoot, "apps/web");
-const manifestPath = path.join(webRoot, ".next/app-build-manifest.json");
+const manifestCandidates = [
+  path.join(webRoot, ".next/app-build-manifest.json"),
+  path.join(webRoot, ".next/server/app-build-manifest.json"),
+];
+const manifestPath = manifestCandidates.find((candidate) =>
+  fs.existsSync(candidate),
+);
 
 const routeBudgets = {
   "/": Number(process.env.PERF_BUDGET_HOME_KB ?? 40),
@@ -34,7 +40,11 @@ function readJson(filePath) {
 }
 
 function bytesForManifestFile(file) {
-  const staticPath = path.join(webRoot, ".next/static", file.replace(/^static\//, ""));
+  const staticPath = path.join(
+    webRoot,
+    ".next/static",
+    file.replace(/^static\//, ""),
+  );
   if (fs.existsSync(staticPath)) return fs.statSync(staticPath).size;
   const nextPath = path.join(webRoot, ".next", file);
   if (fs.existsSync(nextPath)) return fs.statSync(nextPath).size;
@@ -57,11 +67,7 @@ function routeChunkFiles(route) {
 }
 
 function checkBundleBudgets() {
-  if (!fs.existsSync(manifestPath)) {
-    throw new Error(`Missing ${manifestPath}. Run web build before perf budget checks.`);
-  }
-
-  const manifest = readJson(manifestPath);
+  const manifest = manifestPath ? readJson(manifestPath) : {};
   const pages = manifest.pages ?? {};
   const failures = [];
   const results = [];
@@ -70,7 +76,7 @@ function checkBundleBudgets() {
     const routeFiles = routeChunkFiles(route);
     const files = pages[routeKey(route)] ?? pages[route] ?? [];
     if (routeFiles.length === 0 && files.length === 0) {
-      results.push({ route, skipped: true, reason: "not in app build manifest" });
+      results.push({ route, skipped: true, reason: "no route chunks found" });
       continue;
     }
     const totalBytes =
@@ -86,7 +92,9 @@ function checkBundleBudgets() {
 
   console.log("Bundle budgets:", results);
   if (results.every((result) => result.skipped)) {
-    failures.push("No budgeted routes were found in app-build-manifest.json");
+    failures.push(
+      `No budgeted route chunks were found in ${path.join(webRoot, ".next/static/chunks/app")}`,
+    );
   }
   return failures;
 }
@@ -105,13 +113,17 @@ async function checkLatencyBudgets(baseUrl) {
       status = res.status;
       await res.arrayBuffer();
     } catch (error) {
-      failures.push(`${route}: request failed (${error instanceof Error ? error.message : String(error)})`);
+      failures.push(
+        `${route}: request failed (${error instanceof Error ? error.message : String(error)})`,
+      );
       continue;
     }
     const elapsedMs = Date.now() - startedAt;
     results.push({ route, status, elapsedMs, budgetMs });
-    if (status >= 500 && status !== 503) failures.push(`${route}: status ${status}`);
-    if (elapsedMs > budgetMs) failures.push(`${route}: ${elapsedMs}ms > ${budgetMs}ms`);
+    if (status >= 500 && status !== 503)
+      failures.push(`${route}: status ${status}`);
+    if (elapsedMs > budgetMs)
+      failures.push(`${route}: ${elapsedMs}ms > ${budgetMs}ms`);
   }
   console.log("Latency budgets:", results);
   return failures;

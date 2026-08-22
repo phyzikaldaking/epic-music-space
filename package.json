@@ -49,6 +49,7 @@
     "loadtest:core": "k6 run scripts/loadtest/core.k6.js",
     "loadtest:rooms": "k6 run scripts/loadtest/rooms.k6.js",
     "loadtest:hardening": "k6 run scripts/loadtest/traffic-hardening.k6.js",
+    "pretypecheck": "npx prisma generate --schema packages/db/prisma/schema.prisma",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
