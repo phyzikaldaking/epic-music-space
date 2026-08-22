@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  fetchRecentStudioProjects,
   productionProjectToSession,
   serializeStudioSession,
   studioProjectToSession,
@@ -25,7 +26,20 @@ const saved: StudioSavedSession = {
   }],
 };
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("Studio cross-device hydration", () => {
+  it("keeps signed-out creators in local-draft mode when cloud projects return 401", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      JSON.stringify({ error: "Unauthorized" }),
+      { status: 401, headers: { "Content-Type": "application/json" } },
+    )));
+
+    await expect(fetchRecentStudioProjects()).resolves.toEqual([]);
+  });
+
   it("overlays production media without dropping mixer or clip edit fields", () => {
     const session = productionProjectToSession({
       project: { id: saved.id, name: saved.title, bpm: saved.bpm, updatedAt: saved.updatedAt, patternJson: saved },
