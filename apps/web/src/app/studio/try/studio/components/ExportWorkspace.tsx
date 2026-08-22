@@ -17,10 +17,11 @@ export function ExportWorkspace({
   const clipCount = tracks.reduce((sum, track) => sum + track.clips.length, 0);
 
   return (
-    <div className="grid h-full grid-cols-[320px_1fr] bg-[#15181d] text-white/70">
-      <aside className="border-r border-black bg-[#20242b] p-4">
-        <h2 className="text-lg font-black uppercase tracking-widest text-cyan-100">
-          Export
+    <div className="platinum-library">
+      <aside className="platinum-library__aside">
+        <span className="platinum-eyebrow">MASTER DELIVERY</span>
+        <h2>
+          Export Room
         </h2>
 
         <div className="mt-4 space-y-2 text-xs uppercase tracking-widest text-white/45">
@@ -31,24 +32,24 @@ export function ExportWorkspace({
 
         <button
           onClick={exportArchive}
-          className="mt-5 w-full bg-cyan-300 px-4 py-2 text-xs font-black uppercase text-black"
+          className="platinum-primary"
         >
           Export Session Archive
         </button>
 
-        <div className="mt-5 border border-black bg-black/25 p-3 text-xs text-white/50">
+        <div className="platinum-note">
           WAV mixdown and queued MP3 export worker integration are still pending.
         </div>
       </aside>
 
-      <main className="overflow-auto p-4">
+      <main className="platinum-library__main">
         <h3 className="mb-3 text-xs font-black uppercase tracking-widest text-white/50">
           Source Audio
         </h3>
 
         <div className="space-y-4">
           {tracks.map((track) => (
-            <section key={track.id} className="border border-black bg-[#232830] p-3">
+            <section key={track.id} className="platinum-card">
               <b
                 className="mb-3 block text-xs uppercase tracking-widest"
                 style={{ color: track.color }}
@@ -63,7 +64,7 @@ export function ExportWorkspace({
                   {track.clips.map((clip) => (
                     <div
                       key={clip.id}
-                      className="flex items-center justify-between border border-black bg-black/20 px-3 py-2"
+                      className="platinum-row"
                     >
                       <div>
                         <b className="block text-xs uppercase text-white/80">

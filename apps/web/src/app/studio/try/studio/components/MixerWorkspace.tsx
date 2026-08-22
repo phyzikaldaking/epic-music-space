@@ -14,8 +14,9 @@ export function MixerWorkspace({
   arm: (id: string) => void;
 }) {
   return (
-    <div className="flex h-full overflow-auto bg-[#16191e] p-4">
-      <div className="flex gap-3">
+    <div className="platinum-mixer">
+      <div className="platinum-mixer__header"><div><span>PLATINUM CONSOLE</span><h2>Mix Room</h2></div><p>{tracks.length} CHANNELS · 48-BIT MIX ENGINE</p></div>
+      <div className="platinum-mixer__channels">
         {tracks.map((track) => {
           const clipping = track.volume + track.inputGain >= 154;
           const active = selected?.id === track.id;
@@ -23,24 +24,24 @@ export function MixerWorkspace({
           return (
             <div
               key={track.id}
-              className={active ? "w-40 border border-cyan-300 bg-[#232830] p-3" : "w-40 border border-black bg-[#232830] p-3"}
+              className={active ? "platinum-channel is-active" : "platinum-channel"}
             >
-              <div className="mb-2 flex items-center justify-between">
+              <div className="platinum-channel__head">
                 <b className="truncate text-xs uppercase tracking-widest" style={{ color: track.color }}>
                   {track.name}
                 </b>
                 <button
                   onClick={() => arm(track.id)}
-                  className={track.armed ? "bg-red-500 px-2 py-1 text-[9px] font-black uppercase text-black" : "bg-[#111] px-2 py-1 text-[9px] font-black uppercase text-white/55"}
+                  className={track.armed ? "is-armed" : ""}
                 >
                   Arm
                 </button>
               </div>
 
-              <div className="mb-3 flex justify-center">
-                <div className="relative flex h-52 w-12 items-end rounded bg-black/40 p-1">
+              <div className="platinum-channel__meter-wrap">
+                <div className="platinum-channel__meter">
                   <div
-                    className="w-full rounded-t bg-cyan-300"
+                    className="platinum-channel__level"
                     style={{ height: `${Math.max(4, track.volume)}%` }}
                   />
                 </div>

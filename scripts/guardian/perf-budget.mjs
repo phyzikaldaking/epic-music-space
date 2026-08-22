@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const MAX_ROUTE_KB = 500;
-const nextDir = path.resolve('apps/web/.next');
+const routeChunksDir = path.resolve('apps/web/.next/static/chunks/app');
 
 function bytesToKB(bytes) {
   return Math.round(bytes / 1024);
@@ -21,10 +21,10 @@ function walk(dir, files = []) {
   return files;
 }
 
-const jsFiles = walk(nextDir).filter((f) => f.file.endsWith('.js'));
+const jsFiles = walk(routeChunksDir).filter((f) => f.file.endsWith('.js'));
 
 if (!jsFiles.length) {
-  console.error('No build artifacts found. Run build first.');
+  console.error('No application route chunks found. Run build first.');
   process.exit(1);
 }
 
