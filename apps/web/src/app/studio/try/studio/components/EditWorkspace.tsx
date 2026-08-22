@@ -6,6 +6,7 @@ import { formatTimelineTime, visibleClipDuration } from "../timeline";
 import { Wave } from "./Wave";
 import { Inspector } from "./Inspector";
 import { RegionPanel } from "./RegionPanel";
+import { StudioEmptyState } from "./StudioEmptyState";
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -47,6 +48,8 @@ export function EditWorkspace({
   trimRight,
   moveClipToTrack,
   editLog,
+  onRecord,
+  onBeat,
 }: {
   tracks: StudioTrack[];
   selectedTrack: StudioTrack | null;
@@ -83,21 +86,23 @@ export function EditWorkspace({
   trimRight: (amount: number) => void;
   moveClipToTrack: (id: string) => void;
   editLog: string[];
+  onRecord: () => void;
+  onBeat: () => void;
 }) {
   const seconds = useMemo(() => Array.from({ length: Math.ceil(sessionEnd) + 1 }, (_, i) => i), [sessionEnd]);
   const timelineWidth = Math.max(1600, sessionEnd * zoom + 480);
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[270px_1fr_260px] bg-[#1b1f26]">
-      <div className="grid min-h-0 grid-rows-[42px_1fr_250px] border-r border-black bg-[#252930]">
-        <div className="flex items-center border-b border-black bg-[#30343b] px-3 text-[10px] font-black uppercase tracking-widest text-white/55">
-          Tracks
+    <div className="studio-editor">
+      <div className="studio-tracks">
+        <div className="studio-panel-title">
+          <span>TRACKS</span><b>{tracks.length.toString().padStart(2, "0")}</b>
         </div>
 
         <div className="overflow-auto">
           {tracks.length === 0 && (
-            <div className="px-3 py-4 text-xs leading-5 text-white/45">
-              No tracks loaded.
+            <div className="studio-tracks__empty">
+              Your tracks will appear here.
             </div>
           )}
 
@@ -106,27 +111,27 @@ export function EditWorkspace({
               key={track.id}
               onClick={() => setSelectedTrackId(track.id)}
               className={cn(
-                "grid min-h-[86px] w-full grid-cols-[8px_1fr_74px] border-b border-black text-left",
-                selectedTrack?.id === track.id ? "bg-[#3a3d45]" : "bg-[#282c33]",
+                "studio-track",
+                selectedTrack?.id === track.id && "is-selected",
               )}
             >
-              <span style={{ backgroundColor: track.color }} />
-              <span className="min-w-0 px-3 py-2">
-                <b className="block truncate text-[12px] uppercase text-white/85">{track.name}</b>
-                <span className="mt-1 block text-[10px] uppercase tracking-wide text-white/40">
+              <span className="studio-track__color" style={{ backgroundColor: track.color }} />
+              <span className="studio-track__body">
+                <b>{track.name}</b>
+                <span className="studio-track__meta">
                   {track.clips.length} clip{track.clips.length === 1 ? "" : "s"}
                 </span>
-                <span className="mt-2 block h-2 bg-black">
-                  <span className="block h-full bg-green-400" style={{ width: `${track.volume}%` }} />
+                <span className="studio-track__meter">
+                  <span style={{ width: `${track.volume}%`, backgroundColor: track.color }} />
                 </span>
               </span>
-              <span className="grid grid-cols-2 gap-px p-2 text-[9px] font-black uppercase">
+              <span className="studio-track__switches">
                 <button
                   onClick={(event) => {
                     event.stopPropagation();
                     updateTrack(track.id, { muted: !track.muted }, "Toggle mute");
                   }}
-                  className={track.muted ? "bg-yellow-300 text-black" : "bg-[#15171b] text-white/45"}
+                  className={track.muted ? "is-mute" : ""}
                 >
                   M
                 </button>
@@ -135,7 +140,7 @@ export function EditWorkspace({
                     event.stopPropagation();
                     updateTrack(track.id, { solo: !track.solo }, "Toggle solo");
                   }}
-                  className={track.solo ? "bg-cyan-300 text-black" : "bg-[#15171b] text-white/45"}
+                  className={track.solo ? "is-solo" : ""}
                 >
                   S
                 </button>
@@ -144,7 +149,7 @@ export function EditWorkspace({
                     event.stopPropagation();
                     arm(track.id);
                   }}
-                  className={track.armed ? "col-span-2 bg-red-500 text-black" : "col-span-2 bg-[#15171b] text-white/45"}
+                  className={track.armed ? "is-armed" : ""}
                 >
                   Rec
                 </button>
@@ -176,20 +181,20 @@ export function EditWorkspace({
       </div>
 
       <section
-        className="grid min-h-0 grid-rows-[42px_1fr_58px] overflow-hidden bg-[#171a1f]"
+        className="studio-timeline"
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();
           void importFiles(Array.from(event.dataTransfer.files));
         }}
       >
-        <div className="relative overflow-hidden border-b border-black bg-[#30343b]" style={{ width: timelineWidth }}>
-          <div className="absolute bottom-0 top-0 w-px bg-cyan-300" style={{ left: playhead * zoom }} />
+        <div className="studio-ruler" style={{ width: timelineWidth }}>
+          <div className="studio-playhead studio-playhead--ruler" style={{ left: playhead * zoom }} />
           {seconds.map((second) => (
             <button
               key={second}
               onClick={() => setPlayhead(second)}
-              className="absolute bottom-0 top-0 border-r border-black/80 px-1 text-left font-mono text-[10px] text-white/50"
+              className="studio-ruler__tick"
               style={{ left: second * zoom, width: zoom }}
             >
               {second % 2 === 0 ? formatTimelineTime(second) : second}
@@ -198,34 +203,19 @@ export function EditWorkspace({
         </div>
 
         {tracks.length === 0 ? (
-          <div className="grid h-full place-items-center">
-            <div className="text-center">
-              <h2 className="text-2xl font-black uppercase tracking-widest text-cyan-100">Edit Window</h2>
-              <p className="mt-3 text-sm text-white/50">Import, record, save, restore, relink, edit, mix, and export real audio.</p>
-              <label className="mt-5 inline-block cursor-pointer bg-cyan-300 px-6 py-3 text-xs font-black uppercase text-black">
-                Import Audio
-                <input
-                  type="file"
-                  accept="audio/*,.wav,.wave,.mp3,.m4a,.aac,.ogg,.oga,.webm,.flac,.aif,.aiff,.mp4"
-                  multiple
-                  className="sr-only"
-                  onChange={(event) => event.target.files && void importFiles(event.target.files)}
-                />
-              </label>
-            </div>
-          </div>
+          <StudioEmptyState importFiles={(files) => void importFiles(files)} onRecord={onRecord} onBeat={onBeat} />
         ) : (
-          <div className="overflow-auto">
+          <div className="studio-timeline__scroll">
             <div className="relative" style={{ width: timelineWidth }}>
               {tracks.map((track) => (
-                <div key={track.id} className="relative h-[86px] border-b border-black bg-[#1b1f26]">
+                <div key={track.id} className="studio-lane">
                   <div className="absolute inset-0">
                     {seconds.map((second) => (
-                      <span key={second} className="absolute bottom-0 top-0 border-r border-black/70" style={{ left: second * zoom, width: zoom }} />
+                      <span key={second} className="studio-gridline" style={{ left: second * zoom, width: zoom }} />
                     ))}
                   </div>
-                  <div className="absolute bottom-0 top-0 bg-cyan-300/10" style={{ left: selectionStart * zoom, width: Math.max(1, (selectionEnd - selectionStart) * zoom) }} />
-                  {track.armed && <div className="absolute inset-0 bg-red-500/[0.045]" />}
+                  <div className="studio-selection" style={{ left: selectionStart * zoom, width: Math.max(1, (selectionEnd - selectionStart) * zoom) }} />
+                  {track.armed && <div className="studio-lane__armed" />}
                   {track.clips.map((clip) => (
                     <button
                       key={clip.id}
@@ -234,10 +224,10 @@ export function EditWorkspace({
                         setSelectedClipId(clip.id);
                       }}
                       className={cn(
-                        "absolute top-[10px] h-[66px] border px-3 text-left shadow-inner",
-                        selectedClipId === clip.id && "ring-2 ring-white",
-                        clip.locked && "opacity-60",
-                        clip.missing && "border-dashed",
+                        "studio-clip",
+                        selectedClipId === clip.id && "is-selected",
+                        clip.locked && "is-locked",
+                        clip.missing && "is-missing",
                       )}
                       style={{
                         left: clip.start * zoom,
