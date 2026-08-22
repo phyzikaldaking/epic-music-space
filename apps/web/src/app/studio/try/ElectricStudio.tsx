@@ -5,10 +5,13 @@ import BeatMachineProClient from "../beat-machine/BeatMachineProClient";
 import type {
   StudioClip,
   StudioEditMode,
+  StudioExperienceMode,
   StudioHistoryEntry,
   StudioMode,
   StudioSavedSession,
   StudioSnapshot,
+  StudioTask,
+  StudioTemplateId,
   StudioTool,
   StudioTrack,
 } from "./studio/types";
@@ -28,15 +31,24 @@ import { ExportWorkspace } from "./studio/components/ExportWorkspace";
 import { FilesWorkspace } from "./studio/components/FilesWorkspace";
 import { MixerWorkspace } from "./studio/components/MixerWorkspace";
 import { StudioChrome } from "./studio/components/StudioChrome";
+import { FirstSessionGuide } from "./studio/components/FirstSessionGuide";
+import { RecordingPreflight } from "./studio/components/RecordingPreflight";
+import { RecoveryComparison } from "./studio/components/RecoveryComparison";
 import { getStudioAlert } from "./studio/presentation";
+import { createTemplateSession, getFirstSessionStep, hydrateWorkspaceState } from "./studio/workspace";
+import {
+  compareRecoveryVersions,
+  createRecoveryEnvelope,
+  getSaveStatusText,
+  loadLocalRecovery,
+  saveLocalRecovery,
+  type StudioRecoveryEnvelope,
+  type StudioSaveState,
+} from "./studio/recovery";
 
 const colors = ["#65d6ff", "#a78bfa", "#f9d66a", "#42e89d", "#ff7adf", "#ff9f6e", "#8ee3f5"];
 const audioPattern = /\.(wav|wave|mp3|m4a|aac|ogg|oga|webm|flac|aif|aiff|mp4)$/i;
 const lockKey = "ems.studio.lock.v2";
-
-function cn(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -56,6 +68,15 @@ function cloneTracks(tracks: StudioTrack[]) {
 
 export default function ElectricStudio() {
   const [mode, setMode] = useState<StudioMode>("edit");
+  const [experience, setExperience] = useState<StudioExperienceMode>("engineer");
+  const [task, setTask] = useState<StudioTask>("arrange");
+  const [templateId, setTemplateId] = useState<StudioTemplateId>("empty");
+  const [guideDismissed, setGuideDismissed] = useState(false);
+  const [preflightOpen, setPreflightOpen] = useState(false);
+  const [preflightComplete, setPreflightComplete] = useState(false);
+  const [saveState, setSaveState] = useState<StudioSaveState>("local-draft");
+  const [savedAt, setSavedAt] = useState<string>();
+  const [recoveryChoice, setRecoveryChoice] = useState<{ local: StudioSavedSession; cloud: StudioSavedSession } | null>(null);
   const [tool, setTool] = useState<StudioTool>("smart");
   const [editMode, setEditMode] = useState<StudioEditMode>("grid");
   const [tracks, setTracks] = useState<StudioTrack[]>([]);
@@ -63,6 +84,7 @@ export default function ElectricStudio() {
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState(() => uid("session"));
+  const [projectUpdatedAt, setProjectUpdatedAt] = useState(() => new Date().toISOString());
   const [title, setTitle] = useState("Untitled Session");
   const [bpm, setBpm] = useState(92);
   const [sampleRate, setSampleRate] = useState(48000);
@@ -134,32 +156,46 @@ export default function ElectricStudio() {
     updatedAt: new Date().toISOString(),
     tracks: buildPersistableTracks(tracks),
     snapshots: snapshots.map((snapshot) => ({ ...snapshot, tracks: buildPersistableTracks(snapshot.tracks) })),
-  }), [bpm, sampleRate, sessionId, snapshots, title, tracks]);
+    schemaVersion: 3,
+    experienceMode: experience,
+    task,
+    templateId,
+  }), [bpm, experience, sampleRate, sessionId, snapshots, task, templateId, title, tracks]);
 
   const refreshRecent = useCallback(async () => {
     setRecent(await fetchRecentStudioProjects());
   }, []);
 
-  const saveSession = useCallback(async (customTitle = title, forceNew = false, autosaveRun = false) => {
+  const saveSession = useCallback(async (customTitle = title, forceNew = false, _autosaveRun = false) => {
+    const saved = buildSession(forceNew ? uid("session") : sessionId, customTitle);
+    const envelope = createRecoveryEnvelope(saved);
+    saveLocalRecovery(saved.id, envelope);
     if (offline) {
-      setSaveStatus("Offline: cloud save paused");
+      setSaveState("offline-local");
+      setSaveStatus(getSaveStatusText("offline-local"));
       return;
     }
     try {
       setBusy(true);
-      setSaveStatus(autosaveRun ? "Autosaving..." : "Saving...");
-      const saved = buildSession(forceNew ? uid("session") : sessionId, customTitle);
+      setSaveState("saving-cloud");
+      setSaveStatus(getSaveStatusText("saving-cloud"));
       const data = await studioFetchJson<{ project: { id: string; name: string } }>("/api/studio/projects", {
         method: "POST",
         body: JSON.stringify(toStudioProjectPayload(saved, forceNew)),
       });
       setSessionId(data.project.id);
       setTitle(data.project.name);
+      setProjectUpdatedAt(envelope.updatedAt);
       setDirty(false);
-      setSaveStatus(`${autosaveRun ? "Autosaved" : "Saved"} ${new Date().toLocaleTimeString()}`);
+      const timestamp = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      setSavedAt(timestamp);
+      setSaveState("cloud-saved");
+      setSaveStatus(getSaveStatusText("cloud-saved", timestamp));
+      localStorage.removeItem(`ems.studio.recovery.v3:${saved.id}`);
       await refreshRecent();
     } catch (err) {
-      setSaveStatus("Cloud save failed");
+      setSaveState("save-failed");
+      setSaveStatus(getSaveStatusText("save-failed"));
       setError(err instanceof Error ? err.message : "Cloud save failed.");
     } finally {
       setBusy(false);
@@ -183,6 +219,9 @@ export default function ElectricStudio() {
   }, []);
 
   useEffect(() => {
+    const savedExperience = localStorage.getItem("ems.studio.experience.v1");
+    if (savedExperience === "creator" || savedExperience === "engineer") setExperience(savedExperience);
+    setGuideDismissed(localStorage.getItem("ems.studio.first-session.v1") === "dismissed");
     void refreshRecent().catch((err) => setError(err instanceof Error ? err.message : "Could not load Studio projects."));
     setOffline(!navigator.onLine);
     const existingLock = localStorage.getItem(lockKey);
@@ -249,6 +288,7 @@ export default function ElectricStudio() {
     setSelectedTrackId(null);
     setSelectedClipId(null);
     setSessionId(uid("session"));
+    setProjectUpdatedAt(new Date().toISOString());
     setTitle("Untitled Session");
     setBpm(92);
     setSampleRate(48000);
@@ -257,6 +297,30 @@ export default function ElectricStudio() {
     setRedoHistory([]);
     setDirty(false);
     setSaveStatus("New session");
+    setTask("create");
+    setTemplateId("empty");
+    setPreflightComplete(false);
+  }
+
+  function applySavedSession(saved: StudioSavedSession, localDraft = false) {
+      stopTransport(true);
+      setSessionId(saved.id);
+      setProjectUpdatedAt(saved.updatedAt);
+      setTitle(saved.title);
+      setBpm(saved.bpm);
+      setSampleRate(saved.sampleRate);
+      setTracks(restorePersistedTracks(saved.tracks));
+      setSnapshots(saved.snapshots.map((snapshot) => ({ ...snapshot, tracks: restorePersistedTracks(snapshot.tracks) })));
+      const workspace = hydrateWorkspaceState(saved);
+      setExperience(workspace.experienceMode);
+      setTask(workspace.task);
+      setTemplateId(workspace.templateId);
+      setSelectedTrackId(saved.tracks[0]?.id ?? null);
+      setSelectedClipId(saved.tracks[0]?.clips[0]?.id ?? null);
+      setDirty(localDraft);
+      setSaveState(localDraft ? "local-draft" : "cloud-saved");
+      setSaveStatus(localDraft ? getSaveStatusText("local-draft") : getSaveStatusText("cloud-saved"));
+      setMode("edit");
   }
 
   async function openSession(id: string) {
@@ -270,18 +334,14 @@ export default function ElectricStudio() {
         const data = await studioFetchJson<{ project: Parameters<typeof studioProjectToSession>[0] }>(`/api/studio/projects/${id}`);
         saved = studioProjectToSession(data.project);
       }
-      stopTransport(true);
-      setSessionId(saved.id);
-      setTitle(saved.title);
-      setBpm(saved.bpm);
-      setSampleRate(saved.sampleRate);
-      setTracks(restorePersistedTracks(saved.tracks));
-      setSnapshots(saved.snapshots.map((snapshot) => ({ ...snapshot, tracks: restorePersistedTracks(snapshot.tracks) })));
-      setSelectedTrackId(saved.tracks[0]?.id ?? null);
-      setSelectedClipId(saved.tracks[0]?.clips[0]?.id ?? null);
-      setDirty(false);
-      setSaveStatus("Project restored successfully");
-      setMode("edit");
+      const localEnvelope = loadLocalRecovery<StudioRecoveryEnvelope<StudioSavedSession>>(id);
+      if (localEnvelope?.project && compareRecoveryVersions(localEnvelope, { ...localEnvelope, updatedAt: saved.updatedAt }).recommended === "local") {
+        setRecoveryChoice({ local: localEnvelope.project, cloud: saved });
+        setSaveState("conflict");
+        setSaveStatus(getSaveStatusText("conflict"));
+        return;
+      }
+      applySavedSession(saved);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Saved project was not found in cloud storage.");
     } finally {
@@ -461,6 +521,38 @@ export default function ElectricStudio() {
     }
   }
 
+  function requestRecord() {
+    if (recording || preflightComplete) {
+      void toggleRecord();
+      return;
+    }
+    setPreflightOpen(true);
+  }
+
+  function changeTask(value: StudioTask) {
+    setTask(value);
+    setMode(value === "mix" ? "mix" : value === "finish" ? "export" : "edit");
+  }
+
+  function changeExperience(value: StudioExperienceMode) {
+    setExperience(value);
+    localStorage.setItem("ems.studio.experience.v1", value);
+    if (value === "creator") changeTask(task);
+  }
+
+  function applyTemplate(value: StudioTemplateId) {
+    const template = createTemplateSession(value);
+    setTemplateId(value);
+    setBpm(template.bpm);
+    setSampleRate(template.sampleRate);
+    setTracks(template.tracks);
+    setSelectedTrackId(template.tracks[0]?.id ?? null);
+    setSelectedClipId(null);
+    const nextTask: StudioTask = value === "mastering" ? "finish" : value === "stems" ? "mix" : "create";
+    changeTask(nextTask);
+    markDirty(`Started ${value} template`);
+  }
+
   function playTransport() {
     if (playing) return;
     const soloed = tracks.filter((track) => track.solo);
@@ -611,10 +703,51 @@ export default function ElectricStudio() {
   }
 
   const alert = getStudioAlert(error, lockWarning, offline, missingClips.length);
+  const guideStep = getFirstSessionStep({ trackCount: tracks.length, editCount: editLog.length, cloudSaved: !dirty && saveStatus.toLowerCase().includes("saved"), finished: mode === "export" && tracks.length > 0 });
 
   return <div className="studio-app"><div className="studio-app__frame">
-    <StudioChrome mode={mode} setMode={setMode} title={title} setTitle={(value) => { setTitle(value); setDirty(true); setSaveStatus("Unsaved changes"); }} saveStatus={saveStatus} dirty={dirty} busy={busy} playing={playing} recording={recording} tracksLength={tracks.length} playhead={playhead} onNew={newSession} onSave={() => void saveSession()} onSaveAs={saveAs} onRestore={() => void restoreAutosave()} onSnapshot={snapshot} onArchive={exportArchive} onStop={stopTransport} onPlay={playing ? () => stopTransport() : playTransport} onRecord={() => void toggleRecord()} onImport={(files) => void importFiles(files)} undo={undo} redo={redo} tool={tool} setTool={setTool} editMode={editMode} setEditMode={setEditMode} zoomOut={() => setZoom((value) => Math.max(35, value - 30))} zoomIn={() => setZoom((value) => Math.min(520, value + 30))} fit={() => setZoom(Math.max(45, Math.min(180, 1200 / sessionEnd)))} bpm={bpm} setBpm={(value) => { setBpm(value); setDirty(true); }} sampleRate={sampleRate} setSampleRate={(value) => { setSampleRate(value); setDirty(true); }} nudge={nudge} setNudge={setNudge} grid={grid} setGrid={setGrid} />
+    <StudioChrome mode={mode} setMode={setMode} experience={experience} setExperience={changeExperience} task={task} setTask={changeTask} title={title} setTitle={(value) => { setTitle(value); setDirty(true); setSaveState("local-draft"); setSaveStatus(getSaveStatusText("local-draft")); }} saveStatus={saveStatus} saveState={saveState} savedAt={savedAt} missingMedia={missingClips.length} dirty={dirty} busy={busy} playing={playing} recording={recording} tracksLength={tracks.length} playhead={playhead} onNew={newSession} onSave={() => void saveSession()} onSaveAs={saveAs} onRestore={() => void restoreAutosave()} onSnapshot={snapshot} onArchive={exportArchive} onStop={stopTransport} onPlay={playing ? () => stopTransport() : playTransport} onRecord={requestRecord} onImport={(files) => void importFiles(files)} undo={undo} redo={redo} tool={tool} setTool={setTool} editMode={editMode} setEditMode={setEditMode} zoomOut={() => setZoom((value) => Math.max(35, value - 30))} zoomIn={() => setZoom((value) => Math.min(520, value + 30))} fit={() => setZoom(Math.max(45, Math.min(180, 1200 / sessionEnd)))} bpm={bpm} setBpm={(value) => { setBpm(value); setDirty(true); }} sampleRate={sampleRate} setSampleRate={(value) => { setSampleRate(value); setDirty(true); }} nudge={nudge} setNudge={setNudge} grid={grid} setGrid={setGrid} />
+    {!guideDismissed && (
+      <FirstSessionGuide
+        step={guideStep}
+        onDismiss={() => {
+          setGuideDismissed(true);
+          localStorage.setItem("ems.studio.first-session.v1", "dismissed");
+        }}
+      />
+    )}
     {alert && <div className={`studio-alert studio-alert--${alert.tone}`} role="status"><span>!</span><p>{alert.message}</p><button onClick={() => setError(null)} aria-label="Dismiss alert">×</button></div>}
-    <main className="studio-workspace">{mode === "beat" && <div className="studio-beat-stage"><BeatMachineProClient studioMode /></div>}{mode === "edit" && <EditWorkspace tracks={tracks} selectedTrack={selectedTrack} selectedClip={selectedClip} selectedClipId={selectedClipId} setSelectedTrackId={setSelectedTrackId} setSelectedClipId={setSelectedClipId} importFiles={importFiles} relinkClip={relinkClip} updateTrack={updateTrack} updateClip={updateClip} arm={arm} tool={tool} zoom={zoom} playhead={playhead} setPlayhead={setPlayhead} sessionEnd={sessionEnd} selectionStart={selectionStart} selectionEnd={selectionEnd} setSelectionStart={setSelectionStart} setSelectionEnd={setSelectionEnd} loop={loop} setLoop={setLoop} splitAtPlayhead={splitAtPlayhead} duplicateClip={duplicateClip} deleteSelectedClip={deleteSelectedClip} renameClip={renameClip} copyClip={() => copyClip(false)} cutClip={() => copyClip(true)} pasteClip={pasteClip} nudgeLeft={() => nudgeSelected(-1)} nudgeRight={() => nudgeSelected(1)} trimLeft={(amount) => trimEdge("left", amount)} trimRight={(amount) => trimEdge("right", amount)} moveClipToTrack={moveClipToTrack} editLog={editLog} onRecord={() => void toggleRecord()} onBeat={() => setMode("beat")} />}{mode === "mix" && <MixerWorkspace tracks={tracks} selected={selectedTrack} update={updateTrack} arm={arm} />}{mode === "export" && <ExportWorkspace tracks={tracks} selected={selectedTrack} downloadClip={downloadClip} exportArchive={exportArchive} />}{mode === "files" && <FilesWorkspace recent={recent} openSession={(id) => void openSession(id)} snapshots={snapshots} revertSnapshot={revertSnapshot} snapshot={snapshot} sessionId={sessionId} title={title} bpm={bpm} sampleRate={sampleRate} missingClips={missingClips} offline={offline} lockWarning={lockWarning} />}</main>
+    <main className="studio-workspace">{mode === "beat" && <div className="studio-beat-stage"><BeatMachineProClient studioMode /></div>}{mode === "edit" && <EditWorkspace tracks={tracks} selectedTrack={selectedTrack} selectedClip={selectedClip} selectedClipId={selectedClipId} setSelectedTrackId={setSelectedTrackId} setSelectedClipId={setSelectedClipId} importFiles={importFiles} relinkClip={relinkClip} updateTrack={updateTrack} updateClip={updateClip} arm={arm} tool={tool} zoom={zoom} playhead={playhead} setPlayhead={setPlayhead} sessionEnd={sessionEnd} selectionStart={selectionStart} selectionEnd={selectionEnd} setSelectionStart={setSelectionStart} setSelectionEnd={setSelectionEnd} loop={loop} setLoop={setLoop} splitAtPlayhead={splitAtPlayhead} duplicateClip={duplicateClip} deleteSelectedClip={deleteSelectedClip} renameClip={renameClip} copyClip={() => copyClip(false)} cutClip={() => copyClip(true)} pasteClip={pasteClip} nudgeLeft={() => nudgeSelected(-1)} nudgeRight={() => nudgeSelected(1)} trimLeft={(amount) => trimEdge("left", amount)} trimRight={(amount) => trimEdge("right", amount)} moveClipToTrack={moveClipToTrack} editLog={editLog} onRecord={requestRecord} onBeat={() => setMode("beat")} experience={experience} onTemplate={applyTemplate} />}{mode === "mix" && <MixerWorkspace tracks={tracks} selected={selectedTrack} update={updateTrack} arm={arm} />}{mode === "export" && <ExportWorkspace tracks={tracks} selected={selectedTrack} downloadClip={downloadClip} exportArchive={exportArchive} projectId={sessionId} title={title} updatedAt={projectUpdatedAt} saved={!dirty && saveState === "cloud-saved"} />}{mode === "files" && <FilesWorkspace recent={recent} openSession={(id) => void openSession(id)} snapshots={snapshots} revertSnapshot={revertSnapshot} snapshot={snapshot} sessionId={sessionId} title={title} bpm={bpm} sampleRate={sampleRate} missingClips={missingClips} offline={offline} lockWarning={lockWarning} />}</main>
+    {preflightOpen && (
+      <RecordingPreflight
+        onClose={() => setPreflightOpen(false)}
+        onReady={() => {
+          setPreflightComplete(true);
+          setPreflightOpen(false);
+          void toggleRecord();
+        }}
+      />
+    )}
+    {recoveryChoice && (
+      <RecoveryComparison
+        local={recoveryChoice.local}
+        cloud={recoveryChoice.cloud}
+        onKeepLocal={() => {
+          applySavedSession(recoveryChoice.local, true);
+          setRecoveryChoice(null);
+        }}
+        onKeepCloud={() => {
+          localStorage.removeItem(`ems.studio.recovery.v3:${recoveryChoice.cloud.id}`);
+          applySavedSession(recoveryChoice.cloud);
+          setRecoveryChoice(null);
+        }}
+        onPreserveBoth={() => {
+          const copy = { ...recoveryChoice.local, id: uid("session"), title: `${recoveryChoice.local.title} — Recovered Copy`, updatedAt: new Date().toISOString() };
+          saveLocalRecovery(copy.id, createRecoveryEnvelope(copy));
+          applySavedSession(copy, true);
+          setRecoveryChoice(null);
+        }}
+      />
+    )}
   </div></div>;
 }

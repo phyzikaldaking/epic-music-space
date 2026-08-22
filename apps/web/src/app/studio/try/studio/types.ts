@@ -1,4 +1,7 @@
 export type StudioMode = "edit" | "mix" | "beat" | "export" | "files";
+export type StudioExperienceMode = "creator" | "engineer";
+export type StudioTask = "create" | "arrange" | "mix" | "finish";
+export type StudioTemplateId = "vocal" | "beat" | "podcast" | "stems" | "mastering" | "empty";
 export type StudioTool = "smart" | "selector" | "grabber" | "trim" | "pencil" | "scrubber" | "zoomer";
 export type StudioEditMode = "slip" | "grid" | "spot" | "shuffle";
 
@@ -20,6 +23,13 @@ export type StudioClip = {
   locked: boolean;
   missing?: boolean;
   color?: string;
+  playbackRate?: number;
+  pitchSemitones?: number;
+  reversed?: boolean;
+  sourceId?: string;
+  renderedFromId?: string;
+  takeLaneId?: string;
+  groupId?: string;
 };
 
 export type StudioTrack = {
@@ -33,6 +43,10 @@ export type StudioTrack = {
   pan: number;
   inputGain: number;
   clips: StudioClip[];
+  inserts?: Array<{ id: string; effectId: string; bypassed: boolean }>;
+  sends?: Array<{ busId: string; level: number }>;
+  outputBusId?: string;
+  groupId?: string;
 };
 
 export type StudioSnapshot = {
@@ -50,6 +64,10 @@ export type StudioSavedSession = {
   updatedAt: string;
   tracks: StudioTrack[];
   snapshots: StudioSnapshot[];
+  schemaVersion?: number;
+  experienceMode?: StudioExperienceMode;
+  task?: StudioTask;
+  templateId?: StudioTemplateId;
 };
 
 export type StudioHistoryEntry = {

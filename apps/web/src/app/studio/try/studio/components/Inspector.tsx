@@ -1,6 +1,7 @@
 "use client";
 
 import type { StudioClip, StudioTrack } from "../types";
+import { normalizeClip } from "../editing";
 
 export function Inspector({
   track,
@@ -152,6 +153,8 @@ export function Inspector({
             >
               Clip Mute
             </button>
+            <button onClick={() => updateClip(clip.id, normalizeClip(clip, -1), "Normalize clip")} className="bg-[#111] py-1 text-white/55">Normalize</button>
+            <button onClick={() => updateClip(clip.id, { reversed: !clip.reversed }, "Toggle reverse")} className={clip.reversed ? "bg-purple-400 py-1 text-black" : "bg-[#111] py-1 text-white/55"}>Reverse</button>
           </div>
 
           <label className="mt-2 block uppercase text-white/40">
@@ -164,6 +167,23 @@ export function Inspector({
               onChange={(event) => updateClip(clip.id, { gain: Number(event.target.value) }, "Set clip gain")}
               className="w-full accent-yellow-300"
             />
+          </label>
+
+          <label className="mt-2 block uppercase text-white/40">
+            Fade in {clip.fadeIn.toFixed(2)}s
+            <input type="range" min="0" max={Math.max(.1, clip.duration - clip.trimStart - clip.trimEnd)} step=".05" value={clip.fadeIn} onChange={(event) => updateClip(clip.id, { fadeIn:Number(event.target.value) }, "Set fade in")} className="w-full accent-cyan-300" />
+          </label>
+          <label className="mt-2 block uppercase text-white/40">
+            Fade out {clip.fadeOut.toFixed(2)}s
+            <input type="range" min="0" max={Math.max(.1, clip.duration - clip.trimStart - clip.trimEnd)} step=".05" value={clip.fadeOut} onChange={(event) => updateClip(clip.id, { fadeOut:Number(event.target.value) }, "Set fade out")} className="w-full accent-purple-300" />
+          </label>
+          <label className="mt-2 block uppercase text-white/40">
+            Speed {(clip.playbackRate ?? 1).toFixed(2)}×
+            <input type="range" min=".25" max="4" step=".05" value={clip.playbackRate ?? 1} onChange={(event) => updateClip(clip.id, { playbackRate:Number(event.target.value) }, "Stretch clip")} className="w-full accent-green-300" />
+          </label>
+          <label className="mt-2 block uppercase text-white/40">
+            Pitch {clip.pitchSemitones ?? 0} semitones
+            <input type="range" min="-24" max="24" step="1" value={clip.pitchSemitones ?? 0} onChange={(event) => updateClip(clip.id, { pitchSemitones:Number(event.target.value) }, "Shift clip pitch")} className="w-full accent-yellow-300" />
           </label>
 
           <label className="mt-2 block uppercase text-white/40">

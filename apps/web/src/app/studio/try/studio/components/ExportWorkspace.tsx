@@ -2,17 +2,26 @@
 
 import type { StudioTrack } from "../types";
 import { clipFileExtension } from "../audio";
+import { FinishReview } from "./FinishReview";
 
 export function ExportWorkspace({
   tracks,
   selected,
   downloadClip,
   exportArchive,
+  projectId,
+  title,
+  updatedAt,
+  saved,
 }: {
   tracks: StudioTrack[];
   selected: StudioTrack | null;
   downloadClip: (track: StudioTrack, clip: StudioTrack["clips"][number]) => void;
   exportArchive: () => void;
+  projectId: string;
+  title: string;
+  updatedAt: string;
+  saved: boolean;
 }) {
   const clipCount = tracks.reduce((sum, track) => sum + track.clips.length, 0);
 
@@ -30,19 +39,11 @@ export function ExportWorkspace({
           <p>Selected: <b className="text-white/80">{selected?.name ?? "none"}</b></p>
         </div>
 
-        <button
-          onClick={exportArchive}
-          className="platinum-primary"
-        >
-          Export Session Archive
-        </button>
-
-        <div className="platinum-note">
-          WAV mixdown and queued MP3 export worker integration are still pending.
-        </div>
+        <div className="platinum-note">Delivery always opens a final review. Public, Marketplace, Room, and Battle actions never happen automatically.</div>
       </aside>
 
       <main className="platinum-library__main">
+        <FinishReview project={{ id:projectId, title, updatedAt, tracks:tracks.length }} missingMedia={tracks.flatMap((track) => track.clips).filter((clip) => clip.missing || !clip.url).length} clipping={tracks.some((track) => track.volume + track.inputGain >= 154)} saved={saved} onDownload={exportArchive} />
         <h3 className="mb-3 text-xs font-black uppercase tracking-widest text-white/50">
           Source Audio
         </h3>
