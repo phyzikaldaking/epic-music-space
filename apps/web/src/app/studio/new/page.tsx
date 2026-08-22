@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Suspense } from "react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { shouldUseExpertUploadMode } from "@/lib/studioNewMode";
-import UploadTrackForm from "./UploadTrackForm";
-import QuickUploadFlow from "./QuickUploadFlow";
 import GuestResumePublish from "./GuestResumePublish";
+
+const UploadTrackForm = dynamic(() => import("./UploadTrackForm"));
+const QuickUploadFlow = dynamic(() => import("./QuickUploadFlow"));
 
 export const metadata = {
   title: "Upload Track",
