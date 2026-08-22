@@ -5,10 +5,9 @@ import { Suspense } from "react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { shouldUseExpertUploadMode } from "@/lib/studioNewMode";
-import GuestResumePublish from "./GuestResumePublish";
-
 const UploadTrackForm = dynamic(() => import("./UploadTrackForm"));
 const QuickUploadFlow = dynamic(() => import("./QuickUploadFlow"));
+const GuestResumePublish = dynamic(() => import("./GuestResumePublish"));
 
 export const metadata = {
   title: "Upload Track",
