@@ -428,7 +428,7 @@ export default function ElectricStudio() {
     return { projectId, url: body.url as string, clipId: typeof body.clip?.id === "string" ? body.clip.id as string : uid("clip") };
   }
 
-  async function createClipFromBlob(blob: Blob, fileName: string, type: string, targetTrackId?: string, start = 0) {
+  async function createClipFromBlob(blob: Blob, fileName: string, type: string, targetTrackId?: string, start = 0, trackMix?: { volume?: number; pan?: number }) {
     const decoded = await decodeStudioAudio(blob);
     const color = colors[tracks.length % colors.length];
     setSampleRate(decoded.sampleRate);
@@ -471,8 +471,8 @@ export default function ElectricStudio() {
       armed: tracks.length === 0,
       muted: false,
       solo: false,
-      volume: 78,
-      pan: 0,
+      volume: trackMix?.volume ?? 78,
+      pan: trackMix?.pan ?? 0,
       inputGain: 60,
       clips: [clip],
     };
@@ -485,14 +485,19 @@ export default function ElectricStudio() {
 
   useEffect(() => {
     const printBeatToTimeline = (event: Event) => {
-      const detail = (event as CustomEvent<{ blob?: Blob; fileName?: string }>).detail;
-      if (!(detail?.blob instanceof Blob)) return;
-      void createClipFromBlob(detail.blob, detail.fileName || "Beat Machine Print.wav", "audio/wav")
+      const detail = (event as CustomEvent<{ stems?: Array<{ blob?: Blob; fileName?: string; volume?: number; pan?: number }> }>).detail;
+      const stems = detail?.stems?.filter((stem): stem is { blob: Blob; fileName?: string; volume?: number; pan?: number } => stem.blob instanceof Blob) ?? [];
+      if (!stems.length) return;
+      setError(null);
+      void stems.reduce<Promise<void>>(async (previous, stem) => {
+        await previous;
+        await createClipFromBlob(stem.blob, stem.fileName || "Beat Machine Stem.wav", "audio/wav", undefined, 0, { volume: stem.volume, pan: stem.pan });
+      }, Promise.resolve())
         .then(() => {
           setMode("edit");
-          setSaveStatus("Beat printed to timeline");
+          setSaveStatus(`${stems.length} beat stems printed to timeline`);
         })
-        .catch((err) => setError(err instanceof Error ? err.message : "Beat could not be printed to the timeline."));
+        .catch((err) => setError(err instanceof Error ? err.message : "Beat stems could not be printed to the timeline."));
     };
     window.addEventListener("ems:beat-stems-to-session", printBeatToTimeline);
     return () => window.removeEventListener("ems:beat-stems-to-session", printBeatToTimeline);
