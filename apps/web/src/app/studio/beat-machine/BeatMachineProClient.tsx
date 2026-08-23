@@ -26,12 +26,63 @@ function cn(...v: Array<string | false | undefined | null>) { return v.filter(Bo
 function isTypingTarget(target: EventTarget | null) { const el = target as HTMLElement | null; return Boolean(el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)); }
 function download(name: string, text: string) { const blob = new Blob([text], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); }
 
-export default function BeatMachineProClient({ studioMode = false }: { initialView?: string; studioMode?: boolean }) {
+function audioBufferToWav(buffer: AudioBuffer) {
+  const channels = buffer.numberOfChannels;
+  const bytesPerSample = 2;
+  const frameBytes = channels * bytesPerSample;
+  const output = new ArrayBuffer(44 + buffer.length * frameBytes);
+  const view = new DataView(output);
+  const write = (offset: number, value: string) => Array.from(value).forEach((character, index) => view.setUint8(offset + index, character.charCodeAt(0)));
+  write(0, "RIFF"); view.setUint32(4, output.byteLength - 8, true); write(8, "WAVE"); write(12, "fmt ");
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, channels, true);
+  view.setUint32(24, buffer.sampleRate, true); view.setUint32(28, buffer.sampleRate * frameBytes, true);
+  view.setUint16(32, frameBytes, true); view.setUint16(34, 16, true); write(36, "data"); view.setUint32(40, buffer.length * frameBytes, true);
+  let offset = 44;
+  for (let frame = 0; frame < buffer.length; frame += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[frame] ?? 0));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += bytesPerSample;
+    }
+  }
+  return new Blob([output], { type: "audio/wav" });
+}
+
+async function renderBeat(pads: Pad[], bpm: number) {
+  const sampleRate = 44_100;
+  const stepDuration = 60 / Math.max(40, bpm) / 4;
+  const duration = stepDuration * 16 + 0.75;
+  const context = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+  const soloed = pads.some((pad) => pad.solo);
+  pads.forEach((pad) => {
+    if (pad.muted || (soloed && !pad.solo)) return;
+    pad.steps.forEach((enabled, index) => {
+      if (!enabled) return;
+      const start = index * stepDuration;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const pan = context.createStereoPanner();
+      oscillator.frequency.value = pad.freq;
+      oscillator.type = pad.id === "hat" || pad.id === "fx" ? "square" : pad.id === "bass" || pad.id === "kick" ? "sine" : "triangle";
+      pan.pan.value = Math.max(-1, Math.min(1, pad.pan / 50));
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.001, (pad.volume / 100) * 0.25), start + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + (pad.id === "bass" ? 0.55 : pad.id === "hat" ? 0.08 : 0.22));
+      oscillator.connect(gain).connect(pan).connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.7);
+    });
+  });
+  return audioBufferToWav(await context.startRendering());
+}
+
+export default function BeatMachineProClient({ studioMode = false, onPrintToStudio }: { initialView?: string; studioMode?: boolean; onPrintToStudio?: (blob: Blob, fileName: string) => Promise<void> | void }) {
   const [pads, setPads] = useState<Pad[]>(initialPads);
   const [selected, setSelected] = useState("kick");
   const [playing, setPlaying] = useState(false);
   const [step, setStep] = useState(0);
   const [bpm, setBpm] = useState(140);
+  const [printing, setPrinting] = useState(false);
   const timer = useRef<number | null>(null);
   const audio = useRef<AudioContext | null>(null);
   const activePad = pads.find((pad) => pad.id === selected) ?? pads[0];
@@ -72,7 +123,21 @@ export default function BeatMachineProClient({ studioMode = false }: { initialVi
   function randomize() { setPads((current) => current.map((pad) => ({ ...pad, steps: pad.steps.map((_, i) => i === 0 || Math.random() > (pad.id === "hat" ? 0.45 : 0.76)) }))); }
   function clearPattern() { setPads((current) => current.map((pad) => ({ ...pad, steps: pad.steps.map(() => false) }))); }
   function applyPreset(preset: Preset) { setPads((current) => current.map((pad) => ({ ...pad, volume: preset.volumes[pad.id] ?? pad.volume, pan: preset.pans[pad.id] ?? pad.pan }))); }
-  function sendToStudio() { window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { stems: pads.map((pad) => ({ label: pad.label, name: pad.id, kind: pad.id === "bass" ? "bass" : pad.id === "vox" ? "vocal" : pad.id === "fx" ? "fx" : "drum", volume: pad.volume, pan: pad.pan })), autoMix: true } })); }
+  async function sendToStudio() {
+    if (printing) return;
+    setPrinting(true);
+    try {
+      const fileName = `Beat ${bpm} BPM.wav`;
+      const blob = await renderBeat(pads, bpm);
+      if (onPrintToStudio) {
+        await onPrintToStudio(blob, fileName);
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { blob, fileName, stems: pads.map((pad) => ({ label: pad.label, name: pad.id, kind: pad.id === "bass" ? "bass" : pad.id === "vox" ? "vocal" : pad.id === "fx" ? "fx" : "drum", volume: pad.volume, pan: pad.pan })), autoMix: true } }));
+    } finally {
+      setPrinting(false);
+    }
+  }
   function exportPattern() { download("ems-beat-pattern.json", JSON.stringify({ bpm, pads: pads.map(({ id, label, volume, pan, muted, solo, steps }) => ({ id, label, volume, pan, muted, solo, steps })) }, null, 2)); }
 
   useEffect(() => {
@@ -98,7 +163,7 @@ export default function BeatMachineProClient({ studioMode = false }: { initialVi
         <button onClick={stop} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Reset</button>
         <button onClick={randomize} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Generate</button>
         <button onClick={clearPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Clear</button>
-        <button onClick={sendToStudio} className="h-full border-r border-black bg-cyan-300 px-4 font-black text-black">Print To Studio</button>
+        <button onClick={() => void sendToStudio()} disabled={printing} className="h-full border-r border-black bg-cyan-300 px-4 font-black text-black disabled:opacity-60">{printing ? "Printing…" : "Print To Studio"}</button>
         <button onClick={exportPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Export</button>
         <label className="ml-auto flex h-full items-center border-l border-black px-4 font-black">BPM <input value={bpm} type="number" onChange={(event) => setBpm(Number(event.target.value) || 120)} className="ml-2 w-16 bg-black px-2 py-1 font-mono text-cyan-200 outline-none" /></label>
       </div>
