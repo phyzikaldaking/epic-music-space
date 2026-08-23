@@ -23,6 +23,7 @@ import {
   studioFetchJson,
   studioProjectToSession,
   toStudioProjectPayload,
+  withStudioGuestMediaFallback,
 } from "./studio/api";
 import { clipFileExtension, decodeStudioAudio, isTemporaryObjectUrl } from "./studio/audio";
 import { splitClipAtFrame, trimClipFrames } from "./studio/editing";
@@ -432,7 +433,10 @@ export default function ElectricStudio() {
     const color = colors[tracks.length % colors.length];
     setSampleRate(decoded.sampleRate);
     setSaveStatus("Uploading audio to cloud...");
-    const uploaded = await uploadStudioAudio(blob, fileName, type, decoded, targetTrackId, start, color);
+    const uploaded = await withStudioGuestMediaFallback(
+      () => uploadStudioAudio(blob, fileName, type, decoded, targetTrackId, start, color),
+      () => ({ projectId: sessionId, url: URL.createObjectURL(blob), clipId: uid("clip"), local: true as const }),
+    );
     const clip: StudioClip = {
       id: uploaded.clipId,
       name: fileName,
@@ -454,7 +458,7 @@ export default function ElectricStudio() {
       sourceId: uploaded.clipId,
     };
     if (targetTrackId) {
-      commit("Cloud audio clip added", (draft) => draft.map((track) => track.id === targetTrackId ? { ...track, clips: [...track.clips, clip].sort((a, b) => a.start - b.start) } : track));
+      commit("Audio clip added", (draft) => draft.map((track) => track.id === targetTrackId ? { ...track, clips: [...track.clips, clip].sort((a, b) => a.start - b.start) } : track));
       setSelectedTrackId(targetTrackId);
       setSelectedClipId(clip.id);
       await saveSession(title, false, true);
@@ -472,7 +476,7 @@ export default function ElectricStudio() {
       inputGain: 60,
       clips: [clip],
     };
-    commit("Cloud audio track imported", (draft) => [...draft, track]);
+    commit("Audio track imported", (draft) => [...draft, track]);
     setSelectedTrackId(track.id);
     setSelectedClipId(clip.id);
     await saveSession(title, false, true);
@@ -486,7 +490,7 @@ export default function ElectricStudio() {
     setError(null);
     try {
       for (const file of audioFiles) await createClipFromBlob(file, file.name, file.type || "audio/*");
-      setSaveStatus("Imported audio saved to cloud");
+      setSaveStatus("Imported audio ready");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Audio could not be decoded or uploaded. Try WAV or MP3.");
       setSaveStatus("Import failed");
@@ -501,8 +505,11 @@ export default function ElectricStudio() {
       const decoded = await decodeStudioAudio(file);
       const currentClip = tracks.flatMap((track) => track.clips).find((clip) => clip.id === clipId);
       const currentTrack = tracks.find((track) => track.clips.some((clip) => clip.id === clipId));
-      const uploaded = await uploadStudioAudio(file, file.name, file.type || "audio/*", decoded, currentTrack?.id, currentClip?.start ?? 0, currentClip?.color ?? "#65d6ff");
-      commit("Relink cloud audio", (draft) => draft.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, name: file.name, url: uploaded.url, type: file.type || "audio/*", size: file.size, duration: decoded.duration, peaks: decoded.peaks, missing: false } : clip) })));
+      const uploaded = await withStudioGuestMediaFallback(
+        () => uploadStudioAudio(file, file.name, file.type || "audio/*", decoded, currentTrack?.id, currentClip?.start ?? 0, currentClip?.color ?? "#65d6ff"),
+        () => ({ projectId: sessionId, url: URL.createObjectURL(file), clipId, local: true as const }),
+      );
+      commit("Relink audio", (draft) => draft.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, name: file.name, url: uploaded.url, type: file.type || "audio/*", size: file.size, duration: decoded.duration, peaks: decoded.peaks, missing: false } : clip) })));
       setSampleRate(decoded.sampleRate);
       await saveSession(title, false, true);
     } catch (err) {
@@ -550,7 +557,7 @@ export default function ElectricStudio() {
               return { ...track, clips: track.clips.map((item) => takeSourceIds.has(item.sourceId ?? item.id) ? { ...item, muted: (item.sourceId ?? item.id) !== take.sourceId } : item), takeLanes: [...(track.takeLanes ?? []).filter((item) => item.id !== laneId), nextLane] };
             }));
           }
-          setSaveStatus("Recording saved to cloud");
+          setSaveStatus("Recording saved");
         } catch (err) {
           setError(err instanceof Error ? err.message : "Recording could not be uploaded.");
           setSaveStatus("Recording upload failed");
