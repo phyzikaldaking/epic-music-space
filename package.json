@@ -1,4 +1,3 @@
-{
   "name": "epic-music-space",
   "private": true,
   "packageManager": "npm@11.11.0",
@@ -62,7 +61,7 @@
     "supabase:link": "node scripts/ops/supabase-link.mjs",
     "supabase:storage": "node scripts/ops/setup-storage.mjs",
     "demo:upload": "node scripts/ops/upload-demo-tracks.mjs",
-    "vercel:build": "npm run clean:web && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma migrate deploy --schema packages/db/prisma/schema.prisma && DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} npx prisma generate --schema packages/db/prisma/schema.prisma && mkdir -p apps/web/packages/db/generated/client && find packages/db/generated/client -name '*.node' -exec cp {} apps/web/packages/db/generated/client/ \\; && npm --workspace apps/web run build",
+    "vercel:build": "npm run clean:web && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && npx prisma generate --schema packages/db/prisma/schema.prisma && npm --workspace apps/web run build",
     "railway:build": "node scripts/ops/railway.mjs build",
     "railway:start": "node scripts/ops/railway.mjs start",
     "railway:predeploy": "node scripts/ops/railway.mjs predeploy"
@@ -94,4 +93,3 @@
     },
     "svix@1.90.0": "1.92.2"
   }
-}
