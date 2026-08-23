@@ -4,6 +4,7 @@ import {
   productionProjectToSession,
   serializeStudioSession,
   studioProjectToSession,
+  withStudioGuestMediaFallback,
 } from "@/app/studio/try/studio/api";
 import type { StudioSavedSession } from "@/app/studio/try/studio/types";
 
@@ -31,6 +32,15 @@ afterEach(() => {
 });
 
 describe("Studio cross-device hydration", () => {
+  it("keeps imported media local when cloud upload rejects a signed-out guest", async () => {
+    const unauthorized = Object.assign(new Error("Unauthorized"), { status: 401 });
+
+    await expect(withStudioGuestMediaFallback(
+      async () => { throw unauthorized; },
+      () => ({ url: "blob:guest-audio", clipId: "local-clip", local: true }),
+    )).resolves.toEqual({ url: "blob:guest-audio", clipId: "local-clip", local: true });
+  });
+
   it("keeps signed-out creators in local-draft mode when cloud projects return 401", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(
       JSON.stringify({ error: "Unauthorized" }),
