@@ -34,6 +34,15 @@ export async function studioFetchJson<T>(
   return body as T;
 }
 
+export async function withStudioGuestMediaFallback<T>(cloudUpload: () => Promise<T>, localUpload: () => T | Promise<T>): Promise<T> {
+  try {
+    return await cloudUpload();
+  } catch (error) {
+    if (error instanceof Error && "status" in error && error.status === 401) return localUpload();
+    throw error;
+  }
+}
+
 function parsePeakArray(value: unknown): number[] {
   if (Array.isArray(value)) return value.filter((item): item is number => typeof item === "number");
   if (typeof value !== "string" || value.trim().length === 0) return [];
