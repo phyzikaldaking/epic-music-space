@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   compareRecoveryVersions,
   createRecoveryEnvelope,
+  getCloudSaveFailure,
   getProjectHealth,
   getSaveStatusText,
   shouldCreateCloudCheckpoint,
@@ -34,6 +35,16 @@ describe("Studio recovery", () => {
     expect(getSaveStatusText("local-draft", "10:30 PM")).toBe("Local draft saved at 10:30 PM");
     expect(getSaveStatusText("saving-cloud")).toBe("Saving to cloud…");
     expect(getSaveStatusText("conflict")).toBe("Save conflict detected");
+  });
+
+  it("keeps an unauthorized guest save as a successful local draft", () => {
+    const error = Object.assign(new Error("Unauthorized"), { status: 401 });
+
+    expect(getCloudSaveFailure(error)).toEqual({
+      state: "local-draft",
+      status: "Local draft saved — sign in for cloud backup",
+      error: null,
+    });
   });
 
   it("creates cloud checkpoints only after meaningful elapsed time", () => {

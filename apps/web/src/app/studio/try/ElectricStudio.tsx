@@ -45,6 +45,7 @@ import { createTemplateSession, getFirstSessionStep, hydrateWorkspaceState } fro
 import {
   compareRecoveryVersions,
   createRecoveryEnvelope,
+  getCloudSaveFailure,
   getSaveStatusText,
   loadLocalRecovery,
   saveLocalRecovery,
@@ -208,9 +209,11 @@ export default function ElectricStudio() {
       localStorage.removeItem(`ems.studio.recovery.v3:${saved.id}`);
       await refreshRecent();
     } catch (err) {
-      setSaveState("save-failed");
-      setSaveStatus(getSaveStatusText("save-failed"));
-      setError(err instanceof Error ? err.message : "Cloud save failed.");
+      const failure = getCloudSaveFailure(err);
+      setSaveState(failure.state);
+      setSaveStatus(failure.status);
+      setError(failure.error);
+      if (failure.state === "local-draft") setDirty(false);
     } finally {
       setBusy(false);
     }

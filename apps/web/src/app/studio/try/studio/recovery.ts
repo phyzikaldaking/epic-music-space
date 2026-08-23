@@ -27,6 +27,17 @@ export function getSaveStatusText(state: StudioSaveState, timestamp?: string) {
   return "Save conflict detected";
 }
 
+export function getCloudSaveFailure(error: unknown): { state: "local-draft" | "save-failed"; status: string; error: string | null } {
+  if (error instanceof Error && "status" in error && error.status === 401) {
+    return { state: "local-draft", status: "Local draft saved — sign in for cloud backup", error: null };
+  }
+  return {
+    state: "save-failed",
+    status: getSaveStatusText("save-failed"),
+    error: error instanceof Error ? error.message : "Cloud save failed.",
+  };
+}
+
 export function shouldCreateCloudCheckpoint(previousAt: number, nextAt: number, intervalMs = 60_000) {
   return nextAt - previousAt >= intervalMs;
 }
