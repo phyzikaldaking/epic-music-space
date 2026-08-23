@@ -483,6 +483,21 @@ export default function ElectricStudio() {
     return clip;
   }
 
+  useEffect(() => {
+    const printBeatToTimeline = (event: Event) => {
+      const detail = (event as CustomEvent<{ blob?: Blob; fileName?: string }>).detail;
+      if (!(detail?.blob instanceof Blob)) return;
+      void createClipFromBlob(detail.blob, detail.fileName || "Beat Machine Print.wav", "audio/wav")
+        .then(() => {
+          setMode("edit");
+          setSaveStatus("Beat printed to timeline");
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "Beat could not be printed to the timeline."));
+    };
+    window.addEventListener("ems:beat-stems-to-session", printBeatToTimeline);
+    return () => window.removeEventListener("ems:beat-stems-to-session", printBeatToTimeline);
+  });
+
   async function importFiles(files: FileList | File[]) {
     const audioFiles = Array.from(files).filter((file) => file.type.startsWith("audio/") || file.type === "video/mp4" || audioPattern.test(file.name));
     if (!audioFiles.length) return setError("Use a real audio file: WAV, MP3, M4A, AAC, OGG, WEBM, FLAC, AIFF, or MP4 audio.");
