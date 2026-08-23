@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { buildBeatStemRenderPlan, type BeatStemRenderPlan } from "./beatStemPrint";
 
 type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[] };
 type Preset = { name: string; volumes: Record<string, number>; pans: Record<string, number> };
@@ -48,35 +49,29 @@ function audioBufferToWav(buffer: AudioBuffer) {
   return new Blob([output], { type: "audio/wav" });
 }
 
-async function renderBeat(pads: Pad[], bpm: number) {
+async function renderBeatStem(stem: BeatStemRenderPlan) {
   const sampleRate = 44_100;
-  const stepDuration = 60 / Math.max(40, bpm) / 4;
-  const duration = stepDuration * 16 + 0.75;
-  const context = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
-  const soloed = pads.some((pad) => pad.solo);
-  pads.forEach((pad) => {
-    if (pad.muted || (soloed && !pad.solo)) return;
-    pad.steps.forEach((enabled, index) => {
-      if (!enabled) return;
-      const start = index * stepDuration;
+  const context = new OfflineAudioContext(2, Math.ceil(stem.durationSec * sampleRate), sampleRate);
+  stem.hitTimesSec.forEach((start) => {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
       const pan = context.createStereoPanner();
-      oscillator.frequency.value = pad.freq;
-      oscillator.type = pad.id === "hat" || pad.id === "fx" ? "square" : pad.id === "bass" || pad.id === "kick" ? "sine" : "triangle";
-      pan.pan.value = Math.max(-1, Math.min(1, pad.pan / 50));
+      oscillator.frequency.value = stem.frequency;
+      oscillator.type = stem.id === "hat" || stem.id === "fx" ? "square" : stem.id === "bass" || stem.id === "kick" ? "sine" : "triangle";
+      pan.pan.value = Math.max(-1, Math.min(1, stem.pan / 50));
       gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.001, (pad.volume / 100) * 0.25), start + 0.008);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + (pad.id === "bass" ? 0.55 : pad.id === "hat" ? 0.08 : 0.22));
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.001, (stem.volume / 100) * 0.25), start + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + (stem.id === "bass" ? 0.55 : stem.id === "hat" ? 0.08 : 0.22));
       oscillator.connect(gain).connect(pan).connect(context.destination);
       oscillator.start(start);
       oscillator.stop(start + 0.7);
-    });
   });
   return audioBufferToWav(await context.startRendering());
 }
 
-export default function BeatMachineProClient({ studioMode = false, onPrintToStudio }: { initialView?: string; studioMode?: boolean; onPrintToStudio?: (blob: Blob, fileName: string) => Promise<void> | void }) {
+export type PrintedBeatStem = BeatStemRenderPlan & { blob: Blob; name: string; kind: "drum" | "bass" | "vocal" | "fx" };
+
+export default function BeatMachineProClient({ studioMode = false, onPrintToStudio }: { initialView?: string; studioMode?: boolean; onPrintToStudio?: (stems: PrintedBeatStem[]) => Promise<void> | void }) {
   const [pads, setPads] = useState<Pad[]>(initialPads);
   const [selected, setSelected] = useState("kick");
   const [playing, setPlaying] = useState(false);
@@ -127,13 +122,17 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     if (printing) return;
     setPrinting(true);
     try {
-      const fileName = `Beat ${bpm} BPM.wav`;
-      const blob = await renderBeat(pads, bpm);
+      const stems: PrintedBeatStem[] = await Promise.all(buildBeatStemRenderPlan(pads, bpm).map(async (stem) => ({
+        ...stem,
+        blob: await renderBeatStem(stem),
+        name: stem.id,
+        kind: stem.id === "bass" ? "bass" as const : stem.id === "vox" ? "vocal" as const : stem.id === "fx" ? "fx" as const : "drum" as const,
+      })));
       if (onPrintToStudio) {
-        await onPrintToStudio(blob, fileName);
+        await onPrintToStudio(stems);
         return;
       }
-      window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { blob, fileName, stems: pads.map((pad) => ({ label: pad.label, name: pad.id, kind: pad.id === "bass" ? "bass" : pad.id === "vox" ? "vocal" : pad.id === "fx" ? "fx" : "drum", volume: pad.volume, pan: pad.pan })), autoMix: true } }));
+      window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { stems, autoMix: true } }));
     } finally {
       setPrinting(false);
     }
