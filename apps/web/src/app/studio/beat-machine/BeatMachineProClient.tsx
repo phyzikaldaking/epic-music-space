@@ -102,6 +102,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   function context() { audio.current ??= new AudioContext(); return audio.current; }
   async function loadSample(name: string) {
     const ctx = context();
+    await ctx.resume();
     if (!sampleBuffers.current[name]) {
       const response = await fetch(sampleUrl(name));
       if (!response.ok) throw new Error(`Could not load ${name}`);
