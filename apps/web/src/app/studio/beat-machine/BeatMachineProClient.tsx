@@ -19,7 +19,7 @@ import { buildBeatStemRenderPlan, type BeatStemRenderPlan } from "./beatStemPrin
 type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; tune?: number; mode?: "one-shot" | "loop" };
 type Preset = { name: string; volumes: Record<string, number>; pans: Record<string, number> };
 
-const makeSteps = (on: number[]) => Array.from({ length: 16 }, (_, i) => on.includes(i + 1));
+const makeSteps = (on: number[]) => Array.from({ length: patternLength }, (_, i) => on.includes(i + 1));
 const initialPads: Pad[] = [
   { id: "kick", label: "KICK", key: "1", color: "#20f7ff", freq: 54, volume: 88, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
   { id: "snare", label: "SNARE", key: "2", color: "#ff31df", freq: 180, volume: 74, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
@@ -98,6 +98,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [playing, setPlaying] = useState(false);
   const [step, setStep] = useState(0);
   const [bpm, setBpm] = useState(140);
+  const [patternLength, setPatternLength] = useState<8 | 16>(16);
   const [printing, setPrinting] = useState(false);
   const [liveSamples, setLiveSamples] = useState<string[]>(LIVE_SAMPLE_NAMES);
   const [sampleName, setSampleName] = useState<string | null>(null);
@@ -232,14 +233,14 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   useEffect(() => {
     studioTransport.setBpm(bpm);
     return studioTransport.subscribe((state) => {
-      const nextStep = Math.floor(state.positionSec / (60 / bpm / 4)) % 16;
+      const nextStep = Math.floor(state.positionSec / (60 / bpm / 4)) % patternLength;
       if (!state.playing || nextStep === transportStep.current) return;
       transportStep.current = nextStep;
       setStep(nextStep);
       pads.forEach((pad) => { if (pad.steps[nextStep]) trigger(pad, 0.88); });
       setPlaying(true);
     });
-  }, [bpm, pads]);
+  }, [bpm, pads, patternLength]);
 
   return <div className={cn(studioMode ? "h-full" : "min-h-screen", "min-h-0 overflow-hidden bg-[#0b0d10] text-white")}>
     <div className="grid h-full min-h-0 grid-rows-[34px_1fr]">
@@ -253,6 +254,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
         <button onClick={randomize} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Generate</button>
         <button onClick={clearPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Clear</button>
         <button onClick={() => void sendToStudio()} disabled={printing} className="h-full border-r border-black bg-cyan-300 px-4 font-black text-black disabled:opacity-60">{printing ? "Printing…" : "Print To Studio"}</button>
+        <div className="flex h-full items-center border-r border-black"><span className="px-2 text-[9px] text-white/40">STEPS</span>{([8, 16] as const).map((length) => <button key={length} onClick={() => setPatternLength(length)} className={cn("h-full px-2 font-black", patternLength === length ? "bg-purple-300 text-black" : "bg-[#30343b] text-white/60")}>{length}</button>)}</div>
         <button onClick={exportPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Export</button>
         <label className="ml-auto flex h-full items-center border-l border-black px-4 font-black">BPM <input value={bpm} type="number" onChange={(event) => setBpm(Number(event.target.value) || 120)} className="ml-2 w-16 bg-black px-2 py-1 font-mono text-cyan-200 outline-none" /></label>
       </div>
@@ -273,11 +275,11 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
           </div>
         </section>
         <section className="min-h-0 overflow-auto bg-[#15191d] p-4">
-          <div className="mb-3 grid min-w-[760px] grid-cols-[72px_repeat(16,minmax(0,1fr))] gap-2 text-center font-mono text-[10px] text-white/35">
+          <div className="mb-3 grid min-w-[760px] grid-cols-[72px_repeat(${patternLength},minmax(0,1fr))] gap-2 text-center font-mono text-[10px] text-white/35">
             <span />{Array.from({ length: 16 }, (_, i) => <span key={i} className={cn(step === i && "text-cyan-200")}>{i + 1}</span>)}
           </div>
           <div className="min-w-[760px] space-y-1.5">
-            {pads.map((pad) => <div key={pad.id} className="grid items-center gap-2" style={{ gridTemplateColumns: "72px repeat(16,minmax(0,1fr))" }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-2 text-left font-mono text-[10px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.map((on, i) => <button key={i} onClick={() => toggleStep(pad.id, i)} className={cn("h-10 border", step === i && "ring-2 ring-white/60")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 10px ${pad.color}80` : undefined }} />)}</div>)}
+            {pads.map((pad) => <div key={pad.id} className="grid items-center gap-2" style={{ gridTemplateColumns: `72px repeat(${patternLength},minmax(0,1fr))` }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-2 text-left font-mono text-[10px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.slice(0, patternLength).map((on, i) => <button key={i} onClick={() => toggleStep(pad.id, i)} className={cn("h-10 border", step === i && "ring-2 ring-white/60")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 10px ${pad.color}80` : undefined }} />)}</div>)}
           </div>
         </section>
       </main>
