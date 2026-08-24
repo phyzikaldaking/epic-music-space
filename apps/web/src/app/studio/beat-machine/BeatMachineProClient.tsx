@@ -215,7 +215,15 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       setPrinting(false);
     }
   }
-  function exportPattern() { download("ems-beat-pattern.json", JSON.stringify({ bpm, pads: pads.map(({ id, label, volume, pan, muted, solo, steps }) => ({ id, label, volume, pan, muted, solo, steps })) }, null, 2)); }
+  function exportPattern() {
+    download("ems-beat-pattern.json", JSON.stringify({
+      version: 2,
+      bpm,
+      patternLength,
+      activeBank: padBank,
+      banks: Object.fromEntries(Object.entries(padBanks).map(([bank, bankPads]) => [bank, bankPads.map(({ id, label, volume, pan, muted, solo, steps, tune, mode }) => ({ id, label, volume, pan, muted, solo, steps, tune, mode }))])),
+    }, null, 2));
+  }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
