@@ -50,20 +50,62 @@ describe("Studio meaningful-change autosave", () => {
     expect(cloud).toEqual(["Song"]);
     scheduler.dispose();
   });
-  it("flushes the latest pending cloud checkpoint when connectivity returns", async () => {
-    const cloud: string[] = [];
+
+  it("waits for a reconnect checkpoint already in flight when flushing", async () => {
+    let releaseCloud!: () => void;
+    let cloudCompleted = false;
+    const cloudGate = new Promise<void>((resolve) => { releaseCloud = resolve; });
     const scheduler = createAutosaveScheduler({
       now: () => 10_000,
       authenticated: true,
       online: false,
       writeLocal: async () => {},
-      writeCloud: async (value) => { cloud.push(value.title); },
+      writeCloud: async () => {
+        await cloudGate;
+        cloudCompleted = true;
+      },
     });
+
     await scheduler.notify(project);
     scheduler.setOnline(true);
+    let flushCompleted = false;
+    const flushing = scheduler.flush().then(() => { flushCompleted = true; });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(cloud).toEqual(["Song"]);
+    expect(flushCompleted).toBe(false);
+
+    releaseCloud();
+    await flushing;
+    expect(cloudCompleted).toBe(true);
     scheduler.dispose();
   });
 
+  it("still attempts a newer pending checkpoint after an older write fails", async () => {
+    let releaseFirst!: () => void;
+    let attempts = 0;
+    const written: string[] = [];
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const scheduler = createAutosaveScheduler({
+      now: () => 10_000,
+      authenticated: true,
+      online: true,
+      writeLocal: async () => {},
+      writeCloud: async (value) => {
+        attempts += 1;
+        if (attempts === 1) {
+          await firstGate;
+          throw new Error("transient cloud failure");
+        }
+        written.push(value.title);
+      },
+    });
+
+    const first = scheduler.notify({ ...project, title: "First" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const second = scheduler.notify({ ...project, title: "Second" });
+    releaseFirst();
+    await Promise.allSettled([first, second]);
+
+    expect(written).toEqual(["Second"]);
+    scheduler.dispose();
+  });
 });

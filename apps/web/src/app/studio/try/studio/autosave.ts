@@ -34,9 +34,20 @@ export function createAutosaveScheduler(input: {
   let lastCloudAt = Number.NEGATIVE_INFINITY;
   let pending: AutosaveProject | null = null;
   let timer: TimerHandle | null = null;
+  let cloudWrite: Promise<void> | null = null;
   let disposed = false;
 
-  async function writeCloudIfReady(force = false) {
+  async function writeCloudIfReady(force = false): Promise<void> {
+    if (cloudWrite) {
+      const activeWrite = cloudWrite;
+      try {
+        await activeWrite;
+      } finally {
+        if (cloudWrite === activeWrite) cloudWrite = null;
+        if (pending) await writeCloudIfReady(force);
+      }
+      return;
+    }
     if (disposed || !pending || !input.authenticated || !online) return;
     const elapsed = input.now() - lastCloudAt;
     if (!force && elapsed < throttleMs) {
@@ -48,8 +59,15 @@ export function createAutosaveScheduler(input: {
     }
     const project = pending;
     pending = null;
-    await input.writeCloud(project);
-    lastCloudAt = input.now();
+    const write = input.writeCloud(project).then(() => {
+      lastCloudAt = input.now();
+    });
+    cloudWrite = write;
+    try {
+      await write;
+    } finally {
+      if (cloudWrite === write) cloudWrite = null;
+    }
   }
 
   return {
