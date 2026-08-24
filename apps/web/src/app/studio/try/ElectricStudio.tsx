@@ -471,7 +471,7 @@ export default function ElectricStudio() {
     setSaveStatus("Uploading audio to cloud...");
     const uploaded = await withStudioGuestMediaFallback(
       () => uploadStudioAudio(blob, fileName, type, decoded, targetTrackId, start, color),
-      () => ({ projectId: sessionId, url: URL.createObjectURL(blob), clipId: uid("clip"), local: true as const }),
+      () => ({ projectId: sessionId, url: URL.createObjectURL(blob), clipId: uid("clip"), audioFileId: undefined, local: true as const }),
     );
     const clip: StudioClip = {
       id: uploaded.clipId,
@@ -563,7 +563,7 @@ export default function ElectricStudio() {
       const currentTrack = tracks.find((track) => track.clips.some((clip) => clip.id === clipId));
       const uploaded = await withStudioGuestMediaFallback(
         () => uploadStudioAudio(file, file.name, file.type || "audio/*", decoded, currentTrack?.id, currentClip?.start ?? 0, currentClip?.color ?? "#65d6ff"),
-        () => ({ projectId: sessionId, url: URL.createObjectURL(file), clipId, local: true as const }),
+        () => ({ projectId: sessionId, url: URL.createObjectURL(file), clipId, audioFileId: undefined, local: true as const }),
       );
       commit("Relink audio", (draft) => draft.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, name: file.name, url: uploaded.url, type: file.type || "audio/*", size: file.size, duration: decoded.duration, peaks: decoded.peaks, missing: false } : clip) })));
       setSampleRate(decoded.sampleRate);
