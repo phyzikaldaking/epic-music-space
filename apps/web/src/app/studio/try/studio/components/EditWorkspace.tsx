@@ -333,11 +333,13 @@ export function EditWorkspace({
         </div>
       </section>
 
-      <div className="grid min-h-0 grid-rows-[1fr_180px] border-l border-black bg-[#20242b]">
-        <div className="overflow-auto p-3 text-xs text-white/50">
-          <b className="mb-3 block uppercase tracking-widest text-white/70">Edit Log</b>
-          {editLog.length === 0 ? <p>No edits yet.</p> : editLog.map((item, index) => <p key={`${item}-${index}`} className="mb-2 border-b border-black/40 pb-2">{item}</p>)}
-        </div>
+      <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_180px] border-l border-black bg-[#20242b]">
+        <details className="min-h-0 overflow-auto border-b border-black/60 text-xs text-white/50">
+          <summary className="cursor-pointer px-3 py-2 font-black uppercase tracking-widest text-white/70">Edit Log ({editLog.length})</summary>
+          <div className="px-3 pb-3">
+            {editLog.length === 0 ? <p>No edits yet.</p> : editLog.map((item, index) => <p key={item + "-" + index} className="mb-2 border-b border-black/40 pb-2">{item}</p>)}
+          </div>
+        </details>
         <RegionPanel
           selectionStart={selectionStart}
           selectionEnd={selectionEnd}
