@@ -134,7 +134,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       source.start(now);
       return;
     }
-    // Real sample playback is required. An empty pad stays silent until the producer loads a Supabase asset.\n    return;\n  }
+    // Real sample playback is required. An empty pad stays silent until the producer loads a Supabase asset.
+    return;
+  }
   function updatePad(id: string, patch: Partial<Pad>) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, ...patch } : pad)); }
   function toggleStep(id: string, index: number) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, steps: pad.steps.map((on, i) => i === index ? !on : on) } : pad)); }
   function stop() { if (timer.current) window.clearInterval(timer.current); timer.current = null; setPlaying(false); setStep(0); }
