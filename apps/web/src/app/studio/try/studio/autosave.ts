@@ -62,7 +62,11 @@ export function createAutosaveScheduler(input: {
       await input.writeLocal(project);
       await writeCloudIfReady();
     },
-    setOnline(value: boolean) { online = value; },
+    setOnline(value: boolean) {
+      const wasOffline = !online;
+      online = value;
+      if (wasOffline && value) void writeCloudIfReady();
+    },
     async flush() {
       if (timer !== null) { cancelSchedule(timer); timer = null; }
       await writeCloudIfReady(true);
