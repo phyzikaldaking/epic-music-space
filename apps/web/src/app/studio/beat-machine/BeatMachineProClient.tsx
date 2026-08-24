@@ -115,7 +115,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     if (!SUPABASE_ANON_KEY) return;
     void fetch(`${SUPABASE_URL}/storage/v1/object/list/audio-assets`, { method: "POST", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ prefix: "", limit: 1000, sortBy: { column: "created_at", order: "desc" } }) })
       .then((response) => response.ok ? response.json() : [])
-      .then((items: Array<{ name?: string }>) => { const names = items.map((item) => item.name).filter((name): name is string => Boolean(name && /\\.(wav|mp3|ogg|m4a)$/i.test(name))); if (names.length) setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names]))); })
+      .then((items: Array<{ name?: string }>) => { const names = items.map((item) => item.name).filter((name): name is string => Boolean(name && /\.(wav|mp3|ogg|m4a)$/i.test(name))); if (names.length) setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names]))); })
       .catch(() => undefined);
   }, []);
   function trigger(pad: Pad, velocity = 1) {
