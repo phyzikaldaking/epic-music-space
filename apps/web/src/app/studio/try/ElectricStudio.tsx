@@ -565,7 +565,7 @@ export default function ElectricStudio() {
         () => uploadStudioAudio(file, file.name, file.type || "audio/*", decoded, currentTrack?.id, currentClip?.start ?? 0, currentClip?.color ?? "#65d6ff"),
         () => ({ projectId: sessionId, url: URL.createObjectURL(file), clipId, audioFileId: undefined, local: true as const }),
       );
-      commit("Relink audio", (draft) => draft.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, name: file.name, url: uploaded.url, type: file.type || "audio/*", size: file.size, duration: decoded.duration, peaks: decoded.peaks, missing: false } : clip) })));
+      commit("Relink audio", (draft) => draft.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, name: file.name, url: uploaded.url, type: file.type || "audio/*", size: file.size, duration: decoded.duration, peaks: decoded.peaks, sourceId: uploaded.audioFileId ?? uploaded.clipId, missing: false } : clip) })));
       setSampleRate(decoded.sampleRate);
       await saveSession(title, false, true);
     } catch (err) {
