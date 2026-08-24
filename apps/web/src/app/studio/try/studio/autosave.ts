@@ -39,8 +39,14 @@ export function createAutosaveScheduler(input: {
 
   async function writeCloudIfReady(force = false): Promise<void> {
     if (cloudWrite) {
-      await cloudWrite;
-      return writeCloudIfReady(force);
+      const activeWrite = cloudWrite;
+      try {
+        await activeWrite;
+      } finally {
+        if (cloudWrite === activeWrite) cloudWrite = null;
+        if (pending) await writeCloudIfReady(force);
+      }
+      return;
     }
     if (disposed || !pending || !input.authenticated || !online) return;
     const elapsed = input.now() - lastCloudAt;
