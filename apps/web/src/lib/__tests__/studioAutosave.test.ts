@@ -50,4 +50,20 @@ describe("Studio meaningful-change autosave", () => {
     expect(cloud).toEqual(["Song"]);
     scheduler.dispose();
   });
+  it("flushes the latest pending cloud checkpoint when connectivity returns", async () => {
+    const cloud: string[] = [];
+    const scheduler = createAutosaveScheduler({
+      now: () => 10_000,
+      authenticated: true,
+      online: false,
+      writeLocal: async () => {},
+      writeCloud: async (value) => { cloud.push(value.title); },
+    });
+    await scheduler.notify(project);
+    scheduler.setOnline(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(cloud).toEqual(["Song"]);
+    scheduler.dispose();
+  });
+
 });
