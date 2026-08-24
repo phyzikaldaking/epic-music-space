@@ -50,20 +50,32 @@ describe("Studio meaningful-change autosave", () => {
     expect(cloud).toEqual(["Song"]);
     scheduler.dispose();
   });
-  it("flushes the latest pending cloud checkpoint when connectivity returns", async () => {
-    const cloud: string[] = [];
+
+  it("waits for a reconnect checkpoint already in flight when flushing", async () => {
+    let releaseCloud!: () => void;
+    let cloudCompleted = false;
+    const cloudGate = new Promise<void>((resolve) => { releaseCloud = resolve; });
     const scheduler = createAutosaveScheduler({
       now: () => 10_000,
       authenticated: true,
       online: false,
       writeLocal: async () => {},
-      writeCloud: async (value) => { cloud.push(value.title); },
+      writeCloud: async () => {
+        await cloudGate;
+        cloudCompleted = true;
+      },
     });
+
     await scheduler.notify(project);
     scheduler.setOnline(true);
+    let flushCompleted = false;
+    const flushing = scheduler.flush().then(() => { flushCompleted = true; });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(cloud).toEqual(["Song"]);
+    expect(flushCompleted).toBe(false);
+
+    releaseCloud();
+    await flushing;
+    expect(cloudCompleted).toBe(true);
     scheduler.dispose();
   });
-
 });
