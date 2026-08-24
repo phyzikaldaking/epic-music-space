@@ -130,6 +130,7 @@ export default function ElectricStudio() {
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const tabId = useRef(uid("tab"));
+  const lockWarningTimer = useRef<number | null>(null);
 
   useEffect(() => {
     tracksRef.current = tracks;
@@ -262,10 +263,16 @@ export default function ElectricStudio() {
     const onStudioPresence = (event: MessageEvent<{ type?: string; tabId?: string }>) => {
       if (event.data?.type === "studio-presence" && event.data.tabId && event.data.tabId !== tabId.current) {
         setLockWarning("Another Studio window is currently open. Work in one window at a time to prevent conflicting saves.");
+        if (lockWarningTimer.current) window.clearTimeout(lockWarningTimer.current);
+        lockWarningTimer.current = window.setTimeout(() => {
+          setLockWarning(null);
+          lockWarningTimer.current = null;
+        }, 2500);
       }
     };
     studioChannel?.addEventListener("message", onStudioPresence);
     announcePresence();
+    const presenceHeartbeat = window.setInterval(announcePresence, 1000);
     const online = () => { setOffline(false); void refreshRecent(); };
     const offlineNow = () => setOffline(true);
     window.addEventListener("online", online);
@@ -273,6 +280,8 @@ export default function ElectricStudio() {
     return () => {
       studioChannel?.removeEventListener("message", onStudioPresence);
       studioChannel?.close();
+      window.clearInterval(presenceHeartbeat);
+      if (lockWarningTimer.current) window.clearTimeout(lockWarningTimer.current);
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offlineNow);
       tracksRef.current.flatMap((track) => track.clips).forEach((clip) => clip.url && isTemporaryObjectUrl(clip.url) && URL.revokeObjectURL(clip.url));
