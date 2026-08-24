@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import BeatMachineProClient from "./BeatMachineProClient";
+import OfficialKitBeatMachineStudio from "./OfficialKitBeatMachineStudio";
 
 export const metadata: Metadata = {
   title: "EMS Beat Machine | Epic Music Space",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function BeatMachineStudioPage() {
-  return <BeatMachineProClient studioMode />;
+  return <OfficialKitBeatMachineStudio />;
 }
