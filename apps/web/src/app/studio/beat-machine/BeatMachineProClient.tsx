@@ -20,14 +20,14 @@ type Preset = { name: string; volumes: Record<string, number>; pans: Record<stri
 
 const makeSteps = (on: number[]) => Array.from({ length: 16 }, (_, i) => on.includes(i + 1));
 const initialPads: Pad[] = [
-  { id: "kick", label: "KICK", key: "1", color: "#20f7ff", freq: 54, volume: 88, pan: 0, muted: false, solo: false, steps: makeSteps([1, 5, 9, 13]) },
-  { id: "snare", label: "SNARE", key: "2", color: "#ff31df", freq: 180, volume: 74, pan: 0, muted: false, solo: false, steps: makeSteps([5, 13]) },
-  { id: "hat", label: "HAT", key: "3", color: "#a75cff", freq: 6500, volume: 48, pan: 14, muted: false, solo: false, steps: makeSteps([1, 3, 5, 7, 9, 11, 13, 15]) },
-  { id: "clap", label: "CLAP", key: "4", color: "#a75cff", freq: 260, volume: 60, pan: -8, muted: false, solo: false, steps: makeSteps([5, 13]) },
-  { id: "bass", label: "808", key: "Q", color: "#f2c85b", freq: 42, volume: 82, pan: 0, muted: false, solo: false, steps: makeSteps([1, 4, 9, 12, 15]) },
-  { id: "perc", label: "PERC", key: "W", color: "#16e59a", freq: 410, volume: 55, pan: 18, muted: false, solo: false, steps: makeSteps([3, 7, 10, 14]) },
-  { id: "vox", label: "VOX", key: "E", color: "#20c8ff", freq: 330, volume: 58, pan: -18, muted: false, solo: false, steps: makeSteps([8, 16]) },
-  { id: "fx", label: "FX", key: "R", color: "#ff4f8b", freq: 920, volume: 42, pan: 24, muted: false, solo: false, steps: makeSteps([4, 12]) },
+  { id: "kick", label: "KICK", key: "1", color: "#20f7ff", freq: 54, volume: 88, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "snare", label: "SNARE", key: "2", color: "#ff31df", freq: 180, volume: 74, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "hat", label: "HAT", key: "3", color: "#a75cff", freq: 6500, volume: 48, pan: 14, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "clap", label: "CLAP", key: "4", color: "#a75cff", freq: 260, volume: 60, pan: -8, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "bass", label: "808", key: "Q", color: "#f2c85b", freq: 42, volume: 82, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "perc", label: "PERC", key: "W", color: "#16e59a", freq: 410, volume: 55, pan: 18, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "vox", label: "VOX", key: "E", color: "#20c8ff", freq: 330, volume: 58, pan: -18, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "fx", label: "FX", key: "R", color: "#ff4f8b", freq: 920, volume: 42, pan: 24, muted: false, solo: false, steps: makeSteps([]) },
 ];
 const presets: Preset[] = [
   { name: "Trap Knock", volumes: { kick: 94, snare: 72, hat: 52, clap: 50, bass: 92, perc: 54, vox: 44, fx: 34 }, pans: { hat: 8, perc: -18, vox: 16, fx: 28 } },
@@ -134,18 +134,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       source.start(now);
       return;
     }
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const pan = ctx.createStereoPanner();
-    osc.frequency.value = pad.freq;
-    osc.type = pad.id === "hat" || pad.id === "fx" ? "square" : pad.id === "bass" || pad.id === "kick" ? "sine" : "triangle";
-    pan.pan.value = Math.max(-1, Math.min(1, pad.pan / 50));
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.001, (pad.volume / 100) * velocity * 0.28), now + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + (pad.id === "bass" ? 0.55 : pad.id === "hat" ? 0.08 : 0.22));
-    osc.connect(gain).connect(pan).connect(ctx.destination);
-    osc.start(now); osc.stop(now + 0.7);
-  }
+    // Real sample playback is required. An empty pad stays silent until the producer loads a Supabase asset.\n    return;\n  }
   function updatePad(id: string, patch: Partial<Pad>) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, ...patch } : pad)); }
   function toggleStep(id: string, index: number) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, steps: pad.steps.map((on, i) => i === index ? !on : on) } : pad)); }
   function stop() { if (timer.current) window.clearInterval(timer.current); timer.current = null; setPlaying(false); setStep(0); }
