@@ -40,7 +40,9 @@ export async function scheduleSoundKitHit(
   if (!sound?.url) return null;
   let sampleBuffer: AudioBuffer;
   try {
-    sampleBuffer = await loadSoundAssetBuffer(ctx, sound);
+    const loadedBuffer = await loadSoundAssetBuffer(ctx, sound);
+    if (!loadedBuffer) return null;
+    sampleBuffer = loadedBuffer;
   } catch {
     return null;
   }
