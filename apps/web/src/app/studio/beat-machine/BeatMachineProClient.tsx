@@ -19,7 +19,8 @@ import { buildBeatStemRenderPlan, type BeatStemRenderPlan } from "./beatStemPrin
 type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; tune?: number; mode?: "one-shot" | "loop" };
 type Preset = { name: string; volumes: Record<string, number>; pans: Record<string, number> };
 
-const makeSteps = (on: number[]) => Array.from({ length: patternLength }, (_, i) => on.includes(i + 1));
+const DEFAULT_PATTERN_LENGTH = 16;
+const makeSteps = (on: number[]) => Array.from({ length: DEFAULT_PATTERN_LENGTH }, (_, i) => on.includes(i + 1));
 const initialPads: Pad[] = [
   { id: "kick", label: "KICK", key: "1", color: "#20f7ff", freq: 54, volume: 88, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
   { id: "snare", label: "SNARE", key: "2", color: "#ff31df", freq: 180, volume: 74, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
