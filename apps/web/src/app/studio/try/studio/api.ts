@@ -104,7 +104,7 @@ export function toStudioProjectPayload(
   const serialized = serializeStudioSession(saved);
   const clips = serialized.tracks.flatMap((track) =>
     track.clips
-      .filter((clip) => clip.url && !clip.url.startsWith("blob:") && clip.sourceId && clip.sourceId !== clip.id)
+      .filter((clip) => !forceNew && clip.url && !clip.url.startsWith("blob:") && clip.sourceId && clip.sourceId !== clip.id)
       .map((clip) => ({
         id: clip.id,
         trackId: track.id,
