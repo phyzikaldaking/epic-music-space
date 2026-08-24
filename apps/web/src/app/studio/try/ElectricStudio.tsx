@@ -694,7 +694,10 @@ export default function ElectricStudio() {
     studioTransport.setBpm(bpm);
     playOrigin.current = performance.now() / 1000 - from;
     players.current = clips.map(({ track, clip }) => {
-      const audio = new Audio(clip.url);
+      const audio = new Audio();
+      audio.preload = "auto";
+      audio.src = clip.url;
+      audio.addEventListener("error", () => setError(`Audio could not load: ${clip.name}`), { once: true });
       audio.volume = Math.min(1, Math.max(0, (track.volume / 100) * Math.pow(10, clip.gain / 20)));
       audio.currentTime = Math.max(0, clip.trimStart + from - clip.start);
       const wait = Math.max(0, clip.start - from) * 1000;
