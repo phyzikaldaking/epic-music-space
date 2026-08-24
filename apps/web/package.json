@@ -41,7 +41,7 @@
     "@vercel/blob": "^2.3.3",
     "@vercel/sandbox": "^1.10.0",
     "@vercel/speed-insights": "^2.0.0",
-    "autoprefixer": "^10.4.20",
+    "autoprefixer": "^10.5.4",
     "bcryptjs": "^2.4.3",
     "botid": "^1.5.11",
     "bullmq": "^5.13.2",
