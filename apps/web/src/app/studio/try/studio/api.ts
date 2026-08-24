@@ -102,6 +102,27 @@ export function toStudioProjectPayload(
   forceNew: boolean,
 ) {
   const serialized = serializeStudioSession(saved);
+  const clips = serialized.tracks.flatMap((track) =>
+    track.clips
+      .filter((clip) => clip.url && !clip.url.startsWith("blob:") && clip.sourceId && clip.sourceId !== clip.id)
+      .map((clip) => ({
+        id: clip.id,
+        trackId: track.id,
+        name: clip.name,
+        audioFileId: clip.sourceId,
+        startSec: clip.start,
+        durationSec: visibleClipDuration(clip),
+        trimStartSec: clip.trimStart,
+        trimEndSec: clip.trimEnd,
+        gainDb: clip.gain,
+        muted: clip.muted,
+        locked: clip.locked,
+        color: clip.color,
+        peaks: clip.peaks,
+        metadata: { source: "studio-session-save" },
+      })),
+  );
+
   const tracks = serialized.tracks.map((track, position) => ({
     id: track.id,
     name: track.name,
@@ -128,6 +149,7 @@ export function toStudioProjectPayload(
       .flatMap((track) => track.clips[0]?.peaks ?? [])
       .slice(0, 120),
     tracks,
+    clips,
   };
 }
 
