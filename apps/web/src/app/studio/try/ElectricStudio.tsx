@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BeatMachineProClient from "../beat-machine/BeatMachineProClient";
+import { studioTransport } from "../../../lib/studioTransport";
 import type {
   StudioClip,
   StudioEditMode,
@@ -125,6 +126,7 @@ export default function ElectricStudio() {
   const timer = useRef<number | null>(null);
   const recordStopTimer = useRef<number | null>(null);
   const playOrigin = useRef(0);
+  const transportSubscription = useRef<(() => void) | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const tabId = useRef(uid("tab"));
@@ -224,6 +226,16 @@ export default function ElectricStudio() {
     void saveSession(title, false, true);
   }, [saveSession, title]);
 
+  useEffect(() => {
+    studioTransport.setBpm(bpm);
+    transportSubscription.current?.();
+    transportSubscription.current = studioTransport.subscribe((state) => {
+      setPlayhead(state.positionSec);
+      setPlaying(state.playing);
+    });
+    return () => transportSubscription.current?.();
+  }, [bpm]);
+
   const stopTransport = useCallback((reset = false) => {
     players.current.forEach((audio) => {
       audio.pause();
@@ -232,6 +244,7 @@ export default function ElectricStudio() {
     players.current = [];
     if (timer.current) window.clearInterval(timer.current);
     timer.current = null;
+    studioTransport.stop(reset);
     setPlaying(false);
     if (reset) setPlayhead(0);
   }, []);
@@ -663,6 +676,8 @@ export default function ElectricStudio() {
     const sourceTracks = soloed.length ? soloed : tracks;
     const clips = sourceTracks.flatMap((track) => track.muted ? [] : track.clips.filter((clip) => !clip.muted && !clip.missing && clip.url && from < clip.start + visibleClipDuration(clip)).map((clip) => ({ track, clip })));
     if (!clips.length) return setError("No playable audio. Import or relink audio first.");
+    studioTransport.seek(from);
+    studioTransport.setBpm(bpm);
     playOrigin.current = performance.now() / 1000 - from;
     players.current = clips.map(({ track, clip }) => {
       const audio = new Audio(clip.url);
@@ -673,15 +688,15 @@ export default function ElectricStudio() {
       return audio;
     });
     setPlaying(true);
+    studioTransport.play();
     timer.current = window.setInterval(() => {
-      const next = performance.now() / 1000 - playOrigin.current;
+      const next = studioTransport.getState().positionSec;
       if (loop && next >= selectionEnd) {
         stopTransport();
         setPlayhead(selectionStart);
         window.setTimeout(playTransport, 0);
         return;
       }
-      setPlayhead(next);
       if (next >= sessionEnd) stopTransport();
     }, 40);
   }
