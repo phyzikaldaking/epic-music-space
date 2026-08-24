@@ -308,7 +308,29 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
           <div className="grid grid-cols-4 gap-2">
             {pads.map((pad) => <button key={pad.id} onClick={() => { setSelected(pad.id); trigger(pad); }} className="relative aspect-square border bg-gradient-to-b from-[#2c2d2f] to-[#101112] p-2" style={{ borderColor: selected === pad.id ? pad.color : "rgba(255,255,255,.16)", boxShadow: selected === pad.id ? `0 0 16px ${pad.color}55` : "inset 0 1px 0 rgba(255,255,255,.08)" }}><span className="grid h-full place-items-center text-[12px] font-black tracking-[0.08em]">{pad.label}</span><span className="absolute bottom-2 right-2 font-mono text-[10px] text-white/40">{pad.key}</span></button>)}
           </div>
-          <div className="mt-4 border-t border-white/10 pt-4"><div className="mb-3 flex items-center justify-between"><b className="text-[11px] uppercase tracking-widest text-cyan-200">Live Sample Library</b><span className="font-mono text-[10px] text-white/35">{liveSamples.length} sounds</span></div><div className="max-h-52 space-y-1 overflow-auto pr-1">{liveSamples.slice(0, 80).map((name) => <div key={name} className="flex gap-1"><button onClick={() => void previewSample(name)} disabled={sampleLoading} className="min-w-0 flex-1 truncate border border-white/10 bg-black/25 px-2 py-2 text-left text-[10px] font-bold uppercase text-white/60 hover:border-cyan-300/60 hover:text-white">{name.replace(/\.(wav|mp3|ogg|m4a)$/i, "")}</button><button onClick={() => void loadSample(name)} disabled={sampleLoading} className="shrink-0 border border-cyan-300/40 px-2 text-[9px] font-black text-cyan-200 disabled:opacity-50">LOAD</button></div>)}</div></div>{sampleLoading && <p className="mt-2 text-[9px] font-bold uppercase text-cyan-200">Loading sample…</p>}{sampleError && <p className="mt-2 text-[9px] font-bold uppercase text-red-300">{sampleError}</p>}{sampleWaveform.length > 0 && <div className="mt-3 flex h-12 items-center gap-px border border-cyan-300/20 bg-black/40 px-2" aria-label="Decoded sample waveform">{sampleWaveform.map((peak, index) => <span key={index} className="flex-1 bg-cyan-300/80" style={{ height: `${Math.max(8, peak * 100)}%` }} />)}</div>}<p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p></div><div className="mt-4 border-t border-white/10 pt-4">
+          <div className="mt-4 border-t border-white/10 pt-4">
+            <div className="mb-3 flex items-center justify-between">
+              <b className="text-[11px] uppercase tracking-widest text-cyan-200">Live Sample Library</b>
+              <span className="font-mono text-[10px] text-white/35">{liveSamples.length} sounds</span>
+            </div>
+            <div className="max-h-52 space-y-1 overflow-auto pr-1">
+              {liveSamples.slice(0, 80).map((name) => (
+                <div key={name} className="flex gap-1">
+                  <button onClick={() => void previewSample(name)} disabled={sampleLoading} className="min-w-0 flex-1 truncate border border-white/10 bg-black/25 px-2 py-2 text-left text-[10px] font-bold uppercase text-white/60 hover:border-cyan-300/60 hover:text-white">{name.replace(/\.(wav|mp3|ogg|m4a)$/i, "")}</button>
+                  <button onClick={() => void loadSample(name)} disabled={sampleLoading} className="shrink-0 border border-cyan-300/40 px-2 text-[9px] font-black text-cyan-200 disabled:opacity-50">LOAD</button>
+                </div>
+              ))}
+            </div>
+            {sampleLoading && <p className="mt-2 text-[9px] font-bold uppercase text-cyan-200">Loading sample…</p>}
+            {sampleError && <p className="mt-2 text-[9px] font-bold uppercase text-red-300">{sampleError}</p>}
+            {sampleWaveform.length > 0 && (
+              <div className="mt-3 flex h-12 items-center gap-px border border-cyan-300/20 bg-black/40 px-2" aria-label="Decoded sample waveform">
+                {sampleWaveform.map((peak, index) => <span key={index} className="flex-1 bg-cyan-300/80" style={{ height: `${Math.max(8, peak * 100)}%` }} />)}
+              </div>
+            )}
+            <p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p>
+          </div>
+          <div className="mt-4 border-t border-white/10 pt-4">
             <b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>
             <div className="mt-3 space-y-3">
               <label className="block text-[10px] font-black uppercase text-white/55">Playback mode<select value={activePad.mode ?? "one-shot"} onChange={(event) => updatePad(activePad.id, { mode: event.target.value as "one-shot" | "loop" })} className="mt-2 w-full bg-black px-2 py-2 text-cyan-200"><option value="one-shot">One-shot</option><option value="loop">Loop</option></select></label>
