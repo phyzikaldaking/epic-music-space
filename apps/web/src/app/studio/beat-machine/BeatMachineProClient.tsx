@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { studioTransport } from "../../../lib/studioTransport";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://oynplifjdizzdahnurgi.supabase.co";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -93,7 +94,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [liveSamples, setLiveSamples] = useState<string[]>(LIVE_SAMPLE_NAMES);
   const [sampleName, setSampleName] = useState<string | null>(null);
   const sampleBuffers = useRef<Record<string, AudioBuffer>>({});
-  const timer = useRef<number | null>(null);
+  const transportStep = useRef(-1);
   const audio = useRef<AudioContext | null>(null);
   const activePad = pads.find((pad) => pad.id === selected) ?? pads[0];
   const soloed = pads.some((pad) => pad.solo);
@@ -139,17 +140,12 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   }
   function updatePad(id: string, patch: Partial<Pad>) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, ...patch } : pad)); }
   function toggleStep(id: string, index: number) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, steps: pad.steps.map((on, i) => i === index ? !on : on) } : pad)); }
-  function stop() { if (timer.current) window.clearInterval(timer.current); timer.current = null; setPlaying(false); setStep(0); }
+  function stop() { studioTransport.stop(true); transportStep.current = -1; setPlaying(false); setStep(0); }
   function play() {
     if (playing) { stop(); return; }
     void context().resume();
-    const interval = Math.max(40, (60 / bpm / 4) * 1000);
-    let cursor = 0;
-    timer.current = window.setInterval(() => {
-      setStep(cursor);
-      pads.forEach((pad) => { if (pad.steps[cursor]) trigger(pad, 0.88); });
-      cursor = (cursor + 1) % 16;
-    }, interval);
+    studioTransport.setBpm(bpm);
+    studioTransport.play();
     setPlaying(true);
   }
   function randomize() { setPads((current) => current.map((pad) => ({ ...pad, steps: pad.steps.map((_, i) => i === 0 || Math.random() > (pad.id === "hat" ? 0.45 : 0.76)) }))); }
@@ -189,7 +185,17 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   });
-  useEffect(() => () => { if (timer.current) window.clearInterval(timer.current); }, []);
+  useEffect(() => {
+    studioTransport.setBpm(bpm);
+    return studioTransport.subscribe((state) => {
+      const nextStep = Math.floor(state.positionSec / (60 / bpm / 4)) % 16;
+      if (!state.playing || nextStep === transportStep.current) return;
+      transportStep.current = nextStep;
+      setStep(nextStep);
+      pads.forEach((pad) => { if (pad.steps[nextStep]) trigger(pad, 0.88); });
+      setPlaying(true);
+    });
+  }, [bpm, pads]);
 
   return <div className={cn(studioMode ? "h-full" : "min-h-screen", "min-h-0 overflow-hidden bg-[#0b0d10] text-white")}>
     <div className="grid h-full min-h-0 grid-rows-[34px_1fr]">
