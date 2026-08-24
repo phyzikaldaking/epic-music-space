@@ -35,18 +35,23 @@ export async function scheduleSoundKitHit(
   options: BeatMachineRuntimeHitOptions,
 ): Promise<SoundAsset | null> {
   const sound = resolveRuntimeSound(lane, options.kitId, options.soundId);
-  const fallbackKit: DrumKitId = sound?.fallbackKit ?? "trap";
-  const sampleBuffer = sound ? await loadSoundAssetBuffer(ctx, sound) : null;
-
+  // Product mode is sample-first: never silently synthesize a replacement sound.
+  // A missing asset is reported to the caller so the UI can show a recoverable error.
+  if (!sound?.url) return null;
+  let sampleBuffer: AudioBuffer;
+  try {
+    sampleBuffer = await loadSoundAssetBuffer(ctx, sound);
+  } catch {
+    return null;
+  }
   scheduleDrumHit(ctx, dest, lane, {
     when: options.when,
     velocity: options.velocity,
     pitchSemis: options.pitchSemis,
     laneEq: options.laneEq,
-    kit: fallbackKit,
+    kit: sound.fallbackKit,
     sampleBuffer,
   });
-
   return sound;
 }
 
