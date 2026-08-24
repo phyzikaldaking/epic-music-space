@@ -16,7 +16,7 @@ const sampleUrl = (name: string) => name === "HIP_Snaph_3.wav"
   : `${SUPABASE_URL}/storage/v1/object/public/audio-assets/${encodeURIComponent(name)}`;
 import { buildBeatStemRenderPlan, type BeatStemRenderPlan } from "./beatStemPrint";
 
-type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[] };
+type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; tune?: number; mode?: "one-shot" | "loop" };
 type Preset = { name: string; volumes: Record<string, number>; pans: Record<string, number> };
 
 const makeSteps = (on: number[]) => Array.from({ length: 16 }, (_, i) => on.includes(i + 1));
@@ -170,11 +170,13 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       const gain = ctx.createGain();
       const pan = ctx.createStereoPanner();
       source.buffer = buffer;
-      source.playbackRate.value = pad.id === "bass" ? 0.85 : 1;
+      source.playbackRate.value = (pad.id === "bass" ? 0.85 : 1) * Math.pow(2, (pad.tune ?? 0) / 12);
+      source.loop = pad.mode === "loop";
       gain.gain.value = Math.max(0.001, (pad.volume / 100) * velocity * 0.55);
       pan.pan.value = Math.max(-1, Math.min(1, pad.pan / 50));
       source.connect(gain).connect(pan).connect(ctx.destination);
       source.start(now);
+      if (pad.mode === "loop") source.stop(now + Math.max(0.25, Math.min(8, buffer.duration)));
       return;
     }
     // Real sample playback is required. An empty pad stays silent until the producer loads a Supabase asset.
@@ -262,6 +264,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
           <div className="mt-4 border-t border-white/10 pt-4"><div className="mb-3 flex items-center justify-between"><b className="text-[11px] uppercase tracking-widest text-cyan-200">Live Sample Library</b><span className="font-mono text-[10px] text-white/35">{liveSamples.length} sounds</span></div><div className="max-h-52 space-y-1 overflow-auto pr-1">{liveSamples.slice(0, 80).map((name) => <div key={name} className="flex gap-1"><button onClick={() => void previewSample(name)} disabled={sampleLoading} className="min-w-0 flex-1 truncate border border-white/10 bg-black/25 px-2 py-2 text-left text-[10px] font-bold uppercase text-white/60 hover:border-cyan-300/60 hover:text-white">{name.replace(/\.(wav|mp3|ogg|m4a)$/i, "")}</button><button onClick={() => void loadSample(name)} disabled={sampleLoading} className="shrink-0 border border-cyan-300/40 px-2 text-[9px] font-black text-cyan-200 disabled:opacity-50">LOAD</button></div>)}</div></div>{sampleLoading && <p className="mt-2 text-[9px] font-bold uppercase text-cyan-200">Loading sample…</p>}{sampleError && <p className="mt-2 text-[9px] font-bold uppercase text-red-300">{sampleError}</p>}<p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p></div><div className="mt-4 border-t border-white/10 pt-4">
             <b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>
             <div className="mt-3 space-y-3">
+              <label className="block text-[10px] font-black uppercase text-white/55">Playback mode<select value={activePad.mode ?? "one-shot"} onChange={(event) => updatePad(activePad.id, { mode: event.target.value as "one-shot" | "loop" })} className="mt-2 w-full bg-black px-2 py-2 text-cyan-200"><option value="one-shot">One-shot</option><option value="loop">Loop</option></select></label>
+              <label className="block text-[10px] font-black uppercase text-white/55">Tune (semitones)<input className="mt-2 w-full accent-cyan-300" type="range" min="-24" max="24" value={activePad.tune ?? 0} onChange={(event) => updatePad(activePad.id, { tune: Number(event.target.value) })} /></label>
               {(["volume", "pan", "freq"] as const).map((field) => <label key={field} className="block text-[10px] font-black uppercase text-white/55">{field}<input className="mt-2 w-full accent-cyan-300" type="range" min={field === "pan" ? -50 : field === "freq" ? 30 : 0} max={field === "pan" ? 50 : field === "freq" ? 8000 : 100} value={activePad[field]} onChange={(event) => updatePad(activePad.id, { [field]: Number(event.target.value) })} /></label>)}
               <div className="flex gap-2"><button onClick={() => updatePad(activePad.id, { muted: !activePad.muted })} className={cn("h-8 flex-1 border border-black bg-[#30343b] text-[10px] font-black uppercase", activePad.muted && "bg-red-400 text-black")}>Mute</button><button onClick={() => updatePad(activePad.id, { solo: !activePad.solo })} className={cn("h-8 flex-1 border border-black bg-[#30343b] text-[10px] font-black uppercase", activePad.solo && "bg-yellow-300 text-black")}>Solo</button><button onClick={() => trigger(activePad)} className="h-8 flex-1 border border-black bg-cyan-300 text-[10px] font-black uppercase text-black">Test</button></div>
               <div className="grid gap-2 pt-2">{presets.map((preset) => <button key={preset.name} onClick={() => applyPreset(preset)} className="border border-white/10 bg-black/35 px-3 py-2 text-left text-[10px] font-black uppercase tracking-widest text-white/65 hover:text-cyan-100">{preset.name}</button>)}</div>
