@@ -56,7 +56,7 @@ import {
 
 const colors = ["#65d6ff", "#a78bfa", "#f9d66a", "#42e89d", "#ff7adf", "#ff9f6e", "#8ee3f5"];
 const audioPattern = /\.(wav|wave|mp3|m4a|aac|ogg|oga|webm|flac|aif|aiff|mp4)$/i;
-const lockKey = "ems.studio.lock.v2";
+const presenceChannelName = "ems.studio.presence.v1";
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -242,15 +242,24 @@ export default function ElectricStudio() {
     setGuideDismissed(localStorage.getItem("ems.studio.first-session.v1") === "dismissed");
     void refreshRecent().catch((err) => setError(err instanceof Error ? err.message : "Could not load Studio projects."));
     setOffline(!navigator.onLine);
-    const existingLock = localStorage.getItem(lockKey);
-    if (existingLock && existingLock !== tabId.current) setLockWarning("Studio is open in another tab. Save before editing from multiple windows.");
-    localStorage.setItem(lockKey, tabId.current);
+    const studioChannel = typeof window !== "undefined" && "BroadcastChannel" in window
+      ? new BroadcastChannel(presenceChannelName)
+      : null;
+    const announcePresence = () => studioChannel?.postMessage({ type: "studio-presence", tabId: tabId.current });
+    const onStudioPresence = (event: MessageEvent<{ type?: string; tabId?: string }>) => {
+      if (event.data?.type === "studio-presence" && event.data.tabId && event.data.tabId !== tabId.current) {
+        setLockWarning("Another Studio window is currently open. Work in one window at a time to prevent conflicting saves.");
+      }
+    };
+    studioChannel?.addEventListener("message", onStudioPresence);
+    announcePresence();
     const online = () => { setOffline(false); void refreshRecent(); };
     const offlineNow = () => setOffline(true);
     window.addEventListener("online", online);
     window.addEventListener("offline", offlineNow);
     return () => {
-      if (localStorage.getItem(lockKey) === tabId.current) localStorage.removeItem(lockKey);
+      studioChannel?.removeEventListener("message", onStudioPresence);
+      studioChannel?.close();
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offlineNow);
       tracksRef.current.flatMap((track) => track.clips).forEach((clip) => clip.url && isTemporaryObjectUrl(clip.url) && URL.revokeObjectURL(clip.url));
