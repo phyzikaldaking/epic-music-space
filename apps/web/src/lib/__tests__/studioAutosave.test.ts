@@ -78,4 +78,34 @@ describe("Studio meaningful-change autosave", () => {
     expect(cloudCompleted).toBe(true);
     scheduler.dispose();
   });
+
+  it("still attempts a newer pending checkpoint after an older write fails", async () => {
+    let releaseFirst!: () => void;
+    let attempts = 0;
+    const written: string[] = [];
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const scheduler = createAutosaveScheduler({
+      now: () => 10_000,
+      authenticated: true,
+      online: true,
+      writeLocal: async () => {},
+      writeCloud: async (value) => {
+        attempts += 1;
+        if (attempts === 1) {
+          await firstGate;
+          throw new Error("transient cloud failure");
+        }
+        written.push(value.title);
+      },
+    });
+
+    const first = scheduler.notify({ ...project, title: "First" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const second = scheduler.notify({ ...project, title: "Second" });
+    releaseFirst();
+    await Promise.allSettled([first, second]);
+
+    expect(written).toEqual(["Second"]);
+    scheduler.dispose();
+  });
 });
