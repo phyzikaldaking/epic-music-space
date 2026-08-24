@@ -171,6 +171,14 @@ export async function POST(req: NextRequest) {
   }
 
   const audioFileIds = [...new Set(data.clips.flatMap((clip) => clip.audioFileId ? [clip.audioFileId] : []))];
+  if (!data.id && audioFileIds.length > 0) {
+    return jsonWithRequestId(
+      requestId,
+      { error: "Audio clips must be uploaded to a Studio project before saving." },
+      { status: 400 },
+    );
+  }
+
   if (data.id && audioFileIds.length > 0) {
     const ownedAudioFiles = await prisma.studioAudioFile.findMany({
       where: { id: { in: audioFileIds }, projectId: data.id },
