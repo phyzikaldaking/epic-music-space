@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { buildBeatStemRenderPlan, type BeatStemRenderPlan } from "./beatStemPrint";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[] };
+import { createOfficialKitLoadTracker, planGenerationSafePrint, resolveOfficialPadPlayback, type BeatMachinePadId, type OfficialKitLoadTracker, type OfficialKitPlaybackConfig, type OfficialKitSelectionSnapshot } from "@/lib/officialKits/beatMachinePlayback";
+
+type Pad = { id: BeatMachinePadId; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[] };
 type Preset = { name: string; volumes: Record<string, number>; pans: Record<string, number> };
 
 const makeSteps = (on: number[]) => Array.from({ length: 16 }, (_, i) => on.includes(i + 1));
@@ -49,29 +50,72 @@ function audioBufferToWav(buffer: AudioBuffer) {
   return new Blob([output], { type: "audio/wav" });
 }
 
-async function renderBeatStem(stem: BeatStemRenderPlan) {
+type SampleBufferCache = Partial<Record<BeatMachinePadId, { url: string; buffer: AudioBuffer }>>;
+type OfficialKitRuntime = { selection: OfficialKitSelectionSnapshot; samples: SampleBufferCache; unavailable: Set<string> };
+
+function playSynth(ctx: BaseAudioContext, destination: AudioNode, pad: Pad, start: number, velocity: number) {
+  const oscillator = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const pan = ctx.createStereoPanner();
+  oscillator.frequency.value = pad.freq;
+  oscillator.type = pad.id === "hat" || pad.id === "fx" ? "square" : pad.id === "bass" || pad.id === "kick" ? "sine" : "triangle";
+  pan.pan.value = Math.max(-1, Math.min(1, pad.pan / 50));
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.001, (pad.volume / 100) * velocity * 0.28), start + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + (pad.id === "bass" ? 0.55 : pad.id === "hat" ? 0.08 : 0.22));
+  oscillator.connect(gain).connect(pan).connect(destination);
+  oscillator.start(start); oscillator.stop(start + 0.7);
+}
+
+function playSample(ctx: BaseAudioContext, destination: AudioNode, buffer: AudioBuffer, pad: Pad, start: number, velocity: number) {
+  const source = ctx.createBufferSource();
+  const gain = ctx.createGain();
+  const pan = ctx.createStereoPanner();
+  source.buffer = buffer;
+  pan.pan.value = Math.max(-1, Math.min(1, pad.pan / 50));
+  gain.gain.setValueAtTime(Math.max(0.001, (pad.volume / 100) * velocity), start);
+  source.connect(gain).connect(pan).connect(destination);
+  source.start(start);
+}
+
+async function loadOfficialKitSamples(ctx: BaseAudioContext, selection: OfficialKitSelectionSnapshot, cache: SampleBufferCache, unavailable: Set<string>, tracker: OfficialKitLoadTracker) {
+  const config = selection.config;
+  if (!config) return;
+  await Promise.all(Object.entries(config.sampleUrls).map(async ([padId, url]) => {
+    const pad = padId as BeatMachinePadId;
+    if (cache[pad]?.url === url || unavailable.has(url)) return;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Sample request failed: ${response.status}`);
+      const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+      if (tracker.isCurrent(selection)) cache[pad] = { url, buffer };
+    } catch {
+      if (tracker.isCurrent(selection)) unavailable.add(url);
+    }
+  }));
+}
+
+async function renderBeat(pads: Pad[], bpm: number, officialKit?: OfficialKitPlaybackConfig, samples: SampleBufferCache = {}, unavailable = new Set<string>()) {
   const sampleRate = 44_100;
-  const context = new OfflineAudioContext(2, Math.ceil(stem.durationSec * sampleRate), sampleRate);
-  stem.hitTimesSec.forEach((start) => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      const pan = context.createStereoPanner();
-      oscillator.frequency.value = stem.frequency;
-      oscillator.type = stem.id === "hat" || stem.id === "fx" ? "square" : stem.id === "bass" || stem.id === "kick" ? "sine" : "triangle";
-      pan.pan.value = Math.max(-1, Math.min(1, stem.pan / 50));
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.001, (stem.volume / 100) * 0.25), start + 0.008);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + (stem.id === "bass" ? 0.55 : stem.id === "hat" ? 0.08 : 0.22));
-      oscillator.connect(gain).connect(pan).connect(context.destination);
-      oscillator.start(start);
-      oscillator.stop(start + 0.7);
+  const stepDuration = 60 / Math.max(40, bpm) / 4;
+  const duration = stepDuration * 16 + 0.75;
+  const context = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+  const soloed = pads.some((pad) => pad.solo);
+  pads.forEach((pad) => {
+    if (pad.muted || (soloed && !pad.solo)) return;
+    pad.steps.forEach((enabled, index) => {
+      if (!enabled) return;
+      const start = index * stepDuration;
+      const sample = samples[pad.id];
+      const source = resolveOfficialPadPlayback(officialKit, pad.id, sample?.url === officialKit?.sampleUrls[pad.id], Boolean(officialKit?.sampleUrls[pad.id] && unavailable.has(officialKit.sampleUrls[pad.id]!)));
+      if (source.kind === "sample" && sample) playSample(context, context.destination, sample.buffer, pad, start, 0.9);
+      if (source.kind === "synth") playSynth(context, context.destination, pad, start, 0.9);
+    });
   });
   return audioBufferToWav(await context.startRendering());
 }
 
-export type PrintedBeatStem = BeatStemRenderPlan & { blob: Blob; name: string; kind: "drum" | "bass" | "vocal" | "fx" };
-
-export default function BeatMachineProClient({ studioMode = false, onPrintToStudio }: { initialView?: string; studioMode?: boolean; onPrintToStudio?: (stems: PrintedBeatStem[]) => Promise<void> | void }) {
+export default function BeatMachineProClient({ studioMode = false, onPrintToStudio, officialKit }: { initialView?: string; studioMode?: boolean; onPrintToStudio?: (blob: Blob, fileName: string) => Promise<void> | void; officialKit?: OfficialKitPlaybackConfig }) {
   const [pads, setPads] = useState<Pad[]>(initialPads);
   const [selected, setSelected] = useState("kick");
   const [playing, setPlaying] = useState(false);
@@ -80,6 +124,12 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [printing, setPrinting] = useState(false);
   const timer = useRef<number | null>(null);
   const audio = useRef<AudioContext | null>(null);
+  const sampleLoadTracker = useRef(createOfficialKitLoadTracker());
+  const committedKit = useRef<OfficialKitRuntime>({
+    selection: sampleLoadTracker.current.current(),
+    samples: {},
+    unavailable: new Set<string>(),
+  });
   const activePad = pads.find((pad) => pad.id === selected) ?? pads[0];
   const soloed = pads.some((pad) => pad.solo);
 
@@ -88,17 +138,12 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     if (pad.muted || (soloed && !pad.solo)) return;
     const ctx = context();
     const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const pan = ctx.createStereoPanner();
-    osc.frequency.value = pad.freq;
-    osc.type = pad.id === "hat" || pad.id === "fx" ? "square" : pad.id === "bass" || pad.id === "kick" ? "sine" : "triangle";
-    pan.pan.value = Math.max(-1, Math.min(1, pad.pan / 50));
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.001, (pad.volume / 100) * velocity * 0.28), now + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + (pad.id === "bass" ? 0.55 : pad.id === "hat" ? 0.08 : 0.22));
-    osc.connect(gain).connect(pan).connect(ctx.destination);
-    osc.start(now); osc.stop(now + 0.7);
+    const runtime = committedKit.current;
+    const config = runtime.selection.config;
+    const sample = runtime.samples[pad.id];
+    const source = resolveOfficialPadPlayback(config, pad.id, sample?.url === config?.sampleUrls[pad.id], Boolean(config?.sampleUrls[pad.id] && runtime.unavailable.has(config.sampleUrls[pad.id]!)));
+    if (source.kind === "sample" && sample) { playSample(ctx, ctx.destination, sample.buffer, pad, now, velocity); return; }
+    if (source.kind === "synth") playSynth(ctx, ctx.destination, pad, now, velocity);
   }
   function updatePad(id: string, patch: Partial<Pad>) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, ...patch } : pad)); }
   function toggleStep(id: string, index: number) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, steps: pad.steps.map((on, i) => i === index ? !on : on) } : pad)); }
@@ -122,22 +167,50 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     if (printing) return;
     setPrinting(true);
     try {
-      const stems: PrintedBeatStem[] = await Promise.all(buildBeatStemRenderPlan(pads, bpm).map(async (stem) => ({
-        ...stem,
-        blob: await renderBeatStem(stem),
-        name: stem.id,
-        kind: stem.id === "bass" ? "bass" as const : stem.id === "vox" ? "vocal" as const : stem.id === "fx" ? "fx" as const : "drum" as const,
-      })));
+      const fileName = `Beat ${bpm} BPM.wav`;
+      let printRuntime = committedKit.current;
+      let blob: Blob | undefined;
+      for (let retriesUsed = 0; retriesUsed <= 1; retriesUsed += 1) {
+        await loadOfficialKitSamples(context(), printRuntime.selection, printRuntime.samples, printRuntime.unavailable, sampleLoadTracker.current);
+        const currentRuntime = committedKit.current;
+        const plan = planGenerationSafePrint(
+          printRuntime.selection.config,
+          printRuntime.selection.generation,
+          currentRuntime.selection.config,
+          currentRuntime.selection.generation,
+          retriesUsed,
+        );
+        if (plan.retry) {
+          printRuntime = currentRuntime;
+          continue;
+        }
+        const renderRuntime = plan.forceSynthFallback ? currentRuntime : printRuntime;
+        const renderUnavailable = plan.forceSynthFallback
+          ? new Set([...renderRuntime.unavailable, ...Object.values(plan.config?.sampleUrls ?? {})])
+          : renderRuntime.unavailable;
+        blob = await renderBeat(pads, bpm, plan.config, renderRuntime.samples, renderUnavailable);
+        break;
+      }
+      if (!blob) throw new Error("Unable to prepare a printable Beat Machine render");
       if (onPrintToStudio) {
-        await onPrintToStudio(stems);
+        await onPrintToStudio(blob, fileName);
         return;
       }
-      window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { stems, autoMix: true } }));
+      window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { blob, fileName, stems: pads.map((pad) => ({ label: pad.label, name: pad.id, kind: pad.id === "bass" ? "bass" : pad.id === "vox" ? "vocal" : pad.id === "fx" ? "fx" : "drum", volume: pad.volume, pan: pad.pan })), autoMix: true } }));
     } finally {
       setPrinting(false);
     }
   }
-  function exportPattern() { download("ems-beat-pattern.json", JSON.stringify({ bpm, pads: pads.map(({ id, label, volume, pan, muted, solo, steps }) => ({ id, label, volume, pan, muted, solo, steps })) }, null, 2)); }
+  function exportPattern() { download("ems-beat-pattern.json", JSON.stringify({ bpm, officialKit: officialKit ? { kitId: officialKit.kitId, sampleUrls: officialKit.sampleUrls } : undefined, pads: pads.map(({ id, label, volume, pan, muted, solo, steps }) => ({ id, label, volume, pan, muted, solo, steps })) }, null, 2)); }
+
+  useLayoutEffect(() => {
+    const selection = sampleLoadTracker.current.commit(officialKit);
+    const runtime: OfficialKitRuntime = { selection, samples: {}, unavailable: new Set<string>() };
+    committedKit.current = runtime;
+    if (!selection.config) return;
+    if (selection.config.starterPattern) setPads((current) => current.map((pad) => ({ ...pad, steps: Array.from({ length: 16 }, (_, index) => selection.config?.starterPattern?.[pad.id]?.includes(index) ?? pad.steps[index] ?? false) })));
+    void loadOfficialKitSamples(context(), selection, runtime.samples, runtime.unavailable, sampleLoadTracker.current);
+  }, [officialKit]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

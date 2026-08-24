@@ -1,0 +1,11 @@
+{
+  "kitIds": [
+    "phyzikal-knock",
+    "fort-kane-drill",
+    "platinum-rnb",
+    "straight-gems",
+    "arena-pressure"
+  ],
+  "lanes": ["kick", "bass808", "snare", "clap", "hat", "perc", "vox", "fx"],
+  "variants": ["default", "alternate-1", "alternate-2"]
+}
