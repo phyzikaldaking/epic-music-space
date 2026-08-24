@@ -17,6 +17,7 @@ export default function UISfxController() {
   const lastHoverTime = useRef<number>(0);
 
   useEffect(() => {
+    if (pathname?.startsWith("/studio")) return;
     const sfx = getUiSfx();
     const onPointerDown = () => {
       void sfx.warmup();
@@ -61,7 +62,7 @@ export default function UISfxController() {
   }, []);
 
   useEffect(() => {
-    if (!pathname) return;
+    if (!pathname || pathname.startsWith("/studio")) return;
     if (previousPath.current === null) {
       previousPath.current = pathname;
       return;
