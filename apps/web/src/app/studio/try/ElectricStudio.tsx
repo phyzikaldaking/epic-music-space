@@ -456,7 +456,12 @@ export default function ElectricStudio() {
     if (!res.ok || typeof body.url !== "string" || !body.url) {
       throw new Error(typeof body.error === "string" ? body.error : "Cloud audio upload failed.");
     }
-    return { projectId, url: body.url as string, clipId: typeof body.clip?.id === "string" ? body.clip.id as string : uid("clip") };
+    return {
+      projectId,
+      url: body.url as string,
+      clipId: typeof body.clip?.id === "string" ? body.clip.id as string : uid("clip"),
+      audioFileId: typeof body.audioFile?.id === "string" ? body.audioFile.id as string : undefined,
+    };
   }
 
   async function createClipFromBlob(blob: Blob, fileName: string, type: string, targetTrackId?: string, start = 0, trackMix?: { volume?: number; pan?: number }) {
@@ -486,7 +491,7 @@ export default function ElectricStudio() {
       locked: false,
       color,
       missing: false,
-      sourceId: uploaded.clipId,
+      sourceId: uploaded.audioFileId ?? uploaded.clipId,
     };
     if (targetTrackId) {
       commit("Audio clip added", (draft) => draft.map((track) => track.id === targetTrackId ? { ...track, clips: [...track.clips, clip].sort((a, b) => a.start - b.start) } : track));
