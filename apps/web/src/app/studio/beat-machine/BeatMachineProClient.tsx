@@ -85,7 +85,15 @@ async function renderBeatStem(stem: BeatStemRenderPlan) {
 export type PrintedBeatStem = BeatStemRenderPlan & { blob: Blob; name: string; kind: "drum" | "bass" | "vocal" | "fx" };
 
 export default function BeatMachineProClient({ studioMode = false, onPrintToStudio }: { initialView?: string; studioMode?: boolean; onPrintToStudio?: (stems: PrintedBeatStem[]) => Promise<void> | void }) {
-  const [pads, setPads] = useState<Pad[]>(initialPads);
+  const [padBank, setPadBank] = useState(0);
+  const [padBanks, setPadBanks] = useState<Record<number, Pad[]>>(() => ({
+    0: initialPads,
+    1: initialPads.map((pad) => ({ ...pad, steps: [...pad.steps] })),
+    2: initialPads.map((pad) => ({ ...pad, steps: [...pad.steps] })),
+    3: initialPads.map((pad) => ({ ...pad, steps: [...pad.steps] })),
+  }));
+  const pads = padBanks[padBank] ?? initialPads;
+  const setPads = (updater: (current: Pad[]) => Pad[]) => setPadBanks((current) => ({ ...current, [padBank]: updater(current[padBank] ?? initialPads) }));
   const [selected, setSelected] = useState("kick");
   const [playing, setPlaying] = useState(false);
   const [step, setStep] = useState(0);
@@ -114,7 +122,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
         sampleBuffers.current[name] = await ctx.decodeAudioData(await response.arrayBuffer());
       }
       setSampleName(name);
-      sampleBuffers.current[selected] = sampleBuffers.current[name];
+      sampleBuffers.current[padBank + ":" + selected] = sampleBuffers.current[name];
       trigger({ ...activePad, id: selected });
     } catch (error) {
       setSampleError(error instanceof Error ? error.message : `Could not load ${name}`);
@@ -133,7 +141,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     if (pad.muted || (soloed && !pad.solo)) return;
     const ctx = context();
     const now = ctx.currentTime;
-    const buffer = sampleBuffers.current[pad.id];
+    const buffer = sampleBuffers.current[padBank + ":" + pad.id];
     if (buffer) {
       const source = ctx.createBufferSource();
       const gain = ctx.createGain();
@@ -212,6 +220,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     <div className="grid h-full min-h-0 grid-rows-[34px_1fr]">
       <div className="flex h-[34px] items-center border-b border-black bg-[#202329] text-[11px] uppercase tracking-[0.14em] text-white/70">
         <div className="flex h-full items-center border-r border-black px-4 font-black text-cyan-200">Beat Machine</div>
+        <div className="flex h-full items-center border-r border-black">
+          {[0, 1, 2, 3].map((bank) => <button key={bank} onClick={() => setPadBank(bank)} className={cn("h-full px-3 font-black", padBank === bank ? "bg-cyan-300 text-black" : "bg-[#30343b] text-white/60")}>Bank {bank + 1}</button>)}
+        </div>
         <button onClick={play} className={cn("h-full border-r border-black px-5 font-black", playing ? "bg-red-500 text-black" : "bg-green-400 text-black")}>{playing ? "Stop" : "Play"}</button>
         <button onClick={stop} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Reset</button>
         <button onClick={randomize} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Generate</button>
