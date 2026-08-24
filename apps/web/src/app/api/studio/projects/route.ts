@@ -170,6 +170,21 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const audioFileIds = [...new Set(data.clips.flatMap((clip) => clip.audioFileId ? [clip.audioFileId] : []))];
+  if (data.id && audioFileIds.length > 0) {
+    const ownedAudioFiles = await prisma.studioAudioFile.findMany({
+      where: { id: { in: audioFileIds }, projectId: data.id },
+      select: { id: true },
+    });
+    if (ownedAudioFiles.length !== audioFileIds.length) {
+      return jsonWithRequestId(
+        requestId,
+        { error: "One or more audio clips do not belong to this Studio project." },
+        { status: 400 },
+      );
+    }
+  }
+
   // Upsert project + replace tracks atomically. Tracks are owned by the
   // project row — on save we wipe and re-insert because the client treats
   // its in-memory engine state as canonical.
