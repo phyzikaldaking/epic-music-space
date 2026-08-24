@@ -63,4 +63,26 @@ describe("Studio legacy compatibility", () => {
     expect(payload.clips.find((clip) => clip.id === "clip-local")).toBeUndefined();
   });
 
+  it("does not carry normalized audio identities into Save As projects", () => {
+    const session = {
+      id: "project-1", title: "Cloud Session", bpm: 96, sampleRate: 48_000,
+      updatedAt: "2026-08-24T00:00:00.000Z",
+      tracks: [{
+        id: "track-1", name: "Lead", color: "#65d6ff", armed: true, muted: false, solo: false,
+        volume: 78, pan: 0, inputGain: 60,
+        clips: [{
+          id: "clip-cloud", name: "Cloud Take.wav", url: "https://cdn.example.test/cloud.wav",
+          type: "audio/wav", size: 123, duration: 2, peaks: [0.1], start: 0, trimStart: 0,
+          trimEnd: 0, fadeIn: 0, fadeOut: 0, gain: 0, muted: false, locked: false,
+          color: "#65d6ff", missing: false, sourceId: "audio-file-1",
+        }],
+      }],
+      snapshots: [],
+    };
+
+    const payload = toStudioProjectPayload(session, true);
+    expect(payload.id).toBeUndefined();
+    expect(payload.clips).toEqual([]);
+  });
+
 });
