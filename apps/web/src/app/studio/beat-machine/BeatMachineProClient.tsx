@@ -110,6 +110,31 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const activePad = pads.find((pad) => pad.id === selected) ?? pads[0];
   const soloed = pads.some((pad) => pad.solo);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("ems.beat-machine.session.v2");
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { banks?: Record<string, Pad[]>; activeBank?: number; bpm?: number; patternLength?: number };
+      if (saved.banks && typeof saved.banks === "object") {
+        setPadBanks(Object.fromEntries(Object.entries(saved.banks).map(([bank, bankPads]) => [Number(bank), bankPads])));
+      }
+      if (saved.activeBank === 0 || saved.activeBank === 1 || saved.activeBank === 2 || saved.activeBank === 3) setPadBank(saved.activeBank);
+      if (typeof saved.bpm === "number" && saved.bpm >= 40 && saved.bpm <= 240) setBpm(saved.bpm);
+      if (saved.patternLength === 8 || saved.patternLength === 16) setPatternLength(saved.patternLength);
+    } catch {
+      localStorage.removeItem("ems.beat-machine.session.v2");
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("ems.beat-machine.session.v2", JSON.stringify({
+      banks: padBanks,
+      activeBank: padBank,
+      bpm,
+      patternLength,
+    }));
+  }, [padBanks, padBank, bpm, patternLength]);
+
   function context() { audio.current ??= new AudioContext(); return audio.current; }
   async function loadSample(name: string) {
     setSampleLoading(true);
