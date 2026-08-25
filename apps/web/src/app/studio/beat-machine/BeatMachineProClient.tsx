@@ -178,7 +178,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     }));
   }, [padBanks, padBank, bpm, patternLength, patternChain]);
 
-  function context() { audio.current ??= new AudioContext(); return audio.current; }
+  function context() { const AudioContextCtor = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext; if (!AudioContextCtor) throw new Error("This browser does not support Web Audio. Try the latest Chrome, Safari, or Edge."); audio.current ??= new AudioContextCtor(); return audio.current; }
   async function assignDecodedSample(name: string, buffer: AudioBuffer) {
     sampleBuffers.current[name] = buffer;
     setSampleName(name);
