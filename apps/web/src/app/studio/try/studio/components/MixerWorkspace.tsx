@@ -19,7 +19,7 @@ export function MixerWorkspace({
     <div className="platinum-mixer">
       <div className="platinum-mixer__header"><div><span>PLATINUM CONSOLE</span><h2>Mix Room</h2></div><p>{tracks.length} CHANNELS · 48-BIT MIX ENGINE</p></div>
       <div className="platinum-mixer__body"><div className="platinum-mixer__channels">
-        {tracks.length === 0 && <div className="platinum-empty platinum-empty--room"><b>No channels yet</b><span>Import or record audio in Edit to build your mixer.</span></div>}
+        {tracks.length === 0 && <div className="platinum-empty platinum-empty--room"><b>No channels yet</b><span>Import or record audio in Edit to build your mixer.</span><div className="platinum-master-preview"><b>MASTER</b><div className="platinum-channel__meter-wrap"><div className="platinum-channel__meter"><div className="platinum-channel__level" style={{ height: "8%" }} /></div></div><span>Master output is ready for incoming tracks.</span></div></div>}
         {tracks.map((track) => {
           const clipping = track.volume + track.inputGain >= 154;
           const active = selected?.id === track.id;
