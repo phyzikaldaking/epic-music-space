@@ -135,6 +135,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [sampleSlices, setSampleSlices] = useState<Array<{ index: number; start: number; duration: number }>>([]);
   const [dragOver, setDragOver] = useState(false);
   const sampleBuffers = useRef<Record<string, AudioBuffer>>({});
+  const sampleUrls = useRef<Record<string, string>>({});
   const loadingBuffers = useRef<Record<string, Promise<AudioBuffer>>>({});
   const activeSources = useRef<Record<string, AudioBufferSourceNode>>({});
   const previewSource = useRef<AudioBufferSourceNode | null>(null);
@@ -197,6 +198,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       setDragOver(false);
     }
   }
+  function resolveSampleUrl(name: string) { return sampleUrls.current[name] ?? sampleUrl(name); }
   async function loadSample(name: string) {
     setSampleLoading(true);
     setSampleError(null);
@@ -204,7 +206,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       const ctx = context();
       await ctx.resume();
       if (!sampleBuffers.current[name]) {
-        const response = await fetch(sampleUrl(name));
+        const response = await fetch(resolveSampleUrl(name));
         if (!response.ok) throw new Error(`Could not load ${name} (${response.status})`);
         sampleBuffers.current[name] = await ctx.decodeAudioData(await response.arrayBuffer());
       }
@@ -226,7 +228,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       const ctx = context();
       await ctx.resume();
       if (!sampleBuffers.current[name]) {
-        const response = await fetch(sampleUrl(name));
+        const response = await fetch(resolveSampleUrl(name));
         if (!response.ok) throw new Error(`Could not preview ${name} (${response.status})`);
         sampleBuffers.current[name] = await ctx.decodeAudioData(await response.arrayBuffer());
       }
@@ -252,9 +254,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     try {
       const response = await fetch("/api/studio/sounds/library?limit=1000", { cache: "no-store" });
       if (!response.ok) return;
-      const payload = await response.json() as { sounds?: Array<{ name?: string; path?: string }> };
+      const payload = await response.json() as { sounds?: Array<{ name?: string; path?: string; url?: string }> };
       const names = (payload.sounds ?? [])
-        .map((sound) => sound.path ?? sound.name)
+        .map((sound) => { const name = sound.path ?? sound.name; if (name && sound.url) sampleUrls.current[name] = sound.url; return name; })
         .filter((name): name is string => Boolean(name && /\.(wav|mp3|ogg|m4a|flac|aif|aiff|webm)$/i.test(name)));
       setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names])));
     } catch {
