@@ -210,7 +210,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     setSampleError(null);
     try {
       const ctx = context();
-      await ctx.resume();
+      await resumeStudioAudio();
       if (!sampleBuffers.current[name]) {
         const response = await fetch(resolveSampleUrl(name));
         if (!response.ok) throw new Error(`Could not load ${name} (${response.status})`);
@@ -232,7 +232,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     setSampleError(null);
     try {
       const ctx = context();
-      await ctx.resume();
+      await resumeStudioAudio();
       if (!sampleBuffers.current[name]) {
         const response = await fetch(resolveSampleUrl(name));
         if (!response.ok) throw new Error(`Could not preview ${name} (${response.status})`);
@@ -240,7 +240,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       }
       setSampleWaveform(readWaveform(sampleBuffers.current[name]));
       previewSource.current?.stop();
-      const source = ctx.createBufferSource();
+      const source = registerStudioSource(ctx.createBufferSource());
       const gain = ctx.createGain();
       previewSource.current = source;
       source.onended = () => {
@@ -280,7 +280,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     let ctx: AudioContext;
     try {
       ctx = context();
-      await ctx.resume();
+      await resumeStudioAudio();
     } catch (error) {
       setSampleError(error instanceof Error ? error.message : "Web Audio could not start in this browser.");
       return;
@@ -307,7 +307,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     }
     const now = ctx.currentTime;
     if (buffer) {
-      const source = ctx.createBufferSource();
+      const source = registerStudioSource(ctx.createBufferSource());
       const gain = ctx.createGain();
       const pan = ctx.createStereoPanner();
       source.buffer = buffer;
