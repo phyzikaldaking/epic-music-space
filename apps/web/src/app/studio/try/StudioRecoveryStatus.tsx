@@ -152,7 +152,7 @@ export default function StudioRecoveryStatus({ status, lastSavedAt, canRestore, 
             Restore Save
           </button>
         )}
-        <button type="button" onClick={onSave} disabled={status === "checking"} className="rounded-full border border-cyan-300/25 px-2 py-1 text-cyan-100 hover:bg-cyan-300/10 disabled:opacity-45">
+        <button type="button" onClick={() => { if (window.confirm("Save this Studio session now?")) onSave(); }} disabled={status === "checking"} className="rounded-full border border-cyan-300/25 px-2 py-1 text-cyan-100 hover:bg-cyan-300/10 disabled:opacity-45">
           Save Now
         </button>
         <button type="button" onClick={togglePanel} className="rounded-full border border-white/10 px-2 py-1 text-white/60 hover:bg-white/10">
