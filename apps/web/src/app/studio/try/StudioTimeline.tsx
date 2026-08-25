@@ -3,6 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent, type UIEvent, type WheelEvent } from "react";
 import StudioWaveform from "./StudioWaveform";
 import { startStudioBuffer, stopAllStudioAudio } from "../../../lib/studioAudio";
+import { trackStudio, trackStudioError } from "../../../lib/studioTelemetry";
 import type { StudioClip, StudioRuntimeState, StudioSoundAsset, StudioTrack } from "./studioWorkstationTypes";
 
 type Props = {
@@ -294,6 +295,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
     commitPlacedClips((current) => [...current.map((item) => ({ ...item, selected: false })), clip]);
     setSelectedTrack(track.id);
     setSelectedClipId?.(clip.id);
+    trackStudio("timeline_clip_placed", { asset_id: sound.id, track_id: track.id, duration_sec: clip.durationSec });
     notify(waveform.peaks.length ? `Placed ${sound.name} on ${track.name}.` : `Placed ${sound.name}. Waveform will appear after audio can be decoded.`);
   }
 
@@ -320,6 +322,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
       persistPlacedClips(realClips);
       if (typeof payload.selectedTrack === "string") setSelectedTrack(payload.selectedTrack);
       if (typeof payload.selectedClipId === "string" || payload.selectedClipId === null) setSelectedClipId?.(payload.selectedClipId ?? null);
+      trackStudio("project_restored", { clip_count: realClips.length, source: "cloud" });
       notify(`Restored ${realClips.length} timeline clips from cloud.`);
     }
     window.addEventListener("ems:studio-cloud-restored", onCloudRestore);
@@ -387,12 +390,13 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
       if (active && !current) {
         const offset = Math.max(0, clip.offsetSec + positionSec - clip.startSec);
         void startStudioBuffer(clip.audioUrl, offset).then((source) => {
+          trackStudio("timeline_clip_played", { clip_id: clip.id, asset_id: clip.soundAssetId ?? null });
           if (!playing || activeAudioRef.current.has(clip.id)) {
             try { source.stop(); } catch {}
             return;
           }
           activeAudioRef.current.set(clip.id, source);
-        }).catch(() => notify(`Could not play ${clip.name}.`));
+        }).catch((error) => { trackStudioError("timeline_clip_failed", error, { clip_id: clip.id }); notify(`Could not play ${clip.name}.`); });
         return;
       }
 
