@@ -114,7 +114,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [sampleName, setSampleName] = useState<string | null>(null);
   const [sampleLoading, setSampleLoading] = useState(false);
   const [sampleError, setSampleError] = useState<string | null>(null);
-  const [sampleWaveform, setSampleWaveform] = useState<number[]>([]);
+  const [sampleWaveform, setSampleWaveform] = useState<number[]>([]);\n  const [dragOver, setDragOver] = useState(false);
   const sampleBuffers = useRef<Record<string, AudioBuffer>>({});
   const transportStep = useRef(-1);
   const audio = useRef<AudioContext | null>(null);
@@ -147,6 +147,28 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   }, [padBanks, padBank, bpm, patternLength]);
 
   function context() { audio.current ??= new AudioContext(); return audio.current; }
+  async function assignDecodedSample(name: string, buffer: AudioBuffer) {
+    sampleBuffers.current[name] = buffer;
+    setSampleName(name);
+    setSampleWaveform(readWaveform(buffer));
+    sampleBuffers.current[padBank + ":" + selected] = buffer;
+    trigger({ ...activePad, id: selected });
+  }
+  async function loadDroppedFile(file: File) {
+    setSampleLoading(true);
+    setSampleError(null);
+    try {
+      const ctx = context();
+      await ctx.resume();
+      const buffer = await ctx.decodeAudioData(await file.arrayBuffer());
+      await assignDecodedSample(file.name, buffer);
+    } catch (error) {
+      setSampleError(error instanceof Error ? error.message : "Could not decode dropped audio");
+    } finally {
+      setSampleLoading(false);
+      setDragOver(false);
+    }
+  }
   async function loadSample(name: string) {
     setSampleLoading(true);
     setSampleError(null);
@@ -316,7 +338,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
           <div className="grid grid-cols-4 gap-2">
             {pads.map((pad) => <button key={pad.id} onClick={() => { setSelected(pad.id); trigger(pad); }} className="relative aspect-square border bg-gradient-to-b from-[#2c2d2f] to-[#101112] p-2" style={{ borderColor: selected === pad.id ? pad.color : "rgba(255,255,255,.16)", boxShadow: selected === pad.id ? `0 0 16px ${pad.color}55` : "inset 0 1px 0 rgba(255,255,255,.08)" }}><span className="grid h-full place-items-center text-[12px] font-black tracking-[0.08em]">{pad.label}</span><span className="absolute bottom-2 right-2 font-mono text-[10px] text-white/40">{pad.key}</span></button>)}
           </div>
-          <div className="mt-4 border-t border-white/10 pt-4">
+          <div onDragEnter={(event) => { event.preventDefault(); setDragOver(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragOver(false)} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) void loadDroppedFile(file); }} className={cn("mt-4 border-t border-white/10 pt-4", dragOver && "rounded border border-cyan-300 bg-cyan-300/10")}>
             <div className="mb-3 flex items-center justify-between">
               <b className="text-[11px] uppercase tracking-widest text-cyan-200">Live Sample Library</b>
               <div className="flex items-center gap-2"><span className="font-mono text-[10px] text-white/35">{liveSamples.length} sounds</span><button onClick={() => void refreshSampleLibrary()} className="border border-cyan-300/30 px-2 py-1 text-[9px] font-black uppercase text-cyan-200">Refresh</button></div>
@@ -336,7 +358,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
                 {sampleWaveform.map((peak, index) => <span key={index} className="flex-1 bg-cyan-300/80" style={{ height: `${Math.max(8, peak * 100)}%` }} />)}
               </div>
             )}
-            <p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded: {sampleName}</p>}
+            <p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p><p className="mt-1 text-[9px] font-bold uppercase text-cyan-200">Drag an audio file here to load it onto the selected pad.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded: {sampleName}</p>}
           </div>
           <div className="mt-4 border-t border-white/10 pt-4">
             <b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>
