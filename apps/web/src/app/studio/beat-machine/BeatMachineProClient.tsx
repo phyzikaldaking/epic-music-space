@@ -375,7 +375,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       setPrinting(false);
     }
   }
-  function exportPattern() {\n    trackStudio("beat_export_started", { format: "json", pattern_length: patternLength });
+  function exportPattern() {
+    trackStudio("beat_export_started", { format: "json", pattern_length: patternLength });
     download("ems-beat-pattern.json", JSON.stringify({
       version: 2,
       bpm,
