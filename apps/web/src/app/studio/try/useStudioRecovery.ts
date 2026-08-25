@@ -29,7 +29,7 @@ type StudioSnapshot = {
   backend?: string;
 };
 
-type RecoveryStatus = "idle" | "checking" | "saved" | "recoverable" | "restored" | "error";
+type RecoveryStatus = "idle" | "checking" | "saved" | "recoverable" | "restored" | "error";\nconst SNAPSHOT_SCHEMA_VERSION = 3;
 
 const SESSION_ID_KEY = "ems-studio-session-id-v2";
 const LOCAL_SNAPSHOT_KEY = "ems-studio-local-recovery-snapshot-v2";
@@ -49,6 +49,24 @@ function getSessionId() {
   const created = `ems-${Date.now()}-${crypto.randomUUID()}`;
   window.localStorage.setItem(SESSION_ID_KEY, created);
   return created;
+}
+
+function migrateSnapshot(snapshot: StudioSnapshot): StudioSnapshot {
+  const payload = snapshot.payload ?? {};
+  const version = snapshot.version ?? 1;
+  if (version >= SNAPSHOT_SCHEMA_VERSION) return snapshot;
+  return {
+    ...snapshot,
+    version: SNAPSHOT_SCHEMA_VERSION,
+    payload: {
+      ...payload,
+      zoom: typeof payload.zoom === "number" ? payload.zoom : 1,
+      viewportState: payload.viewportState ?? { zoom: typeof payload.zoom === "number" ? payload.zoom : 1 },
+      transportState: payload.transportState ?? { bpm: payload.bpm ?? 92, bar: payload.bar ?? 1, playing: false },
+      mixerState: payload.mixerState ?? [],
+      automation: Array.isArray(payload.automation) ? payload.automation : [],
+    },
+  };
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -128,7 +146,7 @@ function localSessionHasWork() {
 function readLocalRecoverySnapshot(): StudioSnapshot | null {
   if (typeof window === "undefined") return null;
   const snapshot = readJson<StudioSnapshot | null>(LOCAL_SNAPSHOT_KEY, null);
-  return snapshot?.payload && snapshotHasWork(snapshot.payload) ? snapshot : null;
+  return snapshot?.payload && snapshotHasWork(snapshot.payload) ? migrateSnapshot(snapshot) : null;
 }
 
 function writeLocalRecoverySnapshot(sessionId: string, snapshot: StudioSnapshotInput) {
@@ -144,7 +162,7 @@ function writeLocalRecoverySnapshot(sessionId: string, snapshot: StudioSnapshotI
     sessionId,
     payload,
     backend: "local",
-    version: Date.now(),
+    version: SNAPSHOT_SCHEMA_VERSION,
     updatedAt: now,
   };
   writeJson(LOCAL_SNAPSHOT_KEY, localSnapshot);
@@ -214,7 +232,7 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
             placedClipCount: fullSnapshot.placedClips?.length ?? 0,
             soundCount: fullSnapshot.soundLibrary?.length ?? 0,
             padAssignmentCount: Object.keys(fullSnapshot.padAssignments ?? {}).length,
-            bufferCount: fullSnapshot.audioBuffers?.length ?? 0,
+            bufferCount: fullSnapshot.audioBuffers?.length ?? 0,\n            schemaVersion: SNAPSHOT_SCHEMA_VERSION,
           },
         }),
       });
