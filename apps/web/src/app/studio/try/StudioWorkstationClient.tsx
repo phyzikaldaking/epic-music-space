@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { scheduleDrumHit, type DrumKind, type DrumKitId } from "@/components/daw/beatMachine";
+import { trackStudio } from "@/lib/studioTelemetry";
 
 type Mode = "studio" | "edit" | "mix" | "beat" | "collab" | "export";
 type TrackKind = "audio" | "drum" | "melody" | "bass" | "vocal" | "fx";
@@ -32,7 +33,7 @@ export default function StudioWorkstationClient() {
   const [mode, setMode] = useState<Mode>("studio");
   const [playing, setPlaying] = useState(false);
   const [bpm, setBpm] = useState(92);
-  const [tracks, setTracks] = useState(INITIAL_TRACKS);
+  const [tracks, setTracks] = useState(INITIAL_TRACKS);\n  useEffect(() => { trackStudio("studio_opened", { route: "/studio/try" }); }, []);\n  useEffect(() => { trackStudio("studio_mode_changed", { mode }); }, [mode]);
   const [selectedTrack, setSelectedTrack] = useState("lead");
   const [activePad, setActivePad] = useState<string | null>(null);
   const [bar, setBar] = useState(37);
