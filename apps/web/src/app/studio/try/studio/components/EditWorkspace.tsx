@@ -6,7 +6,6 @@ import { createClipDragIntent } from "../clipDrag";
 import { formatTimelineTime, visibleClipDuration } from "../timeline";
 import { Wave } from "./Wave";
 import { Inspector } from "./Inspector";
-import { RegionPanel } from "./RegionPanel";
 import { StudioStart } from "./StudioStart";
 
 function cn(...classes: Array<string | false | null | undefined>) {
@@ -53,7 +52,6 @@ export function EditWorkspace({
   trimLeft,
   trimRight,
   moveClipToTrack,
-  editLog,
   onRecord,
   onBeat,
   experience,
@@ -98,7 +96,6 @@ export function EditWorkspace({
   trimLeft: (amount: number) => void;
   trimRight: (amount: number) => void;
   moveClipToTrack: (id: string, start?: number, clipId?: string, sourceTrackId?: string) => void;
-  editLog: string[];
   onRecord: () => void;
   onBeat: () => void;
   experience: StudioExperienceMode;
@@ -333,22 +330,6 @@ export function EditWorkspace({
         </div>
       </section>
 
-      <div className="hidden" aria-hidden="true">
-        <details className="min-h-0 overflow-auto border-b border-black/60 text-xs text-white/50">
-          <summary className="cursor-pointer px-3 py-2 font-black uppercase tracking-widest text-white/70">Edit Log ({editLog.length})</summary>
-          <div className="px-3 pb-3">
-            {editLog.length === 0 ? <p>No edits yet.</p> : editLog.map((item, index) => <p key={item + "-" + index} className="mb-2 border-b border-black/40 pb-2">{item}</p>)}
-          </div>
-        </details>
-        <RegionPanel
-          selectionStart={selectionStart}
-          selectionEnd={selectionEnd}
-          setSelectionStart={setSelectionStart}
-          setSelectionEnd={setSelectionEnd}
-          loop={loop}
-          setLoop={setLoop}
-        />
-      </div>
     </div>
   );
 }
