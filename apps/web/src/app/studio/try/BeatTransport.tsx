@@ -161,6 +161,8 @@ function BeatTransport({
 
   function previewSound(sound: StudioSoundAsset) {
     if (!audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
     audioRef.current.src = sound.url;
     void audioRef.current.play().catch(() => notify("Preview could not play this sound."));
   }
@@ -221,7 +223,7 @@ function BeatTransport({
           <span className="truncate text-[10px] font-bold text-cyan-100">{selectedInstrument} · {SOUND_KITS.find((kit) => kit.value === selectedKit)?.label ?? selectedKit}</span>
         </div>
         <div className="mt-2 flex gap-2">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search live sounds: 808, violin, piano, snare..." className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101820] px-3 py-2 text-xs text-white outline-none placeholder:text-white/25 focus:border-cyan-300/50" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search live sounds: 808, violin, piano, snare..." className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#101820] px-3 py-2 text-xs text-white outline-none placeholder:text-white/25 focus:border-cyan-300/50" />{query && <button type="button" onClick={() => setQuery("")} className="rounded-lg border border-white/10 px-2 text-[9px] font-black uppercase text-white/55">Clear</button>}
           <select value={category} onChange={(event) => setCategory(event.target.value as "all" | StudioSoundCategory)} className="rounded-lg border border-white/10 bg-[#101820] px-2 py-2 text-xs font-bold text-white outline-none focus:border-cyan-300/50">
             {CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}{item.value !== "all" && factoryCounts[item.value] ? ` (${factoryCounts[item.value]})` : ""}</option>)}
           </select>
