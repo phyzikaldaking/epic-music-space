@@ -204,7 +204,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
 
   function deletePlacedClip(id: string) {
     const audio = activeAudioRef.current.get(id);
-    if (audio) audio.pause();
+    if (audio) { try { audio.stop(); } catch {} try { audio.disconnect(); } catch {} }
     activeAudioRef.current.delete(id);
     commitPlacedClips((current) => current.filter((clip) => clip.id !== id));
     setSelectedClipId?.(null);
@@ -290,6 +290,8 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
       selected: true,
       fadeInSec: 0.01,
       fadeOutSec: 0.01,
+      gain: 1,
+      crossfadeSec: 0,
       source: sound.source === "generated" ? "generated" : "import",
     };
     commitPlacedClips((current) => [...current.map((item) => ({ ...item, selected: false })), clip]);
@@ -389,7 +391,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
 
       if (active && !current) {
         const offset = Math.max(0, clip.offsetSec + positionSec - clip.startSec);
-        void startStudioBuffer(clip.audioUrl, offset).then((source) => {
+        void startStudioBuffer(clip.audioUrl, offset, undefined, clip.gain ?? 1).then((source) => {
           trackStudio("timeline_clip_played", { clip_id: clip.id, asset_id: clip.soundAssetId ?? null });
           if (!playing || activeAudioRef.current.has(clip.id)) {
             try { source.stop(); } catch {}
@@ -423,6 +425,19 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
         <div className="ml-auto font-mono text-[10px] uppercase tracking-widest text-white/35">Bar {bar}</div>
       </div>
       <div
+      {selectedClip && isPlacedClip(selectedClip.id) && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-[#0d1317] px-3 py-2 text-[10px]">
+          <span className="max-w-[180px] truncate font-black uppercase tracking-widest text-cyan-100">{selectedClip.name}</span>
+          <label className="text-white/50">Start <input aria-label="Clip start" type="number" min="0" step="0.01" value={selectedClip.startSec} onChange={(e) => updatePlacedClip(selectedClip.id, { startSec: Number(e.target.value) || 0 })} className="ml-1 w-16 rounded border border-white/10 bg-black/50 px-1 py-1 text-white" /></label>
+          <label className="text-white/50">Trim <input aria-label="Clip duration" type="number" min={MIN_CLIP_DURATION} step="0.01" value={selectedClip.durationSec} onChange={(e) => updatePlacedClip(selectedClip.id, { durationSec: Math.max(MIN_CLIP_DURATION, Number(e.target.value) || MIN_CLIP_DURATION) })} className="ml-1 w-16 rounded border border-white/10 bg-black/50 px-1 py-1 text-white" /></label>
+          <label className="text-white/50">Offset <input aria-label="Clip offset" type="number" min="0" step="0.01" value={selectedClip.offsetSec} onChange={(e) => updatePlacedClip(selectedClip.id, { offsetSec: Math.max(0, Number(e.target.value) || 0) })} className="ml-1 w-16 rounded border border-white/10 bg-black/50 px-1 py-1 text-white" /></label>
+          <label className="text-white/50">Gain <input aria-label="Clip gain" type="number" min="0" max="2" step="0.05" value={selectedClip.gain ?? 1} onChange={(e) => updatePlacedClip(selectedClip.id, { gain: Math.max(0, Math.min(2, Number(e.target.value) || 0)) })} className="ml-1 w-14 rounded border border-white/10 bg-black/50 px-1 py-1 text-white" /></label>
+          <label className="text-white/50">Fade in <input aria-label="Fade in" type="number" min="0" max="10" step="0.01" value={selectedClip.fadeInSec ?? 0} onChange={(e) => updatePlacedClip(selectedClip.id, { fadeInSec: Math.max(0, Number(e.target.value) || 0) })} className="ml-1 w-14 rounded border border-white/10 bg-black/50 px-1 py-1 text-white" /></label>
+          <label className="text-white/50">Fade out <input aria-label="Fade out" type="number" min="0" max="10" step="0.01" value={selectedClip.fadeOutSec ?? 0} onChange={(e) => updatePlacedClip(selectedClip.id, { fadeOutSec: Math.max(0, Number(e.target.value) || 0) })} className="ml-1 w-14 rounded border border-white/10 bg-black/50 px-1 py-1 text-white" /></label>
+          <label className="text-white/50">Crossfade <input aria-label="Crossfade" type="number" min="0" max="10" step="0.01" value={selectedClip.crossfadeSec ?? 0} onChange={(e) => updatePlacedClip(selectedClip.id, { crossfadeSec: Math.max(0, Number(e.target.value) || 0) })} className="ml-1 w-16 rounded border border-white/10 bg-black/50 px-1 py-1 text-white" /></label>
+          <button type="button" onClick={() => deletePlacedClip(selectedClip.id)} className="rounded border border-red-300/30 px-2 py-1 font-black uppercase text-red-100">Delete</button>
+        </div>
+      )}
         ref={viewportRef}
         className="relative h-[calc(100%-48px)] overflow-auto"
         onScroll={(event: UIEvent<HTMLDivElement>) => {
@@ -457,7 +472,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
                       <div key={clip.id} onClick={() => setSelectedClipId?.(clip.id)} className={`absolute top-1 bottom-1 overflow-hidden rounded-md border ${active ? "border-white/70" : "border-white/15"}`} style={{ left: clip.startSec * pixelsPerSecond, width: Math.max(32, clip.durationSec * pixelsPerSecond), background: clipBackground(color, active) }}>
                         <div className="relative h-full">
                           <StudioWaveform color={color} waveform={clip.waveform} emptyLabel="Decode required" />
-                          <span className="absolute left-2 top-1 rounded bg-black/50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-white/70">{clip.name}</span>
+                          <span className="absolute left-2 top-1 max-w-[85%] truncate rounded bg-black/50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-white/70">{clip.name} · {clip.soundAssetId ?? "local"}</span>
                         </div>
                       </div>
                     );
