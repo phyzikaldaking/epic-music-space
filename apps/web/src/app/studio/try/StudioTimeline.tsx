@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent, type UIEvent, type WheelEvent } from "react";
 import StudioWaveform from "./StudioWaveform";
+import { startStudioBuffer, stopAllStudioAudio } from "../../../lib/studioAudio";
 import type { StudioClip, StudioRuntimeState, StudioSoundAsset, StudioTrack } from "./studioWorkstationTypes";
 
 type Props = {
@@ -150,7 +151,7 @@ function metersForTrack(track: StudioTrack) {
 
 function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar, positionSec = 0, bpm = 92, runtime, selectedClipId, setSelectedClipId, updateTrack }: Props) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const activeAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const activeAudioRef = useRef<Map<string, AudioBufferSourceNode>>(new Map());
   const [zoom, setZoom] = useState(runtime?.zoom ?? 1);
   const [tool, setTool] = useState<TimelineTool>("select");
   const [scrollTop, setScrollTop] = useState(0);
@@ -372,10 +373,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
 
   useEffect(() => {
     if (!playing) {
-      activeAudioRef.current.forEach((audio) => {
-        audio.pause();
-        audio.currentTime = 0;
-      });
+      activeAudioRef.current.forEach((source) => { try { source.stop(); } catch {} try { source.disconnect(); } catch {} });
       activeAudioRef.current.clear();
       return;
     }
@@ -387,30 +385,29 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
       const current = activeAudioRef.current.get(clip.id);
 
       if (active && !current) {
-        const audio = new Audio(clip.audioUrl);
-        audio.currentTime = Math.max(0, clip.offsetSec + positionSec - clip.startSec);
-        audio.play().catch(() => undefined);
-        activeAudioRef.current.set(clip.id, audio);
-        return;
-      }
-
-      if (active && current) {
-        const expected = Math.max(0, clip.offsetSec + positionSec - clip.startSec);
-        if (Math.abs(current.currentTime - expected) > 0.35) current.currentTime = expected;
+        const offset = Math.max(0, clip.offsetSec + positionSec - clip.startSec);
+        void startStudioBuffer(clip.audioUrl, offset).then((source) => {
+          if (!playing || activeAudioRef.current.has(clip.id)) {
+            try { source.stop(); } catch {}
+            return;
+          }
+          activeAudioRef.current.set(clip.id, source);
+        }).catch(() => notify(`Could not play ${clip.name}.`));
         return;
       }
 
       if (!active && current) {
-        current.pause();
-        current.currentTime = 0;
+        try { current.stop(); } catch {}
+        try { current.disconnect(); } catch {}
         activeAudioRef.current.delete(clip.id);
       }
     });
   }, [clips, playing, positionSec]);
 
   useEffect(() => () => {
-    activeAudioRef.current.forEach((audio) => audio.pause());
+    activeAudioRef.current.forEach((source) => { try { source.stop(); } catch {} try { source.disconnect(); } catch {} });
     activeAudioRef.current.clear();
+    stopAllStudioAudio();
   }, []);
 
   return (
