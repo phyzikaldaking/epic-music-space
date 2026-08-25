@@ -16,7 +16,7 @@ const sampleUrl = (name: string) => name === "HIP_Snaph_3.wav"
   : `${SUPABASE_URL}/storage/v1/object/public/audio-assets/${encodeURIComponent(name)}`;
 import { buildBeatStemRenderPlan, type BeatStemRenderPlan } from "./beatStemPrint";
 
-type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; tune?: number; mode?: "one-shot" | "loop"; sliceStart?: number; sliceDuration?: number; stepVelocity?: number[]; stepProbability?: number[]; stepPitch?: number[] };
+type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; sampleAsset?: string; tune?: number; mode?: "one-shot" | "loop"; sliceStart?: number; sliceDuration?: number; stepVelocity?: number[]; stepProbability?: number[]; stepPitch?: number[] };
 type Preset = { name: string; volumes: Record<string, number>; pans: Record<string, number> };
 
 const DEFAULT_PATTERN_LENGTH = 16;
@@ -123,6 +123,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [sampleSlices, setSampleSlices] = useState<Array<{ index: number; start: number; duration: number }>>([]);
   const [dragOver, setDragOver] = useState(false);
   const sampleBuffers = useRef<Record<string, AudioBuffer>>({});
+  const activeSources = useRef<Record<string, AudioBufferSourceNode>>({});
+  const previewSource = useRef<AudioBufferSourceNode | null>(null);
   const transportStep = useRef(-1);
   const audio = useRef<AudioContext | null>(null);
   const activePad = pads.find((pad) => pad.id === selected) ?? pads[0];
@@ -161,7 +163,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     setSampleName(name);
     setSampleWaveform(readWaveform(buffer));
     sampleBuffers.current[padBank + ":" + selected] = buffer;
-    trigger({ ...activePad, id: selected });
+    updatePad(selected, { sampleAsset: name });
+    trigger({ ...activePad, id: selected, sampleAsset: name });
   }
   async function loadDroppedFile(file: File) {
     setSampleLoading(true);
@@ -192,7 +195,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       setSampleName(name);
       setSampleWaveform(readWaveform(sampleBuffers.current[name]));
       sampleBuffers.current[padBank + ":" + selected] = sampleBuffers.current[name];
-      trigger({ ...activePad, id: selected });
+      updatePad(selected, { sampleAsset: name });
+      trigger({ ...activePad, id: selected, sampleAsset: name });
     } catch (error) {
       setSampleError(error instanceof Error ? error.message : `Could not load ${name}`);
     } finally {
@@ -211,8 +215,13 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
         sampleBuffers.current[name] = await ctx.decodeAudioData(await response.arrayBuffer());
       }
       setSampleWaveform(readWaveform(sampleBuffers.current[name]));
+      previewSource.current?.stop();
       const source = ctx.createBufferSource();
       const gain = ctx.createGain();
+      previewSource.current = source;
+      source.onended = () => {
+        if (previewSource.current === source) previewSource.current = null;
+      };
       source.buffer = sampleBuffers.current[name];
       gain.gain.value = 0.6;
       source.connect(gain).connect(ctx.destination);
@@ -243,6 +252,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     const now = ctx.currentTime;
     const buffer = sampleBuffers.current[padBank + ":" + pad.id];
     if (buffer) {
+      const sourceKey = padBank + ":" + pad.id;
+      activeSources.current[sourceKey]?.stop();
       const source = ctx.createBufferSource();
       const gain = ctx.createGain();
       const pan = ctx.createStereoPanner();
@@ -252,6 +263,10 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       gain.gain.value = Math.max(0.001, (pad.volume / 100) * velocity * 0.55);
       pan.pan.value = Math.max(-1, Math.min(1, pad.pan / 50));
       source.connect(gain).connect(pan).connect(ctx.destination);
+      activeSources.current[sourceKey] = source;
+      source.onended = () => {
+        if (activeSources.current[sourceKey] === source) delete activeSources.current[sourceKey];
+      };
       source.start(now, pad.sliceStart ?? 0, pad.sliceDuration);
       if (pad.mode === "loop") source.stop(now + Math.max(0.25, Math.min(8, buffer.duration)));
       return;
