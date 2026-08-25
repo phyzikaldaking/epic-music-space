@@ -230,11 +230,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const bytes = Buffer.from(await file.arrayBuffer());
   const checksum = crypto.createHash("sha256").update(bytes).digest("hex");
   const path = `studio/${id}/${Date.now()}-${checksum.slice(0, 12)}-${safeName(file.name)}`;
-  const blob = await put(path, bytes, {
-    access: "public",
-    contentType: file.type || "application/octet-stream",
-    addRandomSuffix: false,
-  });
+  let blob: Awaited<ReturnType<typeof put>>;
+  try {
+    blob = await put(path, bytes, {
+      access: "public",
+      contentType: file.type || "application/octet-stream",
+      addRandomSuffix: false,
+    });
+  } catch (error) {
+    console.error("[studio-upload] blob storage failed", { requestId, projectId: id, error });
+    return jsonWithRequestId(requestId, { error: "Audio storage is temporarily unavailable. Try again." }, { status: 502 });
+  }
 
   const audioRows = await prisma.$queryRaw<Array<{ id: string }>>`
     insert into "StudioAudioFile" ("projectId", "uploadedById", "storageBucket", "storagePath", "publicUrl", "fileName", "mimeType", "sizeBytes", "durationSec", checksum, "peaksJson")
