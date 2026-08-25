@@ -118,6 +118,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [sampleName, setSampleName] = useState<string | null>(null);
   const [sampleLoading, setSampleLoading] = useState(false);
   const [sampleError, setSampleError] = useState<string | null>(null);
+  const [printStatus, setPrintStatus] = useState<string | null>(null);
   const [sampleWaveform, setSampleWaveform] = useState<number[]>([]);
   const [sampleSlices, setSampleSlices] = useState<Array<{ index: number; start: number; duration: number }>>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -274,8 +275,12 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   async function sendToStudio() {
     if (printing) return;
     setPrinting(true);
+    setPrintStatus("Rendering stems…");
+    setSampleError(null);
     try {
-      const stems: PrintedBeatStem[] = await Promise.all(buildBeatStemRenderPlan(pads, bpm).map(async (stem) => ({
+      const plans = buildBeatStemRenderPlan(pads, bpm);
+      if (!plans.length) throw new Error("Add at least one step before printing to Studio.");
+      const stems: PrintedBeatStem[] = await Promise.all(plans.map(async (stem) => ({
         ...stem,
         blob: await renderBeatStem(stem),
         name: stem.id,
@@ -283,9 +288,14 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       })));
       if (onPrintToStudio) {
         await onPrintToStudio(stems);
-        return;
+      } else {
+        window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { stems, autoMix: true } }));
       }
-      window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { stems, autoMix: true } }));
+      setPrintStatus(`Printed ${stems.length} stems to Studio`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Beat Machine stems could not be rendered.";
+      setPrintStatus("Print failed");
+      setSampleError(message);
     } finally {
       setPrinting(false);
     }
@@ -372,7 +382,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
               </div>
             )}
             {sampleSlices.length > 0 && <div className="mt-2 grid grid-cols-4 gap-1"><span className="col-span-4 text-[9px] font-black uppercase text-white/40">Slices · assign to selected pad</span>{sampleSlices.map((slice) => <button key={slice.index} onClick={() => { updatePad(activePad.id, { sliceStart: slice.start, sliceDuration: slice.duration }); setSampleName(`${sampleName ?? "Sample"} · Slice ${slice.index + 1}`); trigger({ ...activePad, sliceStart: slice.start, sliceDuration: slice.duration }); }} className="border border-purple-300/30 px-1 py-1 text-[9px] font-black text-purple-200">S{slice.index + 1}</button>)}</div>}
-            <p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p><p className="mt-1 text-[9px] font-bold uppercase text-cyan-200">Drag an audio file here to load it onto the selected pad.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded: {sampleName}</p>}
+            <p className="mt-1 text-[9px] leading-4 text-white/35">{printStatus}</p><p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p><p className="mt-1 text-[9px] font-bold uppercase text-cyan-200">Drag an audio file here to load it onto the selected pad.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded: {sampleName}</p>}
           </div>
           <div className="mt-4 border-t border-white/10 pt-4">
             <b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>
