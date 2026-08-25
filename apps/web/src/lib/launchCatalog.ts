@@ -35,3 +35,13 @@ export function isLaunchCatalogArtist(user: {
   if (user.name && LAUNCH_CATALOG_ARTIST_NAMES.has(user.name)) return true;
   return false;
 }
+
+export function isPublicCatalogTrack(track: {
+  id?: string | null;
+  title?: string | null;
+  artist?: string | null;
+}): boolean {
+  const title = track.title?.trim().toLowerCase() ?? "";
+  const artist = track.artist?.trim().toLowerCase() ?? "";
+  return artist !== "ledger test artist" && !title.startsWith("ledger test song ");
+}

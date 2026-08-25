@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { CACHE_TAGS } from "@/lib/cacheTags";
 import { getDemoTracks } from "@/lib/demoTracks";
-import { isLaunchCatalogTrack } from "@/lib/launchCatalog";
+import { isLaunchCatalogTrack, isPublicCatalogTrack } from "@/lib/launchCatalog";
 import { prisma } from "@/lib/prisma";
 import { formatPrice } from "@ems/utils";
 
@@ -113,6 +113,7 @@ const getHomeData = unstable_cache(
         );
 
       const sampleSongs = [...songs]
+        .filter(isPublicCatalogTrack)
         .sort(
           (a, b) =>
             Number(isLaunchCatalogTrack(a)) - Number(isLaunchCatalogTrack(b)),

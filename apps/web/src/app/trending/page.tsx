@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { isPublicCatalogTrack } from "@/lib/launchCatalog";
 import SongCard from "@/components/SongCard";
 
 export const metadata: Metadata = {
@@ -36,7 +37,7 @@ async function getTrending(): Promise<TrendingSong[]> {
   const since = new Date(Date.now() - SEVEN_DAYS_MS);
 
   // Fetch top candidates by AI score, then enrich with 7-day plays + sales.
-  const candidates = await prisma.song.findMany({
+  const candidates = (await prisma.song.findMany({
     where: {
       isActive: true,
       isLegacy: false,
@@ -61,7 +62,7 @@ async function getTrending(): Promise<TrendingSong[]> {
       aiScore: true,
       boostScore: true,
     },
-  });
+  })).filter(isPublicCatalogTrack);
   if (candidates.length === 0) return [];
 
   const ids = candidates.map((c) => c.id);
