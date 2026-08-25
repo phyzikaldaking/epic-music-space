@@ -24,10 +24,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid social post request" }, { status: 400 });
   }
 
-  // Placeholder: requires official API access per platform
   return NextResponse.json({
-    status: "pending",
-    message: "Social post queued. Requires platform API integration.",
+    status: "needs_connection",
+    message: `Connect ${parsed.data.platform} before publishing social posts. Your draft was not sent.`,
+    requiresConnection: true,
     payload: parsed.data,
-  });
+  }, { status: 424 });
 }
