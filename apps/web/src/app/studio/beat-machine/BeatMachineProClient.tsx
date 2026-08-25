@@ -347,6 +347,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   function applyPreset(preset: Preset) { setPads((current) => current.map((pad) => ({ ...pad, volume: preset.volumes[pad.id] ?? pad.volume, pan: preset.pans[pad.id] ?? pad.pan }))); }
   async function sendToStudio() {
     if (printing) return;
+    trackStudio("print_to_studio_started", { pattern_length: patternLength });
     setPrinting(true);
     setPrintStatus("Rendering stems…");
     setSampleError(null);
@@ -364,6 +365,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       } else {
         window.dispatchEvent(new CustomEvent("ems:beat-stems-to-session", { detail: { stems, autoMix: true } }));
       }
+      trackStudio("print_to_studio_succeeded", { stem_count: stems.length });
       setPrintStatus(`Printed ${stems.length} stems to Studio`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Beat Machine stems could not be rendered.";
