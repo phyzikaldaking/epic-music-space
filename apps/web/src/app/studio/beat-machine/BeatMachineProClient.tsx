@@ -127,6 +127,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [patternLength, setPatternLength] = useState<8 | 16>(16);
   const [printing, setPrinting] = useState(false);
   const [liveSamples, setLiveSamples] = useState<string[]>(LIVE_SAMPLE_NAMES);
+  const [sampleQuery, setSampleQuery] = useState("");
   const [sampleName, setSampleName] = useState<string | null>(null);
   const [sampleLoading, setSampleLoading] = useState(false);
   const [sampleError, setSampleError] = useState<string | null>(null);
@@ -144,6 +145,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const audio = useRef<AudioContext | null>(null);
   const activePad = pads.find((pad) => pad.id === selected) ?? pads[0];
   const soloed = pads.some((pad) => pad.solo);
+  const visibleSamples = liveSamples.filter((name) => name.toLowerCase().includes(sampleQuery.trim().toLowerCase()));
 
   useEffect(() => {
     try {
@@ -419,7 +421,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
               <div className="flex items-center gap-2"><span className="font-mono text-[10px] text-white/35">{liveSamples.length} sounds</span><button onClick={() => void refreshSampleLibrary()} className="border border-cyan-300/30 px-2 py-1 text-[9px] font-black uppercase text-cyan-200">Refresh</button></div>
             </div>
             <div className="max-h-52 space-y-1 overflow-auto pr-1">
-              {liveSamples.map((name) => (
+              {visibleSamples.map((name) => (
                 <div key={name} className="flex gap-1">
                   <button onClick={() => void previewSample(name)} disabled={sampleLoading} className="min-w-0 flex-1 truncate border border-white/10 bg-black/25 px-2 py-2 text-left text-[10px] font-bold uppercase text-white/60 hover:border-cyan-300/60 hover:text-white"><span className="mr-2 rounded border border-white/15 px-1 text-[8px] text-white/45">{sampleSources.current[name] === "kit" ? "KIT" : "SAMPLE"}</span>{name.replace(/\.(wav|mp3|ogg|m4a)$/i, "")}</button>
                   <button onClick={() => void loadSample(name)} disabled={sampleLoading} className="shrink-0 border border-cyan-300/40 px-2 text-[9px] font-black text-cyan-200 disabled:opacity-50">LOAD</button>
