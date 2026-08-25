@@ -317,6 +317,13 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   function updatePad(id: string, patch: Partial<Pad>) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, ...patch } : pad)); }
   function toggleStep(id: string, index: number) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, steps: pad.steps.map((on, i) => i === index ? !on : on) } : pad)); }
   function stop() { Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} }); activeSources.current = {}; try { previewSource.current?.stop(); } catch {} previewSource.current = null; studioTransport.stop(true); transportStep.current = -1; setPlaying(false); setStep(0); }
+  useEffect(() => () => {
+    Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} });
+    activeSources.current = {};
+    try { previewSource.current?.stop(); } catch {}
+    previewSource.current = null;
+    studioTransport.stop(true);
+  }, []);
   function play() {
     if (playing) { stop(); return; }
     if (!pads.some((pad) => pad.steps.some(Boolean))) {
