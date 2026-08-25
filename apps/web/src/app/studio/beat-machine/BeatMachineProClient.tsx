@@ -446,9 +446,6 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
           </div>
         </section>
         <section className="min-h-0 overflow-auto bg-[#15191d] p-4">
-          <div className="mb-3 grid min-w-[760px] grid-cols-[72px_repeat(${patternLength},minmax(0,1fr))] gap-2 text-center font-mono text-[10px] text-white/35">
-            <span />{Array.from({ length: 16 }, (_, i) => <span key={i} className={cn(step === i && "text-cyan-200")}>{i + 1}</span>)}
-          </div>
           <div className="min-w-[760px] space-y-1.5">
             {pads.map((pad) => <div key={pad.id} className="grid items-center gap-2" style={{ gridTemplateColumns: `72px repeat(${patternLength},minmax(0,1fr))` }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-2 text-left font-mono text-[10px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.slice(0, patternLength).map((on, i) => <button key={i} onClick={() => { setSelectedStep(i); toggleStep(pad.id, i); }} className={cn("h-10 border", step === i && "ring-2 ring-white/60", selectedStep === i && "outline outline-2 outline-yellow-300")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 10px ${pad.color}80` : undefined }} />)}</div>)}
           </div>

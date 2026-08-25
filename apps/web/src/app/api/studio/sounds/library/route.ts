@@ -5,7 +5,7 @@ import type { StudioSoundCategory } from "@/app/studio/try/studioWorkstationType
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const AUDIO_BUCKET = "audio-assets";
+const AUDIO_BUCKETS = ["audio-assets", "studio-kits"] as const;
 const AUDIO_EXTENSIONS = new Set(["aif", "aiff", "flac", "m4a", "mp3", "ogg", "wav", "webm"]);
 
 type StorageSupabaseClient = ReturnType<typeof createClient>;
@@ -114,6 +114,7 @@ function cleanDisplayName(path: string) {
 
 async function listAudioObjects(
   supabase: StorageSupabaseClient,
+  bucket: string,
   prefix = "",
   maxResults = 1000,
 ): Promise<Array<StorageObject & { path: string }>> {
@@ -122,7 +123,7 @@ async function listAudioObjects(
 
   while (folders.length > 0 && results.length < maxResults) {
     const currentPrefix = folders.shift() ?? "";
-    const { data, error } = await supabase.storage.from(AUDIO_BUCKET).list(currentPrefix, {
+    const { data, error } = await supabase.storage.from(bucket).list(currentPrefix, {
       limit: 1000,
       offset: 0,
       sortBy: { column: "created_at", order: "desc" },
@@ -157,9 +158,13 @@ export async function GET(request: Request) {
   const supabase = getSupabaseAdmin();
   if (!supabase) return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: "Supabase storage is not configured." }, { status: 503 });
 
-  let data: Array<StorageObject & { path: string }>;
+  let data: Array<StorageObject & { path: string; bucket: string }>;
   try {
-    data = await listAudioObjects(supabase, "", limit);
+    const bucketResults = await Promise.all(AUDIO_BUCKETS.map(async (bucket) => {
+      const objects = await listAudioObjects(supabase, bucket, "", limit);
+      return objects.map((item) => ({ ...item, bucket }));
+    }));
+    data = bucketResults.flat();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Supabase storage list failed.";
     return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: message }, { status: 500 });
@@ -168,13 +173,14 @@ export async function GET(request: Request) {
   const sounds = (data ?? [])
     .map((item) => {
       const category = categoryForName(item.path);
-      const { data: publicUrl } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(item.path);
+      const { data: publicUrl } = supabase.storage.from(item.bucket).getPublicUrl(item.path);
       return {
         id: `factory-${item.id ?? item.path}`,
         name: cleanDisplayName(item.path),
         path: item.path,
         url: publicUrl.publicUrl,
-        source: "factory" as const,
+        source: item.bucket === "studio-kits" ? "kit" as const : "factory" as const,
+        bucket: item.bucket,
         category,
         instrument: instrumentForCategory(category, item.path),
         bpm: parseBpm(item.path),
@@ -192,5 +198,5 @@ export async function GET(request: Request) {
     return acc;
   }, {});
 
-  return NextResponse.json({ sounds, categories, backend: "supabase", bucket: AUDIO_BUCKET });
+  return NextResponse.json({ sounds, categories, backend: "supabase", buckets: AUDIO_BUCKETS });
 }
