@@ -147,7 +147,8 @@ export default function StudioWorkstationRecoveryClient() {
 
   const recovery = useStudioRecovery({ mode, selectedTrack, selectedClipId, bpm, bar: transport.bar, playing: transport.playing, tracks, clips, audioBuffers, workspaceLayout, zoom, transportState: { positionSec: transport.positionSec, bar: transport.bar, playing: transport.playing, bpm }, mixerState: tracks.map(({ id, volume, pan, muted, solo }) => ({ id, volume, pan, muted, solo })), viewportState: { zoom, selectedTrack, selectedClipId }, automation: [] }, (payload) => {
     const restoredMode = safeMode(payload.mode); if (restoredMode) setMode(restoredMode);
-    const restoredLayout = safeLayout(payload.workspaceLayout); if (restoredLayout) setWorkspaceLayout(restoredLayout);\n    if (typeof payload.zoom === "number") setZoom(Math.max(0.45, Math.min(3, payload.zoom)));
+    const restoredLayout = safeLayout(payload.workspaceLayout); if (restoredLayout) setWorkspaceLayout(restoredLayout);
+    if (typeof payload.zoom === "number") setZoom(Math.max(0.45, Math.min(3, payload.zoom)));
     if (typeof payload.selectedTrack === "string") setSelectedTrack(payload.selectedTrack);
     if (typeof payload.selectedClipId === "string") setSelectedClipId(payload.selectedClipId);
     if (typeof payload.bpm === "number") setBpm(payload.bpm);
