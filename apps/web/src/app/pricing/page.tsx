@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import PricingClient from "./PricingClient";
 
 export const metadata: Metadata = {
-  title: "Pricing | Epic Music Space",
+  title: "Pricing",
   description: "Choose an Epic Music Space plan for listening, uploading, licensing, live rooms, battles, AI scoring, and label growth.",
   alternates: { canonical: "/pricing" },
   openGraph: {
