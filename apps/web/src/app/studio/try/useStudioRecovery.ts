@@ -20,6 +20,12 @@ type StudioSnapshotInput = {
   workspaceLayout?: unknown;
   selectedKit?: string | null;
   selectedInstrument?: string | null;
+  zoom?: number;
+  viewportState?: unknown;
+  transportState?: unknown;
+  mixerState?: unknown;
+  automation?: unknown[];
+  projectMetadata?: Record<string, unknown>;
 };
 
 type StudioSnapshot = {
