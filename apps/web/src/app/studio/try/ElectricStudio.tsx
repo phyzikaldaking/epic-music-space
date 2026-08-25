@@ -523,13 +523,13 @@ export default function ElectricStudio() {
 
   useEffect(() => {
     const printBeatToTimeline = (event: Event) => {
-      const detail = (event as CustomEvent<{ stems?: Array<{ blob?: Blob; fileName?: string; volume?: number; pan?: number }> }>).detail;
-      const stems = detail?.stems?.filter((stem): stem is { blob: Blob; fileName?: string; volume?: number; pan?: number } => stem.blob instanceof Blob) ?? [];
+      const detail = (event as CustomEvent<{ stems?: Array<{ blob?: Blob; name?: string; fileName?: string; volume?: number; pan?: number }> }>).detail;
+      const stems = detail?.stems?.filter((stem): stem is { blob: Blob; name?: string; fileName?: string; volume?: number; pan?: number } => stem.blob instanceof Blob) ?? [];
       if (!stems.length) return;
       setError(null);
       void stems.reduce<Promise<void>>(async (previous, stem) => {
         await previous;
-        await createClipFromBlob(stem.blob, stem.fileName || "Beat Machine Stem.wav", "audio/wav", undefined, 0, { volume: stem.volume, pan: stem.pan });
+        await createClipFromBlob(stem.blob, stem.name || stem.fileName || "Beat Machine Stem.wav", "audio/wav", undefined, 0, { volume: stem.volume, pan: stem.pan });
       }, Promise.resolve())
         .then(() => {
           setMode("edit");
@@ -539,7 +539,7 @@ export default function ElectricStudio() {
     };
     window.addEventListener("ems:beat-stems-to-session", printBeatToTimeline);
     return () => window.removeEventListener("ems:beat-stems-to-session", printBeatToTimeline);
-  });
+  }, []);
 
   async function importFiles(files: FileList | File[]) {
     const audioFiles = Array.from(files).filter((file) => file.type.startsWith("audio/") || file.type === "video/mp4" || audioPattern.test(file.name));
