@@ -192,17 +192,20 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       setSampleLoading(false);
     }
   }
-  useEffect(() => {
-    void fetch("/api/studio/sounds/library?limit=1000")
-      .then((response) => response.ok ? response.json() : { sounds: [] })
-      .then((payload: { sounds?: Array<{ name?: string; path?: string }> }) => {
-        const names = (payload.sounds ?? [])
-          .map((sound) => sound.path ?? sound.name)
-          .filter((name): name is string => Boolean(name && /\.(wav|mp3|ogg|m4a|flac|aif|aiff|webm)$/i.test(name)));
-        if (names.length) setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names])));
-      })
-      .catch(() => undefined);
-  }, []);
+  async function refreshSampleLibrary() {
+    try {
+      const response = await fetch("/api/studio/sounds/library?limit=1000", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json() as { sounds?: Array<{ name?: string; path?: string }> };
+      const names = (payload.sounds ?? [])
+        .map((sound) => sound.path ?? sound.name)
+        .filter((name): name is string => Boolean(name && /\.(wav|mp3|ogg|m4a|flac|aif|aiff|webm)$/i.test(name)));
+      setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names])));
+    } catch {
+      // Keep the last known library visible during a transient network error.
+    }
+  }
+  useEffect(() => { void refreshSampleLibrary(); }, []);
   function trigger(pad: Pad, velocity = 1) {
     if (pad.muted || (soloed && !pad.solo)) return;
     const ctx = context();
@@ -316,7 +319,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
           <div className="mt-4 border-t border-white/10 pt-4">
             <div className="mb-3 flex items-center justify-between">
               <b className="text-[11px] uppercase tracking-widest text-cyan-200">Live Sample Library</b>
-              <span className="font-mono text-[10px] text-white/35">{liveSamples.length} sounds</span>
+              <div className="flex items-center gap-2"><span className="font-mono text-[10px] text-white/35">{liveSamples.length} sounds</span><button onClick={() => void refreshSampleLibrary()} className="border border-cyan-300/30 px-2 py-1 text-[9px] font-black uppercase text-cyan-200">Refresh</button></div>
             </div>
             <div className="max-h-52 space-y-1 overflow-auto pr-1">
               {liveSamples.slice(0, 80).map((name) => (
@@ -333,7 +336,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
                 {sampleWaveform.map((peak, index) => <span key={index} className="flex-1 bg-cyan-300/80" style={{ height: `${Math.max(8, peak * 100)}%` }} />)}
               </div>
             )}
-            <p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p>
+            <p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded: {sampleName}</p>}
           </div>
           <div className="mt-4 border-t border-white/10 pt-4">
             <b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>
