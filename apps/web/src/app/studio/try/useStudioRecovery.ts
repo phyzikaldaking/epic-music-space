@@ -200,11 +200,11 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
   const restoreRef = useRef(restore);
   const snapshotRef = useRef(snapshot);
   const savingRef = useRef(false);
-  const lastCloudSaveRef = useRef(0);
+  const lastCloudSaveRef = useRef(0);\n  const dirtyRef = useRef(true);
   restoreRef.current = restore;
-  snapshotRef.current = snapshot;
+  snapshotRef.current = snapshot;\n  const snapshotFingerprint = projectSaveFingerprint(snapshot);
 
-  const saveLocal = useCallback(() => {
+  useEffect(() => { dirtyRef.current = true; }, [snapshotFingerprint]);\n\n  const saveLocal = useCallback(() => {
     if (!isAutosaveEnabled()) return null;
     const local = writeLocalRecoverySnapshot(sessionId, snapshotRef.current);
     if (local) {
@@ -248,7 +248,7 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
       const savedAt = data?.snapshot?.updatedAt ?? new Date().toISOString();
       setRecoverable(data?.snapshot ?? localSnapshot ?? null);
       setLastSavedAt(savedAt);
-      setStatus(data?.backend === "database" ? "saved" : "recoverable");\n      trackStudio("project_saved", { backend: data?.backend ?? "local", schema_version: SNAPSHOT_SCHEMA_VERSION });
+      dirtyRef.current = false;\n      setStatus(data?.backend === "database" ? "saved" : "recoverable");\n      trackStudio("project_saved", { backend: data?.backend ?? "local", schema_version: SNAPSHOT_SCHEMA_VERSION });
       lastCloudSaveRef.current = Date.now();
     } catch {
       setRecoverable(localSnapshot ?? readLocalRecoverySnapshot());
@@ -320,7 +320,7 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
   }, [save]);
 
   useEffect(() => {
-    function emergencySave() {
+    function beforeUnload(event: BeforeUnloadEvent) {\n      if (!dirtyRef.current) return;\n      event.preventDefault();\n      event.returnValue = "Your Studio changes are still saving.";\n    }\n    function emergencySave() {
       saveLocal();
       const now = Date.now();
       if (now - lastCloudSaveRef.current > AUTOSAVE_INTERVAL_MS) void save();
@@ -328,11 +328,11 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
     function onVisibilityChange() {
       if (document.visibilityState === "hidden") emergencySave();
     }
-    window.addEventListener("beforeunload", emergencySave);
+    window.addEventListener("beforeunload", beforeUnload);\n    window.addEventListener("pagehide", emergencySave);
     window.addEventListener("pagehide", emergencySave);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
-      window.removeEventListener("beforeunload", emergencySave);
+      window.removeEventListener("beforeunload", beforeUnload);
       window.removeEventListener("pagehide", emergencySave);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
