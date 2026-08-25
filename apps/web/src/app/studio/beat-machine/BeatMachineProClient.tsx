@@ -117,7 +117,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [liveSamples, setLiveSamples] = useState<string[]>(LIVE_SAMPLE_NAMES);
   const [sampleName, setSampleName] = useState<string | null>(null);
   const [sampleLoading, setSampleLoading] = useState(false);
-  const [sampleError, setSampleError] = useState<string | null>(null);\n  const [printStatus, setPrintStatus] = useState<string | null>(null);
+  const [sampleError, setSampleError] = useState<string | null>(null);
+  const [printStatus, setPrintStatus] = useState<string | null>(null);
   const [sampleWaveform, setSampleWaveform] = useState<number[]>([]);
   const [sampleSlices, setSampleSlices] = useState<Array<{ index: number; start: number; duration: number }>>([]);
   const [dragOver, setDragOver] = useState(false);
