@@ -14,7 +14,7 @@ import MadeForYouRail from "@/components/MadeForYouRail";
 import type { RailCandidate } from "@/lib/personalizedRail";
 import FunnelViewBeacon from "@/components/FunnelViewBeacon";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
-import { isLaunchCatalogTrack } from "@/lib/launchCatalog";
+import { isLaunchCatalogTrack, isPublicCatalogTrack } from "@/lib/launchCatalog";
 
 export const revalidate = 30;
 
@@ -446,6 +446,7 @@ export default async function MarketplacePage(props: {
   }
 
   const rankedSongs = allSongs
+    .filter(isPublicCatalogTrack)
     .map((song) => {
       try {
         return toMarketplaceSong(song);
