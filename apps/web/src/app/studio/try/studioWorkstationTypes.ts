@@ -36,7 +36,9 @@ export type StudioClip = {
   muted?: boolean;
   selected?: boolean;
   fadeInSec?: number;
-  fadeOutSec?: number;\n  gain?: number;\n  crossfadeSec?: number;
+  fadeOutSec?: number;
+  gain?: number;
+  crossfadeSec?: number;
   source: "import" | "recording" | "generated" | "placeholder";
 };
 
