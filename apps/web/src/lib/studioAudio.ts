@@ -75,11 +75,11 @@ export async function loadStudioAudioBuffer(url: string): Promise<AudioBuffer> {
   try { return await pending; } finally { bufferLoads.delete(url); }
 }
 
-export async function startStudioBuffer(url: string, offsetSec = 0, when?: number) {
+export async function startStudioBuffer(url: string, offsetSec = 0, when?: number, gainValue = 1) {
   const ctx = await resumeStudioAudio();
   const source = registerStudioSource(ctx.createBufferSource());
   source.buffer = await loadStudioAudioBuffer(url);
-  source.connect(ctx.destination);
+  const gain = ctx.createGain();\n  gain.gain.value = Math.max(0, Math.min(2, gainValue));\n  source.connect(gain).connect(ctx.destination);
   source.start(when ?? ctx.currentTime, Math.max(0, offsetSec));
   return source;
 }
