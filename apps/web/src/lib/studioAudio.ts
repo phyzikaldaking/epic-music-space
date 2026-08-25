@@ -1,5 +1,7 @@
 "use client";
 
+import { trackStudio, trackStudioError } from "./studioTelemetry";
+
 type AudioContextCtor = new () => AudioContext;
 
 type AudioRegistry = {
