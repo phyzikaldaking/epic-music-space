@@ -185,7 +185,7 @@ function BeatTransport({
               multiple
               className="hidden"
               disabled={uploading}
-              onChange={(event) => handleSoundUpload(event.target.files)}
+              onChange={(event) => { void handleSoundUpload(event.target.files); event.currentTarget.value = ""; }}
             />
           </label>
           <Link href="/studio/beat-machine" className="rounded-lg border border-yellow-300/35 bg-yellow-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-yellow-100">Full Beat Machine</Link>
