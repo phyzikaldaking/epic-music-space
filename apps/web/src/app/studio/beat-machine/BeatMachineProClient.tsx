@@ -16,7 +16,7 @@ const sampleUrl = (name: string) => name === "HIP_Snaph_3.wav"
   : `${SUPABASE_URL}/storage/v1/object/public/audio-assets/${encodeURIComponent(name)}`;
 import { buildBeatStemRenderPlan, type BeatStemRenderPlan } from "./beatStemPrint";
 
-type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; tune?: number; mode?: "one-shot" | "loop"; sliceStart?: number; sliceDuration?: number };
+type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; tune?: number; mode?: "one-shot" | "loop"; sliceStart?: number; sliceDuration?: number; stepVelocity?: number[]; stepProbability?: number[]; stepPitch?: number[] };
 type Preset = { name: string; volumes: Record<string, number>; pans: Record<string, number> };
 
 const DEFAULT_PATTERN_LENGTH = 16;
@@ -107,7 +107,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const setPads = (updater: (current: Pad[]) => Pad[]) => setPadBanks((current) => ({ ...current, [padBank]: updater(current[padBank] ?? initialPads) }));
   const [selected, setSelected] = useState("kick");
   const [playing, setPlaying] = useState(false);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(0);\n  const [selectedStep, setSelectedStep] = useState(0);
   const [bpm, setBpm] = useState(140);
   const [patternLength, setPatternLength] = useState<8 | 16>(16);
   const [printing, setPrinting] = useState(false);
@@ -291,7 +291,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       bpm,
       patternLength,
       activeBank: padBank,
-      banks: Object.fromEntries(Object.entries(padBanks).map(([bank, bankPads]) => [bank, bankPads.map(({ id, label, volume, pan, muted, solo, steps, tune, mode, sliceStart, sliceDuration }) => ({ id, label, volume, pan, muted, solo, steps, tune, mode, sliceStart, sliceDuration }))])),
+      banks: Object.fromEntries(Object.entries(padBanks).map(([bank, bankPads]) => [bank, bankPads.map(({ id, label, volume, pan, muted, solo, steps, tune, mode, sliceStart, sliceDuration, stepVelocity, stepProbability, stepPitch }) => ({ id, label, volume, pan, muted, solo, steps, tune, mode, sliceStart, sliceDuration, stepVelocity, stepProbability, stepPitch }))])),
     }, null, 2));
   }
 
@@ -315,7 +315,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       if (!state.playing || nextStep === transportStep.current) return;
       transportStep.current = nextStep;
       setStep(nextStep);
-      pads.forEach((pad) => { if (pad.steps[nextStep]) trigger(pad, 0.88); });
+      pads.forEach((pad) => { if (pad.steps[nextStep] && Math.random() <= (pad.stepProbability?.[nextStep] ?? 100) / 100) trigger({ ...pad, tune: (pad.tune ?? 0) + (pad.stepPitch?.[nextStep] ?? 0) }, 0.88 * ((pad.stepVelocity?.[nextStep] ?? 100) / 100)); });
       setPlaying(true);
     });
   }, [bpm, pads, patternLength]);
@@ -368,7 +368,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
             <b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>
             <div className="mt-3 space-y-3">
               <label className="block text-[10px] font-black uppercase text-white/55">Playback mode<select value={activePad.mode ?? "one-shot"} onChange={(event) => updatePad(activePad.id, { mode: event.target.value as "one-shot" | "loop" })} className="mt-2 w-full bg-black px-2 py-2 text-cyan-200"><option value="one-shot">One-shot</option><option value="loop">Loop</option></select></label>
-              <label className="block text-[10px] font-black uppercase text-white/55">Tune (semitones)<input className="mt-2 w-full accent-cyan-300" type="range" min="-24" max="24" value={activePad.tune ?? 0} onChange={(event) => updatePad(activePad.id, { tune: Number(event.target.value) })} /></label>
+              <label className="block text-[10px] font-black uppercase text-white/55">Tune (semitones)<input className="mt-2 w-full accent-cyan-300" type="range" min="-24" max="24" value={activePad.tune ?? 0} onChange={(event) => updatePad(activePad.id, { tune: Number(event.target.value) })} /></label>\n              <div className="border-t border-white/10 pt-3"><b className="text-[10px] uppercase text-yellow-200">Step {selectedStep + 1} controls</b><label className="mt-2 block text-[10px] font-black uppercase text-white/55">Velocity<input className="mt-2 w-full accent-yellow-300" type="range" min="0" max="100" value={activePad.stepVelocity?.[selectedStep] ?? 100} onChange={(event) => updatePad(activePad.id, { stepVelocity: Object.assign(Array.from({ length: 16 }, (_, index) => activePad.stepVelocity?.[index] ?? 100), { [selectedStep]: Number(event.target.value) }) })} /></label><label className="mt-2 block text-[10px] font-black uppercase text-white/55">Probability<input className="mt-2 w-full accent-yellow-300" type="range" min="0" max="100" value={activePad.stepProbability?.[selectedStep] ?? 100} onChange={(event) => updatePad(activePad.id, { stepProbability: Object.assign(Array.from({ length: 16 }, (_, index) => activePad.stepProbability?.[index] ?? 100), { [selectedStep]: Number(event.target.value) }) })} /></label><label className="mt-2 block text-[10px] font-black uppercase text-white/55">Pitch<input className="mt-2 w-full accent-yellow-300" type="range" min="-24" max="24" value={activePad.stepPitch?.[selectedStep] ?? 0} onChange={(event) => updatePad(activePad.id, { stepPitch: Object.assign(Array.from({ length: 16 }, (_, index) => activePad.stepPitch?.[index] ?? 0), { [selectedStep]: Number(event.target.value) }) })} /></label></div>
               {(["volume", "pan", "freq"] as const).map((field) => <label key={field} className="block text-[10px] font-black uppercase text-white/55">{field}<input className="mt-2 w-full accent-cyan-300" type="range" min={field === "pan" ? -50 : field === "freq" ? 30 : 0} max={field === "pan" ? 50 : field === "freq" ? 8000 : 100} value={activePad[field]} onChange={(event) => updatePad(activePad.id, { [field]: Number(event.target.value) })} /></label>)}
               <div className="flex gap-2"><button onClick={() => updatePad(activePad.id, { muted: !activePad.muted })} className={cn("h-8 flex-1 border border-black bg-[#30343b] text-[10px] font-black uppercase", activePad.muted && "bg-red-400 text-black")}>Mute</button><button onClick={() => updatePad(activePad.id, { solo: !activePad.solo })} className={cn("h-8 flex-1 border border-black bg-[#30343b] text-[10px] font-black uppercase", activePad.solo && "bg-yellow-300 text-black")}>Solo</button><button onClick={() => trigger(activePad)} className="h-8 flex-1 border border-black bg-cyan-300 text-[10px] font-black uppercase text-black">Test</button></div>
               <div className="grid gap-2 pt-2">{presets.map((preset) => <button key={preset.name} onClick={() => applyPreset(preset)} className="border border-white/10 bg-black/35 px-3 py-2 text-left text-[10px] font-black uppercase tracking-widest text-white/65 hover:text-cyan-100">{preset.name}</button>)}</div>
@@ -380,7 +380,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
             <span />{Array.from({ length: 16 }, (_, i) => <span key={i} className={cn(step === i && "text-cyan-200")}>{i + 1}</span>)}
           </div>
           <div className="min-w-[760px] space-y-1.5">
-            {pads.map((pad) => <div key={pad.id} className="grid items-center gap-2" style={{ gridTemplateColumns: `72px repeat(${patternLength},minmax(0,1fr))` }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-2 text-left font-mono text-[10px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.slice(0, patternLength).map((on, i) => <button key={i} onClick={() => toggleStep(pad.id, i)} className={cn("h-10 border", step === i && "ring-2 ring-white/60")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 10px ${pad.color}80` : undefined }} />)}</div>)}
+            {pads.map((pad) => <div key={pad.id} className="grid items-center gap-2" style={{ gridTemplateColumns: `72px repeat(${patternLength},minmax(0,1fr))` }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-2 text-left font-mono text-[10px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.slice(0, patternLength).map((on, i) => <button key={i} onClick={() => { setSelectedStep(i); toggleStep(pad.id, i); }} className={cn("h-10 border", step === i && "ring-2 ring-white/60", selectedStep === i && "outline outline-2 outline-yellow-300")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 10px ${pad.color}80` : undefined }} />)}</div>)}
           </div>
         </section>
       </main>
