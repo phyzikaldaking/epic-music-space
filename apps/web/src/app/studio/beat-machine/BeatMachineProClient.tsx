@@ -257,13 +257,14 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   async function refreshSampleLibrary() {
     try {
       const response = await fetch("/api/studio/sounds/library?limit=1000", { cache: "no-store" });
-      if (!response.ok) return;
+      if (!response.ok) throw new Error(`Library request failed (${response.status})`);
       const payload = await response.json() as { sounds?: Array<{ name?: string; path?: string; url?: string; source?: "kit" | "factory"; bucket?: string }> };
       const names = (payload.sounds ?? [])
         .map((sound) => { const name = sound.path ?? sound.name; if (name && sound.url) sampleUrls.current[name] = sound.url; if (name) sampleSources.current[name] = sound.source ?? (sound.bucket === "studio-kits" ? "kit" : "factory"); return name; })
         .filter((name): name is string => Boolean(name && /\.(wav|mp3|ogg|m4a|flac|aif|aiff|webm)$/i.test(name)));
       setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names])));
-    } catch {
+    } catch (error) {
+      setSampleError(error instanceof Error ? error.message : "Could not refresh the sound library.");
       // Keep the last known library visible during a transient network error.
     }
   }
