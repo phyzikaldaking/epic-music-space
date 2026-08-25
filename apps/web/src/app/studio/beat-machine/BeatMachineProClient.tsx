@@ -331,6 +331,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       return;
     }
     setSampleError(null);
+    transportStep.current = -1;
+    setStep(0);
     void context().resume();
     studioTransport.setBpm(bpm);
     studioTransport.play();
