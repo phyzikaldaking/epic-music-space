@@ -330,7 +330,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     previewSource.current = null;
     studioTransport.stop(true);
   }, []);
-  function play() {
+  async function play() {
     if (playing) { stop(); return; }
     if (!pads.some((pad) => pad.steps.some(Boolean))) {
       setSampleError('Pattern is empty. Tap steps in the grid first, or tap a pad to audition its sound.');
@@ -339,7 +339,12 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     setSampleError(null);
     transportStep.current = -1;
     setStep(0);
-    void context().resume();
+    try {
+      await context().resume();
+    } catch (error) {
+      setSampleError(error instanceof Error ? error.message : "Web Audio could not start in this browser.");
+      return;
+    }
     studioTransport.setBpm(bpm);
     studioTransport.play();
     setPlaying(true);
