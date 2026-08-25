@@ -123,6 +123,7 @@ export default function ElectricStudio() {
   const [clipboard, setClipboard] = useState<StudioClip | null>(null);
   const [error, setError] = useState<string | null>(null);
   const players = useRef<HTMLAudioElement[]>([]);
+  const playerMeta = useRef<Array<{ audio: HTMLAudioElement; trackVolume: number; clip: StudioClip }>>([]);
   const timer = useRef<number | null>(null);
   const recordStopTimer = useRef<number | null>(null);
   const playOrigin = useRef(0);
@@ -243,6 +244,7 @@ export default function ElectricStudio() {
       audio.currentTime = 0;
     });
     players.current = [];
+    playerMeta.current = [];
     if (timer.current) window.clearInterval(timer.current);
     timer.current = null;
     studioTransport.stop(reset);
@@ -698,16 +700,33 @@ export default function ElectricStudio() {
       audio.preload = "auto";
       audio.src = clip.url;
       audio.addEventListener("error", () => setError(`Audio could not load: ${clip.name}`), { once: true });
-      audio.volume = Math.min(1, Math.max(0, (track.volume / 100) * Math.pow(10, clip.gain / 20)));
+      const trackVolume = Math.min(1, Math.max(0, (track.volume / 100) * Math.pow(10, clip.gain / 20)));
+      audio.volume = clip.fadeIn > 0 ? 0 : trackVolume;
       audio.currentTime = Math.max(0, clip.trimStart + from - clip.start);
+      playerMeta.current.push({ audio, trackVolume, clip });
       const wait = Math.max(0, clip.start - from) * 1000;
-      window.setTimeout(() => void audio.play().catch((err) => setError(err instanceof Error ? err.message : "Playback failed.")), wait);
+      window.setTimeout(() => {
+        if (!players.current.includes(audio) || !studioTransport.getState().playing) return;
+        void audio.play().catch((err) => setError(err instanceof Error ? err.message : "Playback failed."));
+      }, wait);
       return audio;
     });
     setPlaying(true);
     studioTransport.play();
     timer.current = window.setInterval(() => {
       const next = studioTransport.getState().positionSec;
+      playerMeta.current.forEach(({ audio, trackVolume, clip }) => {
+        const elapsed = next - clip.start;
+        const duration = Math.max(0.001, visibleClipDuration(clip));
+        let envelope = 0;
+        if (elapsed >= 0 && elapsed <= duration) {
+          envelope = 1;
+          if (clip.fadeIn > 0 && elapsed < clip.fadeIn) envelope = Math.min(envelope, elapsed / clip.fadeIn);
+          const remaining = duration - elapsed;
+          if (clip.fadeOut > 0 && remaining < clip.fadeOut) envelope = Math.min(envelope, remaining / clip.fadeOut);
+        }
+        audio.volume = Math.min(1, Math.max(0, trackVolume * envelope));
+      });
       if (loop && next >= selectionEnd) {
         stopTransport();
         setPlayhead(selectionStart);
