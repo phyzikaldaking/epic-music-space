@@ -42,7 +42,7 @@ export const STEM_EXTS = new Set([
   "zip", "mp3", "wav", "flac", "m4a", "aif", "aiff",
 ]);
 
-export const MAX_AUDIO_BYTES = 200 * 1024 * 1024;
+export const MAX_AUDIO_BYTES = 250 * 1024 * 1024;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_STEM_BYTES = 500 * 1024 * 1024;
 

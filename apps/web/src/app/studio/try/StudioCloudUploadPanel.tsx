@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { validateUpload } from "@/lib/uploadValidation";
 
 type UploadState = {
   status: "idle" | "uploading" | "complete" | "error";
@@ -172,7 +173,14 @@ export default function StudioCloudUploadPanel() {
       return;
     }
 
-    const audioFiles = Array.from(files).filter((file) => file.type.startsWith("audio/") || file.type === "video/mp4" || audioPattern.test(file.name));
+    const candidates = Array.from(files);
+    const rejected = candidates.map((file) => ({ file, result: validateUpload("audio", file) })).filter((item) => !item.result.ok);
+    if (rejected.length) {
+      const first = rejected[0];
+      setState((current) => ({ ...current, status: "error", message: `${first.file.name}: ${first.result.reason}`, percent: 0 }));
+      return;
+    }
+    const audioFiles = candidates.filter((file) => file.type.startsWith("audio/") || file.type === "video/mp4" || audioPattern.test(file.name));
     if (!audioFiles.length) {
       setState((current) => ({ ...current, status: "error", message: "Choose WAV, MP3, M4A, AAC, OGG, WEBM, FLAC, AIFF, or MP4 audio.", percent: 0 }));
       return;
