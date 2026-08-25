@@ -177,7 +177,8 @@ export default function StudioCloudUploadPanel() {
     const rejected = candidates.map((file) => ({ file, result: validateUpload("audio", file) })).filter((item) => !item.result.ok);
     if (rejected.length) {
       const first = rejected[0];
-      setState((current) => ({ ...current, status: "error", message: `${first.file.name}: ${first.result.reason}`, percent: 0 }));
+      const reason = first.result.ok ? "Unsupported audio file." : first.result.reason;
+      setState((current) => ({ ...current, status: "error", message: `${first.file.name}: ${reason}`, percent: 0 }));
       return;
     }
     const audioFiles = candidates.filter((file) => file.type.startsWith("audio/") || file.type === "video/mp4" || audioPattern.test(file.name));
