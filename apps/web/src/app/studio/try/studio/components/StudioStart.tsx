@@ -19,7 +19,7 @@ export function StudioStart({ experience, onTemplate, onImport, onRecord, onBeat
       <h2>What are we making?</h2>
       <p>{experience === "creator" ? "Start with a room that already knows the job. You can switch to Engineer Mode anytime." : "Choose a routing-ready starting point or build an empty session."}</p>
       <div className="studio-start__actions">
-        <label><StudioIcon name="import"/><span><b>Import Audio</b><small>WAV, MP3, stems or a full mix</small></span><input className="sr-only" type="file" accept="audio/*,.wav,.mp3,.m4a,.flac,.aiff" multiple onChange={(event) => event.target.files && onImport(event.target.files)}/></label>
+        <label><StudioIcon name="import"/><span><b>Import Audio</b><small>WAV, MP3, stems or a full mix</small></span><input className="sr-only" type="file" accept="audio/*,.wav,.mp3,.m4a,.flac,.aiff" multiple onChange={(event) => { if (event.target.files) onImport(event.target.files); event.currentTarget.value = ""; }}/></label>
         <button onClick={onRecord}><StudioIcon name="record"/><span><b>Record</b><small>Check your mic before the take</small></span></button>
         <button onClick={onBeat}><StudioIcon name="beat"/><span><b>Beat Lab</b><small>Build a rhythm from scratch</small></span></button>
       </div>
