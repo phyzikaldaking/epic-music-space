@@ -5,13 +5,13 @@ let redisUrl: string | null = null;
 let bullMqRedis: Redis | null = null;
 let bullMqRedisUrl: string | null = null;
 
-function hasUsableRedisUrl(value: string): boolean {
+function hasUsableRedisUrl(value: string, options: { skipPlaceholderHostCheck?: boolean } = {}): boolean {
   try {
     const url = new URL(value);
     const placeholderHosts = new Set(["host", "hostname", "example.com", "redis.railway.internal"]);
 
     if (!["redis:", "rediss:"].includes(url.protocol)) return false;
-    if (placeholderHosts.has(url.hostname.toLowerCase())) return false;
+    if (!options.skipPlaceholderHostCheck && placeholderHosts.has(url.hostname.toLowerCase())) return false;
     if (url.password.toLowerCase() === "password") return false;
 
     return true;
@@ -20,12 +20,48 @@ function hasUsableRedisUrl(value: string): boolean {
   }
 }
 
+function buildRedisUrlFromComponents(): string | null {
+  const host = process.env.REDISHOST?.trim();
+  const port = process.env.REDISPORT?.trim() || "6379";
+  const user = process.env.REDISUSER?.trim() || "default";
+  const password = process.env.REDISPASSWORD?.trim();
+
+  if (!host || !password) return null;
+
+  const url = `redis://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}`;
+  // REDISHOST commonly resolves to Railway's internal domain (e.g.
+  // redis.railway.internal), which is otherwise treated as a placeholder
+  // when it appears in a hand-typed REDIS_URL. Here it comes directly from
+  // Railway-provided component variables, so it's known-good.
+  return hasUsableRedisUrl(url, { skipPlaceholderHostCheck: true }) ? url : null;
+}
+
 function readRedisUrl(): string | null {
   // Hosting env entries are sometimes pasted with wrapping quotes. Strip
   // them so a valid `redis://` or `rediss://` URL is not rejected.
   const raw = process.env.REDIS_URL ?? "";
   const url = raw.trim().replace(/^['"]|['"]$/g, "");
-  return url && hasUsableRedisUrl(url) ? url : null;
+
+  if (url && hasUsableRedisUrl(url)) {
+    console.info("[redis] Using REDIS_URL from environment");
+    return url;
+  }
+
+  if (url) {
+    console.warn(
+      "[redis] REDIS_URL is set but not usable (likely an unresolved variable reference); " +
+        "falling back to individual REDISHOST/REDISPORT/REDISUSER/REDISPASSWORD components",
+    );
+  }
+
+  const constructed = buildRedisUrlFromComponents();
+  if (constructed) {
+    console.info("[redis] Constructed Redis URL from REDISHOST/REDISPORT/REDISUSER/REDISPASSWORD");
+    return constructed;
+  }
+
+  console.warn("[redis] No usable Redis connection info found in environment");
+  return null;
 }
 
 /**
