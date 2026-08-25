@@ -108,8 +108,8 @@ export function EditWorkspace({
   const timelineWidth = Math.max(1600, sessionEnd * zoom + 480);
 
   return (
-    <div className="studio-editor">
-      <div className="studio-tracks">
+    <div className="studio-editor min-w-0 overflow-hidden">
+      <div className="studio-tracks min-w-0 overflow-hidden">
         <div className="studio-panel-title">
           <span>TRACKS</span><b>{tracks.length.toString().padStart(2, "0")}</b>
         </div>
@@ -199,7 +199,7 @@ export function EditWorkspace({
       </div>
 
       <section
-        className="studio-timeline"
+        className="studio-timeline min-w-0 overflow-hidden"
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();
@@ -333,7 +333,7 @@ export function EditWorkspace({
         </div>
       </section>
 
-      <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_180px] border-l border-black bg-[#20242b]">
+      <div className="hidden" aria-hidden="true">
         <details className="min-h-0 overflow-auto border-b border-black/60 text-xs text-white/50">
           <summary className="cursor-pointer px-3 py-2 font-black uppercase tracking-widest text-white/70">Edit Log ({editLog.length})</summary>
           <div className="px-3 pb-3">
