@@ -3,6 +3,7 @@
 import type { StudioTrack } from "../types";
 import { EffectsBrowser } from "./EffectsBrowser";
 import { MixAssistant } from "./MixAssistant";
+import { trackStudio } from "../../../../lib/studioTelemetry";
 
 export function MixerWorkspace({
   tracks,
