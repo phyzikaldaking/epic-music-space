@@ -1,5 +1,6 @@
 "use client";
 
+import { trackStudio, trackStudioError } from "../../../lib/studioTelemetry";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StudioAudioBufferRef, StudioClip, StudioSoundAsset } from "./studioWorkstationTypes";
 
@@ -241,7 +242,7 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
       const savedAt = data?.snapshot?.updatedAt ?? new Date().toISOString();
       setRecoverable(data?.snapshot ?? localSnapshot ?? null);
       setLastSavedAt(savedAt);
-      setStatus(data?.backend === "database" ? "saved" : "recoverable");
+      setStatus(data?.backend === "database" ? "saved" : "recoverable");\n      trackStudio("project_saved", { backend: data?.backend ?? "local", schema_version: SNAPSHOT_SCHEMA_VERSION });
       lastCloudSaveRef.current = Date.now();
     } catch {
       setRecoverable(localSnapshot ?? readLocalRecoverySnapshot());
