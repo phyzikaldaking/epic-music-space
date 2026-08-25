@@ -105,7 +105,7 @@ export function EditWorkspace({
   const timelineWidth = Math.max(1600, sessionEnd * zoom + 480);
 
   return (
-    <div className="studio-editor min-w-0 overflow-hidden">
+    <div className="studio-editor min-w-0 overflow-hidden" style={{ gridColumn: "1 / -1", width: "100%" }}>
       <div className="studio-tracks min-w-0 overflow-hidden">
         <div className="studio-panel-title">
           <span>TRACKS</span><b>{tracks.length.toString().padStart(2, "0")}</b>
