@@ -55,7 +55,19 @@ if (typeof window !== "undefined" && POSTHOG_TOKEN) {
     // implications. Flip on in PostHog dashboard if needed.
     disable_session_recording: true,
   });
-  try {\n    const consent = window.localStorage.getItem("ems-cookie-consent");\n    if (consent !== "accepted") posthog.opt_out_capturing();\n    window.addEventListener("ems:consent", (event) => {\n      const value = (event as CustomEvent<"accepted" | "rejected">).detail;\n      if (value === "accepted") posthog.opt_in_capturing();\n      else posthog.opt_out_capturing();\n    });\n  } catch {\n    posthog.opt_out_capturing();\n  }\n\n  // We previously gated dev/preview here with opt_out_capturing(), but
+  try {
+    const consent = window.localStorage.getItem("ems-cookie-consent");
+    if (consent !== "accepted") posthog.opt_out_capturing();
+    window.addEventListener("ems:consent", (event) => {
+      const value = (event as CustomEvent<"accepted" | "rejected">).detail;
+      if (value === "accepted") posthog.opt_in_capturing();
+      else posthog.opt_out_capturing();
+    });
+  } catch {
+    posthog.opt_out_capturing();
+  }
+
+  // We previously gated dev/preview here with opt_out_capturing(), but
   // process.env.NODE_ENV gets dead-code-eliminated at build time, which
   // either always-no-ops or always-opts-out depending on which build
   // the bundle came from. Cleaner: gate on hostname at runtime, which
