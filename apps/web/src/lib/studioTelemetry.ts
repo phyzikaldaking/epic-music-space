@@ -15,7 +15,7 @@ export type StudioEvent = typeof STUDIO_EVENTS[number];
 type SafeProperties = Record<string, string | number | boolean | null | undefined>;
 
 function safeError(error: unknown) {
-  if (error instanceof Error) return { error_name: error.name, error_message: error.message.slice(0, 240) };
+  if (error instanceof Error) return { error_name: error.name, error_message: error.message.slice(0, 240), error_stack: error.stack?.split("\\n").slice(0, 5).join("\\n") };
   return { error_name: "UnknownError", error_message: String(error).slice(0, 240) };
 }
 
