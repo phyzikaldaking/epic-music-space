@@ -47,13 +47,6 @@ function readRedisUrl(): string | null {
     return url;
   }
 
-  if (url) {
-    console.warn(
-      "[redis] REDIS_URL is set but not usable (likely an unresolved variable reference); " +
-        "falling back to individual REDISHOST/REDISPORT/REDISUSER/REDISPASSWORD components",
-    );
-  }
-
   const constructed = buildRedisUrlFromComponents();
   if (constructed) {
     console.info("[redis] Constructed Redis URL from REDISHOST/REDISPORT/REDISUSER/REDISPASSWORD");
