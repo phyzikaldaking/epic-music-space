@@ -430,7 +430,6 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
         ))}
         <div className="ml-auto font-mono text-[10px] uppercase tracking-widest text-white/35">Bar {bar}</div>
       </div>
-      <div
       {selectedClip && isPlacedClip(selectedClip.id) && (
         <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-[#0d1317] px-3 py-2 text-[10px]">
           <span className="max-w-[180px] truncate font-black uppercase tracking-widest text-cyan-100">{selectedClip.name}</span>
@@ -444,6 +443,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
           <button type="button" onClick={() => deletePlacedClip(selectedClip.id)} className="rounded border border-red-300/30 px-2 py-1 font-black uppercase text-red-100">Delete</button>
         </div>
       )}
+      <div
         ref={viewportRef}
         className="relative h-[calc(100%-48px)] overflow-auto"
         onScroll={(event: UIEvent<HTMLDivElement>) => {
