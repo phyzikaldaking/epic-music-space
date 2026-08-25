@@ -33,7 +33,9 @@ export default function StudioWorkstationClient() {
   const [mode, setMode] = useState<Mode>("studio");
   const [playing, setPlaying] = useState(false);
   const [bpm, setBpm] = useState(92);
-  const [tracks, setTracks] = useState(INITIAL_TRACKS);\n  useEffect(() => { trackStudio("studio_opened", { route: "/studio/try" }); }, []);\n  useEffect(() => { trackStudio("studio_mode_changed", { mode }); }, [mode]);
+  const [tracks, setTracks] = useState(INITIAL_TRACKS);
+  useEffect(() => { trackStudio("studio_opened", { route: "/studio/try" }); }, []);
+  useEffect(() => { trackStudio("studio_mode_changed", { mode }); }, [mode]);
   const [selectedTrack, setSelectedTrack] = useState("lead");
   const [activePad, setActivePad] = useState<string | null>(null);
   const [bar, setBar] = useState(37);
