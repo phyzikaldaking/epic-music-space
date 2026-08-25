@@ -38,7 +38,8 @@ const presets: Preset[] = [
 ];
 
 function cn(...v: Array<string | false | undefined | null>) { return v.filter(Boolean).join(" "); }
-function buildSampleSlices(duration: number, count = 8) { return Array.from({ length: count }, (_, index) => ({ index, start: (duration / count) * index, duration: duration / count })); }\nfunction readWaveform(buffer: AudioBuffer, bars = 48) {
+function buildSampleSlices(duration: number, count = 8) { return Array.from({ length: count }, (_, index) => ({ index, start: (duration / count) * index, duration: duration / count })); }
+function readWaveform(buffer: AudioBuffer, bars = 48) {
   const data = buffer.getChannelData(0);
   const step = Math.max(1, Math.floor(data.length / bars));
   return Array.from({ length: bars }, (_, index) => {
@@ -114,7 +115,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [sampleName, setSampleName] = useState<string | null>(null);
   const [sampleLoading, setSampleLoading] = useState(false);
   const [sampleError, setSampleError] = useState<string | null>(null);
-  const [sampleWaveform, setSampleWaveform] = useState<number[]>([]);\n  const [sampleSlices, setSampleSlices] = useState<Array<{ index: number; start: number; duration: number }>>([]);\n  const [dragOver, setDragOver] = useState(false);
+  const [sampleWaveform, setSampleWaveform] = useState<number[]>([]);
+  const [sampleSlices, setSampleSlices] = useState<Array<{ index: number; start: number; duration: number }>>([]);
+  const [dragOver, setDragOver] = useState(false);
   const sampleBuffers = useRef<Record<string, AudioBuffer>>({});
   const transportStep = useRef(-1);
   const audio = useRef<AudioContext | null>(null);
@@ -358,7 +361,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
                 {sampleWaveform.map((peak, index) => <span key={index} className="flex-1 bg-cyan-300/80" style={{ height: `${Math.max(8, peak * 100)}%` }} />)}
               </div>
             )}
-            {sampleSlices.length > 0 && <div className="mt-2 grid grid-cols-4 gap-1"><span className="col-span-4 text-[9px] font-black uppercase text-white/40">Slices · assign to selected pad</span>{sampleSlices.map((slice) => <button key={slice.index} onClick={() => { updatePad(activePad.id, { sliceStart: slice.start, sliceDuration: slice.duration }); setSampleName(`${sampleName ?? "Sample"} · Slice ${slice.index + 1}`); trigger({ ...activePad, sliceStart: slice.start, sliceDuration: slice.duration }); }} className="border border-purple-300/30 px-1 py-1 text-[9px] font-black text-purple-200">S{slice.index + 1}</button>)}</div>}\n            <p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p><p className="mt-1 text-[9px] font-bold uppercase text-cyan-200">Drag an audio file here to load it onto the selected pad.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded: {sampleName}</p>}
+            {sampleSlices.length > 0 && <div className="mt-2 grid grid-cols-4 gap-1"><span className="col-span-4 text-[9px] font-black uppercase text-white/40">Slices · assign to selected pad</span>{sampleSlices.map((slice) => <button key={slice.index} onClick={() => { updatePad(activePad.id, { sliceStart: slice.start, sliceDuration: slice.duration }); setSampleName(`${sampleName ?? "Sample"} · Slice ${slice.index + 1}`); trigger({ ...activePad, sliceStart: slice.start, sliceDuration: slice.duration }); }} className="border border-purple-300/30 px-1 py-1 text-[9px] font-black text-purple-200">S{slice.index + 1}</button>)}</div>}
+            <p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p><p className="mt-1 text-[9px] font-bold uppercase text-cyan-200">Drag an audio file here to load it onto the selected pad.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded: {sampleName}</p>}
           </div>
           <div className="mt-4 border-t border-white/10 pt-4">
             <b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>
