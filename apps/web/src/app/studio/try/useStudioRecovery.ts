@@ -36,7 +36,8 @@ type StudioSnapshot = {
   backend?: string;
 };
 
-type RecoveryStatus = "idle" | "checking" | "saved" | "recoverable" | "restored" | "error";\nconst SNAPSHOT_SCHEMA_VERSION = 3;
+type RecoveryStatus = "idle" | "checking" | "saved" | "recoverable" | "restored" | "error";
+const SNAPSHOT_SCHEMA_VERSION = 3;
 
 const SESSION_ID_KEY = "ems-studio-session-id-v2";
 const LOCAL_SNAPSHOT_KEY = "ems-studio-local-recovery-snapshot-v2";
@@ -200,11 +201,15 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
   const restoreRef = useRef(restore);
   const snapshotRef = useRef(snapshot);
   const savingRef = useRef(false);
-  const lastCloudSaveRef = useRef(0);\n  const dirtyRef = useRef(true);
+  const lastCloudSaveRef = useRef(0);
+  const dirtyRef = useRef(true);
   restoreRef.current = restore;
-  snapshotRef.current = snapshot;\n  const snapshotFingerprint = projectSaveFingerprint(snapshot);
+  snapshotRef.current = snapshot;
+  const snapshotFingerprint = projectSaveFingerprint(snapshot);
 
-  useEffect(() => { dirtyRef.current = true; }, [snapshotFingerprint]);\n\n  const saveLocal = useCallback(() => {
+  useEffect(() => { dirtyRef.current = true; }, [snapshotFingerprint]);
+
+  const saveLocal = useCallback(() => {
     if (!isAutosaveEnabled()) return null;
     const local = writeLocalRecoverySnapshot(sessionId, snapshotRef.current);
     if (local) {
@@ -239,7 +244,8 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
             placedClipCount: fullSnapshot.placedClips?.length ?? 0,
             soundCount: fullSnapshot.soundLibrary?.length ?? 0,
             padAssignmentCount: Object.keys(fullSnapshot.padAssignments ?? {}).length,
-            bufferCount: fullSnapshot.audioBuffers?.length ?? 0,\n            schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+            bufferCount: fullSnapshot.audioBuffers?.length ?? 0,
+            schemaVersion: SNAPSHOT_SCHEMA_VERSION,
           },
         }),
       });
@@ -248,7 +254,9 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
       const savedAt = data?.snapshot?.updatedAt ?? new Date().toISOString();
       setRecoverable(data?.snapshot ?? localSnapshot ?? null);
       setLastSavedAt(savedAt);
-      dirtyRef.current = false;\n      setStatus(data?.backend === "database" ? "saved" : "recoverable");\n      trackStudio("project_saved", { backend: data?.backend ?? "local", schema_version: SNAPSHOT_SCHEMA_VERSION });
+      dirtyRef.current = false;
+      setStatus(data?.backend === "database" ? "saved" : "recoverable");
+      trackStudio("project_saved", { backend: data?.backend ?? "local", schema_version: SNAPSHOT_SCHEMA_VERSION });
       lastCloudSaveRef.current = Date.now();
     } catch {
       setRecoverable(localSnapshot ?? readLocalRecoverySnapshot());
@@ -320,7 +328,12 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
   }, [save]);
 
   useEffect(() => {
-    function beforeUnload(event: BeforeUnloadEvent) {\n      if (!dirtyRef.current) return;\n      event.preventDefault();\n      event.returnValue = "Your Studio changes are still saving.";\n    }\n    function emergencySave() {
+    function beforeUnload(event: BeforeUnloadEvent) {
+      if (!dirtyRef.current) return;
+      event.preventDefault();
+      event.returnValue = "Your Studio changes are still saving.";
+    }
+    function emergencySave() {
       saveLocal();
       const now = Date.now();
       if (now - lastCloudSaveRef.current > AUTOSAVE_INTERVAL_MS) void save();
@@ -328,7 +341,8 @@ export function useStudioRecovery(snapshot: StudioSnapshotInput, restore: (paylo
     function onVisibilityChange() {
       if (document.visibilityState === "hidden") emergencySave();
     }
-    window.addEventListener("beforeunload", beforeUnload);\n    window.addEventListener("pagehide", emergencySave);
+    window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener("pagehide", emergencySave);
     window.addEventListener("pagehide", emergencySave);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
