@@ -55,6 +55,33 @@ export function registerStudioMedia(media: HTMLAudioElement) {
   return media;
 }
 
+const bufferCache = new Map<string, AudioBuffer>();
+const bufferLoads = new Map<string, Promise<AudioBuffer>>();
+
+export async function loadStudioAudioBuffer(url: string): Promise<AudioBuffer> {
+  const cached = bufferCache.get(url);
+  if (cached) return cached;
+  const pending = bufferLoads.get(url) ?? (async () => {
+    const ctx = await resumeStudioAudio();
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Audio request failed (${response.status})`);
+    const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+    bufferCache.set(url, buffer);
+    return buffer;
+  })();
+  bufferLoads.set(url, pending);
+  try { return await pending; } finally { bufferLoads.delete(url); }
+}
+
+export async function startStudioBuffer(url: string, offsetSec = 0, when?: number) {
+  const ctx = await resumeStudioAudio();
+  const source = registerStudioSource(ctx.createBufferSource());
+  source.buffer = await loadStudioAudioBuffer(url);
+  source.connect(ctx.destination);
+  source.start(when ?? ctx.currentTime, Math.max(0, offsetSec));
+  return source;
+}
+
 export function stopAllStudioAudio() {
   const state = registry();
   state.sources.forEach((source) => {
