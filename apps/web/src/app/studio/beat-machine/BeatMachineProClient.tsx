@@ -192,14 +192,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       setSampleLoading(false);
     }
   }
-  useEffect(() => {
-    if (!SUPABASE_ANON_KEY) return;
-    void fetch(`${SUPABASE_URL}/storage/v1/object/list/audio-assets`, { method: "POST", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ prefix: "", limit: 1000, sortBy: { column: "created_at", order: "desc" } }) })
-      .then((response) => response.ok ? response.json() : [])
-      .then((items: Array<{ name?: string }>) => { const names = items.map((item) => item.name).filter((name): name is string => Boolean(name && /\.(wav|mp3|ogg|m4a)$/i.test(name))); if (names.length) setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names]))); })
-      .catch(() => undefined);
-  }, []);
-  function trigger(pad: Pad, velocity = 1) {
+  useEffect(() => {\n    void fetch("/api/studio/sounds/library?limit=1000")\n      .then((response) => response.ok ? response.json() : { sounds: [] })\n      .then((payload: { sounds?: Array<{ name?: string; path?: string }> }) => {\n        const names = (payload.sounds ?? [])\n          .map((sound) => sound.path ?? sound.name)\n          .filter((name): name is string => Boolean(name && /\\.(wav|mp3|ogg|m4a|flac|aif|aiff|webm)$/i.test(name)));\n        if (names.length) setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names])));\n      })\n      .catch(() => undefined);\n  }, []);\n  function trigger(pad: Pad, velocity = 1) {
     if (pad.muted || (soloed && !pad.solo)) return;
     const ctx = context();
     const now = ctx.currentTime;
