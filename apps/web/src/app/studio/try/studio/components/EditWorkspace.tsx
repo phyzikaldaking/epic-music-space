@@ -113,8 +113,9 @@ export function EditWorkspace({
 
         <div className="overflow-auto">
           {tracks.length === 0 && (
-            <div className="studio-tracks__empty">
-              Your tracks will appear here.
+            <div className="studio-tracks__empty m-3 rounded-xl border border-cyan-300/20 bg-cyan-300/[.04] p-4 text-center shadow-[inset_0_0_24px_rgba(0,240,255,.04)]">
+              <b className="block text-[11px] font-black uppercase tracking-[.18em] text-cyan-100">Empty session</b>
+              <span className="mt-2 block text-[10px] leading-5 text-white/45">Import or record audio to create a channel, or open Beat Lab to start with drums and kits.</span>
             </div>
           )}
 
