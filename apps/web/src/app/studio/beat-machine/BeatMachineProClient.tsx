@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { studioTransport } from "../../../lib/studioTransport";
+import { getStudioAudioContext, registerStudioSource, resumeStudioAudio, stopAllStudioAudio } from "../../../lib/studioAudio";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://oynplifjdizzdahnurgi.supabase.co";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -179,7 +180,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     }));
   }, [padBanks, padBank, bpm, patternLength, patternChain]);
 
-  function context() { const AudioContextCtor = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext; if (!AudioContextCtor) throw new Error("This browser does not support Web Audio. Try the latest Chrome, Safari, or Edge."); audio.current ??= new AudioContextCtor(); return audio.current; }
+  function context() { const ctx = getStudioAudioContext(); audio.current = ctx; return ctx; }
   async function assignDecodedSample(name: string, buffer: AudioBuffer) {
     sampleBuffers.current[name] = buffer;
     setSampleName(name);
@@ -193,7 +194,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     setSampleError(null);
     try {
       const ctx = context();
-      await ctx.resume();
+      await resumeStudioAudio();
       const buffer = await ctx.decodeAudioData(await file.arrayBuffer());
       await assignDecodedSample(file.name, buffer);
     } catch (error) {
