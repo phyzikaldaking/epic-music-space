@@ -15,7 +15,9 @@ export type StudioEvent = typeof STUDIO_EVENTS[number];
 type SafeProperties = Record<string, string | number | boolean | null | undefined>;
 
 function safeError(error: unknown) {
-  if (error instanceof Error) return { error_name: error.name, error_message: error.message.slice(0, 240), error_stack: error.stack?.split("\\n").slice(0, 5).join("\\n") };
+  if (error instanceof Error) return { error_name: error.name, error_message: error.message.slice(0, 240), error_stack: error.stack?.split("\
+").slice(0, 5).join("\
+") };
   return { error_name: "UnknownError", error_message: String(error).slice(0, 240) };
 }
 
@@ -29,7 +31,9 @@ export function trackStudio(event: StudioEvent, properties: SafeProperties = {})
 }
 
 export function trackStudioError(event: Extract<StudioEvent, `${string}_failed`>, error: unknown, properties: SafeProperties = {}) {
-  const details = safeError(error);\n  trackStudio(event, { ...properties, ...details });\n  captureStudioException(error, { event });
+  const details = safeError(error);
+  trackStudio(event, { ...properties, ...details });
+  captureStudioException(error, { event });
 }
 
 export function captureStudioException(error: unknown, properties: SafeProperties = {}) {
