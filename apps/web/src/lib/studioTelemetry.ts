@@ -29,7 +29,7 @@ export function trackStudio(event: StudioEvent, properties: SafeProperties = {})
 }
 
 export function trackStudioError(event: Extract<StudioEvent, `${string}_failed`>, error: unknown, properties: SafeProperties = {}) {
-  trackStudio(event, { ...properties, ...safeError(error) });
+  const details = safeError(error);\n  trackStudio(event, { ...properties, ...details });\n  captureStudioException(error, { event });
 }
 
 export function captureStudioException(error: unknown, properties: SafeProperties = {}) {
