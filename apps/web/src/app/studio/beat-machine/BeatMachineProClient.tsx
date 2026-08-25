@@ -19,16 +19,6 @@ type Preset = { name: string; volumes: Record<string, number>; pans: Record<stri
 
 const DEFAULT_PATTERN_LENGTH = 16;
 const makeSteps = (on: number[]) => Array.from({ length: DEFAULT_PATTERN_LENGTH }, (_, i) => on.includes(i + 1));
-const DEFAULT_PAD_ASSETS: Record<string, string> = {
-  kick: "SSO-A&E_1.WAV",
-  snare: "SSO-SNARE_11.WAV",
-  hat: "SSO-SHAKER_5.WAV",
-  clap: "SSO-A&E_12.WAV",
-  bass: "SSO-A&E_24.WAV",
-  perc: "SSO-PERC_21.WAV",
-  vox: "SSO-VOCAL_12.WAV",
-  fx: "SSO-VOCAL_1.WAV",
-};
 const initialPads: Pad[] = [
   { id: "kick", label: "KICK", key: "1", color: "#20f7ff", freq: 54, volume: 88, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
   { id: "snare", label: "SNARE", key: "2", color: "#ff31df", freq: 180, volume: 74, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
