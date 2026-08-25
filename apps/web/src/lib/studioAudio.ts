@@ -79,7 +79,9 @@ export async function startStudioBuffer(url: string, offsetSec = 0, when?: numbe
   const ctx = await resumeStudioAudio();
   const source = registerStudioSource(ctx.createBufferSource());
   source.buffer = await loadStudioAudioBuffer(url);
-  const gain = ctx.createGain();\n  gain.gain.value = Math.max(0, Math.min(2, gainValue));\n  source.connect(gain).connect(ctx.destination);
+  const gain = ctx.createGain();
+  gain.gain.value = Math.max(0, Math.min(2, gainValue));
+  source.connect(gain).connect(ctx.destination);
   source.start(when ?? ctx.currentTime, Math.max(0, offsetSec));
   return source;
 }
