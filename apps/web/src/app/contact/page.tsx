@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Contact | Epic Music Space",
+  title: "Contact",
   description: "Contact Epic Music Space for support, partnership, legal, licensing, and marketplace questions.",
   alternates: { canonical: "/contact" },
   openGraph: {
