@@ -171,12 +171,12 @@ function BeatTransport({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-green-200/70">Producer sound suite</p>
-          <p className="mt-0.5 text-[10px] text-white/35">
+          <p aria-live="polite" className="mt-0.5 text-[10px] text-white/35">
             {libraryStatus === "loading" ? "Loading live Supabase audio-assets..." : libraryStatus === "ready" ? `${factorySounds.length} live sounds · ${sounds.length} user uploads` : libraryStatus === "error" ? "Live Supabase suite unavailable · no demo sounds loaded" : "Sound suite ready"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={loadFactorySounds} className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white/70 hover:bg-white/10">Refresh suite</button>
+          <button type="button" onClick={loadFactorySounds} disabled={libraryStatus === "loading"} aria-label="Refresh producer sound suite" className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white/70 hover:bg-white/10 disabled:opacity-50">{libraryStatus === "loading" ? "Loading…" : "Refresh suite"}</button>
           <label className="rounded-lg border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-100 hover:bg-cyan-300/15">
             {uploading ? "Uploading..." : "Upload sounds"}
             <input
