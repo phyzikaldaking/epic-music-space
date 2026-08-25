@@ -5,6 +5,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { DrumKitId } from "@/components/daw/beatMachine";
 import type { StudioSoundAsset, StudioSoundCategory, StudioTrackKind } from "./studioWorkstationTypes";
 import type { useStudioMidiBridge } from "./useStudioMidiBridge";
+import { trackStudio, trackStudioError } from "../../../lib/studioTelemetry";
 
 type Props = {
   midi: ReturnType<typeof useStudioMidiBridge>;
@@ -97,7 +98,7 @@ function BeatTransport({
       if (!res.ok) throw new Error(data?.error ?? "Live library fetch failed");
       if (data?.backend !== "supabase") throw new Error("Live Supabase backend is not available");
       const loaded = Array.isArray(data?.sounds) ? data.sounds as StudioSoundAsset[] : [];
-      setFactorySounds(loaded);
+      setFactorySounds(loaded);\n      trackStudio("sample_library_loaded", { count: loaded.length });
       setFactoryCounts(data?.categories && typeof data.categories === "object" ? data.categories : {});
       setLibraryStatus("ready");
       notify(`Loaded ${loaded.length} live Supabase sounds.`);
@@ -129,7 +130,7 @@ function BeatTransport({
   }, [category, mergedSounds, query]);
 
   async function handleSoundUpload(fileList: FileList | null) {
-    const files = Array.from(fileList ?? []).filter((file) => file.type.startsWith("audio/"));
+    const files = Array.from(fileList ?? []).filter((file) => file.type.startsWith("audio/"));\n    trackStudio("audio_import_started", { count: files.length });
     if (!files.length) {
       notify("Choose an audio file first.");
       return;
@@ -149,11 +150,11 @@ function BeatTransport({
           throw new Error(data?.error ?? `Upload failed for ${file.name}.`);
         }
         onSoundUploaded(data.sound as StudioSoundAsset);
-        notify(`Uploaded ${file.name} to live storage.`);
+        notify(`Uploaded ${file.name} to live storage.`);\n        trackStudio("audio_import_succeeded", { file_type: file.type });
       }
       await loadFactorySounds();
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Sound upload failed. No local demo copy was loaded.");
+      trackStudioError("audio_import_failed", error);\n      notify(error instanceof Error ? error.message : "Sound upload failed. No local demo copy was loaded.");
     } finally {
       setUploading(false);
     }
@@ -164,7 +165,7 @@ function BeatTransport({
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
     audioRef.current.src = sound.url;
-    void audioRef.current.play().catch(() => notify("Preview could not play this sound."));
+    void audioRef.current.play().catch((error) => { trackStudioError("sample_preview_failed", error, { asset_id: sound.id }); notify("Preview could not play this sound."); });
   }
 
   return (
@@ -242,8 +243,8 @@ function BeatTransport({
                   <span className="block truncate text-[9px] uppercase tracking-widest text-white/35">{sound.category ?? "misc"}{sound.key ? ` · ${sound.key}` : ""}{sound.bpm ? ` · ${sound.bpm} BPM` : ""}{sound.source === "factory" ? " · Supabase" : " · User"}</span>
                 </div>
                 <button type="button" onClick={() => previewSound(sound)} className="rounded border border-cyan-300/30 px-2 py-1 text-cyan-100">Play</button>
-                <button type="button" onClick={() => onAssignSoundToTrack(sound)} className="rounded border border-yellow-300/30 px-2 py-1 text-yellow-100">Assign</button>
-                <button type="button" onClick={() => onDropSoundOnTimeline(sound)} className="rounded border border-green-300/30 px-2 py-1 text-green-100">Place</button>
+                <button type="button" onClick={() => { trackStudio("sample_assigned", { asset_id: sound.id, target: "track" }); onAssignSoundToTrack(sound); }} className="rounded border border-yellow-300/30 px-2 py-1 text-yellow-100">Assign</button>
+                <button type="button" onClick={() => { trackStudio("timeline_clip_placed", { asset_id: sound.id, source: sound.source ?? "unknown" }); onDropSoundOnTimeline(sound); }} className="rounded border border-green-300/30 px-2 py-1 text-green-100">Place</button>
               </div>
             ))}
           </div>
