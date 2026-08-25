@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import BeatPadGrid from "./BeatPadGrid";
 import BeatSequencerRow from "./BeatSequencerRow";
 import BeatTransport from "./BeatTransport";
@@ -130,6 +130,7 @@ function BeatTrackLane({
   const [localInstrument, setLocalInstrument] = useState(() => typeof window !== "undefined" ? window.localStorage.getItem(INSTRUMENT_STORAGE_KEY) || "Trap Drums" : "Trap Drums");
   const [localSounds, setLocalSounds] = useState<StudioSoundAsset[]>(loadStoredSounds);
   const [padAssignments, setPadAssignments] = useState<Record<string, PadAssignment>>(loadPadAssignments);
+  const assignedPadAudio = useRef<Record<string, HTMLAudioElement>>({});
   const [toast, setToast] = useState<string | null>(null);
   const activeKit = selectedKit ?? localKit;
   const activeInstrument = selectedInstrument ?? localInstrument;
@@ -222,8 +223,16 @@ function BeatTrackLane({
   function handleFirePad(kind: DrumKind, label: string) {
     const assignment = padAssignments[label];
     if (assignment) {
+      assignedPadAudio.current[label]?.pause();
       const audio = new Audio(assignment.soundUrl);
-      void audio.play().catch(() => undefined);
+      audio.currentTime = 0;
+      assignedPadAudio.current[label] = audio;
+      audio.addEventListener("ended", () => {
+        if (assignedPadAudio.current[label] === audio) delete assignedPadAudio.current[label];
+      }, { once: true });
+      void audio.play().catch(() => {
+        if (assignedPadAudio.current[label] === audio) delete assignedPadAudio.current[label];
+      });
     } else {
       onFirePad(kind, label);
     }

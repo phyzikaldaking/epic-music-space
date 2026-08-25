@@ -135,6 +135,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [sampleSlices, setSampleSlices] = useState<Array<{ index: number; start: number; duration: number }>>([]);
   const [dragOver, setDragOver] = useState(false);
   const sampleBuffers = useRef<Record<string, AudioBuffer>>({});
+  const loadingBuffers = useRef<Record<string, Promise<AudioBuffer>>>({});
   const activeSources = useRef<Record<string, AudioBufferSourceNode>>({});
   const previewSource = useRef<AudioBufferSourceNode | null>(null);
   const transportStep = useRef(-1);
@@ -266,21 +267,27 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     const ctx = context();
     await ctx.resume();
     const sourceKey = padBank + ":" + pad.id;
+    activeSources.current[sourceKey]?.stop();
     let buffer = sampleBuffers.current[sourceKey];
     if (!buffer && pad.sampleAsset) {
       try {
-        const response = await fetch(sampleUrl(pad.sampleAsset));
-        if (!response.ok) throw new Error(`Could not reload ${pad.sampleAsset} (${response.status})`);
-        buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+        const pending = loadingBuffers.current[sourceKey] ?? (async () => {
+          const response = await fetch(sampleUrl(pad.sampleAsset!));
+          if (!response.ok) throw new Error(`Could not reload ${pad.sampleAsset} (${response.status})`);
+          return ctx.decodeAudioData(await response.arrayBuffer());
+        })();
+        loadingBuffers.current[sourceKey] = pending;
+        buffer = await pending;
         sampleBuffers.current[sourceKey] = buffer;
       } catch (error) {
         setSampleError(error instanceof Error ? error.message : `Could not reload ${pad.sampleAsset}`);
         return;
+      } finally {
+        delete loadingBuffers.current[sourceKey];
       }
     }
     const now = ctx.currentTime;
     if (buffer) {
-      activeSources.current[sourceKey]?.stop();
       const source = ctx.createBufferSource();
       const gain = ctx.createGain();
       const pan = ctx.createStereoPanner();
