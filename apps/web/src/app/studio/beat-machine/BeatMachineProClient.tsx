@@ -11,9 +11,11 @@ const LIVE_SAMPLE_NAMES = [
   "SSO-VOCAL_1.WAV", "SSO-VOCAL_2.WAV", "SSO-VOCAL_10.WAV", "SSO-VOCAL_12.WAV",
   "HIP_Snaph_3.wav",
 ];
-const sampleUrl = (name: string) => name === "HIP_Snaph_3.wav"
-  ? `${SUPABASE_URL}/storage/v1/object/public/studio-kits/${encodeURIComponent(name)}`
-  : `${SUPABASE_URL}/storage/v1/object/public/audio-assets/${encodeURIComponent(name)}`;
+const sampleUrl = (name: string) => {
+  const bucket = name === "HIP_Snaph_3.wav" ? "studio-kits" : "audio-assets";
+  const encodedPath = name.split("/").map((part) => encodeURIComponent(part)).join("/");
+  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${encodedPath}`;
+};
 import { buildBeatStemRenderPlan, type BeatStemRenderPlan } from "./beatStemPrint";
 
 type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; sampleAsset?: string; tune?: number; mode?: "one-shot" | "loop"; sliceStart?: number; sliceDuration?: number; stepVelocity?: number[]; stepProbability?: number[]; stepPitch?: number[] };
@@ -266,10 +268,15 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     const sourceKey = padBank + ":" + pad.id;
     let buffer = sampleBuffers.current[sourceKey];
     if (!buffer && pad.sampleAsset) {
-      const response = await fetch(sampleUrl(pad.sampleAsset));
-      if (!response.ok) throw new Error(`Could not reload ${pad.sampleAsset} (${response.status})`);
-      buffer = await ctx.decodeAudioData(await response.arrayBuffer());
-      sampleBuffers.current[sourceKey] = buffer;
+      try {
+        const response = await fetch(sampleUrl(pad.sampleAsset));
+        if (!response.ok) throw new Error(`Could not reload ${pad.sampleAsset} (${response.status})`);
+        buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+        sampleBuffers.current[sourceKey] = buffer;
+      } catch (error) {
+        setSampleError(error instanceof Error ? error.message : `Could not reload ${pad.sampleAsset}`);
+        return;
+      }
     }
     const now = ctx.currentTime;
     if (buffer) {
@@ -394,7 +401,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       <main className="grid min-h-0 grid-cols-[360px_1fr] overflow-hidden">
         <section className="min-h-0 overflow-auto border-r border-black bg-[#111418] p-3">
           <div className="grid grid-cols-4 gap-2">
-            {pads.map((pad) => <button key={pad.id} onClick={() => { setSelected(pad.id); trigger(pad); }} className="relative aspect-square border bg-gradient-to-b from-[#2c2d2f] to-[#101112] p-2" style={{ borderColor: selected === pad.id ? pad.color : "rgba(255,255,255,.16)", boxShadow: selected === pad.id ? `0 0 16px ${pad.color}55` : "inset 0 1px 0 rgba(255,255,255,.08)" }}><span className="grid h-full place-items-center text-[12px] font-black tracking-[0.08em]">{pad.label}</span><span className={cn("absolute left-2 top-2 text-[8px] font-black uppercase", sampleBuffers.current[padBank + ":" + pad.id] || pad.sampleAsset ? "text-green-300" : "text-white/35")}>{sampleBuffers.current[padBank + ":" + pad.id] || pad.sampleAsset ? "Loaded" : "Empty"}</span><span className="absolute bottom-2 right-2 font-mono text-[10px] text-white/40">{pad.key}</span></button>)}
+            {pads.map((pad) => <button key={pad.id} onClick={() => { setSelected(pad.id); trigger(pad); }} className="relative aspect-square border bg-gradient-to-b from-[#2c2d2f] to-[#101112] p-2" style={{ borderColor: selected === pad.id ? pad.color : "rgba(255,255,255,.16)", boxShadow: selected === pad.id ? `0 0 16px ${pad.color}55` : "inset 0 1px 0 rgba(255,255,255,.08)" }}><span className="grid h-full place-items-center text-[12px] font-black tracking-[0.08em]">{pad.label}</span><span className={cn("absolute left-2 top-2 text-[8px] font-black uppercase", sampleBuffers.current[padBank + ":" + pad.id] || pad.sampleAsset ? "text-green-300" : "text-white/35")}>{sampleBuffers.current[padBank + ":" + pad.id] ? "Loaded" : pad.sampleAsset ? "Ready" : "Empty"}</span><span className="absolute bottom-2 right-2 font-mono text-[10px] text-white/40">{pad.key}</span></button>)}
           </div>
           <div onDragEnter={(event) => { event.preventDefault(); setDragOver(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragOver(false)} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) void loadDroppedFile(file); }} className={cn("mt-4 border-t border-white/10 pt-4", dragOver && "rounded border border-cyan-300 bg-cyan-300/10")}>
             <div className="mb-3 flex items-center justify-between">
@@ -402,7 +409,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
               <div className="flex items-center gap-2"><span className="font-mono text-[10px] text-white/35">{liveSamples.length} sounds</span><button onClick={() => void refreshSampleLibrary()} className="border border-cyan-300/30 px-2 py-1 text-[9px] font-black uppercase text-cyan-200">Refresh</button></div>
             </div>
             <div className="max-h-52 space-y-1 overflow-auto pr-1">
-              {liveSamples.slice(0, 80).map((name) => (
+              {liveSamples.map((name) => (
                 <div key={name} className="flex gap-1">
                   <button onClick={() => void previewSample(name)} disabled={sampleLoading} className="min-w-0 flex-1 truncate border border-white/10 bg-black/25 px-2 py-2 text-left text-[10px] font-bold uppercase text-white/60 hover:border-cyan-300/60 hover:text-white">{name.replace(/\.(wav|mp3|ogg|m4a)$/i, "")}</button>
                   <button onClick={() => void loadSample(name)} disabled={sampleLoading} className="shrink-0 border border-cyan-300/40 px-2 text-[9px] font-black text-cyan-200 disabled:opacity-50">LOAD</button>
