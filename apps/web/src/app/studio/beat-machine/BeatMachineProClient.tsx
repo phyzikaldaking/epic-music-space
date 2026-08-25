@@ -450,7 +450,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
           <div onDragEnter={(event) => { event.preventDefault(); setDragOver(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragOver(false)} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) void loadDroppedFile(file); }} className={cn("mt-4 border-t border-white/10 pt-4", dragOver && "rounded border border-cyan-300 bg-cyan-300/10")}>
             <div className="mb-3 flex items-center justify-between">
               <b className="text-[11px] uppercase tracking-widest text-cyan-200">Live Sample Library</b>
-              <div className="flex items-center gap-2"><span className="font-mono text-[10px] text-white/35">{visibleSamples.length}/{liveSamples.length} sounds</span><button onClick={() => void refreshSampleLibrary()} className="border border-cyan-300/30 px-2 py-1 text-[9px] font-black uppercase text-cyan-200">Refresh</button></div>
+              <div className="flex items-center gap-2"><span className="font-mono text-[10px] text-white/35">{visibleSamples.length}/{liveSamples.length} sounds</span><button onClick={() => void refreshSampleLibrary()} disabled={sampleLibraryLoading} aria-label="Refresh sound library" className="border border-cyan-300/30 px-2 py-1 text-[9px] font-black uppercase text-cyan-200 disabled:opacity-50">{sampleLibraryLoading ? "Loading" : "Refresh"}</button></div>
             </div>
             <input value={sampleQuery} onChange={(event) => setSampleQuery(event.target.value)} placeholder="Search kits and samples..." aria-label="Search kits and samples" className="mb-2 w-full border border-cyan-300/20 bg-black/40 px-2 py-2 text-[10px] uppercase text-cyan-100 outline-none placeholder:text-white/30" />
             <div className="mb-2 flex flex-wrap gap-1">{(["all", "drums", "bass", "vocal", "fx"] as const).map((category) => <button key={category} onClick={() => setSampleCategory(category)} className={cn("border px-2 py-1 text-[8px] font-black uppercase", sampleCategory === category ? "border-cyan-200 bg-cyan-300/20 text-cyan-100" : "border-white/10 text-white/45")}>{category}</button>)}</div>
@@ -462,8 +462,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
                 </div>
               ))}
             </div>
-            {sampleLoading && <p className="mt-2 text-[9px] font-bold uppercase text-cyan-200">Loading sample…</p>}
-            {sampleError && <p className="mt-2 text-[9px] font-bold uppercase text-red-300">{sampleError}</p>}
+            {sampleLoading && <p role="status" className="mt-2 text-[9px] font-bold uppercase text-cyan-200">Loading sample…</p>}
+            {sampleError && <p role="alert" className="mt-2 text-[9px] font-bold uppercase text-red-300">{sampleError}</p>}
             {sampleWaveform.length > 0 && (
               <div className="mt-3 flex h-12 items-center gap-px border border-cyan-300/20 bg-black/40 px-2" aria-label="Decoded sample waveform">
                 {sampleWaveform.map((peak, index) => <span key={index} className="flex-1 bg-cyan-300/80" style={{ height: `${Math.max(8, peak * 100)}%` }} />)}
