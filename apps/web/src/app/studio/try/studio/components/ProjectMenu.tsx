@@ -1,7 +1,7 @@
 "use client";
 
 export function ProjectMenu({ onNew, onSaveAs, onRestore, onSnapshot, onArchive }: { onNew: () => void; onSaveAs: () => void; onRestore: () => void; onSnapshot: () => void; onArchive: () => void }) {
-  return <details className="studio-project-menu">
+  return <details className="studio-project-menu relative z-[100]">
     <summary aria-label="Open Project menu">Project <span>⌄</span></summary>
     <div role="menu">
       <button role="menuitem" onClick={onNew}>New session</button>
