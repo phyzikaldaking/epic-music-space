@@ -98,7 +98,8 @@ function BeatTransport({
       if (!res.ok) throw new Error(data?.error ?? "Live library fetch failed");
       if (data?.backend !== "supabase") throw new Error("Live Supabase backend is not available");
       const loaded = Array.isArray(data?.sounds) ? data.sounds as StudioSoundAsset[] : [];
-      setFactorySounds(loaded);\n      trackStudio("sample_library_loaded", { count: loaded.length });
+      setFactorySounds(loaded);
+      trackStudio("sample_library_loaded", { count: loaded.length });
       setFactoryCounts(data?.categories && typeof data.categories === "object" ? data.categories : {});
       setLibraryStatus("ready");
       notify(`Loaded ${loaded.length} live Supabase sounds.`);
@@ -130,7 +131,8 @@ function BeatTransport({
   }, [category, mergedSounds, query]);
 
   async function handleSoundUpload(fileList: FileList | null) {
-    const files = Array.from(fileList ?? []).filter((file) => file.type.startsWith("audio/"));\n    trackStudio("audio_import_started", { count: files.length });
+    const files = Array.from(fileList ?? []).filter((file) => file.type.startsWith("audio/"));
+    trackStudio("audio_import_started", { count: files.length });
     if (!files.length) {
       notify("Choose an audio file first.");
       return;
@@ -150,11 +152,13 @@ function BeatTransport({
           throw new Error(data?.error ?? `Upload failed for ${file.name}.`);
         }
         onSoundUploaded(data.sound as StudioSoundAsset);
-        notify(`Uploaded ${file.name} to live storage.`);\n        trackStudio("audio_import_succeeded", { file_type: file.type });
+        notify(`Uploaded ${file.name} to live storage.`);
+        trackStudio("audio_import_succeeded", { file_type: file.type });
       }
       await loadFactorySounds();
     } catch (error) {
-      trackStudioError("audio_import_failed", error);\n      notify(error instanceof Error ? error.message : "Sound upload failed. No local demo copy was loaded.");
+      trackStudioError("audio_import_failed", error);
+      notify(error instanceof Error ? error.message : "Sound upload failed. No local demo copy was loaded.");
     } finally {
       setUploading(false);
     }
