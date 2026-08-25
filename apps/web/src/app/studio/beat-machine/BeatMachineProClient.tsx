@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { studioTransport } from "../../../lib/studioTransport";
 import { getStudioAudioContext, registerStudioSource, resumeStudioAudio, stopAllStudioAudio } from "../../../lib/studioAudio";
+import { trackStudio, trackStudioError } from "../../../lib/studioTelemetry";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://oynplifjdizzdahnurgi.supabase.co";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -314,7 +315,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   }
   function updatePad(id: string, patch: Partial<Pad>) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, ...patch } : pad)); }
   function toggleStep(id: string, index: number) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, steps: pad.steps.map((on, i) => i === index ? !on : on) } : pad)); }
-  function stop() { Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} }); activeSources.current = {}; try { previewSource.current?.stop(); } catch {} previewSource.current = null; stopAllStudioAudio(); studioTransport.stop(true); transportStep.current = -1; setPlaying(false); setStep(0); }
+  function stop() { trackStudio("beat_pattern_stopped", { bpm }); Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} }); activeSources.current = {}; try { previewSource.current?.stop(); } catch {} previewSource.current = null; stopAllStudioAudio(); studioTransport.stop(true); transportStep.current = -1; setPlaying(false); setStep(0); }
   useEffect(() => () => {
     Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} });
     activeSources.current = {};
@@ -323,7 +324,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     studioTransport.stop(true);
   }, []);
   async function play() {
-    if (playing) { stop(); return; }
+    if (playing) { trackStudio("beat_pattern_stopped", { bpm }); stop(); return; }
     if (!pads.some((pad) => pad.steps.some(Boolean))) {
       setSampleError('Pattern is empty. Tap steps in the grid first, or tap a pad to audition its sound.');
       return;
@@ -372,7 +373,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       setPrinting(false);
     }
   }
-  function exportPattern() {
+  function exportPattern() {\n    trackStudio("beat_export_started", { format: "json", pattern_length: patternLength });
     download("ems-beat-pattern.json", JSON.stringify({
       version: 2,
       bpm,
