@@ -161,7 +161,7 @@ export async function GET(request: Request) {
   let data: Array<StorageObject & { path: string; bucket: string }>;
   try {
     const bucketResults = await Promise.all(AUDIO_BUCKETS.map(async (bucket) => {
-      const objects = await listAudioObjects(supabase, bucket, "", 1000);
+      const objects = await listAudioObjects(supabase, bucket, "", 500);
       return objects.map((item) => ({ ...item, bucket }));
     }));
     data = bucketResults.flat();
