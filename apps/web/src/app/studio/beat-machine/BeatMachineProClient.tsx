@@ -126,7 +126,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [bpm, setBpm] = useState(140);
   const [patternLength, setPatternLength] = useState<8 | 16>(16);
   const [printing, setPrinting] = useState(false);
-  const [liveSamples, setLiveSamples] = useState<string[]>(LIVE_SAMPLE_NAMES);
+  const [liveSamples, setLiveSamples] = useState<string[]>([]);
+  const [sampleLibraryLoading, setSampleLibraryLoading] = useState(true);
   const [sampleQuery, setSampleQuery] = useState("");
   const [sampleCategory, setSampleCategory] = useState<"all" | "drums" | "bass" | "vocal" | "fx">("all");
   const [sampleName, setSampleName] = useState<string | null>(null);
@@ -255,6 +256,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     }
   }
   async function refreshSampleLibrary() {
+    setSampleLibraryLoading(true);
     try {
       const response = await fetch("/api/studio/sounds/library?limit=1000", { cache: "no-store" });
       if (!response.ok) throw new Error(`Library request failed (${response.status})`);
@@ -265,7 +267,10 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names])));
     } catch (error) {
       setSampleError(error instanceof Error ? error.message : "Could not refresh the sound library.");
+      if (!liveSamples.length) setLiveSamples(LIVE_SAMPLE_NAMES);
       // Keep the last known library visible during a transient network error.
+    } finally {
+      setSampleLibraryLoading(false);
     }
   }
   useEffect(() => { void refreshSampleLibrary(); }, []);
@@ -449,7 +454,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
             </div>
             <input value={sampleQuery} onChange={(event) => setSampleQuery(event.target.value)} placeholder="Search kits and samples..." aria-label="Search kits and samples" className="mb-2 w-full border border-cyan-300/20 bg-black/40 px-2 py-2 text-[10px] uppercase text-cyan-100 outline-none placeholder:text-white/30" />
             <div className="mb-2 flex flex-wrap gap-1">{(["all", "drums", "bass", "vocal", "fx"] as const).map((category) => <button key={category} onClick={() => setSampleCategory(category)} className={cn("border px-2 py-1 text-[8px] font-black uppercase", sampleCategory === category ? "border-cyan-200 bg-cyan-300/20 text-cyan-100" : "border-white/10 text-white/45")}>{category}</button>)}</div>
-            <div className="max-h-52 space-y-1 overflow-auto pr-1">
+            <div className="max-h-52 space-y-1 overflow-auto pr-1">{sampleLibraryLoading && <p className="px-2 py-3 text-[9px] font-bold uppercase text-cyan-200">Loading Supabase sounds…</p>} {!sampleLibraryLoading && visibleSamples.length === 0 && <p className="px-2 py-3 text-[9px] font-bold uppercase text-white/45">No sounds match this filter.</p>}
               {visibleSamples.map((name) => (
                 <div key={name} className="flex gap-1">
                   <button onClick={() => void previewSample(name)} disabled={sampleLoading} className="min-w-0 flex-1 truncate border border-white/10 bg-black/25 px-2 py-2 text-left text-[10px] font-bold uppercase text-white/60 hover:border-cyan-300/60 hover:text-white"><span className="mr-2 rounded border border-white/15 px-1 text-[8px] text-white/45">{sampleSources.current[name] === "kit" ? "KIT" : "SAMPLE"}</span>{name.replace(/\.(wav|mp3|ogg|m4a)$/i, "")}</button>
