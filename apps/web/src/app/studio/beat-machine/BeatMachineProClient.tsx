@@ -136,6 +136,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [dragOver, setDragOver] = useState(false);
   const sampleBuffers = useRef<Record<string, AudioBuffer>>({});
   const sampleUrls = useRef<Record<string, string>>({});
+  const sampleSources = useRef<Record<string, "kit" | "factory">>({});
   const loadingBuffers = useRef<Record<string, Promise<AudioBuffer>>>({});
   const activeSources = useRef<Record<string, AudioBufferSourceNode>>({});
   const previewSource = useRef<AudioBufferSourceNode | null>(null);
@@ -254,9 +255,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     try {
       const response = await fetch("/api/studio/sounds/library?limit=1000", { cache: "no-store" });
       if (!response.ok) return;
-      const payload = await response.json() as { sounds?: Array<{ name?: string; path?: string; url?: string }> };
+      const payload = await response.json() as { sounds?: Array<{ name?: string; path?: string; url?: string; source?: "kit" | "factory"; bucket?: string }> };
       const names = (payload.sounds ?? [])
-        .map((sound) => { const name = sound.path ?? sound.name; if (name && sound.url) sampleUrls.current[name] = sound.url; return name; })
+        .map((sound) => { const name = sound.path ?? sound.name; if (name && sound.url) sampleUrls.current[name] = sound.url; if (name) sampleSources.current[name] = sound.source ?? (sound.bucket === "studio-kits" ? "kit" : "factory"); return name; })
         .filter((name): name is string => Boolean(name && /\.(wav|mp3|ogg|m4a|flac|aif|aiff|webm)$/i.test(name)));
       setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names])));
     } catch {
@@ -420,7 +421,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
             <div className="max-h-52 space-y-1 overflow-auto pr-1">
               {liveSamples.map((name) => (
                 <div key={name} className="flex gap-1">
-                  <button onClick={() => void previewSample(name)} disabled={sampleLoading} className="min-w-0 flex-1 truncate border border-white/10 bg-black/25 px-2 py-2 text-left text-[10px] font-bold uppercase text-white/60 hover:border-cyan-300/60 hover:text-white">{name.replace(/\.(wav|mp3|ogg|m4a)$/i, "")}</button>
+                  <button onClick={() => void previewSample(name)} disabled={sampleLoading} className="min-w-0 flex-1 truncate border border-white/10 bg-black/25 px-2 py-2 text-left text-[10px] font-bold uppercase text-white/60 hover:border-cyan-300/60 hover:text-white"><span className="mr-2 rounded border border-white/15 px-1 text-[8px] text-white/45">{sampleSources.current[name] === "kit" ? "KIT" : "SAMPLE"}</span>{name.replace(/\.(wav|mp3|ogg|m4a)$/i, "")}</button>
                   <button onClick={() => void loadSample(name)} disabled={sampleLoading} className="shrink-0 border border-cyan-300/40 px-2 text-[9px] font-black text-cyan-200 disabled:opacity-50">LOAD</button>
                 </div>
               ))}
