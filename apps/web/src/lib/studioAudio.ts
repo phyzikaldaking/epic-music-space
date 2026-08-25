@@ -89,7 +89,7 @@ export async function startStudioBuffer(
   source.buffer = await loadStudioAudioBuffer(url);
   const startAt = when ?? ctx.currentTime;
   const offset = Math.max(0, Math.min(source.buffer.duration, offsetSec));
-  const remaining = Math.max(0.01, durationSec ?? source.buffer.duration - offset);
+  const remaining = Math.max(0.01, Math.min(durationSec ?? source.buffer.duration - offset, source.buffer.duration - offset));
   const gain = ctx.createGain();
   const peak = Math.max(0.0001, Math.min(2, gainValue));
   const fadeIn = Math.max(0, Math.min(remaining / 2, fadeInSec));
