@@ -270,8 +270,14 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   useEffect(() => { void refreshSampleLibrary(); }, []);
   async function trigger(pad: Pad, velocity = 1) {
     if (pad.muted || (soloed && !pad.solo)) return;
-    const ctx = context();
-    await ctx.resume();
+    let ctx: AudioContext;
+    try {
+      ctx = context();
+      await ctx.resume();
+    } catch (error) {
+      setSampleError(error instanceof Error ? error.message : "Web Audio could not start in this browser.");
+      return;
+    }
     const sourceKey = padBank + ":" + pad.id;
     activeSources.current[sourceKey]?.stop();
     let buffer = sampleBuffers.current[sourceKey];
