@@ -190,7 +190,7 @@ function BeatTransport({
               onChange={(event) => { void handleSoundUpload(event.target.files); event.currentTarget.value = ""; }}
             />
           </label>
-          <Link href="/studio/beat-machine" className="rounded-lg border border-yellow-300/35 bg-yellow-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-yellow-100">Full Beat Machine</Link>
+          <Link href="/studio/beat-machine?returnTo=%2Fstudio%2Ftry" className="rounded-lg border border-yellow-300/35 bg-yellow-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-yellow-100">Full Beat Machine</Link><Link href="/studio/try" className="rounded-lg border border-cyan-300/35 bg-cyan-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-100">Return to Studio</Link>
           <button type="button" onClick={() => { void midi.connect(); notify("MIDI connect requested."); }} className="rounded-lg border border-green-300/35 bg-green-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-green-100">MIDI {midi.status}</button>
         </div>
       </div>
