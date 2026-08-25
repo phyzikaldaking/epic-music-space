@@ -33,6 +33,7 @@ const COLLAPSED_ROW_HEIGHT = 28;
 const VIEWPORT_HEIGHT = 420;
 const OVERSCAN = 5;
 const PLACED_CLIPS_STORAGE_KEY = "ems-studio-placed-sound-clips.v2";
+function placedClipsStorageKey() { return `${PLACED_CLIPS_STORAGE_KEY}:${typeof window !== "undefined" ? window.localStorage.getItem("ems-studio-session-id-v2") ?? "default" : "default"}`; }
 const SOUNDS_STORAGE_KEY = "ems-studio-sounds";
 const DRAG_SOUND_STORAGE_KEY = "ems-studio-drag-sound";
 const MIN_CLIP_DURATION = 0.125;
@@ -49,7 +50,7 @@ const TOOLBAR: { id: TimelineTool; icon: string; label: string }[] = [
 function safeLoadPlacedClips(): StudioClip[] {
   if (typeof window === "undefined") return [];
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(PLACED_CLIPS_STORAGE_KEY) ?? "[]");
+    const parsed = JSON.parse(window.localStorage.getItem(placedClipsStorageKey()) ?? "[]");
     return Array.isArray(parsed) ? parsed.filter((clip) => clip?.source !== "placeholder") : [];
   } catch {
     return [];
@@ -58,7 +59,7 @@ function safeLoadPlacedClips(): StudioClip[] {
 
 function persistPlacedClips(clips: StudioClip[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(PLACED_CLIPS_STORAGE_KEY, JSON.stringify(clips.filter((clip) => clip.source !== "placeholder").slice(-128)));
+  window.localStorage.setItem(placedClipsStorageKey(), JSON.stringify(clips.filter((clip) => clip.source !== "placeholder").slice(-128)));
 }
 
 function snapToGrid(seconds: number, bpm: number) {
