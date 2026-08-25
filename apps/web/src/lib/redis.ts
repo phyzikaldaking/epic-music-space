@@ -8,7 +8,7 @@ let bullMqRedisUrl: string | null = null;
 function hasUsableRedisUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    const placeholderHosts = new Set(["host", "hostname", "example.com"]);
+    const placeholderHosts = new Set(["host", "hostname", "example.com", "redis.railway.internal"]);
 
     if (!["redis:", "rediss:"].includes(url.protocol)) return false;
     if (placeholderHosts.has(url.hostname.toLowerCase())) return false;
