@@ -35,7 +35,7 @@ export function trackStudioError(event: Extract<StudioEvent, `${string}_failed`>
 export function captureStudioException(error: unknown, properties: SafeProperties = {}) {
   if (typeof window === "undefined") return;
   const details = safeError(error);
-  posthog.capture("studio_exception", {
+  posthog.capture("$exception", {
     surface: "studio",
     release: process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_RELEASE ?? "local",
     ...details,
