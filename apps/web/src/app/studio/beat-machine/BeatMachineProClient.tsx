@@ -6,12 +6,7 @@ import { getStudioAudioContext, registerStudioSource, resumeStudioAudio, stopAll
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://oynplifjdizzdahnurgi.supabase.co";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-const LIVE_SAMPLE_NAMES = [
-  "SSO-A&E_1.WAV", "SSO-A&E_12.WAV", "SSO-A&E_24.WAV", "SSO-A&E_46.WAV",
-  "SSO-SNARE_11.WAV", "SSO-SNARE_18.WAV", "SSO-SNARE_23.WAV", "SSO-SNARE_28.WAV",
-  "SSO-VOCAL_1.WAV", "SSO-VOCAL_2.WAV", "SSO-VOCAL_10.WAV", "SSO-VOCAL_12.WAV",
-  "HIP_Snaph_3.wav",
-];
+const LIVE_SAMPLE_NAMES: string[] = [];
 const sampleUrl = (name: string) => {
   const bucket = name === "HIP_Snaph_3.wav" ? "studio-kits" : "audio-assets";
   const encodedPath = name.split("/").map((part) => encodeURIComponent(part)).join("/");
@@ -35,14 +30,14 @@ const DEFAULT_PAD_ASSETS: Record<string, string> = {
   fx: "SSO-VOCAL_1.WAV",
 };
 const initialPads: Pad[] = [
-  { id: "kick", label: "KICK", key: "1", color: "#20f7ff", freq: 54, volume: 88, pan: 0, muted: false, solo: false, steps: makeSteps([]), sampleAsset: DEFAULT_PAD_ASSETS.kick },
-  { id: "snare", label: "SNARE", key: "2", color: "#ff31df", freq: 180, volume: 74, pan: 0, muted: false, solo: false, steps: makeSteps([]), sampleAsset: DEFAULT_PAD_ASSETS.snare },
-  { id: "hat", label: "HAT", key: "3", color: "#a75cff", freq: 6500, volume: 48, pan: 14, muted: false, solo: false, steps: makeSteps([]), sampleAsset: DEFAULT_PAD_ASSETS.hat },
-  { id: "clap", label: "CLAP", key: "4", color: "#a75cff", freq: 260, volume: 60, pan: -8, muted: false, solo: false, steps: makeSteps([]), sampleAsset: DEFAULT_PAD_ASSETS.clap },
-  { id: "bass", label: "808", key: "Q", color: "#f2c85b", freq: 42, volume: 82, pan: 0, muted: false, solo: false, steps: makeSteps([]), sampleAsset: DEFAULT_PAD_ASSETS.bass },
-  { id: "perc", label: "PERC", key: "W", color: "#16e59a", freq: 410, volume: 55, pan: 18, muted: false, solo: false, steps: makeSteps([]), sampleAsset: DEFAULT_PAD_ASSETS.perc },
-  { id: "vox", label: "VOX", key: "E", color: "#20c8ff", freq: 330, volume: 58, pan: -18, muted: false, solo: false, steps: makeSteps([]), sampleAsset: DEFAULT_PAD_ASSETS.vox },
-  { id: "fx", label: "FX", key: "R", color: "#ff4f8b", freq: 920, volume: 42, pan: 24, muted: false, solo: false, steps: makeSteps([]), sampleAsset: DEFAULT_PAD_ASSETS.fx },
+  { id: "kick", label: "KICK", key: "1", color: "#20f7ff", freq: 54, volume: 88, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "snare", label: "SNARE", key: "2", color: "#ff31df", freq: 180, volume: 74, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "hat", label: "HAT", key: "3", color: "#a75cff", freq: 6500, volume: 48, pan: 14, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "clap", label: "CLAP", key: "4", color: "#a75cff", freq: 260, volume: 60, pan: -8, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "bass", label: "808", key: "Q", color: "#f2c85b", freq: 42, volume: 82, pan: 0, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "perc", label: "PERC", key: "W", color: "#16e59a", freq: 410, volume: 55, pan: 18, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "vox", label: "VOX", key: "E", color: "#20c8ff", freq: 330, volume: 58, pan: -18, muted: false, solo: false, steps: makeSteps([]) },
+  { id: "fx", label: "FX", key: "R", color: "#ff4f8b", freq: 920, volume: 42, pan: 24, muted: false, solo: false, steps: makeSteps([]) },
 ];
 const presets: Preset[] = [
   { name: "Trap Knock", volumes: { kick: 94, snare: 72, hat: 52, clap: 50, bass: 92, perc: 54, vox: 44, fx: 34 }, pans: { hat: 8, perc: -18, vox: 16, fx: 28 } },
@@ -158,7 +153,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       if (saved.banks && typeof saved.banks === "object") {
         setPadBanks(Object.fromEntries(Object.entries(saved.banks).map(([bank, bankPads]) => [
           Number(bank),
-          bankPads.map((pad) => ({ ...pad, sampleAsset: pad.sampleAsset ?? DEFAULT_PAD_ASSETS[pad.id] })),
+          bankPads.map((pad) => ({ ...pad, sampleAsset: pad.sampleAsset })),
         ])));
       }
       if (saved.activeBank === 0 || saved.activeBank === 1 || saved.activeBank === 2 || saved.activeBank === 3) setPadBank(saved.activeBank);
@@ -329,7 +324,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   }
   function updatePad(id: string, patch: Partial<Pad>) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, ...patch } : pad)); }
   function toggleStep(id: string, index: number) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, steps: pad.steps.map((on, i) => i === index ? !on : on) } : pad)); }
-  function stop() { Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} }); activeSources.current = {}; try { previewSource.current?.stop(); } catch {} previewSource.current = null; studioTransport.stop(true); transportStep.current = -1; setPlaying(false); setStep(0); }
+  function stop() { Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} }); activeSources.current = {}; try { previewSource.current?.stop(); } catch {} previewSource.current = null; stopAllStudioAudio(); studioTransport.stop(true); transportStep.current = -1; setPlaying(false); setStep(0); }
   useEffect(() => () => {
     Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} });
     activeSources.current = {};
