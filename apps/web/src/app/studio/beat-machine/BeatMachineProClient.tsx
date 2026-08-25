@@ -319,6 +319,11 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   function stop() { studioTransport.stop(true); transportStep.current = -1; setPlaying(false); setStep(0); }
   function play() {
     if (playing) { stop(); return; }
+    if (!pads.some((pad) => pad.steps.some(Boolean))) {
+      setSampleError('Pattern is empty. Tap steps in the grid first, or tap a pad to audition its sound.');
+      return;
+    }
+    setSampleError(null);
     void context().resume();
     studioTransport.setBpm(bpm);
     studioTransport.play();
