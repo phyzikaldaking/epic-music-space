@@ -109,6 +109,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [playing, setPlaying] = useState(false);
   const [step, setStep] = useState(0);
   const [selectedStep, setSelectedStep] = useState(0);
+  const [patternChain, setPatternChain] = useState<number[]>([0]);
+  const chainPosition = useRef(0);
   const [bpm, setBpm] = useState(140);
   const [patternLength, setPatternLength] = useState<8 | 16>(16);
   const [printing, setPrinting] = useState(false);
@@ -129,13 +131,14 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     try {
       const raw = localStorage.getItem("ems.beat-machine.session.v2");
       if (!raw) return;
-      const saved = JSON.parse(raw) as { banks?: Record<string, Pad[]>; activeBank?: number; bpm?: number; patternLength?: number };
+      const saved = JSON.parse(raw) as { banks?: Record<string, Pad[]>; activeBank?: number; bpm?: number; patternLength?: number; patternChain?: number[] };
       if (saved.banks && typeof saved.banks === "object") {
         setPadBanks(Object.fromEntries(Object.entries(saved.banks).map(([bank, bankPads]) => [Number(bank), bankPads])));
       }
       if (saved.activeBank === 0 || saved.activeBank === 1 || saved.activeBank === 2 || saved.activeBank === 3) setPadBank(saved.activeBank);
       if (typeof saved.bpm === "number" && saved.bpm >= 40 && saved.bpm <= 240) setBpm(saved.bpm);
       if (saved.patternLength === 8 || saved.patternLength === 16) setPatternLength(saved.patternLength);
+      if (Array.isArray(saved.patternChain) && saved.patternChain.every((bank) => Number.isInteger(bank) && bank >= 0 && bank <= 3)) setPatternChain(saved.patternChain.length ? saved.patternChain : [0]);
     } catch {
       localStorage.removeItem("ems.beat-machine.session.v2");
     }
@@ -147,8 +150,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       activeBank: padBank,
       bpm,
       patternLength,
+      patternChain,
     }));
-  }, [padBanks, padBank, bpm, patternLength]);
+  }, [padBanks, padBank, bpm, patternLength, patternChain]);
 
   function context() { audio.current ??= new AudioContext(); return audio.current; }
   async function assignDecodedSample(name: string, buffer: AudioBuffer) {
@@ -292,6 +296,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       bpm,
       patternLength,
       activeBank: padBank,
+      patternChain,
       banks: Object.fromEntries(Object.entries(padBanks).map(([bank, bankPads]) => [bank, bankPads.map(({ id, label, volume, pan, muted, solo, steps, tune, mode, sliceStart, sliceDuration, stepVelocity, stepProbability, stepPitch }) => ({ id, label, volume, pan, muted, solo, steps, tune, mode, sliceStart, sliceDuration, stepVelocity, stepProbability, stepPitch }))])),
     }, null, 2));
   }
@@ -314,6 +319,10 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     return studioTransport.subscribe((state) => {
       const nextStep = Math.floor(state.positionSec / (60 / bpm / 4)) % patternLength;
       if (!state.playing || nextStep === transportStep.current) return;
+      if (nextStep === 0 && transportStep.current === patternLength - 1 && patternChain.length > 1) {
+        chainPosition.current = (chainPosition.current + 1) % patternChain.length;
+        setPadBank(patternChain[chainPosition.current] ?? 0);
+      }
       transportStep.current = nextStep;
       setStep(nextStep);
       pads.forEach((pad) => { if (pad.steps[nextStep] && Math.random() <= (pad.stepProbability?.[nextStep] ?? 100) / 100) trigger({ ...pad, tune: (pad.tune ?? 0) + (pad.stepPitch?.[nextStep] ?? 0) }, 0.88 * ((pad.stepVelocity?.[nextStep] ?? 100) / 100)); });
@@ -334,7 +343,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
         <button onClick={clearPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Clear</button>
         <button onClick={() => void sendToStudio()} disabled={printing} className="h-full border-r border-black bg-cyan-300 px-4 font-black text-black disabled:opacity-60">{printing ? "Printing…" : "Print To Studio"}</button>
         <div className="flex h-full items-center border-r border-black"><span className="px-2 text-[9px] text-white/40">STEPS</span>{([8, 16] as const).map((length) => <button key={length} onClick={() => setPatternLength(length)} className={cn("h-full px-2 font-black", patternLength === length ? "bg-purple-300 text-black" : "bg-[#30343b] text-white/60")}>{length}</button>)}</div>
-        <button onClick={exportPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Export</button>
+        <button onClick={() => setPatternChain((current) => [...current, padBank])} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Chain B{padBank + 1}</button><button onClick={() => { setPatternChain([0]); chainPosition.current = 0; }} className="h-full border-r border-black bg-[#30343b] px-3 font-black">Clear Chain</button><button onClick={exportPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Export</button>
         <label className="ml-auto flex h-full items-center border-l border-black px-4 font-black">BPM <input value={bpm} type="number" onChange={(event) => setBpm(Number(event.target.value) || 120)} className="ml-2 w-16 bg-black px-2 py-1 font-mono text-cyan-200 outline-none" /></label>
       </div>
       <main className="grid min-h-0 grid-cols-[360px_1fr] overflow-hidden">
