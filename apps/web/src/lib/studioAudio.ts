@@ -75,14 +75,35 @@ export async function loadStudioAudioBuffer(url: string): Promise<AudioBuffer> {
   try { return await pending; } finally { bufferLoads.delete(url); }
 }
 
-export async function startStudioBuffer(url: string, offsetSec = 0, when?: number, gainValue = 1) {
+export async function startStudioBuffer(
+  url: string,
+  offsetSec = 0,
+  when?: number,
+  gainValue = 1,
+  fadeInSec = 0,
+  fadeOutSec = 0,
+  durationSec?: number,
+) {
   const ctx = await resumeStudioAudio();
   const source = registerStudioSource(ctx.createBufferSource());
   source.buffer = await loadStudioAudioBuffer(url);
+  const startAt = when ?? ctx.currentTime;
+  const offset = Math.max(0, Math.min(source.buffer.duration, offsetSec));
+  const remaining = Math.max(0.01, durationSec ?? source.buffer.duration - offset);
   const gain = ctx.createGain();
-  gain.gain.value = Math.max(0, Math.min(2, gainValue));
+  const peak = Math.max(0.0001, Math.min(2, gainValue));
+  const fadeIn = Math.max(0, Math.min(remaining / 2, fadeInSec));
+  const fadeOut = Math.max(0, Math.min(remaining / 2, fadeOutSec));
+  const endAt = startAt + remaining;
+  gain.gain.setValueAtTime(fadeIn > 0 ? 0.0001 : peak, startAt);
+  if (fadeIn > 0) gain.gain.linearRampToValueAtTime(peak, startAt + fadeIn);
+  if (fadeOut > 0) {
+    gain.gain.setValueAtTime(peak, Math.max(startAt + fadeIn, endAt - fadeOut));
+    gain.gain.linearRampToValueAtTime(0.0001, endAt);
+  }
   source.connect(gain).connect(ctx.destination);
-  source.start(when ?? ctx.currentTime, Math.max(0, offsetSec));
+  source.start(startAt, offset, remaining);
+  source.stop(endAt + 0.02);
   return source;
 }
 
