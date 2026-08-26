@@ -1727,7 +1727,7 @@ export default function StudioProductionWorkspace() {
             </div>
           </div>
           <div className="border-y border-white/6 bg-black/10 px-4 py-4">
-            <div className="flex items-center gap-2">
+            <div className="hidden flex items-center gap-2">
               <h2 className="text-[10px] uppercase tracking-[0.28em] text-white/42">
                 Edit History
               </h2>
