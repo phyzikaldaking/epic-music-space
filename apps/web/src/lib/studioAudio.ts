@@ -4,7 +4,7 @@ import { trackStudio, trackStudioError } from "./studioTelemetry";
 
 type AudioContextCtor = new () => AudioContext;
 
-type MixerChannel = { gain: GainNode; pan: StereoPannerNode; muted: boolean; solo: boolean; volume: number; panValue: number };
+type MixerChannel = { gain: GainNode; pan: StereoPannerNode; analyser: AnalyserNode; muted: boolean; solo: boolean; volume: number; panValue: number };
 type AudioRegistry = {
   context: AudioContext | null;
   sources: Set<AudioBufferSourceNode>;
@@ -87,13 +87,28 @@ export function setStudioMixerChannel(id: string, settings: { volume?: number; p
   if (!channel) {
     const gain = ctx.createGain();
     const pan = ctx.createStereoPanner();
-    gain.connect(pan);
-    channel = { gain, pan, muted: false, solo: false, volume: 1, panValue: 0 };
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    gain.connect(pan).connect(analyser);
+    channel = { gain, pan, analyser, muted: false, solo: false, volume: 1, panValue: 0 };
     state.mixer.set(id, channel);
   }
   Object.assign(channel, { muted: settings.muted ?? channel.muted, solo: settings.solo ?? channel.solo, volume: settings.volume ?? channel.volume, panValue: settings.pan ?? channel.panValue });
   channel.gain.gain.value = channel.muted ? 0 : Math.max(0, Math.min(2, channel.volume));
   channel.pan.pan.value = Math.max(-1, Math.min(1, channel.panValue / 100));
+}
+export function getStudioMixerMeters() {
+  const state = registry();
+  const meters: Record<string, number> = {};
+  state.mixer.forEach((channel, id) => {
+    const data = new Uint8Array(channel.analyser.fftSize);
+    channel.analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (const value of data) { const sample = (value - 128) / 128; sum += sample * sample; }
+    meters[id] = Math.min(100, Math.max(0, Math.sqrt(sum / data.length) * 260));
+  });
+  if (state.masterGain) meters.master = Math.min(100, Math.max(0, state.masterVolume * 50));
+  return meters;
 }
 export function setStudioMasterVolume(volume: number) {
   const state = registry();
@@ -106,7 +121,7 @@ function mixerDestination(trackId: string | undefined, ctx: AudioContext) {
   if (!trackId) return state.masterGain;
   setStudioMixerChannel(trackId, {});
   const channel = state.mixer.get(trackId)!;
-  channel.pan.connect(state.masterGain);
+  channel.analyser.connect(state.masterGain);
   return channel.gain;
 }
 export async function startStudioBuffer(
