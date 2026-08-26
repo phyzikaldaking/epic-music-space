@@ -161,7 +161,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     try {
       const raw = localStorage.getItem("ems.beat-machine.session.v2");
       if (!raw) return;
-      const saved = JSON.parse(raw) as { banks?: Record<string, Pad[]>; activeBank?: number; bpm?: number; patternLength?: number; patternChain?: number[]; swing?: number; patternName?: string; savedPatterns?: Record<string, unknown> };
+      const saved = JSON.parse(raw) as { banks?: Record<string, Pad[]>; activeBank?: number; bpm?: number; patternLength?: number; patternChain?: number[]; swing?: number; patternName?: string; savedPatterns?: Record<string, unknown>; exportHistory?: Array<{ id: string; kind: string; createdAt: string; fileName: string; status: string }> };
       if (saved.banks && typeof saved.banks === "object") {
         setPadBanks(Object.fromEntries(Object.entries(saved.banks).map(([bank, bankPads]) => [
           Number(bank),
