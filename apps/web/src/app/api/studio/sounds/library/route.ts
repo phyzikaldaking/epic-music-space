@@ -6,7 +6,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const AUDIO_BUCKETS = ["audio-assets", "studio-kits"] as const;
-const AUDIO_EXTENSIONS = new Set(["aif", "aiff", "flac", "m4a", "mp3", "ogg", "wav", "webm"]);\nconst SIGNED_URL_TTL_SECONDS = 60 * 60;
+const AUDIO_EXTENSIONS = new Set(["aif", "aiff", "flac", "m4a", "mp3", "ogg", "wav", "webm"]);
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 type StorageSupabaseClient = ReturnType<typeof createClient>;
 
