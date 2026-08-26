@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-// @ts-expect-error lamejs ships without TypeScript declarations.
 import lamejs from "lamejs";
 import { studioTransport } from "../../../lib/studioTransport";
 import { getStudioAudioContext, registerStudioSource, resumeStudioAudio, stopAllStudioAudio } from "../../../lib/studioAudio";
@@ -78,7 +77,7 @@ function audioBufferToMp3(buffer: AudioBuffer) {
   }
   const flushed = encoder.flush();
   if (flushed.length) chunks.push(new Uint8Array(flushed));
-  return new Blob(chunks, { type: "audio/mpeg" });
+  return new Blob(chunks.map((chunk) => new Uint8Array(chunk).buffer as ArrayBuffer), { type: "audio/mpeg" });
 }
 function audioBufferToWav(buffer: AudioBuffer) {
   const channels = buffer.numberOfChannels;
