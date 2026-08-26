@@ -12,6 +12,7 @@ type AudioRegistry = {
   gestureBound: boolean;
   mixer: Map<string, MixerChannel>;
   masterGain: GainNode | null;
+  masterLimiter: DynamicsCompressorNode | null;
   masterVolume: number;
 };
 
@@ -19,7 +20,7 @@ const KEY = "__ems_shared_audio_registry__";
 
 function registry(): AudioRegistry {
   const win = window as Window & { [KEY]?: AudioRegistry };
-  if (!win[KEY]) win[KEY] = { context: null, sources: new Set(), media: new Set(), gestureBound: false, mixer: new Map(), masterGain: null, masterVolume: 1 };
+  if (!win[KEY]) win[KEY] = { context: null, sources: new Set(), media: new Set(), gestureBound: false, mixer: new Map(), masterGain: null, masterLimiter: null, masterVolume: 1 };
   return win[KEY]!;
 }
 
@@ -95,7 +96,8 @@ export function setStudioMixerChannel(id: string, settings: { volume?: number; p
     state.mixer.set(id, channel);
   }
   Object.assign(channel, { muted: settings.muted ?? channel.muted, solo: settings.solo ?? channel.solo, volume: settings.volume ?? channel.volume, panValue: settings.pan ?? channel.panValue });
-  channel.gain.gain.value = channel.muted ? 0 : Math.max(0, Math.min(2, channel.volume));
+  const anySolo = Array.from(state.mixer.values()).some((item) => item.solo);
+  state.mixer.forEach((item) => { item.gain.gain.value = item.muted || (anySolo && !item.solo) ? 0 : Math.max(0, Math.min(2, item.volume)); });
   channel.pan.pan.value = Math.max(-1, Math.min(1, channel.panValue / 100));
 }
 export function getStudioMixerMeters() {
@@ -118,7 +120,17 @@ export function setStudioMasterVolume(volume: number) {
 }
 function mixerDestination(trackId: string | undefined, ctx: AudioContext) {
   const state = registry();
-  if (!state.masterGain) { state.masterGain = ctx.createGain(); state.masterGain.gain.value = state.masterVolume; state.masterGain.connect(ctx.destination); }
+  if (!state.masterGain) {
+    state.masterGain = ctx.createGain();
+    state.masterLimiter = ctx.createDynamicsCompressor();
+    state.masterLimiter.threshold.value = -1;
+    state.masterLimiter.knee.value = 0;
+    state.masterLimiter.ratio.value = 20;
+    state.masterLimiter.attack.value = 0.001;
+    state.masterLimiter.release.value = 0.12;
+    state.masterGain.gain.value = state.masterVolume;
+    state.masterGain.connect(state.masterLimiter).connect(ctx.destination);
+  }
   if (!trackId) return state.masterGain;
   setStudioMixerChannel(trackId, {});
   const channel = state.mixer.get(trackId)!;
