@@ -51,13 +51,17 @@ function isTypingTarget(target: EventTarget | null) { const el = target as HTMLE
 function download(name: string, text: string) { const blob = new Blob([text], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); }
 
 function validateWav(blob: Blob) { return blob.size > 44 && blob.type === "audio/wav"; }
+function measureBuffer(buffer: AudioBuffer) { let peak = 0; for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) for (const value of buffer.getChannelData(channel)) peak = Math.max(peak, Math.abs(value)); return { truePeakDb: peak > 0 ? 20 * Math.log10(peak) : -Infinity, clipped: peak >= 1 }; }
+function normalizeBuffer(buffer: AudioBuffer, targetPeak = 0.891) { const metrics = measureBuffer(buffer); if (!Number.isFinite(metrics.truePeakDb) || metrics.truePeakDb <= 20 * Math.log10(targetPeak)) return metrics; const gain = targetPeak / Math.max(0.000001, 10 ** (metrics.truePeakDb / 20)); for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) { const data = buffer.getChannelData(channel); for (let i = 0; i < data.length; i += 1) data[i] = Math.max(-1, Math.min(1, data[i] * gain)); } return measureBuffer(buffer); }
 async function mixWavBlobs(blobs: Blob[]) {
   const context = getStudioAudioContext();
   const buffers = await Promise.all(blobs.map(async (blob) => context.decodeAudioData(await blob.arrayBuffer())));
   const duration = Math.max(0, ...buffers.map((buffer) => buffer.duration));
   const offline = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * 44100)), 44100);
   buffers.forEach((buffer) => { const source = offline.createBufferSource(); source.buffer = buffer; source.connect(offline.destination); source.start(0); });
-  return audioBufferToWav(await offline.startRendering());
+  const rendered = await offline.startRendering();
+  normalizeBuffer(rendered);
+  return audioBufferToWav(rendered);
 }
 function audioBufferToWav(buffer: AudioBuffer) {
   const channels = buffer.numberOfChannels;
@@ -128,6 +132,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [printing, setPrinting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [exportHistory, setExportHistory] = useState<Array<{ id: string; kind: string; createdAt: string; fileName: string; status: string }>>([]);
   const exportAbort = useRef<AbortController | null>(null);
   const [liveSamples, setLiveSamples] = useState<string[]>([]);
   const [sampleLibraryLoading, setSampleLibraryLoading] = useState(true);
@@ -167,6 +172,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       if (typeof saved.bpm === "number" && saved.bpm >= 40 && saved.bpm <= 240) setBpm(saved.bpm);
       if (saved.patternLength === 8 || saved.patternLength === 16) setPatternLength(saved.patternLength);
       if (typeof saved.swing === "number") setSwing(Math.max(0, Math.min(75, saved.swing)));
+      if (Array.isArray(saved.exportHistory)) setExportHistory(saved.exportHistory as Array<{ id: string; kind: string; createdAt: string; fileName: string; status: string }>);
       if (typeof saved.patternName === "string") setPatternName(saved.patternName);
       if (saved.savedPatterns && typeof saved.savedPatterns === "object") setSavedPatterns(saved.savedPatterns as Record<string, unknown>);
       if (Array.isArray(saved.patternChain) && saved.patternChain.every((bank) => Number.isInteger(bank) && bank >= 0 && bank <= 3)) setPatternChain(saved.patternChain.length ? saved.patternChain : [0]);
@@ -396,7 +402,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       if (!validateWav(master)) throw new Error("Master export validation failed.");
       if (kind === "master") { const url = URL.createObjectURL(master); const link = document.createElement("a"); link.href = url; link.download = "Epic-Music-Space-Master.wav"; link.click(); URL.revokeObjectURL(url); }
       setExportProgress(100);
-      setExportStatus(kind === "stems" ? "Stems exported" : "Master WAV exported");
+      const historyEntry = { id: `${Date.now()}-${kind}`, kind, createdAt: new Date().toISOString(), fileName: kind === "master" ? "Epic-Music-Space-Master.wav" : `Epic-Music-Space-${kind}.wav`, status: "success" };
+      setExportHistory((current) => [historyEntry, ...current].slice(0, 20));
+      setExportStatus(`${kind === "stems" ? "Stems" : "Master WAV"} exported; peak normalized below -1 dBFS`);
       if (onPrintToStudio) {
         await onPrintToStudio(stems);
       } else {
@@ -500,7 +508,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
               </div>
             )}
             {sampleSlices.length > 0 && <div className="mt-2 grid grid-cols-4 gap-1"><span className="col-span-4 text-[9px] font-black uppercase text-white/40">Slices · assign to selected pad</span>{sampleSlices.map((slice) => <button key={slice.index} onClick={() => { updatePad(activePad.id, { sliceStart: slice.start, sliceDuration: slice.duration }); setSampleName(`${sampleName ?? "Sample"} · Slice ${slice.index + 1}`); trigger({ ...activePad, sliceStart: slice.start, sliceDuration: slice.duration }); }} className="border border-purple-300/30 px-1 py-1 text-[9px] font-black text-purple-200">S{slice.index + 1}</button>)}</div>}
-            <p className="mt-1 text-[9px] leading-4 text-white/35">{printStatus} {exportStatus}</p><p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p><p className="mt-1 text-[9px] font-bold uppercase text-cyan-200">Drag an audio file here to load it onto the selected pad.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded to {activePad.label}: {sampleName}</p>}
+            <p className="mt-1 text-[9px] leading-4 text-white/35">{printStatus} {exportStatus}</p><div className="mt-2 border-t border-white/10 pt-2"><b className="text-[9px] uppercase text-cyan-200">Export history</b>{exportHistory.length === 0 ? <p className="mt-1 text-[9px] text-white/35">No exports yet.</p> : exportHistory.slice(0, 5).map((entry) => <button key={entry.id} onClick={() => download("ems-export-history.json", JSON.stringify(exportHistory, null, 2))} className="mt-1 block w-full truncate text-left text-[9px] text-white/50 hover:text-cyan-100">{entry.kind} · {entry.status} · {new Date(entry.createdAt).toLocaleTimeString()}</button>)}</div><p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p><p className="mt-1 text-[9px] font-bold uppercase text-cyan-200">Drag an audio file here to load it onto the selected pad.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded to {activePad.label}: {sampleName}</p>}
           </div>
           <div className="mt-4 border-t border-white/10 pt-4">
             <b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>
