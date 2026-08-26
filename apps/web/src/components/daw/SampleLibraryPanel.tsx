@@ -10,6 +10,12 @@ interface Sample {
   key?: string;
   category: "drums" | "bass" | "melody" | "fx" | "vocals";
   url: string;
+  instrument?: string;
+  kit?: string;
+  bucket?: string;
+  format?: string;
+  duration?: number;
+  size?: number;
 }
 
 interface RemoteSound {
@@ -19,6 +25,12 @@ interface RemoteSound {
   category?: string;
   bpm?: number;
   key?: string;
+  instrument?: string;
+  kit?: string;
+  bucket?: string;
+  format?: string;
+  duration?: number;
+  size?: number;
 }
 
 const CATEGORIES: Array<{ key: Sample["category"] | "all"; label: string; emoji: string }> = [
@@ -77,6 +89,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
           sounds?: RemoteSound[];
           backend?: string;
           error?: string;
+          nextCursor?: number | null;
         };
         if (!response.ok) throw new Error(payload.error ?? `Live library request failed: ${response.status}`);
         if (payload.backend !== "supabase") throw new Error("Live Supabase backend is not configured for this library.");
