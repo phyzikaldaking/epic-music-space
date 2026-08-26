@@ -83,6 +83,7 @@ export async function loadStudioAudioBuffer(url: string): Promise<AudioBuffer> {
 export function setStudioMixerChannel(id: string, settings: { volume?: number; pan?: number; muted?: boolean; solo?: boolean }) {
   const ctx = getStudioAudioContext();
   const state = registry();
+  state.mixer ??= new Map();
   let channel = state.mixer.get(id);
   if (!channel) {
     const gain = ctx.createGain();
