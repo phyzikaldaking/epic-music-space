@@ -43,6 +43,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [uploadState, setUploadState] = useState<string | null>(null);
+  const [waveforms, setWaveforms] = useState<Record<string, number[]>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [libraryStatus, setLibraryStatus] = useState<"loading" | "ready" | "denied">("loading");
@@ -326,7 +327,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
                             : "border-white/10 bg-white/[0.02] text-white/80 hover:border-emerald-500/30 hover:bg-emerald-500/[0.04]"
                   }`}
                 >
-                  <span className="min-w-0 truncate"><span className="mr-1">{favorites.includes(s.id) ? "★" : "☆"}</span>{s.name}<span className="ml-2 text-[9px] text-white/35">{s.bucket ?? ""} · {s.instrument ?? ""} · {s.format ?? ""}</span></span>
+                  <span className="min-w-0 truncate"><span className="mr-1">{favorites.includes(s.id) ? "★" : "☆"}</span>{s.name}<span className="ml-2 text-[9px] text-white/35">{s.bucket ?? ""} · {s.instrument ?? ""} · {s.format ?? ""}{s.duration ? ` · ${s.duration.toFixed(2)}s` : ""}</span>{waveforms[s.id] && <span className="ml-2 inline-flex h-3 items-end gap-px align-middle">{waveforms[s.id].slice(0, 12).map((peak, index) => <i key={index} className="w-px bg-emerald-300/70" style={{height: `${Math.max(2, Math.round(peak * 12))}px`}} />)}</span>}</span>
                   <span className="ml-3 flex flex-shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-wider">
                     {bpmMatch && <span className="rounded bg-emerald-500/30 px-1 py-0.5 font-bold text-emerald-100">✓ bpm</span>}
                     {keyMatch && <span className="rounded bg-cyan-500/30 px-1 py-0.5 font-bold text-cyan-100">♪ key</span>}
@@ -346,6 +347,18 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
       )}
     </div>
   );
+}
+
+function extractWaveformPeaks(buffer: AudioBuffer, count: number): number[] {
+  const channel = buffer.getChannelData(0);
+  const bucketSize = Math.max(1, Math.floor(channel.length / count));
+  return Array.from({ length: count }, (_, index) => {
+    let peak = 0;
+    const start = index * bucketSize;
+    const end = Math.min(channel.length, start + bucketSize);
+    for (let i = start; i < end; i += 1) peak = Math.max(peak, Math.abs(channel[i] ?? 0));
+    return peak;
+  });
 }
 
 function rootPitchClass(key: string): string {
