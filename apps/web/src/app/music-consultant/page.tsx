@@ -1,51 +1,42 @@
-import Link from "next/link";
+"use client";
 
-const services = [
-  { name: "Copyright Office", type: "Composition + sound recording", detail: "Create a registration checklist for your song, lyrics, beat, and master.", href: "https://www.copyright.gov/registration/" },
-  { name: "SoundExchange", type: "Digital performance royalties", detail: "Register the featured artist, rights owner, and sound recording details for eligible digital performances.", href: "https://register.soundexchange.com/" },
-  { name: "The MLC", type: "U.S. digital mechanical royalties", detail: "Prepare your work title, writers, shares, publisher, and recording information.", href: "https://portal.themlc.com/songwriter/" },
-  { name: "ASCAP", type: "Performance rights organization", detail: "Use the checklist to prepare songwriter, publisher, IPI, and work-registration information.", href: "https://www.ascap.com/" },
-  { name: "BMI", type: "Performance rights organization", detail: "Use the checklist to prepare writer, publisher, split, and cue-sheet information.", href: "https://www.bmi.com/" },
+import Link from "next/link";
+import { useMemo, useState } from "react";
+
+type Writer = { name: string; share: number; role: string };
+const societies = [
+  ["CISAC Directory","International society finder","https://members.cisac.org/CisacPortal/annuaire.do?method=membersDirectoryHome"],
+  ["Copyright Office","U.S. composition + sound recording","https://www.copyright.gov/registration/"],
+  ["SoundExchange","U.S. digital performance royalties","https://register.soundexchange.com/"],
+  ["The MLC","U.S. digital mechanical royalties","https://portal.themlc.com/songwriter/"],
+  ["ASCAP","U.S. performance rights","https://www.ascap.com/"],
+  ["BMI","U.S. performance rights","https://www.bmi.com/"],
+  ["PRS for Music","United Kingdom","https://www.prsformusic.com/"],
+  ["PPL","United Kingdom neighboring rights","https://www.ppluk.com/"],
+  ["SOCAN","Canada performance/reproduction rights","https://www.socan.com/"],
+  ["Re:Sound","Canada neighboring rights","https://www.resound.ca/"],
+  ["APRA AMCOS","Australia/New Zealand","https://www.apraamcos.com.au/music-creators/join-as-a-writer"],
+  ["GEMA","Germany","https://www.gema.de/en"],
+  ["SACEM","France","https://www.sacem.fr/"],
+  ["JASRAC","Japan","https://www.jasrac.or.jp/ej/"],
+  ["SAMRO","South Africa","https://samro.org.za/"],
 ];
 
 export default function MusicConsultantPage() {
-  return (
-    <main className="min-h-screen bg-[#07090d] px-6 py-12 text-white">
-      <div className="mx-auto max-w-6xl">
-        <Link href="/" className="text-sm text-cyan-200">← Epic Music Space</Link>
-        <div className="mt-10 max-w-3xl">
-          <p className="text-xs font-black uppercase tracking-[0.3em] text-emerald-300">Music Consultant</p>
-          <h1 className="mt-4 text-5xl font-black tracking-tight">Get your music registered. Get closer to getting paid.</h1>
-          <p className="mt-5 text-lg leading-8 text-white/60">HQ helps artists organize ownership, splits, registrations, identifiers, and royalty collection steps in one clear workflow.</p>
-        </div>
-
-        <section className="mt-10 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-3xl border border-cyan-300/20 bg-cyan-300/[0.06] p-6">
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-cyan-200">HQ · Your music-business guide</p>
-            <h2 className="mt-3 text-2xl font-bold">Start with one song</h2>
-            <p className="mt-2 text-sm leading-6 text-white/55">Tell HQ the song title, writers, producer, publisher, release status, and where it has played. HQ returns a personalized checklist and flags missing information.</p>
-            <Link href="/music-consultant/hq" className="mt-6 inline-flex rounded-xl bg-cyan-200 px-5 py-3 text-sm font-black text-black">Open HQ</Link>
-          </div>
-          <div className="rounded-3xl border border-amber-300/20 bg-amber-300/[0.06] p-6">
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-200">Human consulting</p>
-            <h2 className="mt-3 text-2xl font-bold">$75 / hour</h2>
-            <p className="mt-2 text-sm leading-6 text-white/55">Book a focused session with William or an EMS consultant for registrations, splits, release setup, royalty cleanup, or career strategy.</p>
-            <a href="mailto:consulting@epicmusicspace.com?subject=Music%20Consulting%20Session" className="mt-6 inline-flex rounded-xl bg-amber-200 px-5 py-3 text-sm font-black text-black">Request a session</a>
-          </div>
-        </section>
-
-        <section className="mt-12">
-          <div className="flex items-end justify-between gap-4">
-            <div><p className="text-xs font-black uppercase tracking-[0.25em] text-white/40">Rights map</p><h2 className="mt-2 text-3xl font-bold">Where artists commonly register</h2></div>
-            <p className="max-w-sm text-right text-xs leading-5 text-white/40">The destination depends on the right being collected. One registration does not collect every royalty.</p>
-          </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {services.map((service) => <a key={service.name} href={service.href} target="_blank" rel="noreferrer" className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"><p className="text-lg font-bold">{service.name}</p><p className="mt-1 text-xs uppercase tracking-[0.18em] text-emerald-200/75">{service.type}</p><p className="mt-4 text-sm leading-6 text-white/55">{service.detail}</p><span className="mt-5 block text-xs font-bold text-cyan-200">Open official portal ↗</span></a>)}
-          </div>
-        </section>
-
-        <p className="mt-12 max-w-3xl text-xs leading-5 text-white/35">HQ provides educational organization and workflow support, not legal, tax, or financial advice. Artists should review final registrations, ownership splits, contracts, and claims with the relevant organization or a qualified professional.</p>
-      </div>
-    </main>
-  );
+  const [country,setCountry]=useState("United States");
+  const [song,setSong]=useState({title:"",artist:"",isrc:"",upc:"",ipi:"",cae:"",status:"Not started",releaseDate:"",territory:"Worldwide"});
+  const [writers,setWriters]=useState<Writer[]>([{name:"",share:100,role:"Writer"}]);
+  const [rights,setRights]=useState<string[]>(["composition","sound-recording"]);
+  const [files,setFiles]=useState<string[]>([]);
+  const shareTotal=writers.reduce((sum,w)=>sum+(Number(w.share)||0),0);
+  const missing=useMemo(()=>[["Song title",song.title],["Artist",song.artist],["ISRC",song.isrc],["UPC",song.upc],["IPI/CAE",song.ipi],["Release date",song.releaseDate]].filter(([,v])=>!v).map(([k])=>k),[song]);
+  function updateSong(key:string,value:string){setSong(current=>({...current,[key]:value}));}
+  function exportCsv(){const rows=[["field","value"],...Object.entries(song),["writer_total",String(shareTotal)],...writers.flatMap((w,i)=>[[`writer_${i+1}_name`,w.name],[`writer_${i+1}_role`,w.role],[`writer_${i+1}_share`,String(w.share)]])]; const blob=new Blob([rows.map(row=>row.map(value=>`"${String(value).replaceAll('"','""')}"`).join(",")).join("\n")],{type:"text/csv"}); const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=(song.title||"ems-song-rights")+".csv";a.click();URL.revokeObjectURL(a.href);}
+  return <main className="min-h-screen bg-[#07090d] px-5 py-10 text-white"><div className="mx-auto max-w-7xl"><Link href="/" className="text-sm text-cyan-200">← Epic Music Space</Link><header className="mt-8 max-w-4xl"><p className="text-xs font-black uppercase tracking-[.3em] text-emerald-300">Music Consultant · Artist Rights Center</p><h1 className="mt-3 text-4xl font-black">Build your registration plan before you release.</h1><p className="mt-3 text-white/55">HQ organizes your metadata and sends you to the correct official society. EMS does not impersonate a rights society or submit banking/identity applications on your behalf.</p></header>
+<section className="mt-8 grid gap-5 lg:grid-cols-[1.3fr_.7fr]"><div className="rounded-3xl border border-white/10 bg-white/[.03] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">Song registration workspace</h2><select value={country} onChange={e=>setCountry(e.target.value)} className="rounded-lg border border-white/10 bg-black px-3 py-2 text-sm"><option>United States</option><option>United Kingdom</option><option>Canada</option><option>Australia / New Zealand</option><option>Germany</option><option>France</option><option>Japan</option><option>South Africa</option><option>Other / CISAC directory</option></select></div><div className="mt-4 grid gap-3 sm:grid-cols-2">{[["title","Song title"],["artist","Artist / stage name"],["isrc","ISRC"],["upc","UPC / EAN"],["ipi","IPI number"],["cae","CAE number"],["releaseDate","Release date"]].map(([key,label])=><label key={key} className="text-xs text-white/55">{label}<input value={song[key as keyof typeof song]} onChange={e=>updateSong(key,e.target.value)} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white outline-none" /></label>)}</div><label className="mt-3 block text-xs text-white/55">Territory<select value={song.territory} onChange={e=>updateSong("territory",e.target.value)} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white"><option>Worldwide</option><option>United States only</option><option>North America</option><option>Europe</option><option>Custom territories</option></select></label>
+<h3 className="mt-6 font-bold">Which rights apply?</h3><div className="mt-2 flex flex-wrap gap-2">{[["composition","Composition"],["sound-recording","Sound recording"],["performance","Public performance"],["mechanical","Mechanical"],["neighboring","Neighboring rights"],["sync","Sync"],["youtube","YouTube / UGC"]].map(([id,label])=><button type="button" key={id} onClick={()=>setRights(r=>r.includes(id)?r.filter(x=>x!==id):[...r,id])} className={`rounded-full border px-3 py-2 text-xs ${rights.includes(id)?"border-emerald-300 bg-emerald-300/15 text-emerald-100":"border-white/10 text-white/55"}`}>{label}</button>)}</div>
+<h3 className="mt-6 font-bold">Writer splits <span className={shareTotal===100?"text-emerald-300":"text-red-300"}>({shareTotal}%)</span></h3>{writers.map((writer,index)=><div key={index} className="mt-2 grid grid-cols-[1fr_100px_130px] gap-2"><input value={writer.name} placeholder="Writer name" onChange={e=>setWriters(ws=>ws.map((w,i)=>i===index?{...w,name:e.target.value}:w))} className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm" /><input type="number" value={writer.share} onChange={e=>setWriters(ws=>ws.map((w,i)=>i===index?{...w,share:Number(e.target.value)}:w))} className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm" /><select value={writer.role} onChange={e=>setWriters(ws=>ws.map((w,i)=>i===index?{...w,role:e.target.value}:w))} className="rounded-lg border border-white/10 bg-black/30 px-2 py-2 text-sm"><option>Writer</option><option>Composer</option><option>Lyricist</option><option>Producer</option></select></div>)}<button type="button" onClick={()=>setWriters(ws=>[...ws,{name:"",share:0,role:"Writer"}])} className="mt-3 text-xs text-cyan-200">+ Add writer</button>{shareTotal!==100&&<p className="mt-2 text-xs text-red-300">Splits must total exactly 100% before submission.</p>}
+<div className="mt-6 flex flex-wrap gap-2"><button type="button" onClick={exportCsv} className="rounded-lg bg-cyan-200 px-4 py-2 text-xs font-black text-black">Download CSV packet</button><button type="button" onClick={()=>setSong(s=>({...s,status:"Prepared"}))} className="rounded-lg border border-emerald-300/30 px-4 py-2 text-xs text-emerald-200">Mark prepared</button></div></div>
+<aside className="space-y-4"><div className="rounded-3xl border border-amber-300/20 bg-amber-300/[.06] p-5"><p className="text-xs uppercase tracking-[.2em] text-amber-200">HQ readiness</p><p className="mt-2 text-2xl font-black">{missing.length?missing.length+" missing":"Ready for review"}</p><p className="mt-2 text-sm text-white/55">{missing.length?missing.join(", "):"Review your splits and official portal instructions."}</p><Link href="/music-consultant/hq" className="mt-4 inline-block rounded-lg bg-amber-200 px-4 py-2 text-xs font-black text-black">Ask HQ</Link></div><div className="rounded-3xl border border-white/10 bg-white/[.03] p-5"><p className="text-xs uppercase tracking-[.2em] text-white/40">Producer / beat license checklist</p><ul className="mt-3 space-y-2 text-sm text-white/60"><li>□ Written beat or sample license</li><li>□ Producer agreement and credit</li><li>□ Sample/interpolation clearance</li><li>□ Ownership split confirmed</li><li>□ Master ownership confirmed</li></ul></div><div className="rounded-3xl border border-white/10 bg-white/[.03] p-5"><p className="text-xs uppercase tracking-[.2em] text-white/40">Private document vault</p><input type="file" multiple onChange={e=>setFiles(Array.from(e.target.files??[]).map(f=>f.name))} className="mt-3 w-full text-xs text-white/50" /><p className="mt-2 text-xs text-white/35">{files.length?files.length+" files selected":"Files stay local until secure vault storage is connected."}</p></div></aside></section>
+<section className="mt-10"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs uppercase tracking-[.2em] text-white/40">Official links</p><h2 className="mt-2 text-2xl font-bold">Societies by territory</h2></div><span className="text-xs text-white/35">Last reviewed: August 2026</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{societies.map(([name,type,href])=><a key={name} href={href} target="_blank" rel="noreferrer" className="rounded-2xl border border-white/10 bg-white/[.03] p-4 hover:border-emerald-300/40"><p className="font-bold">{name}</p><p className="mt-1 text-xs text-emerald-200/70">{type}</p><span className="mt-3 block text-xs text-cyan-200">Open official portal ↗</span></a>)}</div></section><p className="mt-10 max-w-4xl text-xs leading-5 text-white/35">Educational workflow only—not legal, tax, or financial advice. EMS does not guarantee registration or royalty collection. Check each society’s current eligibility, exclusivity, territory, fees, and application requirements before submitting.</p></div></main>;
 }
