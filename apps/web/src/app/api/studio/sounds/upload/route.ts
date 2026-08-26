@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";\nimport { createHash } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
+import { createHash, randomUUID } from "node:crypto";
+import { auth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 const MAX_AUDIO_SIZE = 100 * 1024 * 1024;
-const AUDIO_BUCKET = "audio-assets";\nconst AUDIO_EXTENSIONS = new Set(["aif","aiff","flac","m4a","mp3","ogg","wav","webm"]);
+const AUDIO_BUCKET = "audio-assets";
+const AUDIO_EXTENSIONS = new Set(["aif","aiff","flac","m4a","mp3","ogg","wav","webm"]);
 
 function safeFileName(name: string) {
   return name
@@ -23,6 +26,8 @@ function getSupabaseAdmin() {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const form = await req.formData();
     const file = form.get("file");
@@ -33,7 +38,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing audio file." }, { status: 400 });
     }
 
-    const extension = safeFileName(file.name).split(".").pop() ?? "";\n    if (!file.type.startsWith("audio/") || !AUDIO_EXTENSIONS.has(extension)) {
+    const extension = safeFileName(file.name).split(".").pop() ?? "";
+    if (!file.type.startsWith("audio/") || !AUDIO_EXTENSIONS.has(extension)) {
       return NextResponse.json({ error: "Only audio files can be uploaded." }, { status: 415 });
     }
 
@@ -47,7 +53,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ext = safeFileName(file.name).split(".").pop() || "wav";
-    const objectPath = `studio/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const objectPath = `studio/${session.user.id}/${Date.now()}-${randomUUID()}.${ext}`;
     const bytes = await file.arrayBuffer();
 
     const { error } = await supabase.storage
@@ -61,11 +67,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const signed = await supabase.storage.from(AUDIO_BUCKET).createSignedUrl(objectPath, 3600);\n    const data = { publicUrl: signed.data?.signedUrl ?? supabase.storage.from(AUDIO_BUCKET).getPublicUrl(objectPath).data.publicUrl };
+    const signed = await supabase.storage.from(AUDIO_BUCKET).createSignedUrl(objectPath, 3600);
+    const data = { publicUrl: signed.data?.signedUrl ?? supabase.storage.from(AUDIO_BUCKET).getPublicUrl(objectPath).data.publicUrl };
 
     return NextResponse.json({
       sound: {
-        id: `${AUDIO_BUCKET}:${objectPath}`,\n        path: objectPath,\n        bucket: AUDIO_BUCKET,\n        format: ext,\n        size: file.size,
+        id: `${AUDIO_BUCKET}:${objectPath}`,
+        path: objectPath,
+        bucket: AUDIO_BUCKET,
+        format: ext,
+        size: file.size,
         name: file.name,
         url: data.publicUrl,
         source: "upload",
