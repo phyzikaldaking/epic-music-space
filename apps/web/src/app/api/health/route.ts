@@ -104,6 +104,22 @@ async function checkMux(): Promise<ServiceCheck> {
   };
 }
 
+async function checkPostHog(): Promise<ServiceCheck> {
+  const apiKey = process.env.POSTHOG_API_KEY;
+  const host = process.env.POSTHOG_HOST ?? "https://us.i.posthog.com";
+  if (!apiKey) return { name: "posthog", status: "not_configured", message: "POSTHOG_API_KEY is not set" };
+  if (!apiKey.startsWith("phc_")) return { name: "posthog", status: "down", message: "POSTHOG_API_KEY has an invalid format" };
+  try {
+    const response = await fetch(new URL("/flags?v=1", host), {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(3000),
+    });
+    return { name: "posthog", status: response.ok ? "ok" : "down", message: response.ok ? undefined : `HTTP ${response.status}` };
+  } catch (error) {
+    return { name: "posthog", status: "down", message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function checkLiveKit(): Promise<ServiceCheck> {
   const configured = !!(
     process.env.LIVEKIT_API_KEY &&
@@ -132,7 +148,7 @@ export async function GET() {
     });
   }
 
-  const [configuration, db, redis, supabase, stripe, mux, livekit] = await Promise.all([
+  const [configuration, db, redis, supabase, stripe, mux, livekit, posthog] = await Promise.all([
     checkConfiguration(),
     checkDb(),
     checkRedis(),
@@ -140,9 +156,10 @@ export async function GET() {
     checkStripe(),
     checkMux(),
     checkLiveKit(),
+    checkPostHog(),
   ]);
 
-  const services = [configuration, db, redis, supabase, stripe, mux, livekit];
+  const services = [configuration, db, redis, supabase, stripe, mux, livekit, posthog];
   const anyDown = services.some((s) => s.status === "down");
   const allConfiguredOk = services.every((s) => s.status === "ok" || s.status === "not_configured");
 
