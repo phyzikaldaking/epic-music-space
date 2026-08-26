@@ -160,12 +160,16 @@ export async function GET() {
   ]);
 
   const services = [configuration, db, redis, supabase, stripe, mux, livekit, posthog];
-  const anyDown = services.some((s) => s.status === "down");
-  const allConfiguredOk = services.every((s) => s.status === "ok" || s.status === "not_configured");
+  // Liveness and core readiness must not be taken down by optional integrations.
+  // Stripe/Mux/PostHog/Supabase diagnostics remain visible, but only the
+  // application configuration, database, or Redis can make the app overall down.
+  const coreServices = [configuration, db, redis];
+  const coreDown = coreServices.some((s) => s.status === "down");
+  const allServicesOk = services.every((s) => s.status === "ok" || s.status === "not_configured");
 
-  const overall: "healthy" | "degraded" | "down" = anyDown
+  const overall: "healthy" | "degraded" | "down" = coreDown
     ? "down"
-    : allConfiguredOk
+    : allServicesOk
       ? "healthy"
       : "degraded";
 
