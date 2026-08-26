@@ -37,7 +37,13 @@ interface Props {
 const BPM_MATCH_TOLERANCE = 0.05;
 
 export default function SampleLibraryPanel({ onLoadSample }: Props) {
-  const [filter, setFilter] = useState<Sample["category"] | "all">("all");\n  const [query, setQuery] = useState("");\n  const [sort, setSort] = useState("category");\n  const [favorites, setFavorites] = useState<string[]>([]);\n  const [nextCursor, setNextCursor] = useState<number | null>(null);\n  const [uploadState, setUploadState] = useState<string | null>(null);\n  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [filter, setFilter] = useState<Sample["category"] | "all">("all");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("category");
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [uploadState, setUploadState] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [libraryStatus, setLibraryStatus] = useState<"loading" | "ready" | "denied">("loading");
   const [statusMessage, setStatusMessage] = useState("Loading live Supabase audio assets...");
@@ -75,7 +81,8 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
         if (payload.backend !== "supabase") throw new Error("Live Supabase backend is not configured for this library.");
         const liveSamples = (payload.sounds ?? []).map(remoteSoundToSample).filter(Boolean) as Sample[];
         if (liveSamples.length === 0) throw new Error("No live audio assets are available yet.");
-        setSamples(liveSamples);\n        setNextCursor(payload.nextCursor ?? null);
+        setSamples(liveSamples);
+        setNextCursor(payload.nextCursor ?? null);
         setLibraryStatus("ready");
         setStatusMessage(`${liveSamples.length} live Supabase audio assets ready.`);
       } catch (error) {
@@ -300,7 +307,8 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
                   type="button"
                   onMouseEnter={() => onSampleHover(s)}
                   onMouseLeave={onSampleLeave}
-                  onDoubleClick={() => toggleFavorite(s.id)}\n                  onClick={async () => {
+                  onDoubleClick={() => toggleFavorite(s.id)}
+                  onClick={async () => {
                     onSampleLeave();
                     setRecentLoad(s.id);
                     await onLoadSample({ name: s.name, url: s.url, category: s.category });
@@ -383,7 +391,8 @@ function remoteSoundToSample(sound: RemoteSound): Sample | null {
   return {
     id: sound.id ?? sound.url,
     name: sound.name?.trim() || "Supabase Audio Asset",
-    bpm: typeof sound.bpm === "number" ? sound.bpm : 0,\n    instrument: sound.instrument, kit: sound.kit, bucket: sound.bucket, format: sound.format, duration: sound.duration, size: sound.size,
+    bpm: typeof sound.bpm === "number" ? sound.bpm : 0,
+    instrument: sound.instrument, kit: sound.kit, bucket: sound.bucket, format: sound.format, duration: sound.duration, size: sound.size,
     key: sound.key,
     category: remoteCategoryToSampleCategory(sound.category),
     url: sound.url,
