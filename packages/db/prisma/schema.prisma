@@ -178,6 +178,11 @@ model User {
   verzuzReactions    VerzuzReaction[]
   verzuzMessages     VerzuzMessage[]
   pushTokens         PushToken[]
+  rightsSongs       RightsSong[]       @relation("RightsSongOwner")
+  rightsDocuments   RightsDocument[]   @relation("RightsDocumentOwner")
+  rightsReviews     RightsReview[]     @relation("RightsReviewRequester")
+  rightsReminders   RightsReminder[]   @relation("RightsReminderOwner")
+
 
   // ── Pro profile (engineers / producers) ────────────────────
   // Cinematic profile fields surfaced on /pro/[username]. Bio is short
@@ -3130,4 +3135,89 @@ model RedeemRedemption {
   // double-granting when a network blip causes the client to retry.
   @@unique([codeId, userId])
   @@index([userId, createdAt])
+}
+
+
+// Artist Rights Center: persistent catalog, encrypted vault metadata, review queue,
+// reminders, and provider handoff state. Raw document bytes never live in Postgres.
+model RightsSong {
+  id              String   @id @default(cuid())
+  ownerId         String
+  owner           User     @relation("RightsSongOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  title           String
+  artistName      String?
+  isrc            String?
+  upc             String?
+  ipi             String?
+  cae             String?
+  releaseDate     DateTime?
+  territory       String?
+  rights          Json     @default("[]")
+  writers         Json     @default("[]")
+  licenseChecklist Json    @default("{}")
+  registrationStatus String @default("DRAFT")
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  documents       RightsDocument[]
+  reviews         RightsReview[]
+  reminders       RightsReminder[]
+  @@index([ownerId, updatedAt])
+  @@index([ownerId, title])
+  @@index([isrc])
+}
+
+model RightsDocument {
+  id              String   @id @default(cuid())
+  ownerId         String
+  owner           User     @relation("RightsDocumentOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  songId          String?
+  song            RightsSong? @relation(fields: [songId], references: [id], onDelete: SetNull)
+  fileName        String
+  mimeType        String
+  sizeBytes       Int
+  storageBucket   String
+  storagePath     String
+  encryptionVersion String
+  checksum        String?
+  createdAt       DateTime @default(now())
+  @@index([ownerId, createdAt])
+  @@index([songId])
+}
+
+model RightsReview {
+  id              String   @id @default(cuid())
+  requesterId     String
+  requester       User     @relation("RightsReviewRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  songId          String?
+  song            RightsSong? @relation(fields: [songId], references: [id], onDelete: SetNull)
+  status          RightsReviewStatus @default(PENDING)
+  reviewerId      String?
+  requestedAt     DateTime @default(now())
+  reviewedAt      DateTime?
+  notes           String? @db.Text
+  @@index([requesterId, status])
+  @@index([songId, status])
+}
+
+enum RightsReviewStatus {
+  PENDING
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+model RightsReminder {
+  id          String   @id @default(cuid())
+  ownerId     String
+  owner       User     @relation("RightsReminderOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  songId      String?
+  song        RightsSong? @relation(fields: [songId], references: [id], onDelete: SetNull)
+  title       String
+  dueAt       DateTime
+  provider    String?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  @@index([ownerId, dueAt])
 }
