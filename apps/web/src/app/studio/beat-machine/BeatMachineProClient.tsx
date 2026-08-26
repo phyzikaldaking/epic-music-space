@@ -16,7 +16,7 @@ const sampleUrl = (name: string) => {
 };
 import { buildBeatStemRenderPlan, type BeatStemRenderPlan } from "./beatStemPrint";
 
-type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; sampleAsset?: string; tune?: number; mode?: "one-shot" | "loop"; sliceStart?: number; sliceDuration?: number; stepVelocity?: number[]; stepProbability?: number[]; stepPitch?: number[]; stepPan?: number[]; stepMuted?: boolean[]; stepReverse?: boolean[]; stepRatchet?: number[] };
+type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; sampleAsset?: string; tune?: number; mode?: "one-shot" | "loop"; sliceStart?: number; sliceDuration?: number; stepVelocity?: number[]; stepProbability?: number[]; stepPitch?: number[]; stepPan?: number[]; stepMuted?: boolean[]; stepReverse?: boolean[]; stepRatchet?: number[]; reverbSend?: number; delaySend?: number; insertEffects?: string[]; automation?: { gain?: Array<{ timeSec: number; value: number }>; pan?: Array<{ timeSec: number; value: number }> } };
 type Preset = { name: string; volumes: Record<string, number>; pans: Record<string, number> };
 
 const DEFAULT_PATTERN_LENGTH = 16;
@@ -101,22 +101,57 @@ function audioBufferToWav(buffer: AudioBuffer) {
   return new Blob([output], { type: "audio/wav" });
 }
 
-async function renderBeatStem(stem: BeatStemRenderPlan) {
+async function renderBeatStem(stem: BeatStemRenderPlan, pad?: Pad, sample?: AudioBuffer) {
   const sampleRate = 44_100;
   const context = new OfflineAudioContext(2, Math.ceil(stem.durationSec * sampleRate), sampleRate);
-  stem.hitTimesSec.forEach((start) => {
+  const trackGain = context.createGain();
+  const pan = context.createStereoPanner();
+  const compressor = context.createDynamicsCompressor();
+  const lowpass = context.createBiquadFilter();
+  lowpass.type = "lowpass";
+  lowpass.frequency.value = pad?.insertEffects?.includes("low-pass") ? 12000 : 22000;
+  compressor.threshold.value = pad?.insertEffects?.includes("compressor") ? -18 : 0;
+  compressor.ratio.value = pad?.insertEffects?.includes("compressor") ? 4 : 1;
+  trackGain.gain.value = Math.max(0.0001, stem.volume / 100);
+  pan.pan.value = stem.pan / 50;
+  const master = context.createGain();
+  const limiter = context.createDynamicsCompressor();
+  limiter.threshold.value = -1;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.001;
+  limiter.release.value = 0.12;
+  const reverbReturn = context.createConvolver();
+  const reverbGain = context.createGain();
+  const delay = context.createDelay(2);
+  const delayGain = context.createGain();
+  const impulse = context.createBuffer(2, sampleRate * 2, sampleRate);
+  for (let channel = 0; channel < 2; channel += 1) { const data = impulse.getChannelData(channel); for (let i = 0; i < data.length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length) ** 2; }
+  reverbReturn.buffer = impulse;
+  reverbGain.gain.value = Math.max(0, Math.min(1, pad?.reverbSend ?? 0));
+  delay.delayTime.value = Math.max(0.05, Math.min(2, (pad?.delaySend ?? 0) > 0 ? 0.25 : 0.05));
+  delayGain.gain.value = Math.max(0, Math.min(0.8, pad?.delaySend ?? 0));
+  trackGain.connect(lowpass).connect(compressor).connect(pan).connect(master);
+  pan.connect(reverbReturn).connect(reverbGain).connect(master);
+  pan.connect(delay).connect(delayGain).connect(master);
+  master.connect(limiter).connect(context.destination);
+  stem.hitTimesSec.forEach((start, index) => {
+    const source = context.createBufferSource();
+    if (sample) { source.buffer = sample; source.playbackRate.value = Math.pow(2, (pad?.stepPitch?.[index] ?? 0) / 12); }
+    else {
       const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      const pan = context.createStereoPanner();
       oscillator.frequency.value = stem.frequency;
       oscillator.type = stem.id === "hat" || stem.id === "fx" ? "square" : stem.id === "bass" || stem.id === "kick" ? "sine" : "triangle";
-      pan.pan.value = Math.max(-1, Math.min(1, stem.pan / 50));
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.001, (stem.volume / 100) * 0.25), start + 0.008);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + (stem.id === "bass" ? 0.55 : stem.id === "hat" ? 0.08 : 0.22));
-      oscillator.connect(gain).connect(pan).connect(context.destination);
+      oscillator.connect(trackGain);
       oscillator.start(start);
       oscillator.stop(start + 0.7);
+      return;
+    }
+    const velocity = (pad?.stepVelocity?.[index] ?? 100) / 100;
+    trackGain.gain.setValueAtTime(Math.max(0.0001, (stem.volume / 100) * velocity), start);
+    const automation = pad?.automation?.gain?.find((point) => point.timeSec >= start);
+    if (automation) trackGain.gain.linearRampToValueAtTime(Math.max(0.0001, automation.value), start + 0.01);
+    source.connect(trackGain);
+    source.start(start, pad?.sliceStart ?? 0, pad?.sliceDuration);
   });
   return audioBufferToWav(await context.startRendering());
 }
@@ -405,7 +440,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       if (!plans.length) throw new Error("Add at least one step before printing to Studio.");
       const stems: PrintedBeatStem[] = await Promise.all(plans.filter((stem) => kind !== "selected" || stem.id === selected).map(async (stem) => ({
         ...stem,
-        blob: await renderBeatStem(stem),
+        blob: await renderBeatStem(stem, pads.find((pad) => pad.id === stem.id), sampleBuffers.current[padBank + ":" + stem.id]),
         name: stem.id,
         kind: stem.id === "bass" ? "bass" as const : stem.id === "vox" ? "vocal" as const : stem.id === "fx" ? "fx" as const : "drum" as const,
       })));
