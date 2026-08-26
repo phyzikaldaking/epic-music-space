@@ -50,6 +50,15 @@ function readWaveform(buffer: AudioBuffer, bars = 48) {
 function isTypingTarget(target: EventTarget | null) { const el = target as HTMLElement | null; return Boolean(el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)); }
 function download(name: string, text: string) { const blob = new Blob([text], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); }
 
+function validateWav(blob: Blob) { return blob.size > 44 && blob.type === "audio/wav"; }
+async function mixWavBlobs(blobs: Blob[]) {
+  const context = getStudioAudioContext();
+  const buffers = await Promise.all(blobs.map(async (blob) => context.decodeAudioData(await blob.arrayBuffer())));
+  const duration = Math.max(0, ...buffers.map((buffer) => buffer.duration));
+  const offline = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * 44100)), 44100);
+  buffers.forEach((buffer) => { const source = offline.createBufferSource(); source.buffer = buffer; source.connect(offline.destination); source.start(0); });
+  return audioBufferToWav(await offline.startRendering());
+}
 function audioBufferToWav(buffer: AudioBuffer) {
   const channels = buffer.numberOfChannels;
   const bytesPerSample = 2;
@@ -117,6 +126,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [savedPatterns, setSavedPatterns] = useState<Record<string, unknown>>({});
   const tapTimes = useRef<number[]>([]);
   const [printing, setPrinting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const exportAbort = useRef<AbortController | null>(null);
   const [liveSamples, setLiveSamples] = useState<string[]>([]);
   const [sampleLibraryLoading, setSampleLibraryLoading] = useState(true);
   const [sampleQuery, setSampleQuery] = useState("");
@@ -356,21 +368,35 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   function randomize() { setPads((current) => current.map((pad) => ({ ...pad, steps: pad.steps.map((_, i) => i === 0 || Math.random() > (pad.id === "hat" ? 0.45 : 0.76)) }))); }
   function clearPattern() { setPads((current) => current.map((pad) => ({ ...pad, steps: pad.steps.map(() => false) }))); }
   function applyPreset(preset: Preset) { setPads((current) => current.map((pad) => ({ ...pad, volume: preset.volumes[pad.id] ?? pad.volume, pan: preset.pans[pad.id] ?? pad.pan }))); }
-  async function sendToStudio() {
+  function cancelExport() { exportAbort.current?.abort(); exportAbort.current = null; setPrinting(false); setExportStatus("Export cancelled"); setExportProgress(0); }
+  async function exportAudio(kind: "stems" | "master" | "selected") {
     if (printing) return;
-    trackStudio("print_to_studio_started", { pattern_length: patternLength });
+    const controller = new AbortController();
+    exportAbort.current = controller;
+    trackStudio("beat_export_started", { format: kind, pattern_length: patternLength });
     setPrinting(true);
-    setPrintStatus("Rendering stems…");
+    setExportProgress(5);
+    setExportStatus("Rendering audio…");
     setSampleError(null);
     try {
       const plans = buildBeatStemRenderPlan(pads, bpm);
       if (!plans.length) throw new Error("Add at least one step before printing to Studio.");
-      const stems: PrintedBeatStem[] = await Promise.all(plans.map(async (stem) => ({
+      const stems: PrintedBeatStem[] = await Promise.all(plans.filter((stem) => kind !== "selected" || stem.id === selected).map(async (stem) => ({
         ...stem,
         blob: await renderBeatStem(stem),
         name: stem.id,
         kind: stem.id === "bass" ? "bass" as const : stem.id === "vox" ? "vocal" as const : stem.id === "fx" ? "fx" as const : "drum" as const,
       })));
+      if (controller.signal.aborted) throw new Error("Export cancelled");
+      setExportProgress(70);
+      const validStems = stems.filter((stem) => validateWav(stem.blob));
+      if (validStems.length !== stems.length) throw new Error("Export validation failed: invalid WAV header or empty file.");
+      if (kind === "stems") validStems.forEach((stem) => { const url = URL.createObjectURL(stem.blob); const link = document.createElement("a"); link.href = url; link.download = stem.fileName; link.click(); URL.revokeObjectURL(url); });
+      const master = await mixWavBlobs(validStems.map((stem) => stem.blob));
+      if (!validateWav(master)) throw new Error("Master export validation failed.");
+      if (kind === "master") { const url = URL.createObjectURL(master); const link = document.createElement("a"); link.href = url; link.download = "Epic-Music-Space-Master.wav"; link.click(); URL.revokeObjectURL(url); }
+      setExportProgress(100);
+      setExportStatus(kind === "stems" ? "Stems exported" : "Master WAV exported");
       if (onPrintToStudio) {
         await onPrintToStudio(stems);
       } else {
@@ -384,8 +410,10 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       setSampleError(message);
     } finally {
       setPrinting(false);
+      exportAbort.current = null;
     }
   }
+  async function sendToStudio() { await exportAudio("stems"); }
   function exportPattern() {
     trackStudio("beat_export_started", { format: "json", pattern_length: patternLength });
     download("ems-beat-pattern.json", JSON.stringify({
@@ -439,9 +467,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
         <button onClick={stop} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Reset</button>
         <button onClick={randomize} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Generate</button>
         <button onClick={clearPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Clear</button>
-        <button onClick={() => void sendToStudio()} disabled={printing} className="h-full border-r border-black bg-cyan-300 px-4 font-black text-black disabled:opacity-60">{printing ? "Printing…" : "Print To Studio"}</button>
+        <button onClick={() => void exportAudio("master")} disabled={printing} className="h-full border-r border-black bg-cyan-300 px-4 font-black text-black disabled:opacity-60">{printing ? `${exportProgress}%` : "Export Master"}</button>
         <div className="flex h-full items-center border-r border-black"><span className="px-2 text-[9px] text-white/40">LENGTH</span>{([8, 16] as const).map((length) => <button key={length} onClick={() => setPatternLength(length)} className={cn("h-full px-2 font-black", patternLength === length ? "bg-purple-300 text-black" : "bg-[#30343b] text-white/60")}>{length}</button>)}</div>
-        <button onClick={() => setPatternChain((current) => [...current, padBank])} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Chain B{padBank + 1}</button><button onClick={() => { setPatternChain([0]); chainPosition.current = 0; }} className="h-full border-r border-black bg-[#30343b] px-3 font-black">Clear Chain</button><input value={patternName} onChange={(event) => setPatternName(event.target.value)} aria-label="Pattern name" className="h-full w-28 border-l border-black bg-black px-2 font-mono text-[10px] text-cyan-200" /><button onClick={savePattern} className="h-full border-l border-black bg-[#30343b] px-3 font-black">Save</button><select aria-label="Load pattern" value="" onChange={(event) => loadPattern(event.target.value)} className="h-full border-l border-black bg-[#30343b] px-2 text-[10px]"><option value="">Load</option>{Object.keys(savedPatterns).map((name) => <option key={name} value={name}>{name}</option>)}</select><button onClick={exportPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Export</button>
+        <button onClick={() => setPatternChain((current) => [...current, padBank])} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Chain B{padBank + 1}</button><button onClick={() => { setPatternChain([0]); chainPosition.current = 0; }} className="h-full border-r border-black bg-[#30343b] px-3 font-black">Clear Chain</button><input value={patternName} onChange={(event) => setPatternName(event.target.value)} aria-label="Pattern name" className="h-full w-28 border-l border-black bg-black px-2 font-mono text-[10px] text-cyan-200" /><button onClick={savePattern} className="h-full border-l border-black bg-[#30343b] px-3 font-black">Save</button><select aria-label="Load pattern" value="" onChange={(event) => loadPattern(event.target.value)} className="h-full border-l border-black bg-[#30343b] px-2 text-[10px]"><option value="">Load</option>{Object.keys(savedPatterns).map((name) => <option key={name} value={name}>{name}</option>)}</select><button onClick={() => void exportAudio("stems")} disabled={printing} className="h-full border-l border-black bg-[#30343b] px-3 font-black">Export Stems</button><button onClick={cancelExport} disabled={!printing} className="h-full border-l border-black bg-red-500 px-3 font-black text-black disabled:opacity-40">Cancel</button><button onClick={exportPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Export</button>
         <button onClick={tapTempo} className="h-full border-l border-black bg-[#30343b] px-3 font-black">Tap</button><label className="flex h-full items-center border-l border-black px-3 font-black">BPM <input value={bpm} type="number" min="40" max="240" onChange={(event) => setBpm(Math.max(40, Math.min(240, Number(event.target.value) || 120)))} className="ml-2 w-16 bg-black px-2 py-1 font-mono text-cyan-200 outline-none" /></label><label className="flex h-full items-center border-l border-black px-3 font-black">Swing <input value={swing} type="range" min="0" max="75" onChange={(event) => setSwing(Number(event.target.value))} className="ml-2 w-16 accent-cyan-300" /></label>
       </div>
       <main className="grid min-h-0 grid-cols-[360px_1fr] overflow-hidden">
@@ -472,7 +500,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
               </div>
             )}
             {sampleSlices.length > 0 && <div className="mt-2 grid grid-cols-4 gap-1"><span className="col-span-4 text-[9px] font-black uppercase text-white/40">Slices · assign to selected pad</span>{sampleSlices.map((slice) => <button key={slice.index} onClick={() => { updatePad(activePad.id, { sliceStart: slice.start, sliceDuration: slice.duration }); setSampleName(`${sampleName ?? "Sample"} · Slice ${slice.index + 1}`); trigger({ ...activePad, sliceStart: slice.start, sliceDuration: slice.duration }); }} className="border border-purple-300/30 px-1 py-1 text-[9px] font-black text-purple-200">S{slice.index + 1}</button>)}</div>}
-            <p className="mt-1 text-[9px] leading-4 text-white/35">{printStatus}</p><p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p><p className="mt-1 text-[9px] font-bold uppercase text-cyan-200">Drag an audio file here to load it onto the selected pad.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded to {activePad.label}: {sampleName}</p>}
+            <p className="mt-1 text-[9px] leading-4 text-white/35">{printStatus} {exportStatus}</p><p className="mt-2 text-[9px] leading-4 text-white/35">Samples load from Supabase Storage and replace the selected pad sound. Tap a pad, then load a sound.</p><p className="mt-1 text-[9px] font-bold uppercase text-cyan-200">Drag an audio file here to load it onto the selected pad.</p>{sampleName && <p className="mt-1 truncate text-[9px] font-bold uppercase text-green-300">Loaded to {activePad.label}: {sampleName}</p>}
           </div>
           <div className="mt-4 border-t border-white/10 pt-4">
             <b className="block text-xl" style={{ color: activePad.color }}>{activePad.label}</b>
