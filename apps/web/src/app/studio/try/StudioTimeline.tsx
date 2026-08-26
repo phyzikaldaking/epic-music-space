@@ -394,7 +394,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
         const fadeIn = Math.max(0, clip.fadeInSec ?? 0, crossfade);
         const fadeOut = Math.max(0, clip.fadeOutSec ?? 0, crossfade);
         const remaining = Math.max(0.01, clipEnd - positionSec);
-        void startStudioBuffer(clip.audioUrl, offset, undefined, clip.gain ?? 1, positionSec <= clip.startSec ? fadeIn : 0, fadeOut, remaining).then((source) => {
+        void startStudioBuffer(clip.audioUrl, offset, undefined, clip.gain ?? 1, positionSec <= clip.startSec ? fadeIn : 0, fadeOut, remaining, clip.trackId).then((source) => {
           trackStudio("timeline_clip_played", { clip_id: clip.id, asset_id: clip.soundAssetId ?? null });
           if (!playing || activeAudioRef.current.has(clip.id)) {
             try { source.stop(); } catch {}
