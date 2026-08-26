@@ -108,9 +108,20 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
       const form = new FormData();
       form.append("file", file);
       try {
-        const response = await fetch("/api/studio/sounds/upload", { method: "POST", body: form });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error ?? "Upload failed");
+        const payload = await new Promise<{ sound?: RemoteSound; error?: string }>((resolve, reject) => {
+          const request = new XMLHttpRequest();
+          request.open("POST", "/api/studio/sounds/upload");
+          request.upload.onprogress = (event) => {
+            if (event.lengthComputable) setUploadState(`Uploading ${file.name}… ${Math.round((event.loaded / event.total) * 100)}%`);
+          };
+          request.onload = () => {
+            const body = JSON.parse(request.responseText || "{}") as { sound?: RemoteSound; error?: string };
+            if (request.status >= 200 && request.status < 300) resolve(body);
+            else reject(new Error(body.error ?? `Upload failed (${request.status})`));
+          };
+          request.onerror = () => reject(new Error("Upload failed. Check your connection and retry."));
+          request.send(form);
+        });
         const uploaded = remoteSoundToSample(payload.sound);
         if (uploaded) setSamples((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
       } catch (error) {
