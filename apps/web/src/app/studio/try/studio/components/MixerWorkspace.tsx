@@ -1,10 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { StudioTrack } from "../types";
 import { EffectsBrowser } from "./EffectsBrowser";
 import { MixAssistant } from "./MixAssistant";
 import { trackStudio } from "../../../../../lib/studioTelemetry";
-import { setStudioMasterVolume, setStudioMixerChannel } from "../../../../../lib/studioAudio";
+import { getStudioMixerMeters, setStudioMasterVolume, setStudioMixerChannel } from "../../../../../lib/studioAudio";
 
 export function MixerWorkspace({
   tracks,
@@ -17,6 +18,11 @@ export function MixerWorkspace({
   update: (id: string, patch: Partial<StudioTrack>, label?: string) => void;
   arm: (id: string) => void;
 }) {
+  const [meters, setMeters] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const timer = window.setInterval(() => setMeters(getStudioMixerMeters()), 80);
+    return () => window.clearInterval(timer);
+  }, []);
   function updateMixer(id: string, patch: Partial<StudioTrack>, label?: string) {
     update(id, patch, label);
     if (id === "master" && typeof patch.volume === "number") setStudioMasterVolume(patch.volume / 100);
@@ -57,7 +63,7 @@ export function MixerWorkspace({
                 <div className="platinum-channel__meter">
                   <div
                     className="platinum-channel__level"
-                    style={{ height: `${Math.max(4, track.volume)}%` }}
+                    style={{ height: `${Math.max(2, meters[track.id] ?? 0)}%` }}
                   />
                 </div>
               </div>
@@ -109,7 +115,7 @@ export function MixerWorkspace({
             </div>
           );
         })}
-      </div><div className="platinum-channel platinum-channel--master" aria-label="Master channel"><div className="platinum-channel__head"><b className="text-cyan-100">MASTER</b><span className="text-[9px] text-white/35">STEREO OUT</span></div><div className="platinum-channel__meter-wrap"><div className="platinum-channel__meter"><div className="platinum-channel__level" style={{ height: "18%" }} /></div></div><label className="flex min-h-[150px] flex-1 flex-col items-center justify-end gap-2 text-[10px] uppercase tracking-widest text-white/45"><span>Fader <b className="text-cyan-100">100</b></span><input aria-label="Master volume fader" type="range" min="0" max="100" defaultValue="100" className="h-32 accent-cyan-300" style={{ writingMode: "vertical-lr", direction: "rtl" }} /><span className="font-mono text-[9px] text-white/30">-∞ · 0 · +6</span></label><div className="mt-3 grid grid-cols-2 gap-1 text-[9px] font-black uppercase"><button className="bg-[#111] py-1 text-white/55">Mute</button><button className="bg-cyan-300 py-1 text-black">Safe</button></div></div><aside className="platinum-mixer__rack">
+      </div><div className="platinum-channel platinum-channel--master" aria-label="Master channel"><div className="platinum-channel__head"><b className="text-cyan-100">MASTER</b><span className="text-[9px] text-white/35">STEREO OUT</span></div><div className="platinum-channel__meter-wrap"><div className="platinum-channel__meter"><div className="platinum-channel__level" style={{ height: `${Math.max(2, meters.master ?? 0)}%` }} /></div></div><label className="flex min-h-[150px] flex-1 flex-col items-center justify-end gap-2 text-[10px] uppercase tracking-widest text-white/45"><span>Fader <b className="text-cyan-100">100</b></span><input aria-label="Master volume fader" type="range" min="0" max="100" defaultValue="100" className="h-32 accent-cyan-300" style={{ writingMode: "vertical-lr", direction: "rtl" }} /><span className="font-mono text-[9px] text-white/30">-∞ · 0 · +6</span></label><div className="mt-3 grid grid-cols-2 gap-1 text-[9px] font-black uppercase"><button className="bg-[#111] py-1 text-white/55">Mute</button><button className="bg-cyan-300 py-1 text-black">Safe</button></div></div><aside className="platinum-mixer__rack">
         {selected ? <>
           <div className="routing-panel"><div className="mix-panel__heading"><span>ROUTING</span><b>Cycle safe</b></div><label>Output<select value={selected.outputBusId ?? "master"} onChange={(event) => update(selected.id, { outputBusId:event.target.value }, "Route output")}><option value="master">Master</option><option value="music-bus">Music Bus</option><option value="vocal-bus">Vocal Bus</option></select></label><div className="insert-chain">{selected.inserts?.length ? selected.inserts.map((insert) => <button key={insert.id} onClick={() => update(selected.id, { inserts:selected.inserts?.map((item) => item.id === insert.id ? { ...item, bypassed:!item.bypassed } : item) }, "Bypass effect")} className={insert.bypassed ? "is-bypassed" : ""}>{insert.effectId.replaceAll("-", " ")} <small>{insert.bypassed ? "Bypassed" : "Active"}</small></button>) : <p>No inserts yet.</p>}</div></div>
           <EffectsBrowser onAdd={(effectId) => update(selected.id, { inserts:[...(selected.inserts ?? []), { id:`insert-${Date.now()}`, effectId, bypassed:false }] }, `Add ${effectId}`)} />
