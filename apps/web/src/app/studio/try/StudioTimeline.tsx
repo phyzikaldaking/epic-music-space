@@ -430,8 +430,8 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
         ))}
         <div className="ml-auto font-mono text-[10px] uppercase tracking-widest text-white/35">Bar {bar}</div>
       </div>
-       <div
-        <div className="relative" style={{ width: timelineWidth, height: totalLaneHeight }}>
+       <div>
+         <div className="relative" style={{ width: timelineWidth, height: totalLaneHeight }}>
           {Array.from({ length: Math.ceil(timelineWidth / markerStep) + 1 }, (_, index) => (
             <div key={index} className="absolute bottom-0 top-0 border-l border-white/5" style={{ left: index * markerStep }} />
           ))}
