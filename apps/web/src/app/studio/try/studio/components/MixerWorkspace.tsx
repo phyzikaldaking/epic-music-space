@@ -4,6 +4,7 @@ import type { StudioTrack } from "../types";
 import { EffectsBrowser } from "./EffectsBrowser";
 import { MixAssistant } from "./MixAssistant";
 import { trackStudio } from "../../../../../lib/studioTelemetry";
+import { setStudioMasterVolume, setStudioMixerChannel } from "../../../../../lib/studioAudio";
 
 export function MixerWorkspace({
   tracks,
@@ -16,6 +17,16 @@ export function MixerWorkspace({
   update: (id: string, patch: Partial<StudioTrack>, label?: string) => void;
   arm: (id: string) => void;
 }) {
+  function updateMixer(id: string, patch: Partial<StudioTrack>, label?: string) {
+    update(id, patch, label);
+    if (id === "master" && typeof patch.volume === "number") setStudioMasterVolume(patch.volume / 100);
+    if (id !== "master") setStudioMixerChannel(id, {
+      volume: typeof patch.volume === "number" ? patch.volume / 100 : undefined,
+      pan: typeof patch.pan === "number" ? patch.pan : undefined,
+      muted: typeof patch.muted === "boolean" ? patch.muted : undefined,
+      solo: typeof patch.solo === "boolean" ? patch.solo : undefined,
+    });
+  }
   return (
     <div className="platinum-mixer min-h-full overflow-auto" data-testid="studio-mixer">
       <div className="platinum-mixer__header sticky top-0 z-30"><div><span>PLATINUM CONSOLE · PRO MIX VIEW</span><h2>Mix Room</h2><small className="text-white/45">Timeline-connected channel strips · changes save to this session</small></div><p>{tracks.length} CHANNELS · MASTER OUT · 48-BIT MIX ENGINE</p></div>
@@ -53,7 +64,7 @@ export function MixerWorkspace({
 
               <label className="flex min-h-[150px] flex-1 flex-col items-center justify-end gap-2 text-[10px] uppercase tracking-widest text-white/45">
                 <span>Fader <b className="text-cyan-100">{track.volume}</b></span>
-                <input aria-label={`${track.name} volume fader`} type="range" min="0" max="100" value={track.volume} onChange={(event) => update(track.id, { volume: Number(event.target.value) }, "Mixer volume")} className="h-32 accent-cyan-300" style={{ writingMode: "vertical-lr", direction: "rtl" }} />
+                <input aria-label={`${track.name} volume fader`} type="range" min="0" max="100" value={track.volume} onChange={(event) => updateMixer(track.id, { volume: Number(event.target.value) }, "Mixer volume")} className="h-32 accent-cyan-300" style={{ writingMode: "vertical-lr", direction: "rtl" }} />
                 <span className="font-mono text-[9px] text-white/30">-∞ · 0 · +6</span>
               </label>
 
@@ -64,26 +75,26 @@ export function MixerWorkspace({
                   min="-100"
                   max="100"
                   value={track.pan}
-                  onChange={(event) => update(track.id, { pan: Number(event.target.value) }, "Mixer pan")}
+                  onChange={(event) => updateMixer(track.id, { pan: Number(event.target.value) }, "Mixer pan")}
                   className="w-full accent-purple-300"
                 />
               </label>
 
               <label className="mt-2 block text-[10px] uppercase tracking-widest text-white/45">
                 Input {track.inputGain}
-                <input aria-label={`${track.name} input gain`} type="range" min="0" max="100" value={track.inputGain} onChange={(event) => update(track.id, { inputGain: Number(event.target.value) }, "Mixer input")} className="w-full accent-green-300" />
+                <input aria-label={`${track.name} input gain`} type="range" min="0" max="100" value={track.inputGain} onChange={(event) => updateMixer(track.id, { inputGain: Number(event.target.value) }, "Mixer input")} className="w-full accent-green-300" />
               </label>
               <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] uppercase text-white/35"><span className="rounded bg-black/40 px-1 py-1 text-center">Insert {track.inserts?.length ?? 0}</span><span className="rounded bg-black/40 px-1 py-1 text-center">Bus {track.outputBusId ?? "master"}</span></div>
 
               <div className="mt-3 grid grid-cols-2 gap-1 text-[9px] font-black uppercase">
                 <button
-                  onClick={() => update(track.id, { muted: !track.muted }, "Toggle mute")}
+                  onClick={() => updateMixer(track.id, { muted: !track.muted }, "Toggle mute")}
                   className={track.muted ? "bg-yellow-300 py-1 text-black" : "bg-[#111] py-1 text-white/55"}
                 >
                   Mute
                 </button>
                 <button
-                  onClick={() => update(track.id, { solo: !track.solo }, "Toggle solo")}
+                  onClick={() => updateMixer(track.id, { solo: !track.solo }, "Toggle solo")}
                   className={track.solo ? "bg-cyan-300 py-1 text-black" : "bg-[#111] py-1 text-white/55"}
                 >
                   Solo
