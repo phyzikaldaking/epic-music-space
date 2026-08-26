@@ -4,18 +4,22 @@ import { trackStudio, trackStudioError } from "./studioTelemetry";
 
 type AudioContextCtor = new () => AudioContext;
 
+type MixerChannel = { gain: GainNode; pan: StereoPannerNode; muted: boolean; solo: boolean; volume: number; panValue: number };
 type AudioRegistry = {
   context: AudioContext | null;
   sources: Set<AudioBufferSourceNode>;
   media: Set<HTMLAudioElement>;
   gestureBound: boolean;
+  mixer: Map<string, MixerChannel>;
+  masterGain: GainNode | null;
+  masterVolume: number;
 };
 
 const KEY = "__ems_shared_audio_registry__";
 
 function registry(): AudioRegistry {
   const win = window as Window & { [KEY]?: AudioRegistry };
-  if (!win[KEY]) win[KEY] = { context: null, sources: new Set(), media: new Set(), gestureBound: false };
+  if (!win[KEY]) win[KEY] = { context: null, sources: new Set(), media: new Set(), gestureBound: false, mixer: new Map(), masterGain: null, masterVolume: 1 };
   return win[KEY]!;
 }
 
@@ -35,6 +39,7 @@ function bindGestureResume(state: AudioRegistry) {
 export function getStudioAudioContext(): AudioContext {
   const state = registry();
   state.context ??= new (getCtor())();
+  state.mixer ??= new Map();
   bindGestureResume(state);
   return state.context;
 }
@@ -75,6 +80,35 @@ export async function loadStudioAudioBuffer(url: string): Promise<AudioBuffer> {
   try { return await pending; } finally { bufferLoads.delete(url); }
 }
 
+export function setStudioMixerChannel(id: string, settings: { volume?: number; pan?: number; muted?: boolean; solo?: boolean }) {
+  const ctx = getStudioAudioContext();
+  const state = registry();
+  let channel = state.mixer.get(id);
+  if (!channel) {
+    const gain = ctx.createGain();
+    const pan = ctx.createStereoPanner();
+    gain.connect(pan);
+    channel = { gain, pan, muted: false, solo: false, volume: 1, panValue: 0 };
+    state.mixer.set(id, channel);
+  }
+  Object.assign(channel, { muted: settings.muted ?? channel.muted, solo: settings.solo ?? channel.solo, volume: settings.volume ?? channel.volume, panValue: settings.pan ?? channel.panValue });
+  channel.gain.gain.value = channel.muted ? 0 : Math.max(0, Math.min(2, channel.volume));
+  channel.pan.pan.value = Math.max(-1, Math.min(1, channel.panValue / 100));
+}
+export function setStudioMasterVolume(volume: number) {
+  const state = registry();
+  state.masterVolume = Math.max(0, Math.min(2, volume));
+  if (state.masterGain) state.masterGain.gain.value = state.masterVolume;
+}
+function mixerDestination(trackId: string | undefined, ctx: AudioContext) {
+  const state = registry();
+  if (!state.masterGain) { state.masterGain = ctx.createGain(); state.masterGain.gain.value = state.masterVolume; state.masterGain.connect(ctx.destination); }
+  if (!trackId) return state.masterGain;
+  setStudioMixerChannel(trackId, {});
+  const channel = state.mixer.get(trackId)!;
+  channel.pan.connect(state.masterGain);
+  return channel.gain;
+}
 export async function startStudioBuffer(
   url: string,
   offsetSec = 0,
@@ -83,6 +117,7 @@ export async function startStudioBuffer(
   fadeInSec = 0,
   fadeOutSec = 0,
   durationSec?: number,
+  trackId?: string,
 ) {
   const ctx = await resumeStudioAudio();
   const source = registerStudioSource(ctx.createBufferSource());
@@ -101,7 +136,7 @@ export async function startStudioBuffer(
     gain.gain.setValueAtTime(peak, Math.max(startAt + fadeIn, endAt - fadeOut));
     gain.gain.linearRampToValueAtTime(0.0001, endAt);
   }
-  source.connect(gain).connect(ctx.destination);
+  source.connect(gain).connect(mixerDestination(trackId, ctx));
   source.start(startAt, offset, remaining);
   source.stop(endAt + 0.02);
   return source;
