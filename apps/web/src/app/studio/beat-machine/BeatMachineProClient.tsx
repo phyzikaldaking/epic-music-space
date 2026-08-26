@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+// @ts-expect-error lamejs ships without TypeScript declarations.
+import lamejs from "lamejs";
 import { studioTransport } from "../../../lib/studioTransport";
 import { getStudioAudioContext, registerStudioSource, resumeStudioAudio, stopAllStudioAudio } from "../../../lib/studioAudio";
 import { trackStudio, trackStudioError } from "../../../lib/studioTelemetry";
@@ -62,6 +64,21 @@ async function mixWavBlobs(blobs: Blob[]) {
   const rendered = await offline.startRendering();
   normalizeBuffer(rendered);
   return audioBufferToWav(rendered);
+}
+function audioBufferToMp3(buffer: AudioBuffer) {
+  const encoder = new lamejs.Mp3Encoder(buffer.numberOfChannels, buffer.sampleRate, 192);
+  const left = buffer.getChannelData(0);
+  const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left;
+  const chunks: Uint8Array[] = [];
+  for (let offset = 0; offset < buffer.length; offset += 1152) {
+    const left16 = Int16Array.from(left.slice(offset, offset + 1152), (value) => Math.max(-32768, Math.min(32767, value * 32767)));
+    const right16 = Int16Array.from(right.slice(offset, offset + 1152), (value) => Math.max(-32768, Math.min(32767, value * 32767)));
+    const encoded = encoder.encodeBuffer(left16, right16);
+    if (encoded.length) chunks.push(new Uint8Array(encoded));
+  }
+  const flushed = encoder.flush();
+  if (flushed.length) chunks.push(new Uint8Array(flushed));
+  return new Blob(chunks, { type: "audio/mpeg" });
 }
 function audioBufferToWav(buffer: AudioBuffer) {
   const channels = buffer.numberOfChannels;
@@ -375,7 +392,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   function clearPattern() { setPads((current) => current.map((pad) => ({ ...pad, steps: pad.steps.map(() => false) }))); }
   function applyPreset(preset: Preset) { setPads((current) => current.map((pad) => ({ ...pad, volume: preset.volumes[pad.id] ?? pad.volume, pan: preset.pans[pad.id] ?? pad.pan }))); }
   function cancelExport() { exportAbort.current?.abort(); exportAbort.current = null; setPrinting(false); setExportStatus("Export cancelled"); setExportProgress(0); }
-  async function exportAudio(kind: "stems" | "master" | "selected") {
+  async function exportAudio(kind: "stems" | "master" | "selected" | "mp3") {
     if (printing) return;
     const controller = new AbortController();
     exportAbort.current = controller;
@@ -400,7 +417,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       if (kind === "stems") validStems.forEach((stem) => { const url = URL.createObjectURL(stem.blob); const link = document.createElement("a"); link.href = url; link.download = stem.fileName; link.click(); URL.revokeObjectURL(url); });
       const master = await mixWavBlobs(validStems.map((stem) => stem.blob));
       if (!validateWav(master)) throw new Error("Master export validation failed.");
-      if (kind === "master") { const url = URL.createObjectURL(master); const link = document.createElement("a"); link.href = url; link.download = "Epic-Music-Space-Master.wav"; link.click(); URL.revokeObjectURL(url); }
+      const masterBuffer = await getStudioAudioContext().decodeAudioData(await master.arrayBuffer());
+      const exportBlob = kind === "mp3" ? audioBufferToMp3(masterBuffer) : master;
+      if (kind === "master" || kind === "mp3") { const url = URL.createObjectURL(exportBlob); const link = document.createElement("a"); link.href = url; link.download = kind === "mp3" ? "Epic-Music-Space-Master.mp3" : "Epic-Music-Space-Master.wav"; link.click(); URL.revokeObjectURL(url); }
       setExportProgress(100);
       const historyEntry = { id: `${Date.now()}-${kind}`, kind, createdAt: new Date().toISOString(), fileName: kind === "master" ? "Epic-Music-Space-Master.wav" : `Epic-Music-Space-${kind}.wav`, status: "success" };
       setExportHistory((current) => [historyEntry, ...current].slice(0, 20));
@@ -475,7 +494,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
         <button onClick={stop} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Reset</button>
         <button onClick={randomize} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Generate</button>
         <button onClick={clearPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Clear</button>
-        <button onClick={() => void exportAudio("master")} disabled={printing} className="h-full border-r border-black bg-cyan-300 px-4 font-black text-black disabled:opacity-60">{printing ? `${exportProgress}%` : "Export Master"}</button>
+        <button onClick={() => void exportAudio("mp3")} disabled={printing} className="h-full border-r border-black bg-cyan-300 px-4 font-black text-black disabled:opacity-60">{printing ? `${exportProgress}%` : "Export MP3"}</button>
         <div className="flex h-full items-center border-r border-black"><span className="px-2 text-[9px] text-white/40">LENGTH</span>{([8, 16] as const).map((length) => <button key={length} onClick={() => setPatternLength(length)} className={cn("h-full px-2 font-black", patternLength === length ? "bg-purple-300 text-black" : "bg-[#30343b] text-white/60")}>{length}</button>)}</div>
         <button onClick={() => setPatternChain((current) => [...current, padBank])} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Chain B{padBank + 1}</button><button onClick={() => { setPatternChain([0]); chainPosition.current = 0; }} className="h-full border-r border-black bg-[#30343b] px-3 font-black">Clear Chain</button><input value={patternName} onChange={(event) => setPatternName(event.target.value)} aria-label="Pattern name" className="h-full w-28 border-l border-black bg-black px-2 font-mono text-[10px] text-cyan-200" /><button onClick={savePattern} className="h-full border-l border-black bg-[#30343b] px-3 font-black">Save</button><select aria-label="Load pattern" value="" onChange={(event) => loadPattern(event.target.value)} className="h-full border-l border-black bg-[#30343b] px-2 text-[10px]"><option value="">Load</option>{Object.keys(savedPatterns).map((name) => <option key={name} value={name}>{name}</option>)}</select><button onClick={() => void exportAudio("stems")} disabled={printing} className="h-full border-l border-black bg-[#30343b] px-3 font-black">Export Stems</button><button onClick={cancelExport} disabled={!printing} className="h-full border-l border-black bg-red-500 px-3 font-black text-black disabled:opacity-40">Cancel</button><button onClick={exportPattern} className="h-full border-r border-black bg-[#30343b] px-4 font-black">Export</button>
         <button onClick={tapTempo} className="h-full border-l border-black bg-[#30343b] px-3 font-black">Tap</button><label className="flex h-full items-center border-l border-black px-3 font-black">BPM <input value={bpm} type="number" min="40" max="240" onChange={(event) => setBpm(Math.max(40, Math.min(240, Number(event.target.value) || 120)))} className="ml-2 w-16 bg-black px-2 py-1 font-mono text-cyan-200 outline-none" /></label><label className="flex h-full items-center border-l border-black px-3 font-black">Swing <input value={swing} type="range" min="0" max="75" onChange={(event) => setSwing(Number(event.target.value))} className="ml-2 w-16 accent-cyan-300" /></label>
