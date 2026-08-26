@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const AUDIO_BUCKETS = ["audio-assets", "studio-kits"] as const;
-const AUDIO_EXTENSIONS = new Set(["aif", "aiff", "flac", "m4a", "mp3", "ogg", "wav", "webm"]);
+const AUDIO_EXTENSIONS = new Set(["aif", "aiff", "flac", "m4a", "mp3", "ogg", "wav", "webm"]);\nconst SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 type StorageSupabaseClient = ReturnType<typeof createClient>;
 
@@ -154,49 +154,84 @@ async function listAudioObjects(
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const categoryFilter = url.searchParams.get("category");
-  const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit") ?? 500)));
+  const search = url.searchParams.get("q")?.trim().toLowerCase();
+  const bucketFilter = url.searchParams.get("bucket");
+  const sort = url.searchParams.get("sort") ?? "category";
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
+  const cursor = Math.max(0, Number(url.searchParams.get("cursor") ?? 0));
   const supabase = getSupabaseAdmin();
   if (!supabase) return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: "Supabase storage is not configured." }, { status: 503 });
 
   let data: Array<StorageObject & { path: string; bucket: string }>;
   try {
-    const bucketResults = await Promise.all(AUDIO_BUCKETS.map(async (bucket) => {
-      const objects = await listAudioObjects(supabase, bucket, "", 500);
-      return objects.map((item) => ({ ...item, bucket }));
-    }));
-    data = bucketResults.flat();
+    const bucketResults = await Promise.all(AUDIO_BUCKETS
+      .filter((bucket) => !bucketFilter || bucket === bucketFilter)
+      .map(async (bucket) => {
+        const objects = await listAudioObjects(supabase, bucket, "", 100000);
+        return objects.map((item) => ({ ...item, bucket }));
+      }));
+    const seen = new Set<string>();
+    data = bucketResults.flat().filter((item) => {
+      const stableKey = item.id ? `${item.bucket}:${item.id}` : `${item.bucket}:${item.path}`;
+      if (seen.has(stableKey)) return false;
+      seen.add(stableKey);
+      return true;
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Supabase storage list failed.";
     return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: message }, { status: 500 });
   }
 
-  const sounds = (data ?? [])
-    .map((item) => {
-      const category = categoryForName(item.path);
-      const { data: publicUrl } = supabase.storage.from(item.bucket).getPublicUrl(item.path);
-      return {
-        id: `factory-${item.id ?? item.path}`,
-        name: cleanDisplayName(item.path),
-        path: item.path,
-        url: publicUrl.publicUrl,
-        source: item.bucket === "studio-kits" ? "kit" as const : "factory" as const,
-        bucket: item.bucket,
-        category,
-        instrument: instrumentForCategory(category, item.path),
-        bpm: parseBpm(item.path),
-        key: parseKey(item.path),
-        size: typeof item.metadata?.size === "number" ? item.metadata.size : undefined,
-        createdAt: item.created_at ?? item.updated_at ?? new Date().toISOString(),
-      };
-    })
-    .filter((sound) => !categoryFilter || sound.category === categoryFilter)
-    .sort((a, b) => publicSortRank(a.category) - publicSortRank(b.category) || a.name.localeCompare(b.name))
-    .slice(0, limit);
+  const filtered = data.map((item) => {
+    const category = categoryForName(item.path);
+    return {
+      id: `${item.bucket}:${item.id ?? item.path}`,
+      name: cleanDisplayName(item.path),
+      path: item.path,
+      source: item.bucket === "studio-kits" ? "kit" as const : "factory" as const,
+      bucket: item.bucket,
+      category,
+      instrument: instrumentForCategory(category, item.path),
+      bpm: parseBpm(item.path),
+      key: parseKey(item.path),
+      duration: typeof item.metadata?.duration === "number" ? item.metadata.duration : undefined,
+      size: typeof item.metadata?.size === "number" ? item.metadata.size : undefined,
+      format: item.path.split(".").pop()?.toLowerCase() ?? "unknown",
+      createdAt: item.created_at ?? item.updated_at ?? new Date().toISOString(),
+      storageId: item.id ?? null,
+    };
+  }).filter((sound) =>
+    (!categoryFilter || sound.category === categoryFilter) &&
+    (!search || `${sound.name} ${sound.path} ${sound.instrument} ${sound.bucket}`.toLowerCase().includes(search))
+  );
 
-  const categories = sounds.reduce<Record<string, number>>((acc, sound) => {
+  filtered.sort((a, b) => sort === "name"
+    ? a.name.localeCompare(b.name)
+    : sort === "newest"
+      ? b.createdAt.localeCompare(a.createdAt)
+      : publicSortRank(a.category) - publicSortRank(b.category) || a.name.localeCompare(b.name));
+
+  const page = filtered.slice(cursor, cursor + limit);
+  const sounds = await Promise.all(page.map(async (item) => {
+    const signed = await supabase.storage.from(item.bucket).createSignedUrl(item.path, SIGNED_URL_TTL_SECONDS);
+    const publicUrl = signed.data?.signedUrl ?? supabase.storage.from(item.bucket).getPublicUrl(item.path).data.publicUrl;
+    return { ...item, url: publicUrl, signedUrlExpiresAt: new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString() };
+  }));
+
+  const categories = filtered.reduce<Record<string, number>>((acc, sound) => {
     acc[sound.category] = (acc[sound.category] ?? 0) + 1;
     return acc;
   }, {});
+  const nextCursor = cursor + sounds.length < filtered.length ? cursor + sounds.length : null;
 
-  return NextResponse.json({ sounds, categories, backend: "supabase", buckets: AUDIO_BUCKETS });
+  return NextResponse.json({
+    sounds,
+    categories,
+    total: filtered.length,
+    nextCursor,
+    page: Math.floor(cursor / limit) + 1,
+    backend: "supabase",
+    buckets: AUDIO_BUCKETS,
+    cache: "no-store",
+  }, { headers: { "Cache-Control": "no-store" } });
 }
