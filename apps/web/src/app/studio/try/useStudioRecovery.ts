@@ -39,6 +39,10 @@ type StudioSnapshot = {
 type RecoveryStatus = "idle" | "checking" | "saved" | "recoverable" | "restored" | "error";
 const SNAPSHOT_SCHEMA_VERSION = 3;
 
+function projectSaveFingerprint(snapshot: StudioSnapshot): string {
+  return JSON.stringify(snapshot);
+}
+
 const SESSION_ID_KEY = "ems-studio-session-id-v2";
 const LOCAL_SNAPSHOT_KEY = "ems-studio-local-recovery-snapshot-v2";
 const LOCAL_SNAPSHOT_INDEX_KEY = "ems-studio-local-recovery-index-v2";
