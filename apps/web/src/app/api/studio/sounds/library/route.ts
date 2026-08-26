@@ -123,28 +123,25 @@ async function listAudioObjects(
 
   while (folders.length > 0 && results.length < maxResults) {
     const currentPrefix = folders.shift() ?? "";
-    const { data, error } = await supabase.storage.from(bucket).list(currentPrefix, {
-      limit: 1000,
-      offset: 0,
-      sortBy: { column: "created_at", order: "desc" },
-    });
-
-    if (error) throw error;
-
-    for (const item of (data ?? []) as StorageObject[]) {
-      if (!item.name) continue;
-      const path = joinStoragePath(currentPrefix, item.name);
-      const isFolder = !item.id && !item.metadata?.mimetype && !item.name.includes(".");
-
-      if (isFolder) {
-        folders.push(path);
-        continue;
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabase.storage.from(bucket).list(currentPrefix, {
+        limit: 1000,
+        offset,
+        sortBy: { column: "created_at", order: "desc" },
+      });
+      if (error) throw error;
+      const items = (data ?? []) as StorageObject[];
+      for (const item of items) {
+        if (!item.name) continue;
+        const path = joinStoragePath(currentPrefix, item.name);
+        const isFolder = !item.id && !item.metadata?.mimetype && !item.name.includes(".");
+        if (isFolder) { folders.push(path); continue; }
+        if (isAudioObject(item)) {
+          results.push({ ...item, path });
+          if (results.length >= maxResults) break;
+        }
       }
-
-      if (isAudioObject(item)) {
-        results.push({ ...item, path });
-        if (results.length >= maxResults) break;
-      }
+      if (results.length >= maxResults || items.length < 1000) break;
     }
   }
 
