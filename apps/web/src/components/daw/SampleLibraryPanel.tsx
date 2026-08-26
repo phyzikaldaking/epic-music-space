@@ -37,7 +37,7 @@ interface Props {
 const BPM_MATCH_TOLERANCE = 0.05;
 
 export default function SampleLibraryPanel({ onLoadSample }: Props) {
-  const [filter, setFilter] = useState<Sample["category"] | "all">("all");
+  const [filter, setFilter] = useState<Sample["category"] | "all">("all");\n  const [query, setQuery] = useState("");\n  const [sort, setSort] = useState("category");\n  const [favorites, setFavorites] = useState<string[]>([]);\n  const [nextCursor, setNextCursor] = useState<number | null>(null);\n  const [uploadState, setUploadState] = useState<string | null>(null);\n  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [libraryStatus, setLibraryStatus] = useState<"loading" | "ready" | "denied">("loading");
   const [statusMessage, setStatusMessage] = useState("Loading live Supabase audio assets...");
@@ -62,7 +62,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
       setLibraryStatus("loading");
       setStatusMessage("Loading live Supabase audio assets...");
       try {
-        const response = await fetch("/api/studio/sounds/library?limit=1000", {
+        const response = await fetch("/api/studio/sounds/library?limit=50&sort=" + encodeURIComponent(sort), {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -75,7 +75,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
         if (payload.backend !== "supabase") throw new Error("Live Supabase backend is not configured for this library.");
         const liveSamples = (payload.sounds ?? []).map(remoteSoundToSample).filter(Boolean) as Sample[];
         if (liveSamples.length === 0) throw new Error("No live audio assets are available yet.");
-        setSamples(liveSamples);
+        setSamples(liveSamples);\n        setNextCursor(payload.nextCursor ?? null);
         setLibraryStatus("ready");
         setStatusMessage(`${liveSamples.length} live Supabase audio assets ready.`);
       } catch (error) {
@@ -88,7 +88,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
 
     void loadLiveSamples();
     return () => controller.abort();
-  }, []);
+  }, [sort]);
 
   useEffect(() => {
     return () => {
@@ -100,6 +100,43 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
       }
     };
   }, []);
+
+  async function uploadFiles(files: FileList | File[]) {
+    const list = Array.from(files);
+    for (const file of list) {
+      setUploadState(`Uploading ${file.name}…`);
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        const response = await fetch("/api/studio/sounds/upload", { method: "POST", body: form });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? "Upload failed");
+        const uploaded = remoteSoundToSample(payload.sound);
+        if (uploaded) setSamples((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : "Upload failed. Retry the file.");
+      }
+    }
+    setUploadState(null);
+  }
+
+  async function loadMore() {
+    if (nextCursor == null) return;
+    const response = await fetch(`/api/studio/sounds/library?limit=50&cursor=${nextCursor}&sort=${encodeURIComponent(sort)}`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) { setStatusMessage(payload.error ?? "Could not load more assets."); return; }
+    const more = (payload.sounds ?? []).map(remoteSoundToSample).filter(Boolean) as Sample[];
+    setSamples((current) => [...current, ...more.filter((item) => !current.some((existing) => existing.id === item.id))]);
+    setNextCursor(payload.nextCursor ?? null);
+  }
+
+  function toggleFavorite(id: string) {
+    setFavorites((current) => {
+      const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+      localStorage.setItem("ems-studio-favorites", JSON.stringify(next));
+      return next;
+    });
+  }
 
   function getCtx(): AudioContext | null {
     if (ctxRef.current) return ctxRef.current;
@@ -202,7 +239,16 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
         </div>
       ) : (
         <>
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-3 flex flex-wrap gap-2">
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search kits, instruments, assets…" className="min-w-[220px] flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white outline-none" />
+        <select value={sort} onChange={(event) => setSort(event.target.value)} className="rounded-lg border border-white/10 bg-black/40 px-2 py-2 text-xs text-white"><option value="category">Category</option><option value="name">Name</option><option value="newest">Newest</option></select>
+        <button type="button" onClick={() => setFavorites((current) => current.includes("__only__") ? current.filter((item) => item !== "__only__") : [...current, "__only__"])} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70">★ Favorites</button>
+        <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">Import audio</button>
+        <input ref={fileInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg,.aiff" multiple className="hidden" onChange={(event) => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }} />
+      </div>
+      <div onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void uploadFiles(event.dataTransfer.files); }} className="mt-2 rounded-lg border border-dashed border-white/15 px-3 py-2 text-center text-[11px] text-white/45">Drop audio files here to import{uploadState ? ` · ${uploadState}` : ""}</div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
             {CATEGORIES.map((c) => (
               <button
                 key={c.key}
@@ -243,7 +289,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
                   type="button"
                   onMouseEnter={() => onSampleHover(s)}
                   onMouseLeave={onSampleLeave}
-                  onClick={async () => {
+                  onDoubleClick={() => toggleFavorite(s.id)}\n                  onClick={async () => {
                     onSampleLeave();
                     setRecentLoad(s.id);
                     await onLoadSample({ name: s.name, url: s.url, category: s.category });
@@ -261,7 +307,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
                             : "border-white/10 bg-white/[0.02] text-white/80 hover:border-emerald-500/30 hover:bg-emerald-500/[0.04]"
                   }`}
                 >
-                  <span className="truncate">{s.name}</span>
+                  <span className="min-w-0 truncate"><span className="mr-1">{favorites.includes(s.id) ? "★" : "☆"}</span>{s.name}<span className="ml-2 text-[9px] text-white/35">{s.bucket ?? ""} · {s.instrument ?? ""} · {s.format ?? ""}</span></span>
                   <span className="ml-3 flex flex-shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-wider">
                     {bpmMatch && <span className="rounded bg-emerald-500/30 px-1 py-0.5 font-bold text-emerald-100">✓ bpm</span>}
                     {keyMatch && <span className="rounded bg-cyan-500/30 px-1 py-0.5 font-bold text-cyan-100">♪ key</span>}
@@ -326,7 +372,7 @@ function remoteSoundToSample(sound: RemoteSound): Sample | null {
   return {
     id: sound.id ?? sound.url,
     name: sound.name?.trim() || "Supabase Audio Asset",
-    bpm: typeof sound.bpm === "number" ? sound.bpm : 0,
+    bpm: typeof sound.bpm === "number" ? sound.bpm : 0,\n    instrument: sound.instrument, kit: sound.kit, bucket: sound.bucket, format: sound.format, duration: sound.duration, size: sound.size,
     key: sound.key,
     category: remoteCategoryToSampleCategory(sound.category),
     url: sound.url,
