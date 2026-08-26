@@ -474,4 +474,4 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
 }
 
 export default memo(StudioTimeline);
-// Keep timeline build changes deployable from the main branch.
+// Studio timeline wrapper verified for production builds.
