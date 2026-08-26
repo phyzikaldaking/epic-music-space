@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { StudioSoundCategory } from "@/app/studio/try/studioWorkstationTypes";
+import { auth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ interface StorageObject {
   metadata?: {
     mimetype?: string;
     size?: number;
+    duration?: number;
   } | null;
 }
 
@@ -150,6 +152,8 @@ async function listAudioObjects(
 }
 
 export async function GET(request: Request) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: "Unauthorized" }, { status: 401 });
   const url = new URL(request.url);
   const categoryFilter = url.searchParams.get("category");
   const search = url.searchParams.get("q")?.trim().toLowerCase();
