@@ -315,10 +315,7 @@ function StudioTimeline({ tracks, selectedTrack, setSelectedTrack, playing, bar,
     function onCloudRestore(event: Event) {
       const payload = (event as CustomEvent<CloudRestorePayload>).detail;
       if (!Array.isArray(payload?.placedClips)) return;
-      activeAudioRef.current.forEach((audio) => {
-        audio.pause();
-        audio.currentTime = 0;
-      });
+      stopAllStudioAudio();
       activeAudioRef.current.clear();
       const realClips = payload.placedClips.filter((clip) => clip.source !== "placeholder");
       setPlacedClips(realClips);
