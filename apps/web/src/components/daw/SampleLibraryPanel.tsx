@@ -143,6 +143,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
           request.onerror = () => reject(new Error("Upload failed. Check your connection and retry."));
           request.send(form);
         });
+        if (!payload.sound) throw new Error("Upload response did not include the uploaded sound.");
         const uploaded = remoteSoundToSample(payload.sound);
         if (uploaded) setSamples((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
       } catch (error) {
