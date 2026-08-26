@@ -39,7 +39,7 @@ type StudioSnapshot = {
 type RecoveryStatus = "idle" | "checking" | "saved" | "recoverable" | "restored" | "error";
 const SNAPSHOT_SCHEMA_VERSION = 3;
 
-function projectSaveFingerprint(snapshot: StudioSnapshot): string {
+function projectSaveFingerprint(snapshot: unknown): string {
   return JSON.stringify(snapshot);
 }
 
