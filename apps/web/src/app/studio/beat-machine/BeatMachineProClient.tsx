@@ -16,7 +16,7 @@ const sampleUrl = (name: string) => {
 };
 import { buildBeatStemRenderPlan, type BeatStemRenderPlan } from "./beatStemPrint";
 
-type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; sampleAsset?: string; tune?: number; mode?: "one-shot" | "loop"; sliceStart?: number; sliceDuration?: number; stepVelocity?: number[]; stepProbability?: number[]; stepPitch?: number[]; stepPan?: number[]; stepMuted?: boolean[]; stepReverse?: boolean[]; stepRatchet?: number[]; reverbSend?: number; delaySend?: number; insertEffects?: string[]; automation?: { gain?: Array<{ timeSec: number; value: number }>; pan?: Array<{ timeSec: number; value: number }> } };
+type Pad = { id: string; label: string; key: string; color: string; freq: number; volume: number; pan: number; muted: boolean; solo: boolean; steps: boolean[]; sampleAsset?: string; tune?: number; mode?: "one-shot" | "loop"; sliceStart?: number; sliceDuration?: number; stepVelocity?: number[]; stepProbability?: number[]; stepPitch?: number[]; stepPan?: number[]; stepMuted?: boolean[]; stepReverse?: boolean[]; stepRatchet?: number[]; reverbSend?: number; delaySend?: number; busId?: string; busVolume?: number; busPan?: number; insertEffects?: string[]; automation?: { gain?: Array<{ timeSec: number; value: number }>; pan?: Array<{ timeSec: number; value: number }> } };
 type Preset = { name: string; volumes: Record<string, number>; pans: Record<string, number> };
 
 const DEFAULT_PATTERN_LENGTH = 16;
@@ -54,12 +54,12 @@ function download(name: string, text: string) { const blob = new Blob([text], { 
 function validateWav(blob: Blob) { return blob.size > 44 && blob.type === "audio/wav"; }
 function measureBuffer(buffer: AudioBuffer) { let peak = 0; for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) for (const value of buffer.getChannelData(channel)) peak = Math.max(peak, Math.abs(value)); return { truePeakDb: peak > 0 ? 20 * Math.log10(peak) : -Infinity, clipped: peak >= 1 }; }
 function normalizeBuffer(buffer: AudioBuffer, targetPeak = 0.891) { const metrics = measureBuffer(buffer); if (!Number.isFinite(metrics.truePeakDb) || metrics.truePeakDb <= 20 * Math.log10(targetPeak)) return metrics; const gain = targetPeak / Math.max(0.000001, 10 ** (metrics.truePeakDb / 20)); for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) { const data = buffer.getChannelData(channel); for (let i = 0; i < data.length; i += 1) data[i] = Math.max(-1, Math.min(1, data[i] * gain)); } return measureBuffer(buffer); }
-async function mixWavBlobs(blobs: Blob[]) {
+async function mixWavBlobs(blobs: Blob[], busSettings: Record<string, { volume: number; pan: number }> = {}) {
   const context = getStudioAudioContext();
   const buffers = await Promise.all(blobs.map(async (blob) => context.decodeAudioData(await blob.arrayBuffer())));
   const duration = Math.max(0, ...buffers.map((buffer) => buffer.duration));
   const offline = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * 44100)), 44100);
-  buffers.forEach((buffer) => { const source = offline.createBufferSource(); source.buffer = buffer; source.connect(offline.destination); source.start(0); });
+  buffers.forEach((buffer, index) => { const source = offline.createBufferSource(); source.buffer = buffer; const bus = Object.values(busSettings)[index] ?? { volume: 1, pan: 0 }; const gain = offline.createGain(); const pan = offline.createStereoPanner(); gain.gain.value = bus.volume; pan.pan.value = bus.pan; source.connect(gain).connect(pan).connect(offline.destination); source.start(0); });
   const rendered = await offline.startRendering();
   normalizeBuffer(rendered);
   return audioBufferToWav(rendered);
@@ -449,7 +449,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       const validStems = stems.filter((stem) => validateWav(stem.blob));
       if (validStems.length !== stems.length) throw new Error("Export validation failed: invalid WAV header or empty file.");
       if (kind === "stems") validStems.forEach((stem) => { const url = URL.createObjectURL(stem.blob); const link = document.createElement("a"); link.href = url; link.download = stem.fileName; link.click(); URL.revokeObjectURL(url); });
-      const master = await mixWavBlobs(validStems.map((stem) => stem.blob));
+      const busSettings = Object.fromEntries(Array.from(new Set(pads.map((pad) => pad.busId ?? "master"))).map((busId) => { const busPads = pads.filter((pad) => (pad.busId ?? "master") === busId); return [busId, { volume: Math.max(0, Math.min(2, (busPads.reduce((sum, pad) => sum + (pad.busVolume ?? 100), 0) / Math.max(1, busPads.length)) / 100)), pan: busPads.reduce((sum, pad) => sum + (pad.busPan ?? 0), 0) / Math.max(1, busPads.length) / 50 }]; }));
+      const master = await mixWavBlobs(validStems.map((stem) => stem.blob), busSettings);
       if (!validateWav(master)) throw new Error("Master export validation failed.");
       const masterBuffer = await getStudioAudioContext().decodeAudioData(await master.arrayBuffer());
       const exportBlob = kind === "mp3" ? audioBufferToMp3(masterBuffer) : master;
@@ -478,7 +479,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   function exportPattern() {
     trackStudio("beat_export_started", { format: "json", pattern_length: patternLength });
     download("ems-beat-pattern.json", JSON.stringify({
-      version: 2,
+      version: 3,
+      effectsAware: true,
+      busSettings: Object.fromEntries(pads.map((pad) => [pad.id, { busId: pad.busId ?? "master", busVolume: pad.busVolume ?? 100, busPan: pad.busPan ?? 0, insertEffects: pad.insertEffects ?? [], reverbSend: pad.reverbSend ?? 0, delaySend: pad.delaySend ?? 0, automation: pad.automation ?? {}}])),
       bpm,
       patternLength,
       activeBank: padBank,
