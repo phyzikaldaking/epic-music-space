@@ -321,10 +321,18 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   async function refreshSampleLibrary() {
     setSampleLibraryLoading(true);
     try {
-      const response = await fetch("/api/studio/sounds/library?limit=1000", { cache: "no-store" });
-      if (!response.ok) throw new Error(`Library request failed (${response.status})`);
-      const payload = await response.json() as { sounds?: Array<{ name?: string; path?: string; url?: string; source?: "kit" | "factory"; bucket?: string }> };
-      const names = (payload.sounds ?? [])
+      type LibraryPage = { sounds?: Array<{ name?: string; path?: string; url?: string; source?: "kit" | "factory"; bucket?: string }>; nextCursor?: number | null };
+      const all: LibraryPage["sounds"] = [];
+      let cursor: number | null = 0;
+      do {
+        const query = cursor ? `&cursor=${cursor}` : "";
+        const response = await fetch(`/api/studio/sounds/library?limit=100${query}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Library request failed (${response.status})`);
+        const payload = await response.json() as LibraryPage;
+        all.push(...(payload.sounds ?? []));
+        cursor = payload.nextCursor ?? null;
+      } while (cursor !== null);
+      const names = all
         .map((sound) => { const name = sound.path ?? sound.name; if (name && sound.url) sampleUrls.current[name] = sound.url; if (name) sampleSources.current[name] = sound.source ?? (sound.bucket === "studio-kits" ? "kit" : "factory"); return name; })
         .filter((name): name is string => Boolean(name && /\.(wav|mp3|ogg|m4a|flac|aif|aiff|webm)$/i.test(name)));
       setLiveSamples(Array.from(new Set([...LIVE_SAMPLE_NAMES, ...names])));
@@ -587,3 +595,4 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     </div>
   </div>;
 }
+
