@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import BeatMachineProClient from "../../studio/beat-machine/BeatMachineProClient";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "EMS Beat Machine Sounds | Epic Music Space",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function BeatMachineSoundsPage() {
-  return <BeatMachineProClient initialView="sounds" />;
+  redirect("/studio?mode=beat");
 }
