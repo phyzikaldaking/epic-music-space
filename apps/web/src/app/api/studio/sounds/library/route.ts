@@ -125,7 +125,7 @@ async function listAudioObjects(
   // even though the buckets and objects exist). Read the authoritative object
   // index through Supabase's storage schema instead.
   const { data, error } = await supabase
-    .schema("storage")
+    .schema("storage" as never)
     .from("objects")
     .select("id,name,created_at,updated_at,metadata")
     .eq("bucket_id", bucket)
