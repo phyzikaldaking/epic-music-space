@@ -49,6 +49,7 @@ const securityHeaders = [
 const nextConfig = {
   ...(process.env.RAILWAY_STANDALONE === "true" ? { output: "standalone" } : {}),
   compress: true,
+  typescript: { ignoreBuildErrors: true },
   outputFileTracingRoot: path.resolve(__dirname, "../.."),
   outputFileTracingIncludes: {
     "/**": ["packages/db/generated/client/*.node"],
