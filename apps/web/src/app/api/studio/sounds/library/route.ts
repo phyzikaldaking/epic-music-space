@@ -128,7 +128,7 @@ async function listAudioObjects(
     const currentPrefix = folders.shift() ?? "";
     for (let offset = 0; ; offset += 1000) {
       const { data, error } = await supabase.storage.from(bucket).list(currentPrefix, {
-        limit: 1000,
+        limit: 100,
         offset,
         sortBy: { column: "name", order: "asc" },
       });
