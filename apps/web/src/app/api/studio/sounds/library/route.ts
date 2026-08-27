@@ -205,7 +205,7 @@ export async function GET(request: Request) {
   const sounds = (await Promise.all(page.map(async (item) => {
     const signed = await supabase.storage.from(item.bucket).createSignedUrl(item.path, SIGNED_URL_TTL_SECONDS);
     const assetUrl = signed.data?.signedUrl;
-    if (!assetUrl || !/^https:\\/\\//i.test(assetUrl)) return null;
+    if (!assetUrl || !assetUrl.startsWith("https://")) return null;
     return { ...item, url: assetUrl, signedUrlExpiresAt: new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString() };
   }))).filter((sound): sound is NonNullable<typeof sound> => Boolean(sound));
 
