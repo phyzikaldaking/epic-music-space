@@ -130,7 +130,7 @@ async function listAudioObjects(
       const { data, error } = await supabase.storage.from(bucket).list(currentPrefix, {
         limit: 1000,
         offset,
-        sortBy: { column: "created_at", order: "desc" },
+        sortBy: { column: "name", order: "asc" },
       });
       if (error) throw error;
       const items = (data ?? []) as StorageObject[];
