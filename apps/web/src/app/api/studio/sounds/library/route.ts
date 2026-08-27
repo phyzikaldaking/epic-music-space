@@ -202,11 +202,12 @@ export async function GET(request: Request) {
       : publicSortRank(a.category) - publicSortRank(b.category) || a.name.localeCompare(b.name));
 
   const page = filtered.slice(cursor, cursor + limit);
-  const sounds = await Promise.all(page.map(async (item) => {
+  const sounds = (await Promise.all(page.map(async (item) => {
     const signed = await supabase.storage.from(item.bucket).createSignedUrl(item.path, SIGNED_URL_TTL_SECONDS);
-    const publicUrl = signed.data?.signedUrl ?? supabase.storage.from(item.bucket).getPublicUrl(item.path).data.publicUrl;
-    return { ...item, url: publicUrl, signedUrlExpiresAt: new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString() };
-  }));
+    const assetUrl = signed.data?.signedUrl;
+    if (!assetUrl || !/^https:\\/\\//i.test(assetUrl)) return null;
+    return { ...item, url: assetUrl, signedUrlExpiresAt: new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString() };
+  }))).filter((sound): sound is NonNullable<typeof sound> => Boolean(sound));
 
   const categories = filtered.reduce<Record<string, number>>((acc, sound) => {
     acc[sound.category] = (acc[sound.category] ?? 0) + 1;
