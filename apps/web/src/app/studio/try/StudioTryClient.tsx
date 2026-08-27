@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
@@ -20,6 +21,8 @@ const DemoSessionOverlay = dynamic(
 
 export default function StudioTryClient({ isAuthed }: { isAuthed: boolean }) {
   const eventFiredRef = useRef(false);
+  const searchParams = useSearchParams();
+  const initialMode = searchParams.get("mode") === "beat" ? "beat" : undefined;
 
   useEffect(() => {
     if (eventFiredRef.current || isAuthed) return;
@@ -41,7 +44,7 @@ export default function StudioTryClient({ isAuthed }: { isAuthed: boolean }) {
       {!isAuthed && <GuestStudioBanner />}
       {!isAuthed && <DemoSessionOverlay />}
       <StudioFirstVisitTour isAuthed={isAuthed} />
-      <DawWorkspace isGuest={!isAuthed} />
+      <DawWorkspace isGuest={!isAuthed} initialMode={initialMode} />
     </>
   );
 }
