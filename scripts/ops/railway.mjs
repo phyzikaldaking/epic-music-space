@@ -57,7 +57,7 @@ if (phase === "build") {
 
     env.RAILWAY_STANDALONE = "true";
     command =
-      "npx prisma generate --schema packages/db/prisma/schema.prisma && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && npm --workspace apps/web run build && mkdir -p apps/web/.next/standalone/apps/web/.next && cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static && cp -R apps/web/public apps/web/.next/standalone/apps/web/public";
+      "npx prisma generate --schema packages/db/prisma/schema.prisma && unset __NEXT_PRIVATE_STANDALONE_CONFIG __NEXT_PRIVATE_ORIGIN && npm --workspace apps/web run build && mkdir -p apps/web/.next/standalone/apps/web/.next && if [ -d apps/web/.next/static ]; then cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static; else echo "[railway] Next static directory absent; continuing with standalone output"; fi && if [ -d apps/web/public ]; then cp -R apps/web/public apps/web/.next/standalone/apps/web/public; fi";
   }
 } else if (phase === "predeploy") {
   if (worker) {
