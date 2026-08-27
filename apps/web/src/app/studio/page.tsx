@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
-import StudioTryClient from "./try/StudioTryClient";
+import StudioClientBoundary from "./StudioClientBoundary";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,6 +16,6 @@ export default function StudioIndexPage() {
 
 async function StudioEntry() {
   const session = await auth();
-  return <StudioTryClient isAuthed={Boolean(session?.user?.id)} />;
+  return <StudioClientBoundary isAuthed={Boolean(session?.user?.id)} />;
 }
 
