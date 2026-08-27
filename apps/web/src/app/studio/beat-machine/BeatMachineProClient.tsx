@@ -361,7 +361,9 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     if (!buffer && pad.sampleAsset) {
       try {
         const pending = loadingBuffers.current[sourceKey] ?? (async () => {
-          const response = await fetch(sampleUrl(pad.sampleAsset!));
+          // Reuse the signed URL returned by the authenticated library scan.
+          // Falling back to a public Supabase URL makes private kit assets fail.
+          const response = await fetch(resolveSampleUrl(pad.sampleAsset!));
           if (!response.ok) throw new Error(`Could not reload ${pad.sampleAsset} (${response.status})`);
           return ctx.decodeAudioData(await response.arrayBuffer());
         })();
@@ -587,8 +589,8 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
           </div>
         </section>
         <section className="min-h-0 overflow-auto bg-[#15191d] p-4">
-          <div className="min-w-[760px] space-y-1.5">
-            {pads.map((pad) => <div key={pad.id} className="grid items-center gap-2" style={{ gridTemplateColumns: `72px repeat(${patternLength},minmax(0,1fr))` }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-2 text-left font-mono text-[10px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.slice(0, patternLength).map((on, i) => <button key={i} onClick={() => { setSelectedStep(i); toggleStep(pad.id, i); }} className={cn("h-10 border", step === i && "ring-2 ring-white/60", selectedStep === i && "outline outline-2 outline-yellow-300")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 10px ${pad.color}80` : undefined }} />)}</div>)}
+          <div className="w-full space-y-1.5">
+            {pads.map((pad) => <div key={pad.id} className="grid items-center gap-1" style={{ gridTemplateColumns: `clamp(48px,7vw,72px) repeat(${patternLength},minmax(0,1fr))` }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-1 text-left font-mono text-[9px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.slice(0, patternLength).map((on, i) => <button key={i} aria-label={`${pad.label} step ${i + 1}`} onClick={() => { setSelectedStep(i); toggleStep(pad.id, i); }} className={cn("h-8 min-w-0 border", step === i && "ring-1 ring-white/60", selectedStep === i && "outline outline-1 outline-cyan-300")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 8px ${pad.color}80` : undefined }} />)}</div>)}
           </div>
         </section>
       </main>
