@@ -1,5 +1,5 @@
-import BeatMachineProClient from "../../studio/beat-machine/BeatMachineProClient";
+import { redirect } from "next/navigation";
 
 export default function BeatMachinePianoRollPage() {
-  return <BeatMachineProClient initialView="piano" />;
+  redirect("/studio?mode=beat");
 }
