@@ -540,7 +540,7 @@ function parseStudioCommentPayload(payload: unknown): StudioComment | null {
   };
 }
 
-export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } = {}) {
+export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest?: boolean; initialMode?: "edit" | "mix" | "beat" | "publish" } = {}) {
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -566,7 +566,7 @@ export default function DawWorkspace({ isGuest = false }: { isGuest?: boolean } 
   // mix (track strips with faders), beat (beat machine), or publish
   // (master + publish bar). Top toolbar drives this; the legacy
   // focusMode still wires through for backward compat.
-  const [mainMode, setMainMode] = useState<"edit" | "mix" | "beat" | "publish">("edit");
+  const [mainMode, setMainMode] = useState<"edit" | "mix" | "beat" | "publish">(initialMode ?? "edit");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [browserHealth, setBrowserHealth] = useState<BrowserHealth | null>(null);
