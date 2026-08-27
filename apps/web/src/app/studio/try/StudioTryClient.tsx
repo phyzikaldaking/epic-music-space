@@ -9,13 +9,14 @@ import GuestStudioBanner from "./GuestStudioBanner";
 import StudioFirstVisitTour from "./StudioFirstVisitTour";
 
 const DawWorkspace = dynamic(() => import("@/components/daw/DawWorkspace"), {
-  ssr: true,
+  ssr: false,
+  loading: () => <div className="min-h-[60vh] grid place-items-center bg-[#07090b] text-xs font-black uppercase tracking-widest text-cyan-200">Loading Studio…</div>,
 });
 
 const DemoSessionOverlay = dynamic(
   () => import("@/components/daw/DemoSessionOverlay"),
   {
-    ssr: true,
+    ssr: false,
   },
 );
 
