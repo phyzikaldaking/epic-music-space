@@ -16,6 +16,6 @@ export default function StudioIndexPage() {
 
 async function StudioEntry() {
   const session = await auth();
-  return <StudioClientBoundary isAuthed={Boolean(session?.user?.id)} />;
+  return <StudioClientBoundary />;
 }
 
