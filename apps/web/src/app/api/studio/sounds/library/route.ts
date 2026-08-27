@@ -118,37 +118,25 @@ function cleanDisplayName(path: string) {
 async function listAudioObjects(
   supabase: StorageSupabaseClient,
   bucket: string,
-  prefix = "",
-  maxResults = 1000,
+  _prefix = "",
+  maxResults = 100000,
 ): Promise<Array<StorageObject & { path: string }>> {
-  const results: Array<StorageObject & { path: string }> = [];
-  const folders: string[] = [prefix];
+  // Storage.list() is unreliable for this production project (it returns 400
+  // even though the buckets and objects exist). Read the authoritative object
+  // index through Supabase's storage schema instead.
+  const { data, error } = await supabase
+    .schema("storage")
+    .from("objects")
+    .select("id,name,created_at,updated_at,metadata")
+    .eq("bucket_id", bucket)
+    .order("created_at", { ascending: false })
+    .range(0, Math.max(0, maxResults - 1));
 
-  while (folders.length > 0 && results.length < maxResults) {
-    const currentPrefix = folders.shift() ?? "";
-    for (let offset = 0; ; offset += 1000) {
-      const { data, error } = await supabase.storage.from(bucket).list(currentPrefix, {
-        limit: 100,
-        offset,
-        sortBy: { column: "name", order: "asc" },
-      });
-      if (error) throw error;
-      const items = (data ?? []) as StorageObject[];
-      for (const item of items) {
-        if (!item.name) continue;
-        const path = joinStoragePath(currentPrefix, item.name);
-        const isFolder = !item.id && !item.metadata?.mimetype && !item.name.includes(".");
-        if (isFolder) { folders.push(path); continue; }
-        if (isAudioObject(item)) {
-          results.push({ ...item, path });
-          if (results.length >= maxResults) break;
-        }
-      }
-      if (results.length >= maxResults || items.length < 1000) break;
-    }
-  }
+  if (error) throw error;
 
-  return results;
+  return ((data ?? []) as StorageObject[])
+    .filter((item) => item.name && isAudioObject(item))
+    .map((item) => ({ ...item, path: item.name }));
 }
 
 export async function GET(request: Request) {
