@@ -1726,38 +1726,9 @@ export default function StudioProductionWorkspace() {
               ))}
             </div>
           </div>
-          <div className="hidden border-y border-white/6 bg-black/10 px-4 py-4">
-            <div className="hidden flex items-center gap-2">
-              <h2 className="text-[10px] uppercase tracking-[0.28em] text-white/42">
-                Edit History
-              </h2>
-              <span className="ml-auto text-[10px] uppercase tracking-[0.22em] text-white/28">
-                {state.timeline.undo.length} entries
-              </span>
-            </div>
-            <div className="mt-3 max-h-48 space-y-2 overflow-auto">
-              {state.timeline.undo.length === 0 ? (
-                <p className="text-sm text-white/28">
-                  No edits yet. Actions from the rails and arrange window land
-                  here.
-                </p>
-              ) : (
-                state.timeline.undo.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="border-l border-white/10 bg-transparent px-3 py-3"
-                  >
-                    <p className="text-sm text-white/72">{entry.label}</p>
-                    <p className="mt-1 text-[11px] text-white/32">
-                      {entry.createdAt}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </div>
       </footer>
     </main>
   );
 }
+
