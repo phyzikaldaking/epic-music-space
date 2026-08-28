@@ -31,4 +31,22 @@ describe("Studio sound storage", () => {
     expect(listCalls).toEqual([{ path: "", limit: 100 }, { path: "drums", limit: 100 }]);
     expect(sounds.map((sound) => sound.path)).toEqual(["intro.wav", "drums/kick.wav"]);
   });
+
+  it("uses a single large Storage page for a large flat sound catalog", async () => {
+    const files = Array.from({ length: 892 }, (_, index) => ({
+      id: `sound-${index}`,
+      name: `sound-${index}.wav`,
+      metadata: { mimetype: "audio/wav" },
+    }));
+    const limits: number[] = [];
+    const sounds = await listAudioObjects({
+      list: async (_path, options) => {
+        limits.push(options?.limit ?? 0);
+        return { data: files, error: null };
+      },
+    });
+
+    expect(limits).toEqual([1000]);
+    expect(sounds).toHaveLength(892);
+  });
 });

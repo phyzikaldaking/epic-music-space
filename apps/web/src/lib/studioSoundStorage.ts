@@ -40,7 +40,9 @@ export async function listAudioObjects(
 ): Promise<Array<StorageObject & { path: string }>> {
   const results: Array<StorageObject & { path: string }> = [];
   const pendingPrefixes = [""];
-  const pageSize = 100;
+  // Supabase Storage accepts up to 1,000 entries per list request. Using the
+  // largest useful page avoids repeatedly walking a large, mostly-flat bucket.
+  const pageSize = Math.min(1000, Math.max(1, maxResults));
 
   while (pendingPrefixes.length > 0 && results.length < maxResults) {
     const prefix = pendingPrefixes.shift() ?? "";
