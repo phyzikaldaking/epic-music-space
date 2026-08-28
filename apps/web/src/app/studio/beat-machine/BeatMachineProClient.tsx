@@ -239,8 +239,12 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
       bpm,
       patternLength,
       patternChain,
+      swing,
+      patternName,
+      savedPatterns,
+      exportHistory,
     }));
-  }, [padBanks, padBank, bpm, patternLength, patternChain, swing, patternName, savedPatterns]);
+  }, [padBanks, padBank, bpm, patternLength, patternChain, swing, patternName, savedPatterns, exportHistory]);
 
   function context() { const ctx = getStudioAudioContext(); audio.current = ctx; return ctx; }
   async function assignDecodedSample(name: string, buffer: AudioBuffer) {
@@ -597,4 +601,3 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
     </div>
   </div>;
 }
-

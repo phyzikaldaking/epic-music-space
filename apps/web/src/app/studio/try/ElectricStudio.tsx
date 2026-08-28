@@ -76,8 +76,8 @@ function cloneTracks(tracks: StudioTrack[]) {
   return tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => ({ ...clip })) }));
 }
 
-export default function ElectricStudio() {
-  const [mode, setMode] = useState<StudioMode>("edit");
+export default function ElectricStudio({ initialMode = "edit" }: { initialMode?: StudioMode }) {
+  const [mode, setMode] = useState<StudioMode>(initialMode);
   const [experience, setExperience] = useState<StudioExperienceMode>("engineer");
   const [task, setTask] = useState<StudioTask>("arrange");
   const [templateId, setTemplateId] = useState<StudioTemplateId>("empty");

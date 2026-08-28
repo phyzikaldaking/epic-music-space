@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { auth } from "@/lib/auth";
 import StudioClientBoundary from "./StudioClientBoundary";
+import type { StudioMode } from "./try/studio/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,12 +10,13 @@ export const metadata: Metadata = {
   description: "Epic Music Space production editor workspace.",
 };
 
-export default function StudioIndexPage() {
-  return <StudioEntry />;
-}
+export default async function StudioIndexPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mode?: string }>;
+}) {
+  const { mode } = await searchParams;
+  const initialMode: StudioMode = mode === "beat" ? "beat" : "edit";
 
-async function StudioEntry() {
-  const session = await auth();
-  return <StudioClientBoundary />;
+  return <StudioClientBoundary initialMode={initialMode} />;
 }
-
