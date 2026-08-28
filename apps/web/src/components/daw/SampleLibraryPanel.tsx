@@ -325,8 +325,8 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
                   onMouseLeave={onSampleLeave}
                   onDoubleClick={() => toggleFavorite(s.id)}
                   onClick={async () => {
-                    onSampleLeave();
                     setRecentLoad(s.id);
+                    await previewSample(s);
                     await onLoadSample({ name: s.name, url: s.url, category: s.category });
                     setTimeout(() => setRecentLoad(null), 1200);
                   }}
