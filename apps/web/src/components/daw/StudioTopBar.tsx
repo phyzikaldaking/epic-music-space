@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { StudioTooltip } from "@/components/ui/StudioTooltip";
 import { tooltips } from "./tooltipCopy";
 
@@ -191,6 +193,13 @@ export default function StudioTopBar({
             </button>
           );
         })}
+        <Link
+          href="/music-consultant"
+          className="rounded px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-amber-200 transition hover:bg-amber-400/10"
+          title="Music Consultant · Artist Rights Center"
+        >
+          Consultant
+        </Link>
       </nav>
 
       {/* Drawer toggle */}

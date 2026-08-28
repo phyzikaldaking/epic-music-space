@@ -28,6 +28,10 @@ describe("current Studio entry contract", () => {
   it("exposes the Music Consultant in the primary menu", () => {
     const menu = source("src/components/navigation/EmsMainMenu.tsx");
     expect(menu).toContain('{ href: "/music-consultant", label: "Consultant" }');
+
+    const studioTopBar = source("src/components/daw/StudioTopBar.tsx");
+    expect(studioTopBar).toContain('href="/music-consultant"');
+    expect(studioTopBar).toContain("Consultant");
   });
 });
 
