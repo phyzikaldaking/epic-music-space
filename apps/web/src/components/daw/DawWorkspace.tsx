@@ -540,7 +540,7 @@ function parseStudioCommentPayload(payload: unknown): StudioComment | null {
   };
 }
 
-export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest?: boolean; initialMode?: "edit" | "mix" | "beat" | "publish" } = {}) {
+export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest?: boolean; initialMode?: "edit" | "mix" | "beat" | "sounds" | "publish" } = {}) {
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -566,7 +566,7 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
   // mix (track strips with faders), beat (beat machine), or publish
   // (master + publish bar). Top toolbar drives this; the legacy
   // focusMode still wires through for backward compat.
-  const [mainMode, setMainMode] = useState<"edit" | "mix" | "beat" | "publish">(initialMode ?? "edit");
+  const [mainMode, setMainMode] = useState<"edit" | "mix" | "beat" | "sounds" | "publish">(initialMode ?? "edit");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [browserHealth, setBrowserHealth] = useState<BrowserHealth | null>(null);
@@ -683,6 +683,7 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
   useEffect(() => {
     const engine = new DawEngine();
     engineRef.current = engine;
+    setSnapshot(engine.getSnapshot());
     const unsub = engine.subscribe(() => {
       setSnapshot(engine.getSnapshot());
     });
@@ -1265,7 +1266,6 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
   const showArrangeTools = focusMode === "all" || focusMode === "arrange";
   const showMixTools = focusMode === "all" || focusMode === "mix";
   const showPublishTools = focusMode === "all" || focusMode === "publish";
-  const hideLegacyForCompactMix = proMode && mainMode === "mix";
   const focusedTrack = useMemo(
     () => tracks.find((t) => t.id === focusedId) ?? tracks[0] ?? null,
     [tracks, focusedId],
@@ -3821,6 +3821,49 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
             />
           )}
 
+          {mainMode === "sounds" && (
+            <section aria-label="Studio sound library">
+              <SampleLibraryPanel
+                onLoadSample={async ({ name, url, category }) => {
+                  const engine = engineRef.current;
+                  if (!engine) return;
+                  try {
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                      throw new Error(`Sound request failed (${response.status}).`);
+                    }
+                    const blob = await response.blob();
+                    const palette: Record<string, string> = {
+                      drums: "#22d3ee",
+                      bass: "#a78bfa",
+                      melody: "#f59e0b",
+                      fx: "#10b981",
+                      vocals: "#ec4899",
+                    };
+                    const trackId = engine.addTrack(
+                      name,
+                      palette[category] ?? "#7c5cff",
+                    );
+                    await engine.importAudioFile(trackId, blob);
+                    setFocusedId(trackId);
+                    setSnapshot(engine.getSnapshot());
+                    pushAuditEvent("import", `Loaded sample: ${name}`);
+                    setNotice({
+                      tone: "success",
+                      message: `Loaded ${name}.`,
+                    });
+                  } catch (err) {
+                    console.warn("[DawWorkspace] sample load failed", err);
+                    setNotice({
+                      tone: "error",
+                      message: "Couldn't load sample.",
+                    });
+                  }
+                }}
+              />
+            </section>
+          )}
+
           {mainMode === "publish" && (
             <section
               className="rounded-md border border-white/10 bg-black/40 p-3"
@@ -3884,7 +3927,7 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
     )}
     {/* Legacy stacked panels render here only when Pro mode is disabled;
         modals and global notices still share this content root. */}
-    <div data-studio-content className={`${hideLegacyForCompactMix ? "hidden" : ""} relative mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8`}>
+    <div data-studio-content className={`${proMode ? "hidden" : ""} relative mx-auto max-w-6xl px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+5rem)] sm:py-8`}>
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
