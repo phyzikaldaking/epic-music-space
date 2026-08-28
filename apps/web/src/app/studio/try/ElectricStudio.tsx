@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BeatMachineProClient from "../beat-machine/BeatMachineProClient";
 import { studioTransport } from "../../../lib/studioTransport";
+import styles from "./studio-clean.module.css";
 import type {
   StudioClip,
   StudioEditMode,
@@ -879,7 +880,7 @@ export default function ElectricStudio() {
   const alert = getStudioAlert(error, lockWarning, offline, missingClips.length);
   const guideStep = getFirstSessionStep({ trackCount: tracks.length, editCount: editLog.length, cloudSaved: !dirty && saveStatus.toLowerCase().includes("saved"), finished: mode === "export" && tracks.length > 0 });
 
-  return <div className="studio-app"><div className="studio-app__frame">
+  return <div className={styles.cleanStudio}><div className="studio-app"><div className="studio-app__frame">
     <StudioChrome mode={mode} setMode={setMode} experience={experience} setExperience={changeExperience} task={task} setTask={changeTask} title={title} setTitle={(value) => { setTitle(value); setDirty(true); setSaveState("local-draft"); setSaveStatus(getSaveStatusText("local-draft")); }} saveStatus={saveStatus} saveState={saveState} savedAt={savedAt} missingMedia={missingClips.length} dirty={dirty} busy={busy} playing={playing} recording={recording} tracksLength={tracks.length} playhead={playhead} onNew={newSession} onSave={() => void saveSession()} onSaveAs={saveAs} onRestore={() => void restoreAutosave()} onSnapshot={snapshot} onArchive={exportArchive} onStop={stopTransport} onPlay={mode === "beat" ? () => undefined : playing ? () => stopTransport() : playTransport} onRecord={requestRecord} onImport={(files) => void importFiles(files)} undo={undo} redo={redo} tool={tool} setTool={setTool} editMode={editMode} setEditMode={setEditMode} zoomOut={() => setZoom((value) => Math.max(35, value - 30))} zoomIn={() => setZoom((value) => Math.min(520, value + 30))} fit={() => setZoom(Math.max(45, Math.min(180, 1200 / sessionEnd)))} bpm={bpm} setBpm={(value) => { setBpm(value); setDirty(true); }} sampleRate={sampleRate} setSampleRate={(value) => { setSampleRate(value); setDirty(true); }} nudge={nudge} setNudge={setNudge} grid={grid} setGrid={setGrid} />
     {!guideDismissed && (
       <FirstSessionGuide
@@ -927,5 +928,5 @@ export default function ElectricStudio() {
         }}
       />
     )}
-  </div></div>;
+  </div></div></div>;
 }
