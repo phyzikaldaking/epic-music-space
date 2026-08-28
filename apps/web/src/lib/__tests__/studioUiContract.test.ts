@@ -33,6 +33,18 @@ describe("current Studio entry contract", () => {
     expect(studioTopBar).toContain('href="/music-consultant"');
     expect(studioTopBar).toContain("Consultant");
   });
+  it("boots directly into the Pro workspace and honors every Studio mode route", () => {
+    const workspace = source("src/components/daw/DawWorkspace.tsx");
+    expect(workspace).toContain("setSnapshot(engine.getSnapshot());");
+    expect(workspace).toContain('className={`${proMode ? "hidden" : ""}');
+
+    const client = source("src/app/studio/try/StudioTryClient.tsx");
+    expect(client).toContain('requestedMode === "mix"');
+    expect(client).toContain('requestedMode === "sounds"');
+
+    const topBar = source("src/components/daw/StudioTopBar.tsx");
+    expect(topBar).toContain('{ id: "sounds", label: "Sounds"');
+  });
 });
 
 describe("Studio sound playback contract", () => {
