@@ -5,6 +5,7 @@ const primaryLinks = [
   { href: "/listening-sessions", label: "Listening Sessions" },
   { href: "/marketplace", label: "Marketplace" },
   { href: "/studio/beat-machine", label: "Beat Machine" },
+  { href: "/music-consultant", label: "Consultant" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/pricing", label: "Pricing" },
 ];
