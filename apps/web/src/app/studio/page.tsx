@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { auth } from "@/lib/auth";
-import StudioClientBoundary from "./StudioClientBoundary";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,12 +9,6 @@ export const metadata: Metadata = {
   description: "Epic Music Space production editor workspace.",
 };
 
-export default function StudioIndexPage() {
-  return <StudioEntry />;
+export default function StudioIndexPage(): never {
+  redirect("/studio/try");
 }
-
-async function StudioEntry() {
-  const session = await auth();
-  return <StudioClientBoundary />;
-}
-
