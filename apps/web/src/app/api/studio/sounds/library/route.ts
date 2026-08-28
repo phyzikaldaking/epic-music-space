@@ -2,27 +2,15 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { StudioSoundCategory } from "@/app/studio/try/studioWorkstationTypes";
 import { auth } from "@/lib/auth";
+import { listAudioObjects, type StorageObject } from "@/lib/studioSoundStorage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const AUDIO_BUCKETS = ["audio-assets", "studio-kits"] as const;
-const AUDIO_EXTENSIONS = new Set(["aif", "aiff", "flac", "m4a", "mp3", "ogg", "wav", "webm"]);
+const AUDIO_BUCKETS = ["audio-assets", "studio-kits", "SOUND KITS,LOOPS,SAMPLES"] as const;
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 type StorageSupabaseClient = ReturnType<typeof createClient>;
-
-interface StorageObject {
-  id?: string | null;
-  name: string;
-  created_at?: string | null;
-  updated_at?: string | null;
-  metadata?: {
-    mimetype?: string;
-    size?: number;
-    duration?: number;
-  } | null;
-}
 
 function getSupabaseAdmin(): StorageSupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -94,18 +82,6 @@ function publicSortRank(category: StudioSoundCategory) {
   return ranks[category] ?? 99;
 }
 
-function joinStoragePath(prefix: string, name: string) {
-  return prefix ? `${prefix}/${name}` : name;
-}
-
-function isAudioObject(item: StorageObject) {
-  const mimeType = item.metadata?.mimetype?.toLowerCase() ?? "";
-  if (mimeType.startsWith("audio/")) return true;
-
-  const extension = item.name.split(".").pop()?.toLowerCase();
-  return extension ? AUDIO_EXTENSIONS.has(extension) : false;
-}
-
 function cleanDisplayName(path: string) {
   const leafName = path.split("/").pop() ?? path;
   return leafName
@@ -113,30 +89,6 @@ function cleanDisplayName(path: string) {
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-async function listAudioObjects(
-  supabase: StorageSupabaseClient,
-  bucket: string,
-  _prefix = "",
-  maxResults = 100000,
-): Promise<Array<StorageObject & { path: string }>> {
-  // Storage.list() is unreliable for this production project (it returns 400
-  // even though the buckets and objects exist). Read the authoritative object
-  // index through Supabase's storage schema instead.
-  const { data, error } = await supabase
-    .schema("storage" as never)
-    .from("objects")
-    .select("id,name,created_at,updated_at,metadata")
-    .eq("bucket_id", bucket)
-    .order("created_at", { ascending: false })
-    .range(0, Math.max(0, maxResults - 1));
-
-  if (error) throw error;
-
-  return ((data ?? []) as StorageObject[])
-    .filter((item) => item.name && isAudioObject(item))
-    .map((item) => ({ ...item, path: item.name }));
 }
 
 export async function GET(request: Request) {
@@ -157,7 +109,7 @@ export async function GET(request: Request) {
     const bucketResults = await Promise.all(AUDIO_BUCKETS
       .filter((bucket) => !bucketFilter || bucket === bucketFilter)
       .map(async (bucket) => {
-        const objects = await listAudioObjects(supabase, bucket, "", 100000);
+        const objects = await listAudioObjects(supabase.storage.from(bucket), 100000);
         return objects.map((item) => ({ ...item, bucket }));
       }));
     const seen = new Set<string>();
@@ -178,7 +130,7 @@ export async function GET(request: Request) {
       id: `${item.bucket}:${item.id ?? item.path}`,
       name: cleanDisplayName(item.path),
       path: item.path,
-      source: item.bucket === "studio-kits" ? "kit" as const : "factory" as const,
+      source: item.bucket === "audio-assets" ? "factory" as const : "kit" as const,
       bucket: item.bucket,
       category,
       instrument: instrumentForCategory(category, item.path),
