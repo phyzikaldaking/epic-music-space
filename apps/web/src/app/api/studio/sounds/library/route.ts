@@ -7,14 +7,22 @@ import { listAudioObjects, resolveStudioStorageReadKey, type StorageObject } fro
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const AUDIO_BUCKETS = ["audio-assets", "studio-kits"] as const;
-const SIGNED_URL_TTL_SECONDS = 60 * 60;
+const AUDIO_BUCKETS = ["audio-assets", "studio-kits", "SOUND KITS,LOOPS,SAMPLES"] as const;
+const CATALOG_TTL_MS = 60 * 1000;
+const MAX_PAGE_SIZE = 1000;
 
 type StorageSupabaseClient = ReturnType<typeof createClient>;
+type CatalogEntry = StorageObject & { path: string; bucket: string };
+
+let catalogCache: { expiresAt: number; data: CatalogEntry[] } | null = null;
+let catalogRequest: Promise<CatalogEntry[]> | null = null;
 
 function getSupabaseStorageReader(): StorageSupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = resolveStudioStorageReadKey(process.env);
+  const key = resolveStudioStorageReadKey({
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false } });
 }
@@ -91,6 +99,33 @@ function cleanDisplayName(path: string) {
     .trim();
 }
 
+async function loadCatalog(supabase: StorageSupabaseClient): Promise<CatalogEntry[]> {
+  const bucketResults = await Promise.all(AUDIO_BUCKETS.map(async (bucket) => {
+    const objects = await listAudioObjects(supabase.storage.from(bucket), 100000);
+    return objects.map((item) => ({ ...item, bucket }));
+  }));
+  const seen = new Set<string>();
+  return bucketResults.flat().filter((item) => {
+    const stableKey = item.id ? `${item.bucket}:${item.id}` : `${item.bucket}:${item.path}`;
+    if (seen.has(stableKey)) return false;
+    seen.add(stableKey);
+    return true;
+  });
+}
+
+async function getCatalog(supabase: StorageSupabaseClient) {
+  if (catalogCache && catalogCache.expiresAt > Date.now()) return catalogCache.data;
+  if (!catalogRequest) {
+    catalogRequest = loadCatalog(supabase)
+      .then((data) => {
+        catalogCache = { data, expiresAt: Date.now() + CATALOG_TTL_MS };
+        return data;
+      })
+      .finally(() => { catalogRequest = null; });
+  }
+  return catalogRequest;
+}
+
 export async function GET(request: Request) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: "Unauthorized" }, { status: 401 });
@@ -99,26 +134,14 @@ export async function GET(request: Request) {
   const search = url.searchParams.get("q")?.trim().toLowerCase();
   const bucketFilter = url.searchParams.get("bucket");
   const sort = url.searchParams.get("sort") ?? "category";
-  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
+  const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
   const cursor = Math.max(0, Number(url.searchParams.get("cursor") ?? 0));
   const supabase = getSupabaseStorageReader();
   if (!supabase) return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: "Supabase storage is not configured." }, { status: 503 });
 
-  let data: Array<StorageObject & { path: string; bucket: string }>;
+  let data: CatalogEntry[];
   try {
-    const bucketResults = await Promise.all(AUDIO_BUCKETS
-      .filter((bucket) => !bucketFilter || bucket === bucketFilter)
-      .map(async (bucket) => {
-        const objects = await listAudioObjects(supabase.storage.from(bucket), 100000);
-        return objects.map((item) => ({ ...item, bucket }));
-      }));
-    const seen = new Set<string>();
-    data = bucketResults.flat().filter((item) => {
-      const stableKey = item.id ? `${item.bucket}:${item.id}` : `${item.bucket}:${item.path}`;
-      if (seen.has(stableKey)) return false;
-      seen.add(stableKey);
-      return true;
-    });
+    data = (await getCatalog(supabase)).filter((item) => !bucketFilter || item.bucket === bucketFilter);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Supabase storage list failed.";
     console.error("[studio/sounds/library]", message);
@@ -155,12 +178,13 @@ export async function GET(request: Request) {
       : publicSortRank(a.category) - publicSortRank(b.category) || a.name.localeCompare(b.name));
 
   const page = filtered.slice(cursor, cursor + limit);
-  const sounds = (await Promise.all(page.map(async (item) => {
-    const signed = await supabase.storage.from(item.bucket).createSignedUrl(item.path, SIGNED_URL_TTL_SECONDS);
-    const assetUrl = signed.data?.signedUrl;
+  const sounds = page.map((item) => {
+    // These official library buckets are public. Stable public URLs avoid up to
+    // 1,000 signing requests and produce much better CDN cache reuse.
+    const assetUrl = supabase.storage.from(item.bucket).getPublicUrl(item.path).data.publicUrl;
     if (!assetUrl || !assetUrl.startsWith("https://")) return null;
-    return { ...item, url: assetUrl, signedUrlExpiresAt: new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString() };
-  }))).filter((sound): sound is NonNullable<typeof sound> => Boolean(sound));
+    return { ...item, url: assetUrl };
+  }).filter((sound): sound is NonNullable<typeof sound> => Boolean(sound));
 
   const categories = filtered.reduce<Record<string, number>>((acc, sound) => {
     acc[sound.category] = (acc[sound.category] ?? 0) + 1;
