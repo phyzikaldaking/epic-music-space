@@ -13,17 +13,17 @@ describe("Studio sound storage", () => {
         { id: "cover", name: "cover.png", metadata: { mimetype: "image/png" } },
       ],
     };
-    const listedPaths: string[] = [];
+    const listCalls: Array<{ path: string; limit?: number }> = [];
     const bucket = {
-      list: async (path: string) => {
-        listedPaths.push(path);
+      list: async (path: string, options?: { limit?: number }) => {
+        listCalls.push({ path, limit: options?.limit });
         return { data: directories[path] ?? [], error: null };
       },
     };
 
     const sounds = await listAudioObjects(bucket, 100);
 
-    expect(listedPaths).toEqual(["", "drums"]);
+    expect(listCalls).toEqual([{ path: "", limit: 100 }, { path: "drums", limit: 100 }]);
     expect(sounds.map((sound) => sound.path)).toEqual(["intro.wav", "drums/kick.wav"]);
   });
 });
