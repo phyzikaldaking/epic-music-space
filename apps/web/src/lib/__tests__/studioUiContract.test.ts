@@ -58,5 +58,6 @@ describe("Studio sound playback contract", () => {
   it("resumes a browser-blocked audio context before preview playback", () => {
     const panel = source("src/components/daw/SampleLibraryPanel.tsx");
     expect(panel).toContain('if (ctx.state === "suspended") await ctx.resume();');
+    expect(panel).toContain("await previewSample(s);");
   });
 });
