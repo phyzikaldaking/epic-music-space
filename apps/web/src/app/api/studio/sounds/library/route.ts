@@ -7,6 +7,7 @@ import { listAudioObjects, resolveStudioStorageReadKey, type StorageObject } fro
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const PUBLIC_AUDIO_BUCKETS = ["audio-assets", "studio-kits"] as const;
 const AUDIO_BUCKETS = ["audio-assets", "studio-kits", "SOUND KITS,LOOPS,SAMPLES"] as const;
 const CATALOG_TTL_MS = 60 * 1000;
 const MAX_PAGE_SIZE = 1000;
@@ -14,8 +15,8 @@ const MAX_PAGE_SIZE = 1000;
 type StorageSupabaseClient = ReturnType<typeof createClient>;
 type CatalogEntry = StorageObject & { path: string; bucket: string };
 
-let catalogCache: { expiresAt: number; data: CatalogEntry[] } | null = null;
-let catalogRequest: Promise<CatalogEntry[]> | null = null;
+const catalogCache = new Map<string, { expiresAt: number; data: CatalogEntry[] }>();
+const catalogRequests = new Map<string, Promise<CatalogEntry[]>>();
 
 function getSupabaseStorageReader(): StorageSupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -99,8 +100,8 @@ function cleanDisplayName(path: string) {
     .trim();
 }
 
-async function loadCatalog(supabase: StorageSupabaseClient): Promise<CatalogEntry[]> {
-  const bucketResults = await Promise.all(AUDIO_BUCKETS.map(async (bucket) => {
+async function loadCatalog(supabase: StorageSupabaseClient, buckets: readonly string[]): Promise<CatalogEntry[]> {
+  const bucketResults = await Promise.all(buckets.map(async (bucket) => {
     const objects = await listAudioObjects(supabase.storage.from(bucket), 100000);
     return objects.map((item) => ({ ...item, bucket }));
   }));
@@ -113,22 +114,25 @@ async function loadCatalog(supabase: StorageSupabaseClient): Promise<CatalogEntr
   });
 }
 
-async function getCatalog(supabase: StorageSupabaseClient) {
-  if (catalogCache && catalogCache.expiresAt > Date.now()) return catalogCache.data;
-  if (!catalogRequest) {
-    catalogRequest = loadCatalog(supabase)
+async function getCatalog(supabase: StorageSupabaseClient, buckets: readonly string[]) {
+  const cacheKey = buckets.join("|");
+  const cached = catalogCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  if (!catalogRequests.has(cacheKey)) {
+    const request = loadCatalog(supabase, buckets)
       .then((data) => {
-        catalogCache = { data, expiresAt: Date.now() + CATALOG_TTL_MS };
+        catalogCache.set(cacheKey, { data, expiresAt: Date.now() + CATALOG_TTL_MS });
         return data;
       })
-      .finally(() => { catalogRequest = null; });
+      .finally(() => { catalogRequests.delete(cacheKey); });
+    catalogRequests.set(cacheKey, request);
   }
-  return catalogRequest;
+  return catalogRequests.get(cacheKey)!;
 }
 
 export async function GET(request: Request) {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: "Unauthorized" }, { status: 401 });
+  const buckets = session?.user?.id ? AUDIO_BUCKETS : PUBLIC_AUDIO_BUCKETS;
   const url = new URL(request.url);
   const categoryFilter = url.searchParams.get("category");
   const search = url.searchParams.get("q")?.trim().toLowerCase();
@@ -141,7 +145,7 @@ export async function GET(request: Request) {
 
   let data: CatalogEntry[];
   try {
-    data = (await getCatalog(supabase)).filter((item) => !bucketFilter || item.bucket === bucketFilter);
+    data = (await getCatalog(supabase, buckets)).filter((item) => !bucketFilter || item.bucket === bucketFilter);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Supabase storage list failed.";
     console.error("[studio/sounds/library]", message);
@@ -199,7 +203,7 @@ export async function GET(request: Request) {
     nextCursor,
     page: Math.floor(cursor / limit) + 1,
     backend: "supabase",
-    buckets: AUDIO_BUCKETS,
+    buckets,
     cache: "no-store",
   }, { headers: { "Cache-Control": "no-store" } });
 }
