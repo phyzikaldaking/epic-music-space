@@ -19,6 +19,10 @@ interface StorageBucket {
 
 const AUDIO_EXTENSIONS = new Set(["aif", "aiff", "flac", "m4a", "mp3", "ogg", "wav", "webm"]);
 
+export function resolveStudioStorageReadKey(env: Partial<Record<"NEXT_PUBLIC_SUPABASE_ANON_KEY" | "SUPABASE_SERVICE_ROLE_KEY", string>>) {
+  return env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || null;
+}
+
 function joinStoragePath(prefix: string, name: string) {
   return prefix ? `${prefix}/${name}` : name;
 }
