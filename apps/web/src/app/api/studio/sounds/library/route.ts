@@ -121,6 +121,7 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Supabase storage list failed.";
+    console.error("[studio/sounds/library]", message);
     return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: message }, { status: 500 });
   }
 
