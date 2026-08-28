@@ -32,10 +32,11 @@ describe("current Studio entry contract", () => {
 });
 
 describe("Studio sound playback contract", () => {
-  it("keeps the public sound catalog available without a login gate", () => {
+  it("keeps public sounds available to guests without exposing the restricted bucket", () => {
     const route = source("src/app/api/studio/sounds/library/route.ts");
     expect(route).not.toContain('error: "Unauthorized"');
-    expect(route).not.toContain("await auth()");
+    expect(route).toContain('const PUBLIC_AUDIO_BUCKETS = ["audio-assets", "studio-kits"] as const;');
+    expect(route).toContain("const buckets = session?.user?.id ? AUDIO_BUCKETS : PUBLIC_AUDIO_BUCKETS;");
   });
 
   it("resumes a browser-blocked audio context before preview playback", () => {
