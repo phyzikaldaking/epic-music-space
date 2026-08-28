@@ -2,19 +2,19 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { StudioSoundCategory } from "@/app/studio/try/studioWorkstationTypes";
 import { auth } from "@/lib/auth";
-import { listAudioObjects, type StorageObject } from "@/lib/studioSoundStorage";
+import { listAudioObjects, resolveStudioStorageReadKey, type StorageObject } from "@/lib/studioSoundStorage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const AUDIO_BUCKETS = ["audio-assets", "studio-kits", "SOUND KITS,LOOPS,SAMPLES"] as const;
+const AUDIO_BUCKETS = ["audio-assets", "studio-kits"] as const;
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 type StorageSupabaseClient = ReturnType<typeof createClient>;
 
-function getSupabaseAdmin(): StorageSupabaseClient | null {
+function getSupabaseStorageReader(): StorageSupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = resolveStudioStorageReadKey(process.env);
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false } });
 }
@@ -101,7 +101,7 @@ export async function GET(request: Request) {
   const sort = url.searchParams.get("sort") ?? "category";
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
   const cursor = Math.max(0, Number(url.searchParams.get("cursor") ?? 0));
-  const supabase = getSupabaseAdmin();
+  const supabase = getSupabaseStorageReader();
   if (!supabase) return NextResponse.json({ sounds: [], categories: {}, backend: "none", error: "Supabase storage is not configured." }, { status: 503 });
 
   let data: Array<StorageObject & { path: string; bucket: string }>;
