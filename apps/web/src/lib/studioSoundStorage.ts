@@ -36,7 +36,7 @@ export async function listAudioObjects(
 ): Promise<Array<StorageObject & { path: string }>> {
   const results: Array<StorageObject & { path: string }> = [];
   const pendingPrefixes = [""];
-  const pageSize = 1000;
+  const pageSize = 100;
 
   while (pendingPrefixes.length > 0 && results.length < maxResults) {
     const prefix = pendingPrefixes.shift() ?? "";
