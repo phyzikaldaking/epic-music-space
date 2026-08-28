@@ -1,18 +1,11 @@
 import type { Metadata } from "next";
-
-import ElectricStudio from "../try/ElectricStudio";
-import styles from "../try/studio-clean.module.css";
-import mixStyles from "../try/studio-mix.module.css";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "Studio Export",
   description: "Epic Music Space export workspace.",
 };
 
-export default function StudioExportPage() {
-  return (
-    <div className={`${styles.cleanStudio} ${mixStyles.mixUpgrade}`}>
-      <ElectricStudio />
-    </div>
-  );
+export default function StudioExportPage(): never {
+  redirect("/studio/try?mode=publish");
 }

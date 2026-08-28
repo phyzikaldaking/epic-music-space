@@ -40,7 +40,7 @@ export default function NavbarAuth() {
   return (
     <div className="hidden items-center gap-3 sm:flex">
       <Link
-        href="/studio"
+        href="/studio/try"
         className={`inline-flex min-h-10 items-center border border-[#c9a96e]/60 px-4 text-[11px] font-bold uppercase tracking-[0.16em] text-[#c9a96e] transition hover:bg-[#c9a96e] hover:text-[#080808] ${focusRing}`}
       >
         Studio

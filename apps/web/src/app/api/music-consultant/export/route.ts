@@ -19,7 +19,8 @@ const pdf = (value: string) => {
   const esc = (v: string) => v.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const lines = value.split("\r\n").slice(0, 48).map((line, i) => `BT /F1 9 Tf 40 ${760 - i * 14} Td (${esc(line.slice(0, 110))}) Tj ET`).join("\n");
   const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", `<< /Length ${lines.length} >>\nstream\n${lines}\nendstream`];
-  let out = "%PDF-1.4\n", offsets = [0];
+  let out = "%PDF-1.4\n";
+  const offsets = [0];
   objs.forEach((o, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
   const start = out.length; out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`; offsets.slice(1).forEach(n => { out += String(n).padStart(10, "0") + " 00000 n \n"; });
   return out + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;

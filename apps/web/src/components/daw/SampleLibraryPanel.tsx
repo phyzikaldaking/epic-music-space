@@ -190,6 +190,7 @@ export default function SampleLibraryPanel({ onLoadSample }: Props) {
   async function previewSample(sample: Sample) {
     const ctx = getCtx();
     if (!ctx) return;
+    if (ctx.state === "suspended") await ctx.resume();
     const cached = bufferCacheRef.current.get(sample.url);
     let buffer: AudioBuffer | null = null;
     if (cached === "missing") return;
