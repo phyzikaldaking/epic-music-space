@@ -23,7 +23,15 @@ const DemoSessionOverlay = dynamic(
 export default function StudioTryClient({ isAuthed }: { isAuthed: boolean }) {
   const eventFiredRef = useRef(false);
   const searchParams = useSearchParams();
-  const initialMode = searchParams.get("mode") === "beat" ? "beat" : undefined;
+  const requestedMode = searchParams.get("mode");
+  const initialMode =
+    requestedMode === "edit" ||
+    requestedMode === "mix" ||
+    requestedMode === "beat" ||
+    requestedMode === "sounds" ||
+    requestedMode === "publish"
+      ? requestedMode
+      : undefined;
 
   useEffect(() => {
     if (eventFiredRef.current || isAuthed) return;

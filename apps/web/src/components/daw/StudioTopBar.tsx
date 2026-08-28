@@ -14,7 +14,7 @@ import { tooltips } from "./tooltipCopy";
 // Designed to take ~64px of vertical space — that's it. Everything
 // below this row is the actual workspace.
 
-export type StudioMainMode = "edit" | "mix" | "beat" | "publish";
+export type StudioMainMode = "edit" | "mix" | "beat" | "sounds" | "publish";
 
 type Props = {
   isPlaying: boolean;
@@ -37,6 +37,7 @@ const MODE_TABS: Array<{ id: StudioMainMode; label: string; hint: string }> = [
   { id: "edit", label: "Edit", hint: "Track lanes + recording" },
   { id: "mix", label: "Mix", hint: "Faders + EQ + master" },
   { id: "beat", label: "Beat", hint: "Drum machine grid" },
+  { id: "sounds", label: "Sounds", hint: "Preview and load Studio sound kits" },
   { id: "publish", label: "Publish", hint: "Master + release" },
 ];
 
