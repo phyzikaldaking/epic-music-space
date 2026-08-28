@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { listAudioObjects } from "@/lib/studioSoundStorage";
+import { listAudioObjects, resolveStudioStorageReadKey } from "@/lib/studioSoundStorage";
 
 describe("Studio sound storage", () => {
+  it("uses the public read key instead of a server write credential", () => {
+    expect(resolveStudioStorageReadKey({ NEXT_PUBLIC_SUPABASE_ANON_KEY: "public-read", SUPABASE_SERVICE_ROLE_KEY: "invalid-jws" })).toBe("public-read");
+    expect(resolveStudioStorageReadKey({ SUPABASE_SERVICE_ROLE_KEY: "invalid-jws" })).toBeNull();
+  });
+
   it("recursively lists audio files through the supported Storage API", async () => {
     const directories: Record<string, Array<{ id: string | null; name: string; metadata?: { mimetype?: string } }>> = {
       "": [
