@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { StudioMode } from "./try/studio/types";
 
 const ElectricStudio = dynamic(() => import("./try/ElectricStudio"), {
   ssr: false,
@@ -11,6 +12,6 @@ const ElectricStudio = dynamic(() => import("./try/ElectricStudio"), {
   ),
 });
 
-export default function StudioClientBoundary() {
-  return <ElectricStudio />;
+export default function StudioClientBoundary({ initialMode }: { initialMode: StudioMode }) {
+  return <ElectricStudio initialMode={initialMode} />;
 }
