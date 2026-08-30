@@ -221,7 +221,7 @@ export default function BeatMachineProClient({ studioMode = false, initialBpm = 
     try {
       const raw = localStorage.getItem("ems.beat-machine.session.v2");
       if (!raw) return;
-      const saved = JSON.parse(raw) as { banks?: Record<string, Pad[]>; activeBank?: number; bpm?: number; patternLength?: number; patternChain?: number[]; swing?: number; patternName?: string; savedPatterns?: Record<string, unknown>; exportHistory?: Array<{ id: string; kind: string; createdAt: string; fileName: string; status: string }> };
+      const saved = JSON.parse(raw) as { banks?: Record<string, Pad[]>; activeBank?: number; bpm?: number; patternLength?: number; patternChain?: number[]; swing?: number; masterVolume?: number; randomDensity?: number; patternName?: string; savedPatterns?: Record<string, unknown>; exportHistory?: Array<{ id: string; kind: string; createdAt: string; fileName: string; status: string }> };
       if (saved.banks && typeof saved.banks === "object") {
         setPadBanks(Object.fromEntries(Object.entries(saved.banks).map(([bank, bankPads]) => [
           Number(bank),
@@ -232,6 +232,8 @@ export default function BeatMachineProClient({ studioMode = false, initialBpm = 
       if (typeof saved.bpm === "number" && saved.bpm >= 40 && saved.bpm <= 240) setBpm(saved.bpm);
       if (saved.patternLength === 8 || saved.patternLength === 16) setPatternLength(saved.patternLength);
       if (typeof saved.swing === "number") setSwing(Math.max(0, Math.min(75, saved.swing)));
+      if (typeof saved.masterVolume === "number") setMasterVolume(Math.max(0, Math.min(100, saved.masterVolume)));
+      if (typeof saved.randomDensity === "number") setRandomDensity(Math.max(5, Math.min(90, saved.randomDensity)));
       if (Array.isArray(saved.exportHistory)) setExportHistory(saved.exportHistory as Array<{ id: string; kind: string; createdAt: string; fileName: string; status: string }>);
       if (typeof saved.patternName === "string") setPatternName(saved.patternName);
       if (saved.savedPatterns && typeof saved.savedPatterns === "object") setSavedPatterns(saved.savedPatterns as Record<string, unknown>);
@@ -248,8 +250,14 @@ export default function BeatMachineProClient({ studioMode = false, initialBpm = 
       bpm,
       patternLength,
       patternChain,
+      swing,
+      masterVolume,
+      randomDensity,
+      patternName,
+      savedPatterns,
+      exportHistory,
     }));
-  }, [padBanks, padBank, bpm, patternLength, patternChain, swing, patternName, savedPatterns]);
+  }, [padBanks, padBank, bpm, patternLength, patternChain, swing, masterVolume, randomDensity, patternName, savedPatterns, exportHistory]);
 
   function context() { const ctx = getStudioAudioContext(); audio.current = ctx; return ctx; }
   async function assignDecodedSample(name: string, buffer: AudioBuffer) {
@@ -403,10 +411,10 @@ export default function BeatMachineProClient({ studioMode = false, initialBpm = 
     return;
   }
   function updatePad(id: string, patch: Partial<Pad>) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, ...patch } : pad)); }
-  function clearPad(id: string) { updatePad(id, { sampleAsset: undefined, sliceStart: undefined, sliceDuration: undefined }); delete sampleBuffers.current[padBank + ":" + id]; }
-  function tapTempo() { const now = Date.now(); tapTimes.current = [...tapTimes.current.filter((time) => now - time < 3000), now].slice(-6); if (tapTimes.current.length > 1) { const intervals = tapTimes.current.slice(1).map((time, index) => time - tapTimes.current[index]); setBpm(Math.max(40, Math.min(240, Math.round(60000 / (intervals.reduce((a, b) => a + b, 0) / intervals.length))))); } }
-  function savePattern() { setSavedPatterns((current) => ({ ...current, [patternName || "Untitled Pattern"]: { banks: padBanks, bpm, patternLength, patternChain, swing } })); }
-  function loadPattern(name: string) { const saved = savedPatterns[name] as { banks?: Record<number, Pad[]>; bpm?: number; patternLength?: 8 | 16; patternChain?: number[]; swing?: number } | undefined; if (!saved) return; if (saved.banks) setPadBanks(saved.banks); if (saved.bpm) setBpm(saved.bpm); if (saved.patternLength) setPatternLength(saved.patternLength); if (saved.patternChain) setPatternChain(saved.patternChain); if (typeof saved.swing === "number") setSwing(saved.swing); }
+  function clearPad(id: string) { updatePad(id, { sampleAsset: undefined, sliceStart: undefined, sliceDuration: undefined }); delete sampleBuffers.current[padBank + ":" + id]; setSampleName(null); setSampleWaveform([]); setSampleSlices([]); setLastAction(`${id.toUpperCase()} sample cleared`); }
+  function tapTempo() { const now = Date.now(); tapTimes.current = [...tapTimes.current.filter((time) => now - time < 3000), now].slice(-6); if (tapTimes.current.length > 1) { const intervals = tapTimes.current.slice(1).map((time, index) => time - tapTimes.current[index]); const next = Math.max(40, Math.min(240, Math.round(60000 / (intervals.reduce((a, b) => a + b, 0) / intervals.length)))); setTempo(next); } else { setLastAction("Tap again to calculate tempo"); } }
+  function savePattern() { const name = patternName.trim() || "Untitled Pattern"; setPatternName(name); setSavedPatterns((current) => ({ ...current, [name]: { banks: padBanks, bpm, patternLength, patternChain, swing } })); setLastAction(`${name} saved`); }
+  function loadPattern(name: string) { const saved = savedPatterns[name] as { banks?: Record<number, Pad[]>; bpm?: number; patternLength?: 8 | 16; patternChain?: number[]; swing?: number } | undefined; if (!saved) return; if (saved.banks) setPadBanks(saved.banks); if (saved.bpm) setTempo(saved.bpm); if (saved.patternLength) setPatternLength(saved.patternLength); if (saved.patternChain) setPatternChain(saved.patternChain); if (typeof saved.swing === "number") setSwing(saved.swing); setPatternName(name); setLastAction(`${name} loaded`); }
   function toggleStep(id: string, index: number) { setPads((current) => current.map((pad) => pad.id === id ? { ...pad, steps: pad.steps.map((on, i) => i === index ? !on : on) } : pad)); setLastAction(`Toggled ${id.toUpperCase()} step ${index + 1}`); }
   function undoPattern() { const previous = undoStack.current.pop(); if (!previous) { setLastAction("Nothing to undo"); return; } redoStack.current = [...redoStack.current, padBanks].slice(-40); setPadBanks(previous); setLastAction("Pattern change undone"); }
   function redoPattern() { const next = redoStack.current.pop(); if (!next) { setLastAction("Nothing to redo"); return; } undoStack.current = [...undoStack.current, padBanks].slice(-40); setPadBanks(next); setLastAction("Pattern change restored"); }
@@ -416,7 +424,8 @@ export default function BeatMachineProClient({ studioMode = false, initialBpm = 
   function clearLane() { setPads((current) => current.map((pad) => pad.id === selected ? { ...pad, steps: pad.steps.map(() => false) } : pad)); setLastAction(`${activePad.label} lane cleared`); }
   function copyBankToNext() { const next = (padBank + 1) % 4; setPadBanks((current) => ({ ...current, [next]: (current[padBank] ?? initialPads).map((pad) => ({ ...pad, steps: [...pad.steps] })) })); setLastAction(`Bank ${padBank + 1} copied to Bank ${next + 1}`); }
   function setTempo(next: number) { const clamped = Math.max(40, Math.min(240, Math.round(next))); setBpm(clamped); studioTransport.setBpm(clamped); setLastAction(`Tempo set to ${clamped} BPM`); }
-  function stop() { trackStudio("beat_pattern_stopped", { bpm }); Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} }); activeSources.current = {}; try { previewSource.current?.stop(); } catch {} previewSource.current = null; stopAllStudioAudio(); studioTransport.stop(true); transportStep.current = -1; setPlaying(false); setStep(0); }
+  function stop() { trackStudio("beat_pattern_stopped", { bpm }); Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} }); activeSources.current = {}; try { previewSource.current?.stop(); } catch {} previewSource.current = null; stopAllStudioAudio(); studioTransport.stop(true); transportStep.current = -1; setPlaying(false); setStep(0); setLastAction("Transport stopped and returned to zero"); }
+  function stopPreview() { try { previewSource.current?.stop(); } catch {} previewSource.current = null; setLastAction("Sample preview stopped"); }
   useEffect(() => () => {
     Object.values(activeSources.current).forEach((source) => { try { source.stop(); } catch {} });
     activeSources.current = {};
@@ -439,9 +448,11 @@ export default function BeatMachineProClient({ studioMode = false, initialBpm = 
       setSampleError(error instanceof Error ? error.message : "Web Audio could not start in this browser.");
       return;
     }
+    stopPreview();
     studioTransport.setBpm(bpm);
     studioTransport.play();
     setPlaying(true);
+    setLastAction(`Playing at ${bpm} BPM`);
   }
   function randomize() { const chance = Math.max(0.05, Math.min(0.95, randomDensity / 100)); setPads((current) => current.map((pad) => ({ ...pad, steps: pad.steps.map((_, i) => i < patternLength && (i === 0 || Math.random() < (pad.id === "hat" ? Math.min(0.95, chance * 1.45) : chance))) }))); setLastAction(`Generated ${randomDensity}% density pattern`); }
   function clearPattern() { setPads((current) => current.map((pad) => ({ ...pad, steps: pad.steps.map(() => false) }))); setLastAction("Pattern cleared"); }
@@ -513,8 +524,16 @@ export default function BeatMachineProClient({ studioMode = false, initialBpm = 
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.repeat || isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.repeat || isTypingTarget(event.target) || event.altKey) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redoPattern(); else undoPattern(); return; }
+      if (event.metaKey || event.ctrlKey) return;
       if (event.code === "Space") { event.preventDefault(); play(); return; }
+      if (event.key === "[") { event.preventDefault(); setTempo(bpm - 1); return; }
+      if (event.key === "]") { event.preventDefault(); setTempo(bpm + 1); return; }
+      if (event.key === "Escape") { event.preventDefault(); stopPreview(); return; }
+      if (event.key === "ArrowLeft") { event.preventDefault(); setSelectedStep((current) => (current - 1 + patternLength) % patternLength); return; }
+      if (event.key === "ArrowRight") { event.preventDefault(); setSelectedStep((current) => (current + 1) % patternLength); return; }
+      if (event.key === "Enter") { event.preventDefault(); toggleStep(selected, selectedStep); return; }
       const pad = pads.find((item) => item.key.toLowerCase() === event.key.toLowerCase());
       if (!pad) return;
       event.preventDefault();
@@ -572,7 +591,7 @@ export default function BeatMachineProClient({ studioMode = false, initialBpm = 
           <div onDragEnter={(event) => { event.preventDefault(); setDragOver(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragOver(false)} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) void loadDroppedFile(file); }} className={cn("mt-4 border-t border-white/10 pt-4", dragOver && "rounded border border-cyan-300 bg-cyan-300/10")}>
             <div className="mb-3 flex items-center justify-between">
               <b className="text-[11px] uppercase tracking-widest text-cyan-200">Live Sample Library</b>
-              <div className="flex items-center gap-2"><span className="font-mono text-[10px] text-white/35">{visibleSamples.length}/{liveSamples.length} sounds</span><button onClick={() => void refreshSampleLibrary()} disabled={sampleLibraryLoading} aria-label="Refresh sound library" className="border border-cyan-300/30 px-2 py-1 text-[9px] font-black uppercase text-cyan-200 disabled:opacity-50">{sampleLibraryLoading ? "Loading" : "Refresh"}</button></div>
+              <div className="flex items-center gap-2"><span className="font-mono text-[10px] text-white/35">{visibleSamples.length}/{liveSamples.length} sounds</span><button onClick={stopPreview} className="border border-white/15 px-2 py-1 text-[9px] font-black uppercase text-white/55">Stop preview</button><button onClick={() => void refreshSampleLibrary()} disabled={sampleLibraryLoading} aria-label="Refresh sound library" className="border border-cyan-300/30 px-2 py-1 text-[9px] font-black uppercase text-cyan-200 disabled:opacity-50">{sampleLibraryLoading ? "Loading" : "Refresh"}</button></div>
             </div>
             <input value={sampleQuery} onChange={(event) => setSampleQuery(event.target.value)} placeholder="Search kits and samples..." aria-label="Search kits and samples" className="mb-2 w-full border border-cyan-300/20 bg-black/40 px-2 py-2 text-[10px] uppercase text-cyan-100 outline-none placeholder:text-white/30" />{sampleQuery && <button onClick={() => setSampleQuery("")} className="mb-2 text-[8px] font-black uppercase text-cyan-200">Clear search</button>}
             <div className="mb-2 flex flex-wrap gap-1">{(["all", "drums", "bass", "vocal", "fx"] as const).map((category) => <button key={category} onClick={() => setSampleCategory(category)} className={cn("border px-2 py-1 text-[8px] font-black uppercase", sampleCategory === category ? "border-cyan-200 bg-cyan-300/20 text-cyan-100" : "border-white/10 text-white/45")}>{category}</button>)}</div>
@@ -614,9 +633,9 @@ export default function BeatMachineProClient({ studioMode = false, initialBpm = 
             <label className="flex items-center gap-2 border border-white/10 px-2 py-1 text-white/55">Master {masterVolume}%<input aria-label="Beat Machine master volume" type="range" min="0" max="100" value={masterVolume} onChange={(event) => setMasterVolume(Number(event.target.value))} className="w-20 accent-green-300" /></label>
             {studioMode && onOpenEdit && <button onClick={onOpenEdit} className="border border-cyan-200 bg-cyan-300 px-3 py-1 text-black">Open in Edit</button>}
           </div>
-          <p role="status" aria-live="polite" className="mb-2 min-w-[560px] font-mono text-[9px] uppercase text-white/40">{lastAction} · {pads.filter((pad) => pad.sampleAsset).length}/8 pads loaded · {pads.filter((pad) => pad.muted).length} muted · {pads.filter((pad) => pad.solo).length} soloed</p>
+          <p role="status" aria-live="polite" className="mb-1 min-w-[560px] font-mono text-[9px] uppercase text-white/40">{lastAction} · {pads.filter((pad) => pad.sampleAsset).length}/8 pads loaded · {pads.filter((pad) => pad.muted).length} muted · {pads.filter((pad) => pad.solo).length} soloed</p><p className="mb-2 min-w-[560px] text-[8px] uppercase tracking-wider text-white/25">Space play/stop · [ ] tempo · ← → select step · Enter toggle · Ctrl/Cmd-Z undo · Shift-Ctrl/Cmd-Z redo · Esc stop preview</p>
           <div className="space-y-1.5" style={{ minWidth: patternLength === 16 ? "560px" : "360px" }}>
-            {pads.map((pad) => <div key={pad.id} className="grid items-center gap-1" style={{ gridTemplateColumns: `clamp(48px,7vw,72px) repeat(${patternLength},minmax(0,1fr))` }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-1 text-left font-mono text-[9px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.slice(0, patternLength).map((on, i) => <button key={i} aria-label={`${pad.label} step ${i + 1}`} onClick={() => { setSelectedStep(i); toggleStep(pad.id, i); }} className={cn("h-8 min-w-0 border", step === i && "ring-1 ring-white/60", selectedStep === i && "outline outline-1 outline-cyan-300")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 8px ${pad.color}80` : undefined }} />)}</div>)}
+            {pads.map((pad) => <div key={pad.id} className="grid items-center gap-1" style={{ gridTemplateColumns: `clamp(48px,7vw,72px) repeat(${patternLength},minmax(0,1fr))` }}><button onClick={() => setSelected(pad.id)} className="truncate border-r border-white/10 pr-1 text-left font-mono text-[9px] uppercase" style={{ color: selected === pad.id ? pad.color : "rgba(255,255,255,.55)" }}>{pad.label}</button>{pad.steps.slice(0, patternLength).map((on, i) => <button key={i} aria-label={`${pad.label} step ${i + 1}`} aria-pressed={on} title={`${pad.label} · step ${i + 1}${on ? " · active" : ""}`} onClick={() => { setSelectedStep(i); toggleStep(pad.id, i); }} className={cn("h-8 min-w-0 border transition-transform active:scale-95", step === i && "ring-1 ring-white/60", selectedStep === i && "outline outline-1 outline-cyan-300")} style={{ backgroundColor: on ? pad.color : "rgba(255,255,255,.035)", borderColor: on ? pad.color : "rgba(255,255,255,.08)", boxShadow: on ? `0 0 8px ${pad.color}80` : undefined }} />)}</div>)}
           </div>
         </section>
       </main>
