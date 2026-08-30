@@ -88,7 +88,7 @@ import {
   observeBeatSteps,
 } from "@/lib/yjsBridge";
 
-const MasterPanel = dynamic(() => import("./MasterPanel"), { ssr: false });
+const BeatMachineProClient = dynamic(() => import("@/app/studio/beat-machine/BeatMachineProClient"), { ssr: false });\nconst MasterPanel = dynamic(() => import("./MasterPanel"), { ssr: false });
 const StemLoopBrowser = dynamic(() => import("./StemLoopBrowser"), { ssr: false });
 const SampleLibraryPanel = dynamic(() => import("./SampleLibraryPanel"), { ssr: false });
 const ProducerKitUploader = dynamic(() => import("./ProducerKitUploader"), { ssr: false });
@@ -3602,151 +3602,12 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
             </section>
           )}
 
-          {mainMode === "beat" && beat && (
-            <section aria-label="Beat machine workspace">
-              <BeatMachineGrid
-                pattern={beat.pattern}
-                enabled={beat.enabled}
-                activeStep={beat.activeStep}
-                activeBank={beat.activeBank}
-                kit={beat.kit}
-                stepOptions={beat.stepOptions}
-                layerKitB={beat.layerKitB}
-                laneVariantNames={beat.laneVariantNames}
-                swing={beat.swing}
-                humanizeMs={beat.humanizeMs}
-                fillsEnabled={beat.fillsEnabled}
-                fillPreset={beat.fillPreset}
-                stutter={beat.stutter}
-                laneSampleNames={beat.laneSampleNames}
-                laneFrequencyProfiles={beat.laneFrequencyProfiles}
-                laneRecommendations={laneTopRecommendations}
-                recentlyAppliedLanes={recentlyAppliedLanes}
-                onApplyLaneRecommendation={applyLaneEqRecommendation}
-                onToggleStep={(lane, step) => {
-                  const cur = beat.pattern[lane][step];
-                  engineRef.current?.setBeatStep(lane, step, !cur);
-                  touchDirty();
-                  window.dispatchEvent(
-                    new CustomEvent("studio:share-step", {
-                      detail: { lane, step, on: !cur },
-                    }),
-                  );
-                }}
-                onSetStepOptions={(lane, step, opts) => {
-                  engineRef.current?.setStepOptions(lane, step, opts);
-                  touchDirty();
-                }}
-                onSetLaneLayerKit={(lane, layerKit) => {
-                  engineRef.current?.setBeatLayerKit(lane, layerKit);
-                  touchDirty();
-                }}
-                laneSemis={beat.laneSemis ?? {}}
-                onSetLaneSemis={(lane, semis) => {
-                  engineRef.current?.setBeatLaneSemis(lane, semis);
-                  touchDirty();
-                }}
-                laneReversed={beat.laneReversed ?? {}}
-                onSetLaneReversed={(lane, reversed) => {
-                  engineRef.current?.setBeatLaneReversed(lane, reversed);
-                  touchDirty();
-                }}
-                laneResonator={beat.laneResonator ?? {}}
-                onSetLaneResonator={(lane, amount) => {
-                  engineRef.current?.setBeatLaneResonator(lane, amount);
-                  touchDirty();
-                }}
-                laneNames={beat.laneNames ?? {}}
-                onSetLaneName={(lane, name) => {
-                  engineRef.current?.setBeatLaneName(lane, name);
-                  touchDirty();
-                }}
-                onSetSwing={(v) => {
-                  engineRef.current?.setBeatSwing(v);
-                  touchDirty();
-                }}
-                onSetHumanize={(v) => {
-                  engineRef.current?.setBeatHumanize(v);
-                  touchDirty();
-                }}
-                onSetFillsEnabled={(v) => {
-                  engineRef.current?.setBeatFillsEnabled(v);
-                  touchDirty();
-                }}
-                onSetFillPreset={(p) => {
-                  engineRef.current?.setBeatFillPreset(p);
-                  touchDirty();
-                }}
-                onSetStutter={(d) => engineRef.current?.setBeatStutter(d)}
-                onAddLaneVariant={async (lane, file) => {
-                  const ok = await engineRef.current?.addBeatLaneVariant(lane, file);
-                  if (ok) {
-                    pushAuditEvent("beat", `Added round-robin variant ${file.name} to ${lane}`);
-                    setNotice({
-                      tone: "success",
-                      message: `${lane.toUpperCase()} now cycles a new round-robin variant.`,
-                    });
-                  } else {
-                    setNotice({
-                      tone: "error",
-                      message: `Couldn't add variant. Max 3 per lane; needs a primary sample first.`,
-                    });
-                  }
-                }}
-                onClearLaneVariants={(lane) => {
-                  engineRef.current?.clearBeatLaneVariants(lane);
-                  touchDirty();
-                }}
-                onToggleEnabled={() => engineRef.current?.setBeatEnabled(!beat.enabled)}
-                onClear={() => engineRef.current?.setBeatPattern(emptyBeatPattern())}
-                onSuggestPattern={() => {
-                  const engine = engineRef.current;
-                  if (!engine) return;
-                  const bpm = transport?.bpm ?? 120;
-                  const fresh = suggestPattern(beat.kit, bpm);
-                  engine.setBeatPattern(fresh);
-                  pushAuditEvent("beat", `Suggested fresh ${beat.kit} pattern @ ${Math.round(bpm)} BPM`);
-                  setNotice({ tone: "success", message: `New ${beat.kit} pattern. Click again for a different one.` });
-                }}
-                onRenderToTrack={renderBeatToTrack}
-                onSelectBank={(bank) => engineRef.current?.setActivePatternBank(bank)}
-                onCopyPatternToBank={(target) => {
-                  engineRef.current?.copyActivePatternToBank(target);
-                  touchDirty();
-                  setNotice({
-                    tone: "success",
-                    message: `Pattern copied to bank ${target}.`,
-                  });
-                }}
-                onSelectKit={(kit) => engineRef.current?.setBeatKit(kit)}
-                onBrowseKitPacks={() => setKitMarketplaceOpen(true)}
-                onAssignLaneSample={assignBeatLaneSample}
-                onClearLaneSample={clearBeatLaneSample}
-                onFillLane={(lane, on) => {
-                  applyBeatLaneSteps(lane, Array(STEPS).fill(on));
-                }}
-                onRandomizeLane={(lane, density) => {
-                  applyBeatLaneSteps(
-                    lane,
-                    Array.from({ length: STEPS }, (_, index) => {
-                      if (index % 4 === 0) return Math.random() < Math.max(density, 0.55);
-                      return Math.random() < density;
-                    }),
-                  );
-                }}
-                onShiftLane={(lane, direction) => {
-                  const current = beat.pattern[lane];
-                  const offset = direction === "left" ? -1 : 1;
-                  const shifted = Array.from({ length: STEPS }, (_, index) => {
-                    const source = (index - offset + STEPS) % STEPS;
-                    return Boolean(current[source]);
-                  });
-                  applyBeatLaneSteps(lane, shifted);
-                }}
-                previewRecommendation={previewRecommendation}
-                onTogglePreviewRecommendation={togglePreviewRecommendation}
-                rendering={renderingBeat}
-              />
+          {mainMode === "beat" && (
+            <section
+              aria-label="Electric beat machine workspace"
+              className="min-w-0 overflow-x-auto"
+            >
+              <BeatMachineProClient studioMode />
             </section>
           )}
 
