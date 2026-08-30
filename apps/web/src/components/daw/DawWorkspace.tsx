@@ -548,6 +548,9 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
   /** Song id to import as 4 stem tracks (passed by /track/[id] "Open in Studio"). */
   const stemsSongId = searchParams.get("stems");
   const engineRef = useRef<DawEngine | null>(null);
+  const syncBeatMachineBpm = useCallback((nextBpm: number) => {
+    engineRef.current?.setBpm(nextBpm);
+  }, []);
   const [snapshot, setSnapshot] = useState<EngineSnapshot | null>(null);
   // Derived from snapshot; declared early because several effects depend on it.
   const transport = snapshot?.transport;
@@ -3608,7 +3611,7 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
               aria-label="Electric beat machine workspace"
               className="min-w-0 overflow-x-auto"
             >
-              <BeatMachineProClient studioMode />
+              <BeatMachineProClient studioMode initialBpm={transport?.bpm ?? 140} onBpmChange={syncBeatMachineBpm} />
             </section>
           )}
 

@@ -158,7 +158,7 @@ async function renderBeatStem(stem: BeatStemRenderPlan, pad?: Pad, sample?: Audi
 
 export type PrintedBeatStem = BeatStemRenderPlan & { blob: Blob; name: string; kind: "drum" | "bass" | "vocal" | "fx" };
 
-export default function BeatMachineProClient({ studioMode = false, onPrintToStudio }: { initialView?: string; studioMode?: boolean; onPrintToStudio?: (stems: PrintedBeatStem[]) => Promise<void> | void }) {
+export default function BeatMachineProClient({ studioMode = false, initialBpm = 140, onBpmChange, onPrintToStudio }: { initialView?: string; studioMode?: boolean; initialBpm?: number; onBpmChange?: (bpm: number) => void; onPrintToStudio?: (stems: PrintedBeatStem[]) => Promise<void> | void }) {
   const [padBank, setPadBank] = useState(0);
   const [padBanks, setPadBanks] = useState<Record<number, Pad[]>>(() => ({
     0: initialPads,
@@ -174,7 +174,7 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   const [selectedStep, setSelectedStep] = useState(0);
   const [patternChain, setPatternChain] = useState<number[]>([0]);
   const chainPosition = useRef(0);
-  const [bpm, setBpm] = useState(140);
+  const [bpm, setBpm] = useState(() => Math.max(40, Math.min(240, initialBpm)));
   const [patternLength, setPatternLength] = useState<8 | 16>(16);
   const [swing, setSwing] = useState(0);
   const [patternName, setPatternName] = useState("Untitled Pattern");
@@ -509,6 +509,13 @@ export default function BeatMachineProClient({ studioMode = false, onPrintToStud
   });
   useEffect(() => {
     studioTransport.setBpm(bpm);
+    if (studioMode) {
+      onBpmChange?.(bpm);
+      window.dispatchEvent(new CustomEvent("ems:studio-bpm-change", { detail: { bpm, source: "beat-machine" } }));
+    }
+  }, [bpm, onBpmChange, studioMode]);
+
+  useEffect(() => {
     return studioTransport.subscribe((state) => {
       const baseStepDuration = 60 / bpm / 4;
        const nextStep = Math.floor(state.positionSec / baseStepDuration) % patternLength;
