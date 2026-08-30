@@ -88,7 +88,8 @@ import {
   observeBeatSteps,
 } from "@/lib/yjsBridge";
 
-const BeatMachineProClient = dynamic(() => import("@/app/studio/beat-machine/BeatMachineProClient"), { ssr: false });\nconst MasterPanel = dynamic(() => import("./MasterPanel"), { ssr: false });
+const BeatMachineProClient = dynamic(() => import("@/app/studio/beat-machine/BeatMachineProClient"), { ssr: false });
+const MasterPanel = dynamic(() => import("./MasterPanel"), { ssr: false });
 const StemLoopBrowser = dynamic(() => import("./StemLoopBrowser"), { ssr: false });
 const SampleLibraryPanel = dynamic(() => import("./SampleLibraryPanel"), { ssr: false });
 const ProducerKitUploader = dynamic(() => import("./ProducerKitUploader"), { ssr: false });
