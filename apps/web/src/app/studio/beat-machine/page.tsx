@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function BeatMachineStudioPage() {
-  redirect("/studio?mode=beat");
+  redirect("/studio/try?mode=beat");
 }
