@@ -571,6 +571,7 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
   // (master + publish bar). Top toolbar drives this; the legacy
   // focusMode still wires through for backward compat.
   const [mainMode, setMainMode] = useState<"edit" | "mix" | "beat" | "sounds" | "publish">(initialMode ?? "edit");
+  const openStudioEdit = useCallback(() => setMainMode("edit"), []);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [browserHealth, setBrowserHealth] = useState<BrowserHealth | null>(null);
@@ -3611,7 +3612,7 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
               aria-label="Electric beat machine workspace"
               className="min-w-0 overflow-x-auto"
             >
-              <BeatMachineProClient studioMode initialBpm={transport?.bpm ?? 140} onBpmChange={syncBeatMachineBpm} />
+              <BeatMachineProClient studioMode initialBpm={transport?.bpm ?? 140} onBpmChange={syncBeatMachineBpm} onOpenEdit={openStudioEdit} />
             </section>
           )}
 
