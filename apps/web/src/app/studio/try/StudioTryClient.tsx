@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { postFunnelEvent } from "@/lib/funnelClient";
 import { FUNNEL_EVENTS } from "@/lib/funnelEvents";
 import GuestStudioBanner from "./GuestStudioBanner";
 
-const ElectricStudio = dynamic(() => import("./ElectricStudio"), {
+const DawWorkspace = dynamic(() => import("@/components/daw/DawWorkspace"), {
   ssr: false,
   loading: () => (
     <div className="min-h-[60vh] grid place-items-center bg-[#07090b] text-xs font-black uppercase tracking-widest text-cyan-200">
@@ -17,6 +18,16 @@ const ElectricStudio = dynamic(() => import("./ElectricStudio"), {
 
 export default function StudioTryClient({ isAuthed }: { isAuthed: boolean }) {
   const eventFiredRef = useRef(false);
+  const searchParams = useSearchParams();
+  const requestedMode = searchParams.get("mode");
+  const initialMode =
+    requestedMode === "edit" ||
+    requestedMode === "mix" ||
+    requestedMode === "beat" ||
+    requestedMode === "sounds" ||
+    requestedMode === "publish"
+      ? requestedMode
+      : undefined;
 
   useEffect(() => {
     if (eventFiredRef.current || isAuthed) return;
@@ -36,7 +47,7 @@ export default function StudioTryClient({ isAuthed }: { isAuthed: boolean }) {
   return (
     <>
       {!isAuthed && <GuestStudioBanner />}
-      <ElectricStudio />
+      <DawWorkspace isGuest={!isAuthed} initialMode={initialMode} />
     </>
   );
 }
