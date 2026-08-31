@@ -573,6 +573,7 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
   const [mainMode, setMainMode] = useState<"edit" | "mix" | "beat" | "sounds" | "publish">(initialMode ?? "edit");
   const openStudioEdit = useCallback(() => setMainMode("edit"), []);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [timelineZoom, setTimelineZoom] = useState(100);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [browserHealth, setBrowserHealth] = useState<BrowserHealth | null>(null);
   /** Project save/load — id is generated lazily on first save. */
@@ -3506,7 +3507,10 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
         primary view; the legacy stacked layout below stays for
         anyone who toggles proMode off in the drawer. */}
     {proMode && transport && engineRef.current && (
-      <div className="relative mx-auto max-w-[1400px] px-2 pt-2 pb-[calc(env(safe-area-inset-bottom)+5rem)]">
+      <div
+        className="relative w-full px-2 pt-2 pb-[calc(env(safe-area-inset-bottom)+5rem)]"
+        data-studio-inspector-collapsed={drawerOpen ? undefined : "true"}
+      >
         <StudioTopBar
           isPlaying={transport.isPlaying}
           isRecording={transport.isRecording}
@@ -3514,6 +3518,8 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
           bpm={transport.bpm}
           mode={mainMode}
           drawerOpen={drawerOpen}
+          timelineZoom={timelineZoom}
+          snapEnabled={scrubSnapEnabled}
           onPlayPause={handlePlayStopTransport}
           onStop={handleStopTransport}
           onRecord={() => {
@@ -3525,19 +3531,25 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
           onBpmChange={(bpm) => engineRef.current?.setBpm(bpm)}
           onModeChange={setMainMode}
           onToggleDrawer={() => setDrawerOpen((v) => !v)}
+          onTimelineZoomChange={setTimelineZoom}
+          onToggleSnap={() => setScrubSnapEnabled((enabled) => !enabled)}
         />
 
         {/* Main pane swaps on mainMode */}
         <main className="mt-3">
           {mainMode === "edit" && (
             <section
-              className="rounded-md border border-white/10 bg-black/40"
+              className="min-w-0 overflow-x-auto rounded-md border border-slate-500/30 bg-slate-950/80 shadow-[0_16px_50px_rgba(0,0,0,0.28)]"
               aria-label="Edit window"
+              data-studio-timeline-workspace
             >
               <div className="border-b border-white/10 bg-white/[0.02] px-3 py-2 text-[10px] font-black uppercase tracking-[0.32em] text-white/55">
                 Edit · {tracks.length} track{tracks.length === 1 ? "" : "s"}
               </div>
-              <div>
+              <div
+                className="transition-[min-width] duration-150"
+                style={{ minWidth: `${timelineZoom}%` }}
+              >
                 {tracks.map((track) => (
                   <EditWindowTrackLane
                     key={track.id}
@@ -3553,6 +3565,7 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
                         : 0
                     }
                     bpm={transport.bpm}
+                    snapEnabled={scrubSnapEnabled}
                     isFocused={track.id === focusedId}
                     onFocus={() => setFocusedId(track.id)}
                     onToggleArm={() => engineRef.current?.setTrackArmed(track.id, !track.armed)}
