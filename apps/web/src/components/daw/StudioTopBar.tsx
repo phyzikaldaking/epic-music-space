@@ -23,6 +23,8 @@ type Props = {
   bpm: number;
   mode: StudioMainMode;
   drawerOpen: boolean;
+  timelineZoom: number;
+  snapEnabled: boolean;
   onPlayPause: () => void;
   onStop: () => void;
   onRecord: () => void;
@@ -31,12 +33,14 @@ type Props = {
   onBpmChange: (bpm: number) => void;
   onModeChange: (mode: StudioMainMode) => void;
   onToggleDrawer: () => void;
+  onTimelineZoomChange: (zoom: number) => void;
+  onToggleSnap: () => void;
 };
 
 const MODE_TABS: Array<{ id: StudioMainMode; label: string; hint: string }> = [
-  { id: "edit", label: "Edit", hint: "Track lanes + recording" },
-  { id: "mix", label: "Mix", hint: "Faders + EQ + master" },
-  { id: "beat", label: "Beat", hint: "Drum machine grid" },
+  { id: "edit", label: "Return to Studio", hint: "Timeline + recording" },
+  { id: "beat", label: "Beat Machine", hint: "Electric drum pads + sequencer" },
+  { id: "mix", label: "Mix Room", hint: "Faders + EQ + master" },
   { id: "sounds", label: "Sounds", hint: "Preview and load Studio sound kits" },
   { id: "publish", label: "Publish", hint: "Master + release" },
 ];
@@ -55,6 +59,8 @@ export default function StudioTopBar({
   bpm,
   mode,
   drawerOpen,
+  timelineZoom,
+  snapEnabled,
   onPlayPause,
   onStop,
   onRecord,
@@ -63,6 +69,8 @@ export default function StudioTopBar({
   onBpmChange,
   onModeChange,
   onToggleDrawer,
+  onTimelineZoomChange,
+  onToggleSnap,
 }: Props) {
   return (
     <header
@@ -165,6 +173,34 @@ export default function StudioTopBar({
             className="w-14 rounded border border-white/10 bg-black/40 px-1 py-0.5 text-right text-xs"
             aria-label="BPM"
           />
+        </label>
+      </div>
+
+      <div className="hidden items-center gap-2 rounded-md border border-white/10 bg-black/50 px-2 py-1 lg:flex">
+        <button
+          type="button"
+          onClick={onToggleSnap}
+          aria-label="Toggle timeline snap"
+          aria-pressed={snapEnabled}
+          className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-wider ${
+            snapEnabled ? "bg-cyan-400/25 text-cyan-100" : "text-white/55 hover:bg-white/10"
+          }`}
+        >
+          Snap {snapEnabled ? "On" : "Off"}
+        </button>
+        <label className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-white/45">
+          Zoom
+          <input
+            type="range"
+            min={75}
+            max={200}
+            step={25}
+            value={timelineZoom}
+            onChange={(event) => onTimelineZoomChange(Number(event.target.value))}
+            aria-label="Timeline zoom"
+            className="w-20 accent-cyan-400"
+          />
+          <span className="w-8 text-right font-mono text-white/70">{timelineZoom}%</span>
         </label>
       </div>
 
