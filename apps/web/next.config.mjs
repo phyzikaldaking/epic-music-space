@@ -98,7 +98,7 @@ const nextConfig = {
       },
       {
         source: "/studio/:path*",
-        headers: [noStoreHeader, { key: "X-EMS-Studio-Build", value: "pro-tools-compact-v2" }],
+        headers: [noStoreHeader, { key: "X-EMS-Studio-Build", value: "timeline-workspace-v3" }],
       },
       {
         source: "/api/:path*",
