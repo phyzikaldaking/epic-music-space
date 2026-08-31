@@ -61,3 +61,41 @@ describe("Studio sound playback contract", () => {
     expect(panel).toContain("await previewSample(s);");
   });
 });
+
+describe("Studio edit workspace contract", () => {
+  it("keeps the timeline full-width with compact controls and a collapsed inspector", () => {
+    const workspace = source("src/components/daw/DawWorkspace.tsx");
+    const lane = source("src/components/daw/EditWindowTrackLane.tsx");
+    expect(workspace).toContain("data-studio-timeline-workspace");
+    expect(lane).toContain("data-compact-track-controls");
+    expect(workspace).toContain("data-studio-inspector-collapsed");
+    expect(workspace).not.toContain("Load audio to inspect track data");
+    expect(workspace).not.toContain('max-w-[1400px]');
+  });
+
+  it("exposes session-safe Studio, Beat Machine, and Mix Room navigation", () => {
+    const topBar = source("src/components/daw/StudioTopBar.tsx");
+    expect(topBar).toContain('label: "Return to Studio"');
+    expect(topBar).toContain('label: "Beat Machine"');
+    expect(topBar).toContain('label: "Mix Room"');
+  });
+
+  it("puts zoom and snap beside the shared transport", () => {
+    const topBar = source("src/components/daw/StudioTopBar.tsx");
+    expect(topBar).toContain("timelineZoom");
+    expect(topBar).toContain("snapEnabled");
+    expect(topBar).toContain('aria-label="Timeline zoom"');
+    expect(topBar).toContain('aria-label="Toggle timeline snap"');
+  });
+
+  it("renders Beat Machine output as a visible Edit timeline clip", () => {
+    const lane = source("src/components/daw/EditWindowTrackLane.tsx");
+    expect(lane).toContain("data-timeline-clip");
+    expect(lane).toContain("Beat Machine Pattern");
+  });
+
+  it("publishes a unique build marker for live deployment verification", () => {
+    const config = source("next.config.mjs");
+    expect(config).toContain('value: "timeline-workspace-v3"');
+  });
+});

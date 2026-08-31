@@ -35,6 +35,7 @@ type Props = {
   peaks: number[];
   progress: number;
   bpm: number;
+  snapEnabled: boolean;
   isFocused: boolean;
   onFocus: () => void;
   onToggleArm: () => void;
@@ -57,6 +58,7 @@ export default function EditWindowTrackLane({
   peaks,
   progress,
   bpm,
+  snapEnabled,
   isFocused,
   onFocus,
   onToggleArm,
@@ -90,6 +92,7 @@ export default function EditWindowTrackLane({
     >
       {/* Track header */}
       <div
+        data-compact-track-controls
         className="relative flex shrink-0 items-center gap-2 border-r border-white/10 px-2"
         style={{ width: HEADER_WIDTH, borderLeft: `3px solid ${isFocused ? accent : accentFaded}` }}
       >
@@ -275,16 +278,27 @@ export default function EditWindowTrackLane({
           </div>
         )}
         {peaks.length > 0 ? (
-          <WaveformView
-            peaks={peaks}
-            color={accent}
-            progress={progress}
-            durationSec={track.durationSec}
-            onScrub={onSeek}
-            bpm={bpm}
-            snapDivisor={null}
-            className="h-full w-full"
-          />
+          <div
+            data-timeline-clip
+            className="absolute inset-x-1 inset-y-1 overflow-hidden rounded border shadow-sm"
+            style={{ borderColor: `${accent}80`, background: `${accent}18` }}
+          >
+            {track.name.toLowerCase().includes("beat") && (
+              <span className="pointer-events-none absolute left-2 top-1 z-10 rounded bg-black/65 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-cyan-100">
+                Beat Machine Pattern
+              </span>
+            )}
+            <WaveformView
+              peaks={peaks}
+              color={accent}
+              progress={progress}
+              durationSec={track.durationSec}
+              onScrub={onSeek}
+              bpm={bpm}
+              snapDivisor={snapEnabled ? 4 : null}
+              className="h-full w-full"
+            />
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center text-[10px] uppercase tracking-widest text-white/25">
             {track.armed ? "Armed · press ⏺ to record" : "Drop audio or arm + record"}
