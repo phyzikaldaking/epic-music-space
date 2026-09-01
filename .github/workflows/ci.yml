@@ -88,7 +88,7 @@ jobs:
       # Gitleaks scans the full diff in PRs and the full history on main.
       # The action falls back to a bundled config if .gitleaks.toml is absent.
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
