@@ -109,7 +109,7 @@ jobs:
         run: bundle exec fastlane ios beta
 
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-ipa-${{ github.ref_name }}
           path: output/ios/EpicMusicSpace.ipa
@@ -198,7 +198,7 @@ jobs:
         run: bundle exec fastlane android beta
 
       - name: Upload AAB artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-aab-${{ github.ref_name }}
           path: apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
