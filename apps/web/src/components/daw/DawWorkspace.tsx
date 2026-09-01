@@ -114,6 +114,7 @@ const SampleChopperModal = dynamic(() => import("./SampleChopperModal"), { ssr: 
 const ReferenceSpectrumOverlay = dynamic(() => import("./ReferenceSpectrumOverlay"), { ssr: false });
 const SessionReceiptCard = dynamic(() => import("./SessionReceiptCard"), { ssr: false });
 const SendClipToDmButton = dynamic(() => import("./SendClipToDmButton"), { ssr: false });
+const SongArrangement = dynamic(() => import("./SongArrangement"), { ssr: false });
 
 const DEFAULT_TRACKS: Array<{ name: string; color: string; armed: boolean }> = [
   { name: "Vocal", color: "#ec4899", armed: true },
@@ -3544,8 +3545,15 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
               data-studio-timeline-workspace
             >
               <div className="border-b border-white/10 bg-white/[0.02] px-3 py-2 text-[10px] font-black uppercase tracking-[0.32em] text-white/55">
-                Edit · {tracks.length} track{tracks.length === 1 ? "" : "s"}
+                Arrange / Edit · {tracks.length} track{tracks.length === 1 ? "" : "s"}
               </div>
+              <SongArrangement
+                tracks={tracks}
+                currentBar={Math.floor(transport.positionSec / ((60 / Math.max(1, transport.bpm)) * 4)) + 1}
+                playing={transport.isPlaying}
+                activeBank={beat?.activeBank ?? "A"}
+                onActivateBank={(bank) => engineRef.current?.setActivePatternBank(bank)}
+              />
               <div
                 className="transition-[min-width] duration-150"
                 style={{ minWidth: `${timelineZoom}%` }}
