@@ -96,6 +96,6 @@ describe("Studio edit workspace contract", () => {
 
   it("publishes a unique build marker for live deployment verification", () => {
     const config = source("next.config.mjs");
-    expect(config).toContain('value: "timeline-workspace-v3"');
+    expect(config).toContain('value: "unified-song-workflow-v4"');
   });
 });
