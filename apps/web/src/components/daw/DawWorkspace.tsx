@@ -80,6 +80,7 @@ import { tooltips } from "./tooltipCopy";
 import { setStudioContext, clearStudioContext } from "@/lib/studioContextStore";
 import { curatedTrapDemo } from "./demoSessions";
 import { aiToolSchemas, type AiToolName } from "@/lib/aiTools";
+import type { ArrangementClip } from "./SongArrangement";
 import {
   startYjsCollab,
   setSharedField,
@@ -3025,6 +3026,47 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
     }
   }
 
+  async function renderSongArrangementToTrack(clips: ArrangementClip[]) {
+    const engine = engineRef.current;
+    if (!engine || !beatTrackId || !beat || !transport || clips.length === 0) return;
+    setRenderingBeat(true);
+    try {
+      const bpm = transport.bpm;
+      const secondsPerBar = (60 / bpm) * 4;
+      const songBars = Math.max(...clips.map((clip) => clip.startBar + clip.lengthBars - 1));
+      const sampleRate = 44100;
+      const rendered = await Promise.all(clips.map(async (clip) => ({
+        clip,
+        buffer: await renderPatternToBuffer(beat.bankPatterns[clip.bank], bpm, clip.lengthBars, sampleRate, beat.kit),
+      })));
+      const output = new AudioBuffer({
+        length: Math.ceil((songBars * secondsPerBar + 2) * sampleRate),
+        numberOfChannels: 2,
+        sampleRate,
+      });
+      for (const { clip, buffer } of rendered) {
+        const offset = Math.floor((clip.startBar - 1) * secondsPerBar * sampleRate);
+        for (let channel = 0; channel < Math.min(output.numberOfChannels, buffer.numberOfChannels); channel++) {
+          const target = output.getChannelData(channel);
+          const source = buffer.getChannelData(channel);
+          const available = Math.min(source.length, target.length - offset);
+          for (let index = 0; index < available; index++) {
+            target[offset + index] = Math.max(-1, Math.min(1, target[offset + index] + source[index]));
+          }
+        }
+      }
+      engine.setTrackBuffer(beatTrackId, output);
+      setStats((s) => ({ ...s, beatRenders: s.beatRenders + 1 }));
+      pushAuditEvent("beat", `Printed ${clips.length} arranged pattern clips to Beat track`);
+      setNotice({ tone: "success", message: `Song printed to the Beat track: ${clips.length} clips across ${songBars} bars.` });
+    } catch (err) {
+      console.warn("[DawWorkspace] song arrangement render failed", err);
+      setNotice({ tone: "error", message: "Song print failed. Try again after restarting playback." });
+    } finally {
+      setRenderingBeat(false);
+    }
+  }
+
   const assignBeatLaneSample = useCallback(
     async (lane: DrumKind, file: File) => {
       if (!ensureInit()) return;
@@ -3553,6 +3595,9 @@ export default function DawWorkspace({ isGuest = false, initialMode }: { isGuest
                 playing={transport.isPlaying}
                 activeBank={beat?.activeBank ?? "A"}
                 onActivateBank={(bank) => engineRef.current?.setActivePatternBank(bank)}
+                onOpenBeatMachine={() => setMainMode("beat")}
+                onPrintBeatToStudio={renderSongArrangementToTrack}
+                onOpenMixRoom={() => setMainMode("mix")}
               />
               <div
                 className="transition-[min-width] duration-150"
