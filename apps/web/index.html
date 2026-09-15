@@ -7,28 +7,48 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div class="aurora" aria-hidden="true"></div>
     <main class="layout">
-      <header>
+      <header class="hero">
         <p class="eyebrow">Epic Music Space</p>
         <h1>Empire Status</h1>
+        <p class="hero-copy">
+          Mission control for your creative stack: real-time posture, deploy readiness,
+          and signal health in one clean console.
+        </p>
       </header>
 
       <section class="panel">
         <div class="panel-head">
           <h2>System Intelligence</h2>
-          <button id="toggle-widget" type="button">show_widget</button>
+          <button id="toggle-widget" type="button">Show details</button>
         </div>
 
         <p class="status-copy" id="status-copy">
           Full intel synced across all sessions.
         </p>
 
+        <div class="status-meters" aria-label="Live status gauges">
+          <div class="meter">
+            <span>Security posture</span>
+            <div class="track"><span class="fill" style="--fill: 92%"></span></div>
+          </div>
+          <div class="meter">
+            <span>Infra health</span>
+            <div class="track"><span class="fill" style="--fill: 88%"></span></div>
+          </div>
+          <div class="meter">
+            <span>Deploy readiness</span>
+            <div class="track"><span class="fill" style="--fill: 95%"></span></div>
+          </div>
+        </div>
+
         <article class="widget" id="status-widget" hidden>
           <h3>Visualization</h3>
           <ul>
-            <li>Security posture: guarded</li>
-            <li>Infra health: stable</li>
-            <li>Deploy readiness: green</li>
+            <li><strong>Security posture:</strong> guarded with active anomaly scanning.</li>
+            <li><strong>Infra health:</strong> stable with low error-rate drift.</li>
+            <li><strong>Deploy readiness:</strong> green across release lanes.</li>
           </ul>
         </article>
       </section>
