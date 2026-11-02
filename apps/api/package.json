@@ -20,7 +20,7 @@
     "ioredis": "^5.3.2",
     "rate-limiter-flexible": "^5.0.3",
     "stripe": "^17.2.0",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
